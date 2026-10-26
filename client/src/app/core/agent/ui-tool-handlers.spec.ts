@@ -1044,6 +1044,17 @@ describe('UI tool registry and handlers', () => {
         })['ui_get_context'](since === undefined ? {} : { activity_since: since }) as
           { user_activity: { items: { kind: string; seq: number }[]; until: number; truncated: boolean } }).user_activity;
 
+      it('preserves manual Keep and Reset review values through ui_get_context', async () => {
+        await store.loadPhotos();
+        await store.batchReview(['/a.jpg'], 'kept', false);
+        await store.batchReview(['/a.jpg'], 'undecided', false);
+        const report = await run('ui_get_context') as { data: { user_activity: { items: unknown[] } } };
+        expect(report.data.user_activity.items).toEqual([
+          expect.objectContaining({ kind: 'review', paths: ['/a.jpg'], value: 'kept' }),
+          expect.objectContaining({ kind: 'review', paths: ['/a.jpg'], value: 'undecided' }),
+        ]);
+      });
+
       it('reads activity_since through the registry: the contract accepts it, and culling is null outside plan mode', async () => {
         await store.loadPhotos();
         await store.setRating('/a.jpg', 4);

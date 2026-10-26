@@ -166,6 +166,8 @@ Questi comandi aggiornano metriche specifiche, derivano nuovi dati (didascalie A
 | `python facet.py --compute-recommendations --apply-recommendations` | Applica automaticamente le correzioni dei punteggi |
 | `python facet.py --compute-recommendations --simulate` | Visualizza in anteprima le modifiche previste |
 
+`--upgrade-db` ritenta i file HEIF le cui intestazioni o miniature delle foto non sono state lette o riparate. Finché un candidato non riesce, conserva l’ultimo avanzamento completato, quindi i file orizzontali leggibili possono essere controllati di nuovo. I ritratti già riparati non vengono ruotati una seconda volta. Dopo l’aggiornamento da versioni precedenti della riparazione, i candidati rimanenti vengono ricontrollati; anche svuotare la cache delle statistiche riavvia il controllo. I file immagine originali non vengono mai modificati.
+
 ### Modelli di qualità supplementari
 
 Tre modelli PyIQA aggiuntivi valutano oltre il punteggio estetico principale TOPIQ. Condividono la VRAM con TOPIQ e vengono eseguiti come parte della pipeline multi-pass predefinita.

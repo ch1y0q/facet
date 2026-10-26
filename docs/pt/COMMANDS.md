@@ -164,6 +164,8 @@ Esses comandos atualizam métricas específicas, derivam novos dados (legendas p
 | `python facet.py --compute-recommendations --apply-recommendations` | Aplica automaticamente as correções de pontuação |
 | `python facet.py --compute-recommendations --simulate` | Visualiza as mudanças projetadas |
 
+`--upgrade-db` volta a tentar os ficheiros HEIF cujos cabeçalhos ou miniaturas das fotografias não puderam ser lidos ou reparados. Enquanto algum candidato falhar, mantém o último progresso concluído, pelo que os ficheiros horizontais legíveis podem ser verificados novamente. Os retratos já reparados não são rodados uma segunda vez. Ao atualizar de versões anteriores da reparação, os candidatos restantes são verificados de novo; limpar a cache de estatísticas também reinicia esta verificação. Os ficheiros de imagem originais nunca são alterados.
+
 ### Modelos de Qualidade Suplementares
 
 Três modelos PyIQA adicionais pontuam além da pontuação estética primária do TOPIQ. Eles compartilham a VRAM com o TOPIQ e rodam como parte do pipeline multi-passo padrão.

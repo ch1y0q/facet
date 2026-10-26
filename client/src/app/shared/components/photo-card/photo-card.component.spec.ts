@@ -164,6 +164,33 @@ describe('PhotoCardComponent', () => {
     });
   });
 
+  describe('persistent kept badge', () => {
+    it.each([
+      [false, false, false, false],
+      [false, true, false, false],
+      [true, false, false, false],
+      [true, true, false, true],
+      [true, true, true, false],
+    ])('edition=%s kept=%s rejected=%s renders badge=%s', (edition, kept, rejected, shown) => {
+      fixture.componentInstance.isEditionMode.set(edition);
+      fixture.componentInstance.photo.set(makePhoto({ is_kept: kept, is_rejected: rejected }));
+      fixture.detectChanges();
+      const badge = (fixture.nativeElement as HTMLElement).querySelector('[aria-label="review.kept"]');
+      expect(badge !== null).toBe(shown);
+      if (badge) expect(badge.querySelector('mat-icon')?.textContent?.trim()).toBe('check');
+    });
+
+    it('removes an existing badge when edition access ends', () => {
+      fixture.componentInstance.isEditionMode.set(true);
+      fixture.componentInstance.photo.set(makePhoto({ is_kept: true }));
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('[aria-label="review.kept"]')).not.toBeNull();
+      fixture.componentInstance.isEditionMode.set(false);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('[aria-label="review.kept"]')).toBeNull();
+    });
+  });
+
   describe('keeper hint badge', () => {
     function getTile(): HTMLElement {
       return fixture.nativeElement.querySelector('div[role="button"]') as HTMLElement;

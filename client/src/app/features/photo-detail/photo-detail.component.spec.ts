@@ -220,7 +220,7 @@ describe('PhotoDetailComponent', () => {
     expect(store.photos()[0].persons).toEqual([{ id: 5, name: 'Ada' }]);
   });
 
-  it('renders NULL and zero extended metrics in the actual detail template', () => {
+  function renderDetail() {
     TestBed.configureTestingModule({
       imports: [PhotoDetailComponent],
       providers: [
@@ -236,6 +236,31 @@ describe('PhotoDetailComponent', () => {
     });
     const view = TestBed.createComponent(PhotoDetailComponent);
     vi.spyOn(view.componentInstance, 'ngOnInit').mockResolvedValue(undefined);
+    return view;
+  }
+
+  it.each([
+    { kept: true, decision: 'undecided', icon: 'check_circle' },
+    { kept: false, decision: 'kept', icon: 'check_circle_outline' },
+  ])('Keep toggle on a photo with is_kept=$kept sends $decision, shows $icon and flips its state', async ({ kept, decision, icon }) => {
+    const view = renderDetail();
+    view.componentInstance.photo.set(makePhoto({ is_kept: kept, is_rejected: !kept }));
+    mockApi.post.mockReturnValue(of({}));
+    view.detectChanges();
+    const keep = view.nativeElement.querySelector('button[aria-label="review.keep"]') as HTMLButtonElement;
+    expect(keep.getAttribute('aria-pressed')).toBe(String(kept));
+    expect(keep.querySelector('mat-icon')!.textContent!.trim()).toBe(icon);
+    keep.click();
+    await view.whenStable();
+    expect(mockApi.post).toHaveBeenCalledWith('/photos/batch_review', { photo_paths: [view.componentInstance.photo()!.path], decision });
+    view.detectChanges();
+    expect(view.componentInstance.photo()).toMatchObject({ is_kept: !kept, is_rejected: false });
+    expect(keep.getAttribute('aria-pressed')).toBe(String(!kept));
+    expect(keep.querySelector('mat-icon')!.textContent!.trim()).not.toBe(icon);
+  });
+
+  it('renders NULL and zero extended metrics in the actual detail template', () => {
+    const view = renderDetail();
     TestBed.inject(GalleryStore).config.set({ populated_scores: ['aesthetic_v25', 'qrealign_score', 'deqa_score'] } as never);
     view.componentInstance.photo.set(makePhoto({ aesthetic_v25: null, qrealign_score: 0, deqa_score: null }));
     view.detectChanges();
@@ -309,6 +334,10 @@ describe('PhotoDetailComponent', () => {
       response.next({ is_rejected: true, is_favorite: null, star_rating: null });
       await pending;
       expect(component.photo()).toBe(b);
+      expect(TestBed.inject(UserActivityJournal).since().items).toEqual([expect.objectContaining({
+        kind: decision === 'rejected' ? 'reject' : 'review', paths: [a.path],
+        value: decision === 'rejected' ? true : decision,
+      })]);
       expect(mockRouter.navigate).not.toHaveBeenCalled();
       expect(refresh).toHaveBeenCalledOnce();
       expect(store.photos()[0]).toMatchObject({ path: a.path, is_kept: decision === 'kept', is_rejected: decision === 'rejected' });
@@ -331,7 +360,7 @@ describe('PhotoDetailComponent', () => {
       expect(refresh).toHaveBeenCalledOnce();
       expect(mockRouter.navigate).not.toHaveBeenCalled();
     });
-    it.each(['kept', 'rejected'])('applies and journals %s that lands after the gallery view changed', async decision => {
+    it.each(['kept', 'undecided', 'rejected'])('applies and journals %s that lands after the gallery view changed', async decision => {
       createComponent();
       const store = TestBed.inject(GalleryStore);
       const a = makePhoto({ path: '/a.jpg' });
@@ -341,14 +370,17 @@ describe('PhotoDetailComponent', () => {
       component.photo.set(a);
       const response = new Subject<any>();
       mockApi.post.mockReturnValue(response);
-      const pending = decision === 'rejected' ? component.toggleRejected(a.path) : component.reviewPhoto('kept');
+      const pending = decision === 'rejected' ? component.toggleRejected(a.path) : component.reviewPhoto(decision);
       store.filters.update(f => ({ ...f, path_prefix: '/elsewhere/' }));
       response.next({ is_rejected: true, is_favorite: null, star_rating: null });
       await pending;
       expect(component.photo()).toMatchObject({ path: a.path, is_kept: decision === 'kept', is_rejected: decision === 'rejected' });
       expect(refresh).not.toHaveBeenCalled();
       expect(mockRouter.navigate).not.toHaveBeenCalled();
-      if (decision === 'rejected') expect(TestBed.inject(UserActivityJournal).since().items.map(i => i.kind)).toContain('reject');
+      expect(TestBed.inject(UserActivityJournal).since().items).toEqual([expect.objectContaining({
+        kind: decision === 'rejected' ? 'reject' : 'review', paths: [a.path],
+        value: decision === 'rejected' ? true : decision,
+      })]);
     });
 
     it('merges delayed Keep into current metadata', async () => {
@@ -841,6 +873,34 @@ describe('PhotoDetailComponent', () => {
   });
 
   describe('user activity journal', () => {
+    it.each(['kept', 'undecided'] as const)('reports %s only after success and respects assistant suppression', async decision => {
+      createComponent();
+      component.photo.set({ ...samplePhoto });
+      const journal = TestBed.inject(UserActivityJournal);
+      mockApi.post.mockReturnValue(throwError(() => new Error('offline')));
+      await component.reviewPhoto(decision);
+      expect(journal.since().items).toEqual([]);
+      mockApi.post.mockReturnValue(of({ count: 1 }));
+      await journal.suppress(() => component.reviewPhoto(decision));
+      expect(journal.since().items).toEqual([]);
+      await component.reviewPhoto(decision);
+      expect(journal.since().items).toEqual([expect.objectContaining({ kind: 'review', paths: [samplePhoto.path], value: decision })]);
+    });
+
+    it.each(['kept', 'undecided'] as const)('discards queued %s journal confirmation after a direct account switch', async decision => {
+      createComponent();
+      component.photo.set({ ...samplePhoto });
+      const journal = TestBed.inject(UserActivityJournal);
+      TestBed.tick();
+      const response = new Subject<{ count: number }>();
+      mockApi.post.mockReturnValue(response);
+      const pending = component.reviewPhoto(decision);
+      response.next({ count: 1 });
+      mockAuth.status.set({ user_id: 'bob' });
+      await pending;
+      expect(journal.since().items).toEqual([]);
+    });
+
     const kinds = (): string[] => TestBed.inject(UserActivityJournal).since().items.map(i => i.kind);
 
     it('records rating, favorite, reject and manual-tag edits', async () => {

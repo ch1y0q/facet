@@ -850,6 +850,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly sidenavContainer = viewChild(MatSidenavContainer);
   private readonly ownTooltips = viewChildren(MatTooltip);
   private readonly menus = viewChildren(MatMenuTrigger);
+  private readonly photoMenu = viewChild(GalleryPhotoMenuComponent);
   private readonly selects = viewChildren(MatSelect);
   private readonly cards = viewChildren(PhotoCardComponent);
 
@@ -1309,6 +1310,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
       // A tooltip left showing would sit over the photo page and swallow its first Escape.
       for (const tooltip of this.ownTooltips()) tooltip.hide(0);
       for (const menu of this.menus()) menu.closeMenu();
+      // Context-menu triggers are separate from MatMenuTrigger; all cards share this panel.
+      this.photoMenu()?.menu().closed.emit();
       for (const select of this.selects()) select.close();
       for (const card of this.cards()) card.closeOverlays();
       this.filterSidebar()?.closeOverlays();

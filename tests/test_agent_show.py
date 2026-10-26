@@ -413,6 +413,16 @@ class TestUserActivityInTheContext:
         data = env.call(env.token(env.login()), "ui_get_context")["data"]
         assert data["user_activity"] == activity
 
+    @pytest.mark.parametrize("decision", ["kept", "undecided"])
+    def test_manual_review_activity_survives_the_agent_context(self, agent_app, fake_tab, decision):
+        env = agent_app("open")
+        activity = {"items": [{"seq": 1, "kind": "review", "paths": ["/a.jpg"],
+                               "truncated": False, "value": decision, "at": 1}],
+                    "until": 1, "truncated": False}
+        fake_tab(env, None, reply=lambda call: {"ok": True, "data": _context(activity)})
+        data = env.call(env.token(env.login()), "ui_get_context")["data"]
+        assert data["user_activity"] == activity
+
     def test_an_oversized_activity_is_trimmed_to_fit_and_flagged(self, agent_app, fake_tab):
         env = agent_app("open")
         fake_tab(env, None, reply=lambda call: {"ok": True, "data": _context(_activity(50, 90, 20))})
