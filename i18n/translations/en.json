@@ -1364,7 +1364,17 @@
       "merge_message": "Move all faces of {from} ({count} photos) into {name}? They become one person.",
       "merge_confirm": "Add to this person",
       "merged": "Added to {name}",
-      "error": "Could not save the name"
+      "error": "Could not save the name",
+      "shown_of": "{shown} of {all} photos shown",
+      "hidden_why": "{n} hidden ({why})",
+      "show_all": "Show all",
+      "show_all_hint": "Turn off the gallery's hiding of burst repeats, blinks and duplicates, to review every photo before naming",
+      "hide_again": "Hide repeats again",
+      "reason_bursts": "{n} burst repeat(s)",
+      "reason_blinks": "{n} blink(s)",
+      "reason_duplicates": "{n} duplicate(s)",
+      "reason_brackets": "{n} bracket frame(s)",
+      "reason_panoramas": "{n} panorama frame(s)"
     }
   },
   "composition_patterns": {

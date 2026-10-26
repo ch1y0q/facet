@@ -2,6 +2,7 @@ import type { Mock } from 'vitest';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { signal } from '@angular/core';
 import { of } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
@@ -22,7 +23,14 @@ describe('PersonNamingBarComponent', () => {
   let component: PersonNamingBarComponent;
   let mockApi: { get: Mock; post: Mock };
   let mockDialog: { open: Mock };
-  let mockStore: { reloadPersonOptions: Mock; updateFilters: Mock };
+  interface HiddenSummary { total: number; blinks: number; bursts: number; duplicates: number; brackets: number; panoramas: number }
+  const NONE_HIDDEN: HiddenSummary = { total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 };
+  let mockStore: {
+    reloadPersonOptions: Mock; updateFilters: Mock; showAllHidden: Mock; restoreHidden: Mock;
+    total: ReturnType<typeof signal<number>>;
+    hiddenSummary: ReturnType<typeof signal<HiddenSummary>>;
+    hiddenFiltersStash: ReturnType<typeof signal<object | null>>;
+  };
 
   async function render(personId = 95, canEdit = true) {
     fixture = TestBed.createComponent(PersonNamingBarComponent);
@@ -41,7 +49,11 @@ describe('PersonNamingBarComponent', () => {
   beforeEach(() => {
     mockApi = { get: vi.fn(() => of(OPTIONS)), post: vi.fn(() => of({ success: true })) };
     mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(true) })) };
-    mockStore = { reloadPersonOptions: vi.fn(async () => undefined), updateFilters: vi.fn(async () => undefined) };
+    mockStore = {
+      reloadPersonOptions: vi.fn(async () => undefined), updateFilters: vi.fn(async () => undefined),
+      showAllHidden: vi.fn(), restoreHidden: vi.fn(),
+      total: signal(3), hiddenSummary: signal(NONE_HIDDEN), hiddenFiltersStash: signal<object | null>(null),
+    };
     TestBed.configureTestingModule({
       imports: [PersonNamingBarComponent],
       providers: [
@@ -104,6 +116,36 @@ describe('PersonNamingBarComponent', () => {
     await render(95, false);
     expect(fixture.nativeElement.querySelector('input')).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('gallery.person_bar.photos');
+  });
+
+  it('says how many photos are hidden and why, and offers to show them', async () => {
+    mockStore.total.set(2);
+    mockStore.hiddenSummary.set({ ...NONE_HIDDEN, total: 1, bursts: 1 });
+    await render();
+    expect(component.hiddenCount()).toBe(1);
+    expect(component.hiddenReasons()).toBe('gallery.person_bar.reason_bursts');
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('gallery.person_bar.shown_of');
+    expect(text).toContain('gallery.person_bar.hidden_why');
+    const showAll = [...fixture.nativeElement.querySelectorAll('button')]
+      .find((b) => (b as HTMLElement).textContent?.includes('gallery.person_bar.show_all')) as HTMLElement;
+    showAll.click();
+    expect(mockStore.showAllHidden).toHaveBeenCalled();
+  });
+
+  it('lists every reason that applies', async () => {
+    mockStore.hiddenSummary.set({ ...NONE_HIDDEN, total: 3, bursts: 2, blinks: 1 });
+    await render();
+    expect(component.hiddenReasons()).toBe('gallery.person_bar.reason_bursts, gallery.person_bar.reason_blinks');
+  });
+
+  it('offers to hide repeats again after Show all', async () => {
+    mockStore.hiddenFiltersStash.set({ hide_bursts: true });
+    await render();
+    const again = [...fixture.nativeElement.querySelectorAll('button')]
+      .find((b) => (b as HTMLElement).textContent?.includes('gallery.person_bar.hide_again')) as HTMLElement;
+    again.click();
+    expect(mockStore.restoreHidden).toHaveBeenCalled();
   });
 
   it('sameName ignores case and outer spaces', () => {

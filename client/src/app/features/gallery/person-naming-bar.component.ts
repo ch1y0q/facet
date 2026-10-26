@@ -50,7 +50,23 @@ export function sameName(a: string | null, b: string | null): boolean {
             {{ I18N.gallery.person_bar.unnamed | translate:{ id: p.id } }}
           }
         </span>
-        <span class="opacity-70">{{ I18N.gallery.person_bar.photos | translate:{ count: p.count } }}</span>
+        @if (hiddenCount() > 0) {
+          <span class="opacity-70">
+            {{ I18N.gallery.person_bar.shown_of | translate:{ shown: shownCount(), all: shownCount() + hiddenCount() } }}
+            · {{ I18N.gallery.person_bar.hidden_why | translate:{ n: hiddenCount(), why: hiddenReasons() } }}
+          </span>
+          <button mat-button class="!min-w-0" [matTooltip]="I18N.gallery.person_bar.show_all_hint | translate"
+                  (click)="store.showAllHidden()">
+            {{ I18N.gallery.person_bar.show_all | translate }}
+          </button>
+        } @else {
+          <span class="opacity-70">{{ I18N.gallery.person_bar.photos | translate:{ count: shownCount() } }}</span>
+          @if (store.hiddenFiltersStash()) {
+            <button mat-button class="!min-w-0" (click)="store.restoreHidden()">
+              {{ I18N.gallery.person_bar.hide_again | translate }}
+            </button>
+          }
+        }
         @if (canEdit()) {
           <span class="flex-1"></span>
           <input
@@ -81,7 +97,7 @@ export class PersonNamingBarComponent {
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly i18n = inject(I18nService);
-  private readonly store = inject(GalleryStore);
+  protected readonly store = inject(GalleryStore);
 
   readonly personId = input.required<number>();
   readonly canEdit = input(false);
@@ -91,6 +107,23 @@ export class PersonNamingBarComponent {
   protected draft = '';
 
   readonly person = computed(() => this.options().find((o) => o.id === this.personId()) ?? null);
+
+  /** Photos the gallery shows for this person with the current filters. */
+  readonly shownCount = computed(() => this.store.total());
+  /** Photos of this person the gallery's hide toggles (bursts, blinks...) keep out of view. */
+  readonly hiddenCount = computed(() => this.store.hiddenSummary().total);
+  /** Why they are hidden, in words: "burst repeat", "blink"... joined with commas. */
+  readonly hiddenReasons = computed(() => {
+    const h = this.store.hiddenSummary();
+    const keys: [number, string][] = [
+      [h.bursts, I18N.gallery.person_bar.reason_bursts],
+      [h.blinks, I18N.gallery.person_bar.reason_blinks],
+      [h.duplicates, I18N.gallery.person_bar.reason_duplicates],
+      [h.brackets, I18N.gallery.person_bar.reason_brackets],
+      [h.panoramas, I18N.gallery.person_bar.reason_panoramas],
+    ];
+    return keys.filter(([n]) => n > 0).map(([n, key]) => this.i18n.t(key, { n })).join(', ');
+  });
 
   /** Every other named person, for the suggestions. */
   readonly otherNames = computed(() =>

@@ -462,7 +462,7 @@ The dropdown lists persons with face thumbnails. Click one to filter the gallery
 
 Click a person's name to see all their photos at `/person/<id>`.
 
-**Naming from the gallery.** When the gallery is filtered to one person (`?person_id=95`), a bar above the grid shows who it is ("Unnamed #95" for an unnamed cluster) and how many photos. In edition mode it has a name field with suggestions: after reviewing the photos, type a new name to name the person, or pick an existing person's name (case and spaces ignored) to move all of this person's faces into that one after a confirm (`POST /api/persons/merge`); the gallery then switches to that person.
+**Naming from the gallery.** When the gallery is filtered to one person (`?person_id=95`), a bar above the grid shows who it is ("Unnamed #95" for an unnamed cluster) and how many photos. In edition mode it has a name field with suggestions: after reviewing the photos, type a new name to name the person, or pick an existing person's name (case and spaces ignored) to move all of this person's faces into that one after a confirm (`POST /api/persons/merge`); the gallery then switches to that person. When the gallery's hide toggles keep some of the person's photos out of view, the bar says so ("2 of 3 photos shown · 1 hidden (1 burst repeat)") with **Show all**, so every face can be reviewed before naming; **Hide repeats again** restores the toggles.
 
 ### Manage Persons Page
 

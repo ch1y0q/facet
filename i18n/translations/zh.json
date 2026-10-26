@@ -1364,7 +1364,17 @@
       "merge_message": "将 {from}（{count} 张照片）的所有面孔移到 {name}？它们将成为同一个人。",
       "merge_confirm": "添加到此人",
       "merged": "已添加到 {name}",
-      "error": "无法保存名称"
+      "error": "无法保存名称",
+      "shown_of": "显示 {shown}/{all} 张照片",
+      "hidden_why": "已隐藏 {n} 张（{why}）",
+      "show_all": "全部显示",
+      "show_all_hint": "关闭图库对连拍重复、闭眼和重复照片的隐藏，以便在命名前检查每张照片",
+      "hide_again": "重新隐藏",
+      "reason_bursts": "{n} 张连拍重复",
+      "reason_blinks": "{n} 张闭眼",
+      "reason_duplicates": "{n} 张重复",
+      "reason_brackets": "{n} 张包围曝光帧",
+      "reason_panoramas": "{n} 张全景帧"
     }
   },
   "composition_patterns": {

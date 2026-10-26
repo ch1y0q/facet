@@ -1364,7 +1364,17 @@
       "merge_message": "Déplacer tous les visages de {from} ({count} photos) vers {name} ? Ils ne forment plus qu'une personne.",
       "merge_confirm": "Ajouter à cette personne",
       "merged": "Ajouté à {name}",
-      "error": "Impossible d'enregistrer le nom"
+      "error": "Impossible d'enregistrer le nom",
+      "shown_of": "{shown} photos affichées sur {all}",
+      "hidden_why": "{n} masquée(s) ({why})",
+      "show_all": "Tout afficher",
+      "show_all_hint": "Désactiver le masquage des rafales, yeux fermés et doublons pour vérifier chaque photo avant de nommer",
+      "hide_again": "Masquer à nouveau",
+      "reason_bursts": "{n} répétition(s) de rafale",
+      "reason_blinks": "{n} yeux fermés",
+      "reason_duplicates": "{n} doublon(s)",
+      "reason_brackets": "{n} image(s) de bracketing",
+      "reason_panoramas": "{n} image(s) de panorama"
     }
   },
   "composition_patterns": {

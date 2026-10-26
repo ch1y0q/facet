@@ -1364,7 +1364,17 @@
       "merge_message": "Spostare tutti i volti di {from} ({count} foto) in {name}? Diventano una sola persona.",
       "merge_confirm": "Aggiungi a questa persona",
       "merged": "Aggiunto a {name}",
-      "error": "Impossibile salvare il nome"
+      "error": "Impossibile salvare il nome",
+      "shown_of": "{shown} di {all} foto mostrate",
+      "hidden_why": "{n} nascoste ({why})",
+      "show_all": "Mostra tutto",
+      "show_all_hint": "Disattiva il nascondimento di raffiche, occhi chiusi e duplicati per controllare ogni foto prima di nominare",
+      "hide_again": "Nascondi di nuovo",
+      "reason_bursts": "{n} ripetizione/i di raffica",
+      "reason_blinks": "{n} occhi chiusi",
+      "reason_duplicates": "{n} duplicato/i",
+      "reason_brackets": "{n} fotogramma/i di bracketing",
+      "reason_panoramas": "{n} fotogramma/i di panorama"
     }
   },
   "composition_patterns": {

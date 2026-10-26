@@ -1364,7 +1364,17 @@
       "merge_message": "¿Mover todas las caras de {from} ({count} fotos) a {name}? Pasan a ser una sola persona.",
       "merge_confirm": "Añadir a esta persona",
       "merged": "Añadido a {name}",
-      "error": "No se pudo guardar el nombre"
+      "error": "No se pudo guardar el nombre",
+      "shown_of": "{shown} de {all} fotos mostradas",
+      "hidden_why": "{n} ocultas ({why})",
+      "show_all": "Mostrar todo",
+      "show_all_hint": "Desactivar la ocultación de ráfagas, ojos cerrados y duplicados para revisar cada foto antes de nombrar",
+      "hide_again": "Ocultar de nuevo",
+      "reason_bursts": "{n} repetición(es) de ráfaga",
+      "reason_blinks": "{n} ojos cerrados",
+      "reason_duplicates": "{n} duplicado(s)",
+      "reason_brackets": "{n} fotograma(s) de horquillado",
+      "reason_panoramas": "{n} fotograma(s) de panorámica"
     }
   },
   "composition_patterns": {

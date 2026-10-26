@@ -462,7 +462,7 @@ Il menu a tendina elenca le persone con le miniature dei volti. Cliccane una per
 
 Clicca il nome di una persona per vedere tutte le sue foto su `/person/<id>`.
 
-**Nominare dalla galleria.** Quando la galleria è filtrata su una persona (`?person_id=95`), una barra sopra la griglia mostra chi è («Senza nome n. 95» per un cluster senza nome) e quante foto. In modalità modifica ha un campo nome con suggerimenti: dopo aver controllato le foto, scrivi un nuovo nome per nominare la persona, oppure scegli il nome di una persona esistente (maiuscole e spazi ignorati) per spostarvi tutti i volti dopo una conferma (`POST /api/persons/merge`); la galleria passa poi a quella persona.
+**Nominare dalla galleria.** Quando la galleria è filtrata su una persona (`?person_id=95`), una barra sopra la griglia mostra chi è («Senza nome n. 95» per un cluster senza nome) e quante foto. In modalità modifica ha un campo nome con suggerimenti: dopo aver controllato le foto, scrivi un nuovo nome per nominare la persona, oppure scegli il nome di una persona esistente (maiuscole e spazi ignorati) per spostarvi tutti i volti dopo una conferma (`POST /api/persons/merge`); la galleria passa poi a quella persona. Quando le opzioni di nascondimento della galleria tengono fuori vista alcune foto della persona, la barra lo dice («2 di 3 foto mostrate · 1 nascoste (1 ripetizione di raffica)») con **Mostra tutto**, per controllare ogni volto prima di nominare; **Nascondi di nuovo** ripristina le opzioni.
 
 ### Pagina Gestisci persone
 

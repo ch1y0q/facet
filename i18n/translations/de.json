@@ -1364,7 +1364,17 @@
       "merge_message": "Alle Gesichter von {from} ({count} Fotos) zu {name} verschieben? Sie werden eine Person.",
       "merge_confirm": "Zu dieser Person hinzufügen",
       "merged": "Zu {name} hinzugefügt",
-      "error": "Name konnte nicht gespeichert werden"
+      "error": "Name konnte nicht gespeichert werden",
+      "shown_of": "{shown} von {all} Fotos angezeigt",
+      "hidden_why": "{n} ausgeblendet ({why})",
+      "show_all": "Alle anzeigen",
+      "show_all_hint": "Ausblenden von Serienbildern, Blinzeln und Duplikaten abschalten, um vor dem Benennen jedes Foto zu prüfen",
+      "hide_again": "Wieder ausblenden",
+      "reason_bursts": "{n} Serienbild-Wiederholung(en)",
+      "reason_blinks": "{n} Blinzeln",
+      "reason_duplicates": "{n} Duplikat(e)",
+      "reason_brackets": "{n} Belichtungsreihen-Bild(er)",
+      "reason_panoramas": "{n} Panorama-Bild(er)"
     }
   },
   "composition_patterns": {

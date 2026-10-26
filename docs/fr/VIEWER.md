@@ -462,7 +462,7 @@ La liste déroulante présente les personnes avec leurs miniatures de visage. Cl
 
 Cliquez sur le nom d'une personne pour voir toutes ses photos sur `/person/<id>`.
 
-**Nommer depuis la galerie.** Quand la galerie est filtrée sur une personne (`?person_id=95`), une barre au-dessus de la grille indique qui c'est (« Sans nom n° 95 » pour un cluster sans nom) et le nombre de photos. En mode édition, elle propose un champ de nom avec suggestions : après avoir vérifié les photos, saisissez un nouveau nom pour nommer la personne, ou choisissez le nom d'une personne existante (casse et espaces ignorés) pour y déplacer tous ses visages après confirmation (`POST /api/persons/merge`) ; la galerie passe alors à cette personne.
+**Nommer depuis la galerie.** Quand la galerie est filtrée sur une personne (`?person_id=95`), une barre au-dessus de la grille indique qui c'est (« Sans nom n° 95 » pour un cluster sans nom) et le nombre de photos. En mode édition, elle propose un champ de nom avec suggestions : après avoir vérifié les photos, saisissez un nouveau nom pour nommer la personne, ou choisissez le nom d'une personne existante (casse et espaces ignorés) pour y déplacer tous ses visages après confirmation (`POST /api/persons/merge`) ; la galerie passe alors à cette personne. Quand les options de masquage de la galerie cachent certaines photos de la personne, la barre l'indique (« 2 photos affichées sur 3 · 1 masquée (1 répétition de rafale) ») avec **Tout afficher**, pour vérifier chaque visage avant de nommer ; **Masquer à nouveau** rétablit les options.
 
 ### Page Gérer les personnes
 
