@@ -336,9 +336,9 @@ describe('GalleryStore', () => {
       await store.updateFilters({ path_prefix: '/current/', review_status: '' });
       const photos = new Subject<PhotosResponse>();
       apiGet.mockImplementation((url: string) => url === '/photos' ? photos : of({ total: 1, undecided: 1, kept: 0, rejected: 0 }));
+      apiGet.mockClear();
       const resuming = store.continueReview();
-      await Promise.resolve();
-      await Promise.resolve();
+      await vi.waitFor(() => expect(apiGet).toHaveBeenCalledWith('/photos', expect.anything()));
       routerEvents.next(new NavigationStart(8, '/stats'));
       photos.next(makePhotosResponse({ photos: [makePhoto({ path: '/remembered/late.jpg' })] }));
       photos.complete();
@@ -3466,6 +3466,20 @@ describe('GalleryStore smart-album auto-save', () => {
     } finally { vi.useRealTimers(); }
     expect(albumUpdate).not.toHaveBeenCalled();
     expect(get).toHaveBeenCalledWith('/photos/review_progress', expect.not.objectContaining({ scope_review_status: 'undecided' }));
+  });
+
+  it('sends the smart album\'s saved decision criterion as scope_review_status during a temporary review queue', async () => {
+    const get = TestBed.inject(ApiService).get as Mock;
+    get.mockReturnValue(of(makePhotosResponse()));
+    store.currentAlbum.set({ ...smartAlbum, smart_filter_json: JSON.stringify({ camera: 'Canon', review_status: 'kept' }) });
+    store.filters.set({ ...DEFAULT_FILTERS, camera: 'Canon' });
+    vi.useFakeTimers();
+    try {
+      await store.startReviewQueue();
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(500);
+    } finally { vi.useRealTimers(); }
+    expect(get).toHaveBeenCalledWith('/photos/review_progress', expect.objectContaining({ scope_review_status: 'kept' }));
   });
 
   it('still saves a sidebar edit made just before entering a temporary review queue', async () => {

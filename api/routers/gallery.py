@@ -20,8 +20,8 @@ from api.database import get_async_db, get_db
 from api.model_cache import AcceleratorBusy
 from api.models.gallery import (
     BY_PATHS_MISSING_CAP, GALLERY_PAGING_KEYS, GalleryParams, Photo, PhotoCountResponse,
-    ReviewProgressResponse, PhotoPathsResponse, PhotosByPathsRequest, PhotosByPathsResponse, PhotosResponse,
-    SimilarPhotosResponse, gallery_filter_keys, query_value,
+    PhotoPathsResponse, PhotosByPathsRequest, PhotosByPathsResponse, PhotosResponse,
+    ReviewProgressResponse, SimilarPhotosResponse, gallery_filter_keys, query_value,
 )
 from api.models.discovery import PhotoSetResponse, PhotoTypeCountsResponse, ViewerConfigResponse
 from api.db_helpers import (
@@ -1025,20 +1025,9 @@ async def api_review_progress(
             from_clause, where_str, params = await gallery_scope_sql_async(conn, qp, user_id)
             semantic_q, threshold = _semantic_params(qp)
             if semantic_q is not None:
-                if not VIEWER_CONFIG.get('features', {}).get('show_semantic_search', True):
-                    raise HTTPException(status_code=400, detail="Semantic search is disabled")
-                try:
-                    candidates = await semantic_candidates(conn, semantic_q, threshold, user_id)
-                except AcceleratorBusy:
-                    logger.warning("Semantic review progress gave up waiting for the MPS lock: %s", semantic_q)
-                    raise HTTPException(status_code=503, detail="Search model is busy with another task, try again in a moment")
-                except sqlite3.Error:
-                    raise
-                except Exception:
-                    logger.exception("Semantic review progress failed")
-                    raise HTTPException(status_code=503, detail="Semantic search failed")
-                where_str = _with_semantic_clause(where_str)
-                params += [candidates.paths_json]
+                _require_semantic_search_enabled()
+                _, where_str, params = await _apply_semantic_gate(
+                    conn, semantic_q, threshold, user_id, where_str, params, "review progress")
             pref = get_preference_columns(user_id)
             rejected = f"COALESCE({pref['is_rejected']}, 0)"
             kept = f"COALESCE({pref['is_kept']}, 0)"
@@ -1204,6 +1193,31 @@ _RELEVANCE_FROM = "(SELECT rowid AS pos, value AS sem_path FROM json_each(?)) AS
 _RELEVANCE_CLAUSE = "photos.path = sem.sem_path"
 
 
+def _require_semantic_search_enabled():
+    if not VIEWER_CONFIG.get('features', {}).get('show_semantic_search', True):
+        raise HTTPException(status_code=400, detail="Semantic search is disabled")
+
+
+async def _apply_semantic_gate(conn, semantic_q, threshold, user_id, where_str, params, label):
+    """Narrow a scope to the semantic candidates: ``(candidates, where_str, params)``.
+
+    Never degrades to the whole library: a gate that cannot be resolved is a 503 (busy accelerator or any
+    non-SQLite failure); a ``sqlite3.Error`` propagates to the caller's own handler. ``label`` names the
+    surface in the log.
+    """
+    try:
+        candidates = await semantic_candidates(conn, semantic_q, threshold, user_id)
+    except AcceleratorBusy:
+        logger.warning("Semantic %s gave up waiting for the MPS lock: %s", label, semantic_q)
+        raise HTTPException(status_code=503, detail="Search model is busy with another task, try again in a moment")
+    except sqlite3.Error:
+        raise
+    except Exception:
+        logger.exception("Semantic %s failed for query: %s", label, semantic_q)
+        raise HTTPException(status_code=503, detail="Semantic search failed")
+    return candidates, _with_semantic_clause(where_str), [*params, candidates.paths_json]
+
+
 def _with_semantic_clause(where_str: str) -> str:
     return f"{where_str} AND{_SEMANTIC_CLAUSE}" if where_str else f" WHERE{_SEMANTIC_CLAUSE}"
 
@@ -1251,8 +1265,8 @@ async def api_photos(
     semantic_q, semantic_threshold = _semantic_params(qp)
     if relevance and semantic_q is None:
         raise HTTPException(status_code=400, detail="sort=relevance needs semantic_q")
-    if semantic_q is not None and not VIEWER_CONFIG.get('features', {}).get('show_semantic_search', True):
-        raise HTTPException(status_code=400, detail="Semantic search is disabled")
+    if semantic_q is not None:
+        _require_semantic_search_enabled()
 
     try:
         async with get_async_db() as conn:
@@ -1266,19 +1280,8 @@ async def api_photos(
             )
             candidates = None
             if semantic_q is not None:
-                # Never degrade to the whole library: a gate that cannot be resolved is a 503.
-                try:
-                    candidates = await semantic_candidates(conn, semantic_q, semantic_threshold, user_id)
-                except AcceleratorBusy:
-                    logger.warning("Semantic gallery search gave up waiting for the MPS lock: %s", semantic_q)
-                    raise HTTPException(status_code=503, detail="Search model is busy with another task, try again in a moment")
-                except sqlite3.Error:
-                    raise
-                except Exception:
-                    logger.exception("Semantic gallery search failed for query: %s", semantic_q)
-                    raise HTTPException(status_code=503, detail="Semantic search failed")
-                where_str = _with_semantic_clause(where_str)
-                all_params = all_params + [candidates.paths_json]
+                candidates, where_str, all_params = await _apply_semantic_gate(
+                    conn, semantic_q, semantic_threshold, user_id, where_str, all_params, "gallery search")
 
             total_count = await get_cached_count_async(conn, where_str, all_params, from_clause=from_clause)
             total_pages, offset = paginate(total_count, page, per_page)

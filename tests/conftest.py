@@ -340,7 +340,8 @@ def seed_photos_prefix():
     keyed by column name — rows may have different column sets from each
     other, since each is inserted with its own column list (a full contract
     row and a bare-bones sequence-set frame both fit through the same call).
-    Every ``prefix`` a test passes is deleted in teardown, so callers with
+    Every ``prefix`` a test passes is deleted in teardown, along with the ``user_preferences``,
+    ``rating_provenance`` and ``comparisons`` rows under it, so callers with
     different row shapes can share one connection and one cleanup pass
     instead of each hand-rolling "seed under a prefix, delete the prefix".
     """
@@ -364,6 +365,10 @@ def seed_photos_prefix():
     finally:
         for prefix in prefixes:
             conn.execute("DELETE FROM photos WHERE path LIKE ?", (prefix + "%",))
+            conn.execute("DELETE FROM user_preferences WHERE photo_path LIKE ?", (prefix + "%",))
+            conn.execute("DELETE FROM rating_provenance WHERE photo_path LIKE ?", (prefix + "%",))
+            conn.execute("DELETE FROM comparisons WHERE photo_a_path LIKE ? OR photo_b_path LIKE ?",
+                         (prefix + "%", prefix + "%"))
         conn.commit()
         conn.close()
 

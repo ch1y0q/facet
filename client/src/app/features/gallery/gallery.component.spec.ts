@@ -4604,6 +4604,62 @@ describe('GalleryComponent', () => {
     });
   });
 
+  describe('review-progress banner (rendered)', () => {
+    let fixture: ComponentFixture<GalleryComponent>;
+
+    function render(): HTMLElement {
+      mockI18n.t.mockImplementation((key: string, vars?: Record<string, unknown>) => (vars ? `${key} ${JSON.stringify(vars)}` : key));
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    function buttonLabelled(host: HTMLElement, key: string): HTMLButtonElement | undefined {
+      return Array.from(host.querySelectorAll('button')).find(b => b.textContent?.trim() === key);
+    }
+
+    afterEach(() => fixture.destroy());
+
+    it('renders nothing while there is no progress snapshot', () => {
+      const host = render();
+      expect(host.querySelector('section progress')).toBeNull();
+    });
+
+    it('renders the decision counts and completion for the scope', () => {
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      mockStore.reviewPercent.set(40);
+      const status = render().querySelector('[role="status"]') as HTMLElement;
+      expect(status.textContent).toContain(`${I18N.gallery.review_progress.counts} ${JSON.stringify({ undecided: 6, kept: 3, rejected: 1 })}`);
+      expect(status.textContent).toContain(`${I18N.gallery.review_progress.complete} ${JSON.stringify({ percent: 40, total: 10 })}`);
+    });
+
+    it('Start calls startReviewQueue', () => {
+      mockStore.startReviewQueue = vi.fn();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      const start = buttonLabelled(render(), I18N.gallery.review_progress.start);
+      expect(start).toBeDefined();
+      start!.click();
+      expect(mockStore.startReviewQueue).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers no Start when nothing is undecided or the undecided tab is already active', () => {
+      mockStore.reviewProgress.set({ total: 10, undecided: 0, kept: 9, rejected: 1 });
+      expect(buttonLabelled(render(), I18N.gallery.review_progress.start)).toBeUndefined();
+      fixture.destroy();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      mockStore.filters.set({ ...DEFAULT_FILTERS, review_status: 'undecided' });
+      expect(buttonLabelled(render(), I18N.gallery.review_progress.start)).toBeUndefined();
+    });
+
+    it('Continue calls continueReview on the store', () => {
+      mockStore.reviewBookmark.set({ path: '/p1.jpg' });
+      const resume = buttonLabelled(render(), I18N.gallery.review_progress.resume);
+      expect(resume).toBeDefined();
+      resume!.click();
+      expect(mockStore.continueReview).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('kept alive behind an open photo (rendered)', () => {
     const photos = Array.from({ length: 3 }, (_, n) => ({
       path: `/p${n}.jpg`, filename: `p${n}.jpg`, image_width: 4000, image_height: 3000,
