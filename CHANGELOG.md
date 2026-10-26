@@ -4,6 +4,8 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+## [1.24.0] "Diaphragme" — 2026-10-26
+
 
 ### Changed
 - Concurrent thumbnail render requests share one decode; JPEG renders retain capacity while slower formats are busy, within the existing four-render limit.
@@ -40,6 +42,8 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Review saved manual faces from the gallery.** The new filter finds stale or legacy marks using the last scan or editor check. Correct or delete them in the existing face editor; resolved photos leave the filtered view. Queue listing does not decode originals.
+
 - Restore the opened gallery card after parked layout changes and close menus and selects when opening a photo. Use a covering face index for the naming queue without retaining its redundant predecessor.
 - Preserve explicit viewer-side rating/favorite resets during viewer database updates without treating copied scanner receipts as viewer edits. Preview sidecar imports on released schemas without adding Keep columns or migrating the database.
 - Cancel obsolete gallery page, similarity, pinned-list and review-progress reads when filters, identity or navigation change. Already submitted rating and review saves continue, and cancellation does not show a loading error. Photo-page arrows and Keep continue to load the queue while the grid is parked; unchanged returns avoid page and count reloads. Retry cancelled keeper hints, combine parked targeted updates into one row refresh, and retain unrelated pending edits when Keep repairs the queue.
@@ -68,10 +72,6 @@ All notable changes to Facet are documented in this file.
 
 - **Cmd+A selects all in the gallery on macOS.** The shortcut was bound to Ctrl+A only, so the Mac's own select-all chord did nothing and Ctrl+A — which macOS users never press — was the only way. Both now work; focus guards (inputs, open dialogs) are unchanged.
 - **The gear usage timeline's tooltip reads as a month, not a moment.** The chart's x axis is month-granular, but hovering a point titled it with the bucket's first instant ("Mar 1, 2026, 12:00:00 a.m.") — a moment that was never measured. The tooltip now says "Mar 2026", matching the axis ticks.
-
-### Fixed
-
-- **Review saved manual faces from the gallery.** The new filter finds stale or legacy marks using the last scan or editor check. Correct or delete them in the existing face editor; resolved photos leave the filtered view. Queue listing does not decode originals.
 
 ## [1.23.1] "Grip" — 2026-10-24
 
