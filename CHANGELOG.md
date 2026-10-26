@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Keep Unicode person searches literal.** Arabic and full-width decimal text matches names without also selecting an unrelated person ID. ASCII decimal IDs remain searchable, with visibility and assignment ordering preserved.
+
 ## [1.24.0] "Diaphragme" — 2026-10-26
 
 

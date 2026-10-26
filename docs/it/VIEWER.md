@@ -1300,7 +1300,7 @@ I tipi TypeScript del client sono generati da questo schema in `client/src/app/c
 
 | Endpoint | Descrizione |
 |----------|-------------|
-| `GET /api/persons` | Elenca tutte le persone |
+| `GET /api/persons` | Elenca tutte le persone. La ricerca di persone riconosce anche gli ID decimali ASCII; le cifre non ASCII come `١` o `１２` vengono cercate letteralmente nei nomi. |
 | `POST /api/persons` | Crea una nuova persona, allegando facoltativamente dei volti (riservato alla modalità di modifica). Corpo: `{name, face_ids}` |
 | `GET /api/persons/needs_naming?min_faces=N` | Elenca le persone raggruppate automaticamente senza nome con `face_count >= N` (predefinito da `viewer.persons.needs_naming_min_faces`) |
 | `POST /api/persons/{id}/rename` | Rinomina una persona |

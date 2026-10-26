@@ -1372,7 +1372,7 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/persons` | List all persons |
+| `GET /api/persons` | List all persons. Person search also matches ASCII decimal IDs; non-ASCII digits such as `١` or `１２` search names literally. |
 | `POST /api/persons` | Create a new person, optionally attaching faces (edition-gated). Body: `{name, face_ids}` |
 | `GET /api/persons/needs_naming?min_faces=N` | List unnamed auto-clustered persons with `face_count >= N` (default from `viewer.persons.needs_naming_min_faces`) |
 | `POST /api/persons/{id}/rename` | Rename a person |

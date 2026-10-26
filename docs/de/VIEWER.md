@@ -1301,7 +1301,7 @@ Die TypeScript-Typen des Clients werden mit `cd client && npm run gen:api` aus d
 
 | Endpunkt | Beschreibung |
 |----------|-------------|
-| `GET /api/persons` | Alle Personen auflisten |
+| `GET /api/persons` | Alle Personen auflisten. Die Personensuche erkennt auch dezimale ASCII-IDs; Nicht-ASCII-Ziffern wie `١` oder `１２` werden wörtlich in Namen gesucht. |
 | `POST /api/persons` | Eine neue Person erstellen, optional mit Gesichtern (Bearbeitungsmodus erforderlich). Body: `{name, face_ids}` |
 | `GET /api/persons/needs_naming?min_faces=N` | Unbenannte, automatisch geclusterte Personen mit `face_count >= N` auflisten (Standard aus `viewer.persons.needs_naming_min_faces`) |
 | `POST /api/persons/{id}/rename` | Eine Person umbenennen |

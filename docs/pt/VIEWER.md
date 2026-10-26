@@ -1300,7 +1300,7 @@ Os tipos TypeScript do cliente são gerados a partir desse esquema em `client/sr
 
 | Endpoint | Descrição |
 |----------|-------------|
-| `GET /api/persons` | Lista todas as pessoas |
+| `GET /api/persons` | Lista todas as pessoas. A pesquisa de pessoas também reconhece os IDs decimais ASCII; os algarismos não ASCII como `١` ou `１２` são pesquisados literalmente nos nomes. |
 | `POST /api/persons` | Cria uma nova pessoa, opcionalmente anexando rostos (restrito à edição). Corpo: `{name, face_ids}` |
 | `GET /api/persons/needs_naming?min_faces=N` | Lista pessoas agrupadas automaticamente e sem nome com `face_count >= N` (padrão de `viewer.persons.needs_naming_min_faces`) |
 | `POST /api/persons/{id}/rename` | Renomeia uma pessoa |
