@@ -81,7 +81,9 @@ describe('GPS dialog rendered controls and HTTP ownership', () => {
     i18n.locale.set('en');
     const translating = i18n.load();
     http.expectOne('/api/i18n/en').flush({ photo_detail: { gps: {
-      batch_preview: 'Change {changed}, skip {skipped}', batch_applied: 'Applied {changed}, skipped {skipped}',
+      batch_preview: 'Change {changed} photo, skip {skipped}', batch_preview_plural: 'Change {changed}, skip {skipped}',
+      batch_applied: 'Applied {changed} photo, skipped {skipped}', batch_applied_plural: 'Applied {changed}, skipped {skipped}',
+      osm_attribution: 'OSM credit', opens_new_tab: '(opens in new tab)',
     } } });
     await translating;
     fixture = TestBed.createComponent(componentClass);
@@ -166,6 +168,27 @@ describe('GPS dialog rendered controls and HTTP ownership', () => {
     expect(dialog.close).toHaveBeenCalledExactlyOnceWith(result);
     expect(snack.open).toHaveBeenCalledWith('Applied 2, skipped 1', '', { duration: 4000 });
     http.expectNone(request => request.method === 'PUT' || request.method === 'DELETE');
+  });
+
+  it('uses the singular batch sentences when exactly one photo changes', async () => {
+    await open();
+    await coordinates('0', '0');
+    await preview(1);
+    expect(fixture.nativeElement.textContent).toContain('Change 1 photo, skip 2');
+    button(I18N.ui.buttons.save).click();
+    http.expectOne('/api/photos/batch_gps').flush({ changed: 1, skipped: 2, preview_token: '' });
+    await settle();
+    expect(snack.open).toHaveBeenCalledWith('Applied 1 photo, skipped 2', '', { duration: 4000 });
+  });
+
+  it('translates the provider credit and cues every new-tab link in its name', async () => {
+    await open();
+    const links = Array.from(fixture.nativeElement.querySelectorAll('a[target="_blank"]')) as HTMLAnchorElement[];
+    expect(links.length).toBe(2);
+    expect(links.map(link => link.textContent!.replace(/\s+/g, ' ').trim())).toEqual([
+      'Photon (opens in new tab)', 'OSM credit (opens in new tab)',
+    ]);
+    expect(fixture.nativeElement.textContent).not.toContain('© OpenStreetMap contributors');
   });
 
   it('invalidates the preview through the only-missing checkbox and blocks an unchanged batch', async () => {

@@ -6,6 +6,7 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Localised labels and counts in the location dialog, menus and culling toolbar.** Batch location sentences use a singular form for one photo, the OpenStreetMap credit is translated and the dialog's new-tab links say so to screen readers, and the online-search button stays disabled for any query the server would refuse (3 to 200 code points after trimming, no control characters). The culling toolbar shows the live date range and grouping as text; the user menu's Help has its own label and Logout comes last. The card key hint names Space and Enter in the user's language, the Spanish single-face count says "rostro", and the empty-persons hint names the real "Assign face to person" control.
 - **The photo-detail Keep button is a real toggle.** It announced its pressed state to assistive technology, but activating it on a kept photo kept it again. It now resets the decision, and its icon is outlined until the photo is kept, so the state no longer relies on colour alone.
 - **Show readable scan phase labels.** Moment and junk detection no longer display `[object Object]` in the scan dialog; future phase names are shown as plain text.
 - **LIQE and CLIPIQA load again in the legacy CUDA image.** Its restricted lock pinned setuptools 84.1.0, which no longer ships `pkg_resources`, so PyPI `openai-clip` failed to import. It is held at 81.0.0 like the default image's lock, and the runtime cap is corrected to `<82` (setuptools 82 removed `pkg_resources`, not 81).

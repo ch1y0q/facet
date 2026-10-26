@@ -137,3 +137,10 @@ class TestBundleParity:
             and set(PLACEHOLDER.findall(value)) != set(PLACEHOLDER.findall(bundle[key]))
         }
         assert not mismatched, f"{lang}.json placeholder mismatches (key: en, {lang}): {dict(list(mismatched.items())[:5])}"
+
+    @pytest.mark.parametrize("lang", TRANSLATED_LANGUAGES)
+    def test_card_key_hint_names_localised_keys(self, lang):
+        """The card hint names the Space and Enter keys; a translated bundle that keeps
+        the English cap label ('Space') shows a foreign word on the user's keyboard."""
+        hint = _load_bundle(lang)['photoCard']['key_hint']
+        assert 'Space' not in hint, f"{lang}.json photoCard.key_hint still names the key 'Space'"
