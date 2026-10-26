@@ -1624,7 +1624,10 @@
       "sequences": "Detectando horquillados",
       "tagging": "Etiquetado",
       "vec": "Indexación",
-      "done": "Hecho"
+      "done": "Hecho",
+      "moments": "Detectando momentos",
+      "junk": "Detectando fotos no deseadas",
+      "recompute": "Recalculando puntuaciones"
     },
     "title": "Escanear fotos",
     "start_button": "Iniciar escaneo",

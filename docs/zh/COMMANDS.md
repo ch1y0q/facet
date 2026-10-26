@@ -77,12 +77,12 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --export-manifest --user alice` | 多用户模式：把 Alice 的 `user_preferences` 评分导出到清单，而不是全局列（标签和评分仍为全局） |
 | `python facet.py --import-lightroom 文件` | 导入增效工具导出的 Lightroom 星级／留用／淘汰状态（`facet_lightroom_state.json`，见 docs/INTEROP.md 中的 [Lightroom → Facet](INTEROP.md#lightroom--facet)）—— 文件携带的每个字段都由 Lightroom 说了算。打印 `matched=… unmatched=… changed=…` |
 | `python facet.py --import-lightroom 文件 --user alice` | 多用户模式：写入 Alice 的 `user_preferences` 行，而不是全局列；在多用户安装上**必须**指定 —— 否则会被拒绝，以免导入静默落到错误的范围 |
-| `python facet.py --import-sidecars` | 把 `<image.ext>.xmp` / `<image.ext>.facet.xmp` 附属文件中的评分／标记／标签导回数据库（全部照片）；Facet 尚未拥有的关键字会成为[手动标签](INTEROP.md#手动标签与-xmp-关键字) |
+| `python facet.py --import-sidecars` | 把 `<image.ext>.xmp` / `<image.ext>.facet.xmp` 附属文件中的评分、标记、保留／淘汰决定、手动 GPS 和关键字导回数据库（全部照片）；仅含 Facet 决定（保留、淘汰或未决定）、没有标准评分或标记的附属文件，不与扫描时间比较（本地编辑凭据检查仍适用）；Facet 尚未拥有的关键字会成为[手动标签](INTEROP.md#手动标签与-xmp-关键字) |
 | `python facet.py --import-sidecars /path` | 仅导入某个路径子树下照片的附属文件 |
 | `python facet.py --import-sidecars /path --dry-run` | 只读预览所选文件、前后值、来源和跳过原因；不迁移数据库。 |
-| `python facet.py --import-sidecars /path --sidecar-fields keywords,gps` | 仅导入关键字与 GPS，保留审核状态；也可选择 `review` 组。 |
-| `python facet.py --import-sidecars /path --overwrite-sidecar-review` | 查看预览后，明确覆盖审核编辑时间冲突及扫描时间限制。 |
-| `python facet.py --import-sidecars --user alice` | 多用户模式：把评分导入 Alice 的 `user_preferences`，而不是全局列（关键词仍为全局） |
+| `python facet.py --import-sidecars /path --sidecar-fields keywords,gps` | 仅导入列出的字段组：`review`（星级、收藏、淘汰和保留一并处理）、`gps`、`keywords`；未列出的组保持不变（默认三组全部导入） |
+| `python facet.py --import-sidecars /path --overwrite-sidecar-review` | 即使存在较新的本地编辑（`newer_local_edit`）或扫描时间检查会阻止，也应用审核字段；请先用 `--dry-run` 查看 |
+| `python facet.py --import-sidecars --user alice` | 多用户模式：把评分和保留／淘汰决定导入 Alice 的 `user_preferences`，而不是全局列，且仅限 Alice 可见的照片（关键字和 GPS 仍为全局） |
 | `python facet.py --import-sidecars --sidecar-naming full` | 读取完整名称的主文件或回退文件（默认）；优先较新修改时间，相同时优先主文件 |
 | `python facet.py --import-sidecars --sidecar-naming basename` | 去掉图像扩展名后读取 `<image>.xmp`；拒绝共享基本名 |
 | `python facet.py --import-sidecars --sidecar-naming auto` | 接受单一命名系列；两种系列同时存在时跳过并报告歧义 |
@@ -90,13 +90,13 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --export-sidecars` | 为全部照片从数据库写入／合并 `<image>.xmp` 附属文件（仅附属文件） |
 | `python facet.py --export-sidecars /path` | 仅导出某个路径子树下照片的附属文件 |
 | `python facet.py --export-sidecars /path --reconcile-keywords` | 仅协调 Facet 拥有的关键字，保留外部词；需要 ExifTool。 |
-| `python facet.py --export-sidecars --user alice` | 多用户模式：导出 Alice 的 `user_preferences` 评分，而不是全局列（关键词仍为全局） |
+| `python facet.py --export-sidecars --user alice` | 多用户模式：导出 Alice 的 `user_preferences` 评分和保留／淘汰决定，而不是全局列，且仅限 Alice 可见的照片（关键字、GPS 和拍摄日期仍为全局） |
 | `python facet.py --export-sidecars --embed-originals` | 同时把元数据**写入文件本身**，适用于 JPEG/HEIC/TIFF/PNG/DNG（会重写原始文件） |
 | `python facet.py --export-sidecars --score-to-stars` | 对你没有手动评分过的照片，由综合评分推导出 `xmp:Rating`（手动评分／收藏／淘汰始终优先） |
 
 > **元数据双向同步。** Facet 会把评分、颜色标记、关键词、照片描述和已命名的人脸区域写入标准的 `<image>.xmp` 附属文件，整个生态都能读取（Lightroom、darktable、digiKam、immich 等）；除非你用 `--export-sidecars --embed-originals` 主动开启，否则原始图像永远不会被修改（仅限 JPEG/HEIC/TIFF/PNG/DNG——RAW 绝不会被改动）。写入文件本身以及安全的关键词并集合并需要 **exiftool**；没有它时，Facet 会退回到零依赖的纯 XML 附属文件。写出的关键字是 AI 标签加上你的[手动标签](VIEWER.md#手动标签)，未选择 `--reconcile-keywords` 时，之后的导出仍只添加关键字（参见[手动标签与 XMP 关键字](INTEROP.md#手动标签与-xmp-关键字)）。
 >
-> 没有凭据表示编辑时间未知，这是数据状态而非旧模式别名。`untracked_legacy_edit` 明确表示采用扫描时间，不推测人工编辑时间。预览无需迁移即可读取已发布版本的模式；缺少 Keep 字段表示未决定。来源时间取 `xmp:MetadataDate`，缺失或无效时取文件修改时间。最多展示范围内 1,000 张照片及每张 100 条诊断，并提供省略计数；范围和用户可见性在规划前生效。 编辑凭据仅属于其所在数据库。新导出的查看器数据库不包含扫描端凭据或 XMP 路径；增量导出仅保留查看器已有的凭据，不复制扫描端的编辑权限。查看器中的显式重置（包括删除的用户偏好）会保留；没有查看器编辑的扫描端值仍正常更新。旧预览版本可能已经复制了无法确定来源的凭据：为避免丢弃真实的查看器编辑，系统保守保留这些凭据，不推测时间戳。显式重建前请备份并检查数据库；完整重建不会保留查看器本地修改。
+> **导入注意事项。** 导入的关键字会进入[手动标签](INTEROP.md#手动标签与-xmp-关键字)表（`photo_manual_tags`），标签筛选直接读取该表，因此之后不需要运行 `--migrate-tags`。附属文件如何与本地编辑比较（扫描时间、按字段的编辑凭据、`newer_local_edit`）见[附属文件导入预览与冲突](INTEROP.md#附属文件导入预览与冲突)。
 >
 > **`--export-manifest` 与 `--export-csv`／`--export-json` 的区别。** 清单的可选参数限定的是*导出哪些照片*（与 `--export-sidecars` 一样），而不是输出文件名——它始终在工作目录中（重新）写入 `facet_manifest.json`，因为它的用途就是就地重新生成，供反复读取固定路径的工具使用。它携带的 `star_rating`／`is_favorite`／`is_rejected` 值与 `--export-sidecars` 相同——默认取全局列，给出 `--user` 时则取指定用户的 `user_preferences` 行，于是多用户安装不会再导出一份全是零的清单——另外还有 `is_burst_lead`（始终为全局），一个顶层的 `pending_corrections` 计数（尚未被检测运行应用的曝光包围／全景手动修正数量——非零计数会在导出后打印一行提到 `--detect-panoramas` 的警告），并以紧凑（非美化缩进）的 JSON 写出：在约 10 万张照片的规模下，`--export-json` 的 `indent=2` 输出会达到几十兆字节，而机器读取方并不会从中获益。
 
@@ -162,6 +162,8 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --compute-recommendations --verbose` | 显示详细统计信息 |
 | `python facet.py --compute-recommendations --apply-recommendations` | 自动应用评分修正 |
 | `python facet.py --compute-recommendations --simulate` | 预览预计产生的变化 |
+
+`--upgrade-db` 会重试无法读取或修复文件头或照片缩略图的 HEIF 文件。只要有候选文件失败，就保留上次完整完成的进度，因此可读取的横向照片可能会再次检查。已成功修复的纵向照片不会再次旋转。从旧版修复程序升级后，会重新检查剩余候选文件；清空统计缓存也会重新开始检查。原始图像文件始终不会被写入。
 
 ### 补充画质模型
 
@@ -406,6 +408,7 @@ python /opt/facet/viewer.py      # 仍然读取 /opt/facet/scoring_config.json�
 | `python database.py --cleanup-missing-photos` | 从数据库中删除磁盘上已不存在的照片（级联删除会清理标签、检测到的人脸等；同时清除相册归属和向量索引，并使统计缓存失效，但保留其中的图库状态——百分位快照、Immich 同步状态、已训练的保留照片排序头与排序器指标，以及缩略图刷新和修复标记；自动重新训练的比较计数会被清零） |
 | `python database.py --cleanup-missing-photos --dry-run` | 预览缺失的文件但不删除 |
 | `python database.py --cleanup-missing-photos --force` | 即使全部照片看起来都缺失也继续执行（用于防止卷未挂载时把一切删光） |
+| `python database.py --relink-photos` | 更新你自行移动的照片在数据库中的路径（默认仅预览；应用需要已审核的计划）。参见[重新关联已移动的照片](#重新关联已移动的照片) |
 | `python database.py --migrate-storage-fs` | 把缩略图和特征向量从数据库 BLOB 迁移到文件系统 |
 | `python database.py --migrate-storage-db` | 把缩略图和特征向量从文件系统迁回数据库 |
 | `python database.py --add-user alice --role admin` | 添加用户（会提示输入密码） |
@@ -516,22 +519,3 @@ python facet.py --recompute-average        # 应用新权重
 应用操作使用照片库任务锁：退出码 75 表示其他任务正在运行，退出码 1 表示锁无法使用。预览不获取照片库锁。
 
 `sidecar_facet` 明确表示 `photo.ext.facet.xmp`，未列出的回退包也会被拒绝。保存的审核计划为私有文件（POSIX 权限 0600）。目录可读不代表卷已挂载；`source_mount_status` 仍为 `not_verified`，操作员必须独立确认原文件确实已移动，而非仅处于离线状态。
-
-```sh
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --mapping moved.json --plan-out relink-plan.json
-python database.py --relink-photos --db library.db --config scoring_config.json \
-  --apply-plan relink-plan.json --ack-plan REVIEWED_PLAN_ID \
-  --acknowledge-unverified-identity
-```
-
-| 选项 | 用途 |
-|---|---|
-| `--db` | 现有数据库 |
-| `--config` | 解析后的配置 |
-| `--user` | 多用户模式下必须指定已配置用户 |
-| `--mapping` | 显式旧/新路径 JSON；预览模式 |
-| `--plan-out` | 创建新的私密计划文件，不覆盖已有文件 |
-| `--apply-plan` | 应用已审核的计划 |
-| `--ack-plan` | 已审核计划的准确摘要 |
-| `--acknowledge-unverified-identity` | 明确确认原图字节身份未知的操作 |

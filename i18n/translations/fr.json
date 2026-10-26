@@ -1624,7 +1624,10 @@
       "sequences": "Détection des bracketings",
       "tagging": "Étiquetage",
       "vec": "Indexation",
-      "done": "Terminé"
+      "done": "Terminé",
+      "moments": "Détection des moments",
+      "junk": "Détection des photos indésirables",
+      "recompute": "Recalcul des scores"
     },
     "title": "Scanner les photos",
     "start_button": "Lancer le scan",

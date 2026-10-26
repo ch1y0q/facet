@@ -225,6 +225,7 @@ Zum ersten Mal hier? Folgen Sie der Anleitung **[Erste Schritte](docs/de/GETTING
 | [Viewer](docs/de/VIEWER.md) | Funktionen und Nutzung der Web-Galerie |
 | [Interop](docs/de/INTEROP.md) | Bewertungen/Tags mit Lightroom, Capture One, digiKam, darktable austauschen |
 | [Immich](docs/de/IMMICH.md) | Bewertungen und Favoriten mit Immich synchronisieren, plus der eingehende Webhook |
+| [Neu verknüpfen](docs/de/RELINK.md) | Verschobene Fotos neu verknüpfen |
 | [KI-Agenten](docs/de/AGENTS.md) | Einen MCP-fähigen Assistenten die Bibliothek mit einem persönlichen Token durchsuchen lassen |
 | [Bereitstellung](docs/de/DEPLOYMENT.md) | Produktivbereitstellung (Synology NAS, Linux, Docker) |
 | [Mitwirken](CONTRIBUTING.md) | Entwicklungseinrichtung, Architektur, Code-Stil |

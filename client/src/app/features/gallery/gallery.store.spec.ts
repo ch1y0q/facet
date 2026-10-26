@@ -467,6 +467,16 @@ describe('GalleryStore', () => {
   });
 
   describe('loadConfig()', () => {
+    it('leaves the gallery session query untouched (the albums page shares loadConfig)', async () => {
+      sessionStorage.setItem('facet_gallery_session_query', '{"sort":"date_taken"}');
+      apiGet.mockReturnValue(of(makeConfig({})));
+
+      await store.loadConfig();
+
+      expect(sessionStorage.getItem('facet_gallery_session_query')).toBe('{"sort":"date_taken"}');
+      sessionStorage.removeItem('facet_gallery_session_query');
+    });
+
     it('should fetch config and apply defaults to filters', async () => {
       const cfg = makeConfig({
         pagination: { default_per_page: 32 },
@@ -1327,6 +1337,16 @@ describe('GalleryStore', () => {
 describe('gallery session query (nav-icon return)', () => {
   beforeEach(() => {
     sessionStorage.removeItem('facet_gallery_session_query');
+  });
+
+  it('saveSessionQuery writes the same query syncUrl stores, without navigating', async () => {
+    store.filters.update(f => ({ ...f, sort: 'date_taken' }));
+    routerNavigate.mockClear();
+
+    store.saveSessionQuery();
+
+    expect(JSON.parse(sessionStorage.getItem('facet_gallery_session_query')!)).toMatchObject({ sort: 'date_taken' });
+    expect(routerNavigate).not.toHaveBeenCalled();
   });
 
   it('syncUrl stores the built query in sessionStorage for the nav return', async () => {
@@ -2708,19 +2728,30 @@ describe('GalleryStore optimistic mutations', () => {
     expect(history.recentIds()[0]).toBe(9001);
   });
 
-  it('records only committed face assignments and ignores old-owner responses', async () => {
+  it('does not record a face assignment the server reports as failed', async () => {
     const record = vi.spyOn(TestBed.inject(PersonAssignmentHistoryService), 'record');
     apiPost.mockReturnValue(of({ success: false }));
     expect(await store.assignFace(1, 9, '/a.jpg', 'Ada')).toBe(false);
     expect(record).not.toHaveBeenCalled();
+  });
+
+  it('does not record a created person that carries no assigned faces', async () => {
+    const record = vi.spyOn(TestBed.inject(PersonAssignmentHistoryService), 'record');
     apiPost.mockReturnValue(of({ id: 9, name: 'Ada', face_count: 0 }));
     await store.createPerson('Ada');
     await store.createPerson('Ada', [1]);
     expect(record).not.toHaveBeenCalled();
+  });
+
+  it('records a successful face assignment', async () => {
+    const record = vi.spyOn(TestBed.inject(PersonAssignmentHistoryService), 'record');
     apiPost.mockReturnValue(of({ success: true }));
     expect(await store.assignFace(1, 9, '/a.jpg', 'Ada')).toBe(true);
     expect(record).toHaveBeenCalledWith(9, '0|');
-    record.mockClear();
+  });
+
+  it('ignores a face assignment response that lands after the owner switched', async () => {
+    const record = vi.spyOn(TestBed.inject(PersonAssignmentHistoryService), 'record');
     const pending = new Subject<{ success: boolean }>();
     apiPost.mockReturnValue(pending);
     const write = store.assignFace(2, 9, '/a.jpg', 'Ada');
@@ -2728,7 +2759,7 @@ describe('GalleryStore optimistic mutations', () => {
     pending.next({ success: true });
     pending.complete();
     expect(await write).toBe(false);
-    expect(TestBed.inject(PersonAssignmentHistoryService).recentIds()).toEqual([]);
+    expect(record.mock.calls).toEqual([[9, '0|']]);
   });
 
   it('rebuilds a review queue when a single rating changes its sort order', async () => {

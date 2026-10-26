@@ -1624,7 +1624,10 @@
       "sequences": "Detecting brackets",
       "tagging": "Tagging",
       "vec": "Indexing",
-      "done": "Done"
+      "done": "Done",
+      "moments": "Detecting moments",
+      "junk": "Detecting junk",
+      "recompute": "Recomputing scores"
     },
     "title": "Scan Photos",
     "start_button": "Start Scan",

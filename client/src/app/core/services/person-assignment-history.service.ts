@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { AuthService } from './auth.service';
 import { PERSON_ASSIGNMENT_HISTORY_KEY } from './person-assignment-history.storage';
 
+// Mirrors MAX_RECENT_IDS in api/routers/persons.py (the server 422s beyond it).
 const RECENT_LIMIT = 12;
 const OWNER_LIMIT = 20;
 const IDENTITY_LENGTH_LIMIT = 256;

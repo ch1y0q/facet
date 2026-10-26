@@ -308,7 +308,6 @@ class TestSidecarNaming:
         with pytest.raises(ValueError, match="sidecar_naming"):
             import_sidecars(None, sidecar_naming="newest")
 
-
     def test_basename_uses_final_extension_and_separate_directory(self, tmp_path):
         conn = _make_db(tmp_path)
         other = tmp_path / "other"
@@ -384,7 +383,6 @@ class TestSidecarNaming:
         assert stats["updated"] == 0
         assert conn.execute("SELECT star_rating FROM photos").fetchone()[0] == 2
         assert "unreadable image directory" in caplog.text
-
 
     @pytest.mark.parametrize("owner,derived", [("IMG.CR2", "IMG.CR2.jpg"), ("a.jpg", "a.jpg.png"),
                                                ("IMG.CR2", "IMG.CR2.facet.jpg")])
@@ -489,7 +487,7 @@ class TestSidecarNaming:
             assert stats["updated"] == 0
             notices = [record for record in caplog.records if record.name == "processing.xmp_import"]
             assert len(notices) == 1
-            assert "Further shared-packet notices" in notices[0].message
+            assert "further notices of this kind" in notices[0].message
         assert {row[0] for row in conn.execute("SELECT star_rating FROM photos")} == {2}
 
     def test_casefolded_indexed_stem_collision_is_refused_without_disk_siblings(self, tmp_path):
@@ -522,7 +520,6 @@ class TestSidecarNaming:
 
     @pytest.mark.parametrize('policy,family,message,counter', [
         ('auto', 'both', 'ambiguous sidecar naming', 'ambiguous'),
-        ('basename', 'both', 'Sidecar naming basename', 'updated'),
         ('basename', 'full', 'No basename sidecar', 'naming_mismatch'),
     ])
     def test_all_policy_notices_are_bounded_without_losing_counts(self, tmp_path, caplog, policy, family, message, counter):
@@ -533,18 +530,71 @@ class TestSidecarNaming:
                 _write(tmp_path, f'photo-{index}.CR3.xmp', _attr_xmp(rating=4))
                 if family == 'both':
                     _write(tmp_path, f'photo-{index}.xmp', _attr_xmp(rating=2))
-            for run in range(2):
+            for _ in range(2):
                 caplog.clear()
                 stats = import_sidecars(conn, sidecar_naming=policy)
-                if counter != 'updated' or run == 0:
-                    assert stats[counter] == 3
-                else:
-                    assert stats['unchanged'] == 3
-                assert stats['full_ignored'] == (3 if counter == 'updated' else 0)
+                assert stats[counter] == 3
+                assert stats['full_ignored'] == 0
                 notices = [record for record in caplog.records
                            if record.name == 'processing.xmp_import' and message in record.message]
                 assert len(notices) == 1
-            if policy == 'basename' and family == 'both':
-                assert {row[0] for row in conn.execute('SELECT star_rating FROM photos')} == {2}
+        finally:
+            conn.close()
+
+    def test_basename_policy_selected_notice_is_bounded_and_counts_stay_exact(self, tmp_path, caplog):
+        conn = _make_db(tmp_path)
+        try:
+            for index in range(3):
+                _add(conn, str(tmp_path / f'photo-{index}.CR3'))
+                _write(tmp_path, f'photo-{index}.CR3.xmp', _attr_xmp(rating=4))
+                _write(tmp_path, f'photo-{index}.xmp', _attr_xmp(rating=2))
+            for run in range(2):
+                caplog.clear()
+                stats = import_sidecars(conn, sidecar_naming='basename')
+                assert stats['updated' if run == 0 else 'unchanged'] == 3
+                assert stats['full_ignored'] == 3
+                notices = [record for record in caplog.records
+                           if record.name == 'processing.xmp_import' and 'Sidecar naming basename' in record.message]
+                assert len(notices) == 1
+            assert {row[0] for row in conn.execute('SELECT star_rating FROM photos')} == {2}
+        finally:
+            conn.close()
+
+    def test_each_naming_notice_kind_is_reported_once_in_a_mixed_import(self, tmp_path, caplog):
+        conn = _make_db(tmp_path)
+        try:
+            for index in range(2):
+                _add(conn, str(tmp_path / f'both-{index}.CR3'))
+                _write(tmp_path, f'both-{index}.CR3.xmp', _attr_xmp(rating=4))
+                _write(tmp_path, f'both-{index}.xmp', _attr_xmp(rating=2))
+                _add(conn, str(tmp_path / f'full-{index}.CR3'))
+                _write(tmp_path, f'full-{index}.CR3.xmp', _attr_xmp(rating=4))
+            stats = import_sidecars(conn, sidecar_naming='basename')
+            assert stats['full_ignored'] == 2
+            assert stats['naming_mismatch'] == 2
+            notices = [record.message for record in caplog.records if record.name == 'processing.xmp_import']
+            assert len(notices) == 2
+            assert len([m for m in notices if 'Sidecar naming basename' in m]) == 1
+            assert len([m for m in notices if 'No basename sidecar' in m]) == 1
+        finally:
+            conn.close()
+
+    def test_full_policy_counts_every_ignored_basename_packet(self, tmp_path, caplog):
+        conn = _make_db(tmp_path)
+        try:
+            for index in range(3):
+                _add(conn, str(tmp_path / f'photo-{index}.CR3'))
+                _write(tmp_path, f'photo-{index}.CR3.xmp', _attr_xmp(rating=4))
+                _write(tmp_path, f'photo-{index}.xmp', _attr_xmp(rating=2))
+            _add(conn, str(tmp_path / 'only-full.CR3'))
+            _write(tmp_path, 'only-full.CR3.xmp', _attr_xmp(rating=4))
+            _add(conn, str(tmp_path / 'only-base.CR3'))
+            _write(tmp_path, 'only-base.xmp', _attr_xmp(rating=4))
+            stats = import_sidecars(conn, sidecar_naming='full')
+            assert stats['basename_ignored'] == 3
+            assert stats['full_ignored'] == 0
+            assert stats['naming_mismatch'] == 1
+            assert len([r for r in caplog.records if r.name == 'processing.xmp_import' and 'ignoring basename packet' in r.message]) == 1
+            assert import_sidecars(conn, sidecar_naming='basename')['basename_ignored'] == 0
         finally:
             conn.close()

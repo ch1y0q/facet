@@ -1027,6 +1027,36 @@ class TestRecomputeStatusCrossProcess:
         assert resp.json()["running"] is False
 
 
+@pytest.fixture
+def windows_kernel(monkeypatch):
+    """Install a fake kernel32 for ``_WindowsLockBackend``; the lazily bound handle is reset around it."""
+    import ctypes
+    import facet
+
+    def install(kernel):
+        facet._windows_kernel.cache_clear()
+        monkeypatch.setattr(ctypes, 'WinDLL', mock.Mock(return_value=kernel), raising=False)
+    yield install
+    facet._windows_kernel.cache_clear()
+
+
+def _flock_emulated_kernel():
+    """A kernel32 whose LockFileEx/UnlockFileEx are real flock calls, so POSIX
+    runs the Windows backend's dispatch against real OS locks."""
+    import facet
+
+    def native_lock(handle, flags, reserved, low, high, overlapped):
+        mode = facet.fcntl.LOCK_EX if flags & facet.LOCKFILE_EXCLUSIVE_LOCK else facet.fcntl.LOCK_SH
+        facet.fcntl.flock(handle, mode | facet.fcntl.LOCK_NB)
+        return 1
+
+    def native_unlock(handle, reserved, low, high, overlapped):
+        facet.fcntl.flock(handle, facet.fcntl.LOCK_UN)
+        return 1
+    return mock.Mock(LockFileEx=mock.Mock(side_effect=native_lock),
+                     UnlockFileEx=mock.Mock(side_effect=native_unlock))
+
+
 class TestLibraryLock:
     """``facet.LibraryLock`` -- the cross-process mutex that keeps a
     recompute's single long transaction from colliding with another
@@ -1151,30 +1181,14 @@ class TestLibraryLock:
 
         assert [holder for holder in _peek_concurrently(db_path) if holder is not None] == []
 
-    def test_a_paused_peer_probe_never_manufactures_a_holder(self, tmp_path, monkeypatch):
+    def test_a_paused_peer_probe_never_manufactures_a_holder(self, tmp_path, monkeypatch, windows_kernel):
         """A probe remains harmless even when its thread is paused while holding it."""
-        import ctypes
         import facet
 
         backend = facet._WindowsLockBackend
         if facet.fcntl is not None:
-            # Exercise Windows backend argument/ABI dispatch with real OS locks
-            # on POSIX too. The pre-fix CRT probe is deliberately exclusive.
-            def crt_lock(fd, mode, size):
-                flags = facet.fcntl.LOCK_UN if mode == 0 else facet.fcntl.LOCK_EX | facet.fcntl.LOCK_NB
-                facet.fcntl.flock(fd, flags)
-            def native_lock(handle, flags, reserved, low, high, overlapped):
-                flags = (facet.fcntl.LOCK_EX if flags & 2 else facet.fcntl.LOCK_SH) | facet.fcntl.LOCK_NB
-                facet.fcntl.flock(handle, flags)
-                return 1
-            def native_unlock(handle, reserved, low, high, overlapped):
-                facet.fcntl.flock(handle, facet.fcntl.LOCK_UN)
-                return 1
-            kernel = mock.Mock(LockFileEx=mock.Mock(side_effect=native_lock),
-                               UnlockFileEx=mock.Mock(side_effect=native_unlock))
-            monkeypatch.setattr(ctypes, 'WinDLL', mock.Mock(return_value=kernel), raising=False)
-            monkeypatch.setattr(facet, 'msvcrt', mock.Mock(LK_NBLCK=1, LK_UNLCK=0,
-                                                        locking=crt_lock, get_osfhandle=lambda fd: fd))
+            windows_kernel(_flock_emulated_kernel())
+            monkeypatch.setattr(facet, 'msvcrt', mock.Mock(get_osfhandle=lambda fd: fd))
         monkeypatch.setattr(facet, '_OS_LOCK', backend)
         db_path = str(tmp_path / 'photos.db')
         facet.LibraryLock(db_path, kind='finished').acquire().release()
@@ -1267,27 +1281,35 @@ class TestLibraryLock:
         import facet
 
         monkeypatch.setattr(facet, "fcntl", None)
-        monkeypatch.setattr(facet, "msvcrt", mock.Mock(LK_NBLCK=1, LK_UNLCK=0))
+        monkeypatch.setattr(facet, "msvcrt", mock.Mock())
 
         assert facet._select_os_lock_backend() is facet._WindowsLockBackend
 
-    def test_the_windows_backend_locks_a_byte_past_the_payload(self, tmp_path, monkeypatch):
-        """Native ABI uses the reserved byte and never moves the fd cursor."""
+    def test_the_windows_backend_locks_a_byte_past_the_payload(self, tmp_path, monkeypatch, windows_kernel):
+        """Native ABI uses the reserved byte and never moves the fd cursor.
+
+        The kernel is built from real ctypes prototypes, so ctypes itself
+        rejects a wrong argument count or a HANDLE it cannot marshal."""
         import ctypes
         import facet
 
         calls = []
         def lock(handle, flags, reserved, low, high, overlap):
-            value = overlap._obj
+            value = ctypes.cast(overlap, ctypes.POINTER(facet._Overlapped)).contents
             calls.append(('lock', handle, flags, reserved, low, high, value.Offset, value.OffsetHigh, value.hEvent))
             assert ctypes.sizeof(value) == (32 if ctypes.sizeof(ctypes.c_void_p) == 8 else 20)
             return 1
         def unlock(handle, reserved, low, high, overlap):
-            value = overlap._obj
+            value = ctypes.cast(overlap, ctypes.POINTER(facet._Overlapped)).contents
             calls.append(('unlock', handle, reserved, low, high, value.Offset, value.OffsetHigh, value.hEvent))
             return 1
-        kernel = mock.Mock(LockFileEx=mock.Mock(side_effect=lock), UnlockFileEx=mock.Mock(side_effect=unlock))
-        monkeypatch.setattr(ctypes, 'WinDLL', mock.Mock(return_value=kernel), raising=False)
+        overlap_pointer = ctypes.POINTER(facet._Overlapped)
+        lock_prototype = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
+                                          ctypes.c_uint32, ctypes.c_uint32, overlap_pointer)
+        unlock_prototype = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
+                                            ctypes.c_uint32, overlap_pointer)
+        kernel = mock.Mock(LockFileEx=lock_prototype(lock), UnlockFileEx=unlock_prototype(unlock))
+        windows_kernel(kernel)
         # Deliberately wider than DWORD: a truncated HANDLE would be an ABI bug.
         handle = 0x123456789
         monkeypatch.setattr(facet, 'msvcrt', mock.Mock(get_osfhandle=lambda fd: handle))
@@ -1306,17 +1328,21 @@ class TestLibraryLock:
                          ('unlock', handle, 0, size, 0, offset, 0, None),
                          ('lock', handle, 1, 0, size, 0, offset, 0, None),
                          ('unlock', handle, 0, size, 0, offset, 0, None)]
-        assert kernel.LockFileEx.argtypes[0] is ctypes.c_void_p
-        assert kernel.UnlockFileEx.argtypes[0] is ctypes.c_void_p
+        assert (facet.LOCKFILE_FAIL_IMMEDIATELY, facet.LOCKFILE_EXCLUSIVE_LOCK) == (1, 2)
+        assert kernel.LockFileEx.argtypes == [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
+                                              ctypes.c_uint32, ctypes.c_uint32, overlap_pointer]
+        assert kernel.UnlockFileEx.argtypes == [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
+                                                ctypes.c_uint32, overlap_pointer]
         assert (tmp_path / 'library.lock').read_bytes() == b'payload'
 
-    def test_repeated_windows_probes_reuse_one_overlapped_type(self, tmp_path, monkeypatch):
-        """ctypes caches every POINTER() type forever; a per-call struct grew on each status poll."""
+    def test_repeated_windows_probes_reuse_one_overlapped_type(self, tmp_path, monkeypatch, windows_kernel):
+        """ctypes caches every POINTER() type forever; a per-call struct grew on each status poll.
+        The kernel32 lookup and prototypes are likewise bound once, not per probe."""
         import ctypes
         import facet
 
         kernel = mock.Mock(LockFileEx=mock.Mock(return_value=1), UnlockFileEx=mock.Mock(return_value=1))
-        monkeypatch.setattr(ctypes, 'WinDLL', mock.Mock(return_value=kernel), raising=False)
+        windows_kernel(kernel)
         monkeypatch.setattr(facet, 'msvcrt', mock.Mock(get_osfhandle=lambda fd: 1))
         pointer_types = set()
         for _ in range(3):
@@ -1325,14 +1351,14 @@ class TestLibraryLock:
             facet._WindowsLockBackend.unlock(0)
             pointer_types.add(kernel.UnlockFileEx.argtypes[-1])
         assert len(pointer_types) == 1
+        ctypes.WinDLL.assert_called_once_with('kernel32', use_last_error=True)
 
     @pytest.mark.parametrize('method', ['take_shared', 'take_exclusive', 'unlock'])
-    def test_windows_lock_errors_propagate_without_closing_the_callers_fd(self, tmp_path, monkeypatch, method):
+    def test_windows_lock_errors_propagate_without_closing_the_callers_fd(self, tmp_path, monkeypatch, windows_kernel, method):
         import ctypes
         import facet
 
-        kernel = mock.Mock(LockFileEx=mock.Mock(return_value=0), UnlockFileEx=mock.Mock(return_value=0))
-        monkeypatch.setattr(ctypes, 'WinDLL', mock.Mock(return_value=kernel), raising=False)
+        windows_kernel(mock.Mock(LockFileEx=mock.Mock(return_value=0), UnlockFileEx=mock.Mock(return_value=0)))
         monkeypatch.setattr(ctypes, 'get_last_error', lambda: 33, raising=False)
         error = OSError(13, 'native lock refused')
         monkeypatch.setattr(ctypes, 'WinError', lambda code: error if code == 33 else None, raising=False)

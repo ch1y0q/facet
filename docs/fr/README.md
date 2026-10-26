@@ -19,7 +19,7 @@ copier-coller.
 | [Interopérabilité](INTEROP.md) | Faire circuler notes/tags avec Lightroom, Capture One, digiKam, darktable |
 | [Immich](IMMICH.md) | Synchroniser notes et favoris avec Immich, plus le webhook entrant |
 | [Déploiement](DEPLOYMENT.md) | NAS, serveurs distants, HTTPS, sauvegardes, multi-utilisateur |
-| [RELINK](RELINK.md) | Relier une photo déplacée |
+| [Relier](RELINK.md) | Relier une photo déplacée |
 
 ## Types de fichiers pris en charge
 
