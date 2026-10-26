@@ -1612,7 +1612,7 @@ Das Zurücksetzen wiederholt den Versuch bei kurzzeitiger Datenbanksperre. Bleib
 
 ## Änderungsverlauf
 
-Öffnen Sie im Bearbeitungsmodus **Änderungsverlauf** über die Galerie oder Fotodetails. Klappen Sie einen Eintrag für den Vorher/Nachher-Vergleich auf und wählen Sie **Diesen Eintrag zurücksetzen**. Orte und Daten gelten gemeinsam; Entscheidungen, Sterne und Favoriten nutzen Ihre Kontoeinstellungen. Dateien und Gesichtserkennung sind ausgeschlossen. Originale bleiben unverändert. Kurzzeitiges Rückgängigmachen und Assistentenaktivität bleiben getrennt.
+Öffnen Sie im Bearbeitungsmodus **Änderungsverlauf** über die Galerie oder Fotodetails. Klappen Sie einen Eintrag für den Vorher/Nachher-Vergleich auf und wählen Sie **Diesen Eintrag zurücksetzen**. Orte und Daten gelten gemeinsam; Entscheidungen, Sterne und Favoriten nutzen Ihre Kontoeinstellungen. Dateien und Gesichtserkennung sind ausgeschlossen. Originale bleiben unverändert. Kurzzeitiges Rückgängigmachen und Assistentenaktivität bleiben getrennt. Jede Aktion hat einen zugänglichen Namen für ihren Eintrag; ausgeklappte Vergleiche kennzeichnen ihre Spalten und Zeilen.
 
 Diese Datenbank speichert die neuesten **50 Einträge pro Konto**, jeweils mit höchstens **1000 Fotos und 1 MiB**. Große gefilterte Auswahlen werden in derselben Transaktion in beschriftete Teile aufgeteilt. Zurücksetzen betrifft nur den gewählten Teil; ältere Teile können abgelaufen sein. Unveränderte Werte erzeugen keinen Eintrag. Der Verlauf übersteht Neustarts und inkrementelle Aktualisierungen, wird aber nicht zwischen Datenbanken synchronisiert. Ein vollständiger Export beginnt mit leerem Verlauf.
 

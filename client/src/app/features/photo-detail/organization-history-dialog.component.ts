@@ -46,9 +46,9 @@ type Revert = components['schemas']['OrganizationRevert'];
                   → {{ (change.after[2] ? I18N.organization_history.rejected : change.after[3] ? I18N.organization_history.kept : I18N.culling.lightbox.undecided) | translate }}
                 </p>
               }
-              <table class="w-full text-sm"><thead><tr><th></th><th>{{ I18N.capture_date.before | translate }}</th><th>{{ I18N.capture_date.after | translate }}</th></tr></thead>
+              <table class="w-full text-sm"><thead><tr><th scope="col">{{ I18N.organization_history.field | translate }}</th><th scope="col">{{ I18N.capture_date.before | translate }}</th><th scope="col">{{ I18N.capture_date.after | translate }}</th></tr></thead>
               <tbody>@for (field of fields[entry.kind]; track field.key; let i = $index) {
-                <tr><th class="text-left p-1">{{ field.key | translate }}</th>
+                <tr><th scope="row" class="text-left p-1">{{ field.key | translate }}</th>
                   @for (value of [change.before[i], change.after[i]]; track $index) {
                     <td class="p-1 text-center">@if (value === null) { {{ I18N.organization_history.unknown | translate }} } @else if (field.flag) { {{ (value ? I18N.organization_history.yes : I18N.organization_history.no) | translate }} } @else { {{ value }} }</td>
                   }
@@ -57,7 +57,8 @@ type Revert = components['schemas']['OrganizationRevert'];
             }
             }
           </details>
-          <button mat-button [disabled]="busy() || entry.reverted" (click)="revert(entry)">{{ (entry.reverted ? I18N.organization_history.reverted : I18N.organization_history.revert) | translate }}</button>
+          <button mat-button [disabled]="busy() || entry.reverted" (click)="revert(entry)"
+            [attr.aria-label]="I18N.organization_history.entry_action | translate:{ action: ((entry.reverted ? I18N.organization_history.reverted : I18N.organization_history.revert) | translate), kind: (I18N.organization_history[entry.kind] | translate), date: ((entry.created_at | date:'dd/MM/yyyy HH:mm') ?? ''), id: entry.id }">{{ (entry.reverted ? I18N.organization_history.reverted : I18N.organization_history.revert) | translate }}</button>
         </section>
       } @empty { @if (!busy()) { <p>{{ I18N.organization_history.empty | translate }}</p> } }
     </mat-dialog-content>

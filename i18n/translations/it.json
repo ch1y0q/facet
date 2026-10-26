@@ -2893,6 +2893,8 @@
     "yes": "Sì",
     "no": "No",
     "unknown": "Sconosciuto",
-    "photo_count": "Foto: {count}"
+    "photo_count": "Foto: {count}",
+    "field": "Campo",
+    "entry_action": "{action} · {kind} · {date} · #{id}"
   }
 }

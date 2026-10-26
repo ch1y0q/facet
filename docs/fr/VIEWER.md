@@ -1613,7 +1613,7 @@ La réinitialisation réessaie après un bref verrouillage de la base. Si la pho
 
 ## Historique des modifications
 
-En mode édition, ouvrez **Historique des modifications** depuis le bouton de la galerie ou les détails. Dépliez une entrée pour comparer les valeurs avant/après, puis choisissez **Rétablir cette entrée**. Les lieux et dates sont partagés ; décisions, étoiles et favoris utilisent vos préférences de compte. Les fichiers et la reconnaissance faciale sont exclus. Les originaux restent inchangés. L’annulation temporaire et l’activité de l’assistant restent distinctes.
+En mode édition, ouvrez **Historique des modifications** depuis le bouton de la galerie ou les détails. Dépliez une entrée pour comparer les valeurs avant/après, puis choisissez **Rétablir cette entrée**. Les lieux et dates sont partagés ; décisions, étoiles et favoris utilisent vos préférences de compte. Les fichiers et la reconnaissance faciale sont exclus. Les originaux restent inchangés. L’annulation temporaire et l’activité de l’assistant restent distinctes. Chaque action possède un nom accessible propre à son entrée ; les comparaisons développées identifient leurs colonnes et leurs lignes.
 
 Cette base conserve les **50 dernières entrées par compte**, avec au plus **1000 photos et 1 Mio** par entrée. Les grands tris filtrés sont enregistrés en parties dans la même transaction. Une restauration ne concerne que la partie choisie ; les anciennes parties peuvent avoir expiré. Les actions sans changement n’ajoutent rien. L’historique survit aux redémarrages et mises à jour incrémentales, sans synchronisation entre bases. Un export complet démarre avec un historique vide.
 
