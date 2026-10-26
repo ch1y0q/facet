@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 - Filter photos with unassigned faces or unnamed people from the gallery People section.
 
 ### Changed
+- Verify webhook-supplied Immich asset IDs against all exact-path search pages before pushing metadata, matching CLI ambiguity refusal.
 - Keep the stored thumbnail visible while a previously loaded render is fetched again, and allow focus peaking on that thumbnail when the render fails.
 - Preserve Unicode metadata on Windows with UTF-8 ExifTool argument transport and output decoding, including names, keywords and multiline captions.
 - Read semantic-search, similar-photo and gallery count cache database change tokens in worker threads so both cold and warm token reads do not block other requests.
@@ -35,6 +36,7 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - Cancel obsolete gallery page, similarity, pinned-list and review-progress reads when filters, identity or navigation change. Already submitted rating and review saves continue, and cancellation does not show a loading error. Photo-page arrows and Keep continue to load the queue while the grid is parked; unchanged returns avoid page and count reloads. Retry cancelled keeper hints, combine parked targeted updates into one row refresh, and retain unrelated pending edits when Keep repairs the queue.
+- Bound sidecar naming notices once per kind per import for full, basename and auto policies, while retaining complete ambiguity/mismatch and import counts.
 - Preserve the exact case of foreign boolean-looking keywords such as `True`, `FALSE` and `tRuE` with lossless readback when ExifTool JSON erases their spelling. Unicode newline-filename failures are isolated to the affected photo in batch exports.
 - Use shared Windows library-lock status probes so overlapping polls cannot report a running job when the library is idle. Real jobs retain exclusive admission.
 

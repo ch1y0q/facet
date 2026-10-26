@@ -108,8 +108,9 @@ class ImmichClient:
         self.timeout = timeout
         self.owner_id = owner_id
         self.library_id = library_id
-        # One registry spans bulk listings, fallback results and webhook GETs.
-        # Even an unselected/broad hit can disprove another candidate's identity.
+        # One registry spans in-scope bulk listings, fallback results and
+        # verified webhook assets. Broad search hits within the selected
+        # owner/library scope can disprove another candidate's identity.
         self._ids_by_path: dict[str, set[str]] = {}
         self._paths_by_id: dict[str, set[str]] = {}
 
@@ -181,6 +182,10 @@ class ImmichClient:
             next_page = assets.get("nextPage")
             if next_page is None:
                 return
+            if (isinstance(next_page, bool)
+                    or not (isinstance(next_page, int)
+                            or isinstance(next_page, str) and next_page.isascii() and next_page.isdecimal())):
+                raise AssetIdentityError("Immich returned invalid pagination")
             try:
                 next_page = int(next_page)
             except (TypeError, ValueError) as ex:
@@ -214,7 +219,8 @@ class ImmichClient:
                 or not self._in_scope(item)):
             raise AssetIdentityError("Immich webhook asset id does not match the mapped path or scope")
         self._observe_asset(item)
-        self.assert_asset_identity(asset_id, original_path)
+        if self.search_asset_id(original_path) != asset_id:
+            raise AssetIdentityError("Immich webhook asset id is not the unique mapped path identity")
         return asset_id
 
     def update_assets(self, ids: list[str], fields: dict) -> None:
@@ -596,6 +602,11 @@ def sync_to_immich(db_path, config: dict, user_id: str | None = None,
     matched_paths: set[str] = set()
     conflict_messages: list[tuple[str, str]] = []
 
+    def record_conflict(facet_path, error):
+        summary["identity_conflicts"] += 1
+        if len(conflict_messages) < UNMATCHED_LOG_LIMIT:
+            conflict_messages.append((facet_path, str(error)))
+
     # First pass (no network): compute each row's push payload and target path.
     # _push_fields owns the clear/rejection rules — one rejected batch aborts
     # the whole sync before synced_state advances, wedging every later run.
@@ -636,9 +647,7 @@ def sync_to_immich(db_path, config: dict, user_id: str | None = None,
                 if immich_path:
                     asset_id = path_index.get(immich_path) or client.search_asset_id(immich_path)
             except AssetIdentityError as ex:
-                summary["identity_conflicts"] += 1
-                if len(conflict_messages) < UNMATCHED_LOG_LIMIT:
-                    conflict_messages.append((facet_path, str(ex)))
+                record_conflict(facet_path, ex)
                 continue
             if asset_id is None or not immich_path:
                 summary["unmatched"] += 1
@@ -651,9 +660,7 @@ def sync_to_immich(db_path, config: dict, user_id: str | None = None,
             try:
                 client.assert_asset_identity(asset_id, immich_path)
             except AssetIdentityError as ex:
-                summary["identity_conflicts"] += 1
-                if len(conflict_messages) < UNMATCHED_LOG_LIMIT:
-                    conflict_messages.append((facet_path, str(ex)))
+                record_conflict(facet_path, ex)
                 continue
             summary["matched"] += 1
             matched_paths.add(facet_path)
