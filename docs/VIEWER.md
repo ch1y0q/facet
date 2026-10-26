@@ -8,6 +8,8 @@ JPEG XL (`.jxl`) scanning and watch-mode discovery are available with the option
 
 For full-size JPEG XL viewing, a browser that explicitly advertises `image/jxl` in its HTTP Accept header receives the original `.jxl` bytes. Other browsers receive the JPEG conversion. Both representations vary their cache on Accept; gallery thumbnails stay small JPEGs.
 
+The optional decoder is distributed under GPL-3.0-or-later; it is not included in the default install or container. Install a wheel matching your platform and restart Facet. Decoding checks the existing Pillow pixel limit before allocating pixels; container-header inspection is limited to 4,096 boxes. JPEG XL previews and scoring use an sRGB render, with transparency composited over white. Unsupported floating-point grayscale and high-bit-depth grayscale with alpha are refused rather than rendered incorrectly. Animated JPEG XL is not supported as animation; only the first frame is handled. Native full-size delivery preserves the original bit depth and profile, while generated previews are 8-bit SDR; this does not add HDR tone mapping for JPEG XL.
+
 ## Contents
 
 - [Starting the Viewer](#starting-the-viewer) · [Authentication](#authentication) · [Filtering Options](#filtering-options) · [Sorting](#sorting) · [Gallery Features](#gallery-features)

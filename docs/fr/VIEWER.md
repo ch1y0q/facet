@@ -8,6 +8,8 @@ Le scan et la détection JPEG XL (`.jxl`) en mode surveillance nécessitent le d
 
 Pour afficher JPEG XL en taille réelle, les navigateurs annonçant explicitement `image/jxl` dans l’en-tête HTTP Accept reçoivent les octets originaux `.jxl`. Les autres reçoivent une conversion JPEG. Les deux variantes distinguent Accept dans le cache ; les vignettes restent de petits JPEG.
 
+Le décodeur optionnel est distribué sous GPL-3.0-or-later et n’est inclus ni dans l’installation par défaut ni dans le conteneur. Installez une roue compatible avec votre plateforme et redémarrez Facet. La limite de pixels Pillow est vérifiée avant le décodage ; l’inspection des en-têtes est limitée à 4 096 boîtes du conteneur. Les aperçus et la notation utilisent sRGB, avec transparence sur fond blanc. Les niveaux de gris flottants et les niveaux de gris à haute profondeur avec alpha sont refusés. Les animations JPEG XL ne sont pas prises en charge ; seule la première image est traitée. La livraison native conserve profondeur et profil ; les aperçus sont en SDR 8 bits. Aucun mappage de tons HDR JPEG XL n’est ajouté.
+
 ## Sommaire
 
 - [Démarrer la visionneuse](#démarrer-la-visionneuse) · [Authentification](#authentification) · [Options de filtrage](#options-de-filtrage) · [Tri](#tri) · [Fonctionnalités de la galerie](#fonctionnalités-de-la-galerie)

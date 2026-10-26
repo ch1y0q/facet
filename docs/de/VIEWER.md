@@ -8,6 +8,8 @@ JPEG XL (`.jxl`) kann mit dem optionalen Decoder `pillow-jxl-plugin` gescannt un
 
 Bei der JPEG-XL-Vollbildanzeige erhalten Browser, die `image/jxl` ausdrücklich im HTTP-Accept-Header angeben, die unveränderten `.jxl`-Originaldaten. Andere Browser erhalten eine JPEG-Konvertierung. Beide Varianten berücksichtigen Accept im Cache; Galerievorschaubilder bleiben kleine JPEGs.
 
+Der optionale Decoder steht unter GPL-3.0-or-later und ist weder in der Standardinstallation noch im Container enthalten. Ein zur Plattform passendes Wheel installieren und Facet neu starten. Vor der Pixeldekodierung gilt das vorhandene Pillow-Pixellimit; die Header-Prüfung ist auf 4.096 Container-Boxen begrenzt. Vorschauen und Bewertung verwenden sRGB; Transparenz wird auf Weiß zusammengesetzt. Gleitkomma-Graustufen und hochbittige Graustufen mit Alpha werden abgelehnt, statt falsch dargestellt. Animiertes JPEG XL wird nicht als Animation unterstützt; nur das erste Bild wird verarbeitet. Die native Vollbildausgabe erhält Bittiefe und Profil des Originals; erzeugte Vorschauen sind 8-Bit-SDR. HDR-Tonemapping für JPEG XL ist nicht enthalten.
+
 ## Inhalt
 
 - [Galerie starten](#galerie-starten) · [Authentifizierung](#authentifizierung) · [Filteroptionen](#filteroptionen) · [Sortierung](#sortierung) · [Galeriefunktionen](#galeriefunktionen)

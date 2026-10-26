@@ -42,7 +42,8 @@ except ImportError:
 # Optional JPEG XL decoder. Importing the plugin registers its Pillow opener.
 _jxl_available = False
 try:
-    import pillow_jxl  # noqa: F401
+    from utils.jpegxl import register_bounded_jpegxl_opener
+    register_bounded_jpegxl_opener()
     _jxl_available = True
 except ImportError:
     logger.debug("pillow-jxl-plugin not installed — JPEG XL files will be skipped")
@@ -839,6 +840,20 @@ def open_nonraw_image(photo, draft_edge=None):
         # convert('RGB') clip is left untouched.
         pil_img = pil_img.convert('I').point(lambda i: i * (1 / 256)).convert('L')
 
+    # JXL previews and model inputs share an explicit sRGB render. Without
+    # this transform, saving a JPEG drops the profile and changes P3 colours.
+    if Path(photo).suffix.lower() in KNOWN_JXL_EXTENSIONS and pil_img.info.get('icc_profile'):
+        from PIL import ImageCms
+        profile = ImageCms.ImageCmsProfile(BytesIO(pil_img.info['icc_profile']))
+        input_mode = 'L' if profile.profile.xcolor_space.strip() == 'GRAY' else 'RGB'
+        normalized_exif = pil_img.getexif().tobytes() if pil_img.getexif() else None
+        pil_img = ImageCms.profileToProfile(
+            pil_img.convert(input_mode), profile,
+            ImageCms.createProfile('sRGB'), outputMode='RGB',
+        )
+        if normalized_exif:
+            pil_img.info['exif'] = normalized_exif
+
     if pil_img.mode != 'RGB':
         pil_img = pil_img.convert('RGB')
 
@@ -854,6 +869,8 @@ def open_nonraw_image(photo, draft_edge=None):
         # difference from doing it earlier.
         background = Image.new('RGB', pil_img.size, (255, 255, 255))
         background.paste(pil_img, mask=alpha_channel)
+        if Path(photo).suffix.lower() in KNOWN_JXL_EXTENSIONS:
+            background.info.update(pil_img.info)
         pil_img = background
 
     return pil_img

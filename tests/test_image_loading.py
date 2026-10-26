@@ -1000,3 +1000,17 @@ def test_exif_with_neutral_orientation_rewrites_only_the_orientation():
 def test_exif_with_neutral_orientation_survives_a_malformed_blob():
     garbage = b'\x00\x01\x02not an exif blob'
     assert image_loading._exif_with_neutral_orientation(garbage) == garbage
+
+
+def test_optional_decoder_missing_skips_scan_but_watch_knows_extension():
+    import subprocess
+    import sys
+    code = """
+import sys
+sys.modules['pillow_jxl'] = None
+from utils.image_loading import JXL_EXTENSIONS, SCANNABLE_IMAGE_EXTENSIONS, WATCHABLE_IMAGE_EXTENSIONS
+assert not JXL_EXTENSIONS
+assert '.jxl' not in SCANNABLE_IMAGE_EXTENSIONS
+assert '.jxl' in WATCHABLE_IMAGE_EXTENSIONS
+"""
+    subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True)

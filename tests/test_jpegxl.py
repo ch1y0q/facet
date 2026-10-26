@@ -1,7 +1,6 @@
 """Real JPEG XL discovery, metadata, orientation and browser rendering."""
 from io import BytesIO
-import subprocess
-import sys
+import os
 
 import numpy as np
 import pytest
@@ -57,18 +56,6 @@ def test_native_lossless_jpegxl_alpha_and_discovery(tmp_path):
     assert ".jxl" in image_loading.WATCHABLE_IMAGE_EXTENSIONS
 
 
-def test_optional_decoder_missing_skips_scan_but_watch_knows_extension():
-    code = """
-import sys
-sys.modules['pillow_jxl'] = None
-from utils.image_loading import JXL_EXTENSIONS, SCANNABLE_IMAGE_EXTENSIONS, WATCHABLE_IMAGE_EXTENSIONS
-assert not JXL_EXTENSIONS
-assert '.jxl' not in SCANNABLE_IMAGE_EXTENSIONS
-assert '.jxl' in WATCHABLE_IMAGE_EXTENSIONS
-"""
-    subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True)
-
-
 @pytest.fixture
 def jxl_client():
     app = create_app()
@@ -83,7 +70,7 @@ def test_browser_full_image_and_sharp_thumbnail_are_jpeg(tmp_path, seed_photos_p
     _jpegxl(path, orientation=6)
     stored = BytesIO()
     Image.new("RGB", (4, 6)).save(stored, format="JPEG")
-    seed_photos_prefix(str(tmp_path) + "/", [{
+    seed_photos_prefix(str(tmp_path) + os.sep, [{
         "path": str(path), "filename": path.name, "thumbnail": stored.getvalue(),
     }])
     for endpoint, params in [("/image", {}), ("/thumbnail", {"size": 1920})]:
@@ -102,7 +89,7 @@ def test_bad_jpegxl_can_fall_back_to_stored_thumbnail(tmp_path, seed_photos_pref
     path.write_bytes(b"not JPEG XL")
     stored = BytesIO()
     Image.new("RGB", (4, 6)).save(stored, format="JPEG")
-    seed_photos_prefix(str(tmp_path) + "/", [{
+    seed_photos_prefix(str(tmp_path) + os.sep, [{
         "path": str(path), "filename": path.name, "thumbnail": stored.getvalue(),
     }])
     response = jxl_client.get("/image", params={"path": str(path), "fallback": "thumbnail"})
@@ -135,7 +122,7 @@ def test_scanner_reads_original_capture_date(tmp_path):
 def test_native_jxl_requires_explicit_browser_support(tmp_path, seed_photos_prefix, jxl_client, accept, native):
     path = tmp_path / "award.jxl"
     _jpegxl(path)
-    seed_photos_prefix(str(tmp_path) + "/", [{"path": str(path), "filename": path.name}])
+    seed_photos_prefix(str(tmp_path) + os.sep, [{"path": str(path), "filename": path.name}])
     response = jxl_client.get("/image", params={"path": str(path)}, headers={"Accept": accept})
     assert response.status_code == 200
     assert "Accept" in {v.strip() for v in response.headers["vary"].split(",")}
@@ -170,7 +157,7 @@ def test_missing_original_after_resolution_uses_thumbnail_and_varies_accept(
     path = tmp_path / "disappeared.jxl"
     stored = BytesIO()
     Image.new("RGB", (4, 6)).save(stored, format="JPEG")
-    seed_photos_prefix(str(tmp_path) + "/", [{
+    seed_photos_prefix(str(tmp_path) + os.sep, [{
         "path": str(path), "filename": path.name, "thumbnail": stored.getvalue(),
     }])
     monkeypatch.setattr(thumbnails, "resolve_photo_disk_path", lambda _: str(path))
@@ -189,7 +176,7 @@ def test_resolution_failure_fallback_varies_accept(
     path = tmp_path / "offline.jxl"
     stored = BytesIO()
     Image.new("RGB", (4, 6)).save(stored, format="JPEG")
-    seed_photos_prefix(str(tmp_path) + "/", [{
+    seed_photos_prefix(str(tmp_path) + os.sep, [{
         "path": str(path), "filename": path.name, "thumbnail": stored.getvalue(),
     }])
     def refuse(_):
@@ -200,3 +187,155 @@ def test_resolution_failure_fallback_varies_accept(
     assert response.status_code == 200
     assert response.content == stored.getvalue()
     assert "Accept" in {v.strip() for v in response.headers["vary"].split(",")}
+
+
+@pytest.mark.parametrize("size", [(8, 8), (240, 200), (320, 240), (512, 257), (1920, 1080)])
+@pytest.mark.parametrize("container", [False, True])
+def test_header_dimensions_match_real_decodes(tmp_path, size, container):
+    from utils.jpegxl import jpegxl_dimensions
+    path = tmp_path / "size.jxl"
+    Image.new("RGB", size).save(path, format="JXL", lossless=True, use_container=container, num_threads=1)
+    with path.open("rb") as stream:
+        assert jpegxl_dimensions(stream) == size
+        assert stream.tell() == 0
+    assert image_loading.open_nonraw_image(path).size == size
+
+
+@pytest.mark.parametrize("container", [False, True])
+def test_pixel_limit_precedes_eager_decoder(tmp_path, monkeypatch, container):
+    from pillow_jxl import JpegXLImagePlugin
+    path = tmp_path / "oversized.jxl"
+    Image.new("RGB", (40, 24)).save(path, format="JXL", lossless=True, use_container=container, num_threads=1)
+    calls = []
+    decoder = JpegXLImagePlugin.Decoder
+    def observed(*args, **kwargs):
+        calls.append(True)
+        return decoder(*args, **kwargs)
+    monkeypatch.setattr(JpegXLImagePlugin, "Decoder", observed)
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)
+    with pytest.raises(ValueError, match="MAX_IMAGE_PIXELS"):
+        Image.open(path)
+    assert calls == []
+
+
+def test_fragmented_header_and_large_metadata_box(tmp_path):
+    import struct
+    from utils.jpegxl import jpegxl_dimensions
+    path = tmp_path / "fragments.jxl"
+    raw = imagecodecs.jpegxl_encode(np.zeros((24, 40, 3), dtype=np.uint8), lossless=True, numthreads=1)
+    assert raw[:2] == b"\xff\x0a"
+    def box(kind, payload):
+        return struct.pack(">I4s", len(payload) + 8, kind) + payload
+    signature = b"\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a"
+    ftyp = box(b"ftyp", b"jxl \x00\x00\x00\x00jxl ")
+    # Metadata is skipped by seeking; it is never read into the prefix buffer.
+    metadata = struct.pack(">I4sQ", 1, b"xml ", 16 + 100000) + b" " * 100000
+    path.write_bytes(signature + ftyp + metadata
+                     + box(b"jxlp", struct.pack(">I", 0) + raw[:5])
+                     + box(b"jxlp", struct.pack(">I", 0x80000001) + raw[5:]))
+    with path.open("rb") as stream:
+        assert jpegxl_dimensions(stream) == (40, 24)
+    assert image_loading.open_nonraw_image(path).size == (40, 24)
+
+
+@pytest.mark.parametrize("payload", [b"", b"bad", b"\xff\x0a", b"\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a\x00\x00\x00\x04jxlc"])
+def test_invalid_headers_are_refused_without_decoding(payload):
+    from utils.jpegxl import jpegxl_dimensions
+    with pytest.raises(ValueError):
+        jpegxl_dimensions(BytesIO(payload))
+
+
+def test_grayscale_sixteen_bit_jxl_keeps_tonal_range(tmp_path):
+    path = tmp_path / "gray.jxl"
+    source = np.arange(256, dtype=np.uint16).reshape(16, 16) * 257
+    Image.fromarray(source).save(path, format="JXL", lossless=True, num_threads=1)
+    actual = np.asarray(image_loading.open_nonraw_image(path))
+    assert len(np.unique(actual)) > 150
+    assert actual.min() == 0
+    assert actual.max() == 255
+
+
+def _linear_rgb_profile():
+    """A valid ICC profile with linear TRCs, derived from LittleCMS sRGB."""
+    import struct
+    from PIL import ImageCms
+    data = bytearray(ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes())
+    for index in range(struct.unpack_from(">I", data, 128)[0]):
+        kind, offset, _ = struct.unpack_from(">4sII", data, 132 + 12 * index)
+        if kind in (b"rTRC", b"gTRC", b"bTRC"):
+            struct.pack_into(">H", data, offset + 8, 0)
+            struct.pack_into(">i", data, offset + 12, 65536)
+    return bytes(data)
+
+
+def test_color_managed_fallback_and_source_bytes_are_preserved(tmp_path, seed_photos_prefix, jxl_client):
+    from PIL import ImageCms
+    path = tmp_path / "linear.jxl"
+    profile = _linear_rgb_profile()
+    jpeg = BytesIO()
+    Image.new("RGB", (40, 24), (64, 128, 192)).save(jpeg, format="JPEG", quality=100, icc_profile=profile)
+    path.write_bytes(imagecodecs.jpegxl_encode_jpeg(jpeg.getvalue(), numthreads=1))
+    before = path.read_bytes()
+    expected = ImageCms.profileToProfile(
+        Image.open(BytesIO(jpeg.getvalue())), ImageCms.ImageCmsProfile(BytesIO(profile)),
+        ImageCms.createProfile("sRGB"), outputMode="RGB",
+    )
+    # A color transform, not merely the same source samples without their ICC.
+    assert expected.getpixel((0, 0))[0] > 100
+    np.testing.assert_array_equal(np.asarray(image_loading.open_nonraw_image(path)), np.asarray(expected))
+    seed_photos_prefix(str(tmp_path) + os.sep, [{"path": str(path), "filename": path.name}])
+    fallback = jxl_client.get("/image", params={"path": str(path)}, headers={"Accept": "*/*"})
+    assert fallback.status_code == 200
+    rendered = np.asarray(Image.open(BytesIO(fallback.content))).astype(int)
+    assert np.max(np.abs(rendered - np.asarray(expected).astype(int))) <= 3
+    native = jxl_client.get("/image", params={"path": str(path)}, headers={"Accept": "image/jxl"})
+    assert native.content == before == path.read_bytes()
+
+
+@pytest.mark.parametrize("kind", ["float", "sixteen_bit_alpha"])
+def test_unsupported_gray_types_are_refused_instead_of_corrupting_pixels(tmp_path, kind):
+    path = tmp_path / "unsupported.jxl"
+    if kind == "float":
+        data = np.linspace(0, 1, 960, dtype=np.float32).reshape(24, 40)
+    else:
+        data = np.full((24, 40, 2), [32768, 65535], dtype=np.uint16)
+    path.write_bytes(imagecodecs.jpegxl_encode(data, lossless=True, numthreads=1))
+    with pytest.raises(ValueError, match="Unsupported JPEG XL"):
+        image_loading.open_nonraw_image(path)
+
+
+def test_native_delivery_skips_decode_and_supports_byte_ranges(tmp_path, seed_photos_prefix, jxl_client, monkeypatch):
+    from api.routers import thumbnails
+    path = tmp_path / "native.jxl"
+    _jpegxl(path)
+    original = path.read_bytes()
+    seed_photos_prefix(str(tmp_path) + os.sep, [{"path": str(path), "filename": path.name}])
+    def forbid(*args, **kwargs):
+        raise AssertionError("native delivery must not decode or generate a JPEG")
+    monkeypatch.setattr(thumbnails, "_convert_nonraw_cached", forbid)
+    response = jxl_client.get("/image", params={"path": str(path)},
+                              headers={"Accept": "image/jxl", "Range": "bytes=0-15"})
+    assert response.status_code == 206
+    assert response.content == original[:16]
+    assert response.headers["content-type"] == "image/jxl"
+    assert "Accept" in {v.strip() for v in response.headers["vary"].split(",")}
+
+
+@pytest.mark.parametrize("accept", ["image/jxl", "*/*"])
+def test_another_accounts_jxl_is_not_visible(tmp_path, seed_photos_prefix, jxl_client, monkeypatch, accept):
+    from api import db_helpers
+    alice = tmp_path / "alice"
+    bob = tmp_path / "bob"
+    alice.mkdir()
+    bob.mkdir()
+    paths = [alice / "a.jxl", bob / "b.jxl"]
+    for path in paths:
+        _jpegxl(path)
+    seed_photos_prefix(str(tmp_path) + os.sep, [{"path": str(p), "filename": p.name} for p in paths])
+    monkeypatch.setattr(db_helpers, "is_multi_user_enabled", lambda: True)
+    monkeypatch.setattr(db_helpers, "get_user_directories", lambda uid: [str(alice)] if uid == "alice" else [str(bob)])
+    jxl_client.app.dependency_overrides[get_optional_user] = lambda: CurrentUser(user_id="alice", role="user")
+    own = jxl_client.get("/image", params={"path": str(paths[0])}, headers={"Accept": accept})
+    assert own.status_code == 200
+    hidden = jxl_client.get("/image", params={"path": str(paths[1]), "fallback": "thumbnail"}, headers={"Accept": accept})
+    assert hidden.status_code == 404

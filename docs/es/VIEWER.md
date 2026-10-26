@@ -8,6 +8,8 @@ El escaneo y la detección de JPEG XL (`.jxl`) en modo de vigilancia requieren e
 
 Para ver JPEG XL a tamaño completo, los navegadores que anuncian explícitamente `image/jxl` en la cabecera HTTP Accept reciben los bytes originales `.jxl`. Los demás reciben una conversión JPEG. Ambas variantes distinguen Accept en la caché; las miniaturas de la galería siguen siendo JPEG pequeños.
 
+El decodificador opcional usa GPL-3.0-or-later y no se incluye en la instalación predeterminada ni en el contenedor. Instala una rueda compatible con tu plataforma y reinicia Facet. Se comprueba el límite de píxeles de Pillow antes de decodificar; la inspección de cabeceras se limita a 4.096 cajas del contenedor. Las vistas previas y la puntuación usan sRGB y componen la transparencia sobre blanco. Se rechazan la escala de grises en coma flotante y la escala de grises de alta profundidad con alfa. No se admiten animaciones JPEG XL; solo se procesa el primer fotograma. La entrega nativa conserva la profundidad y el perfil originales; las vistas previas son SDR de 8 bits. No se añade mapeo de tonos HDR para JPEG XL.
+
 ## Contenido
 
 - [Iniciar el visor](#iniciar-el-visor) · [Autenticación](#autenticación) · [Opciones de filtrado](#opciones-de-filtrado) · [Ordenación](#ordenación) · [Funciones de la galería](#funciones-de-la-galería)

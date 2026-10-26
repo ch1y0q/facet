@@ -6,11 +6,9 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
-- **Optional JPEG XL import and display.** Install `facet-photo[jpegxl]` to scan `.jxl` images and view browser-compatible JPEG previews while preserving the JPEG XL original.
+- **Optional JPEG XL import and display.** Install `facet-photo[jpegxl]` to scan `.jxl` images. Full-size viewing sends the unchanged original to browsers explicitly accepting `image/jxl`, with sRGB JPEG fallback for other clients and small gallery previews. Decoding enforces pixel limits before allocation and refuses unsupported grayscale pixel types.
 
 ### Fixed
-
-- **Serve native JPEG XL to capable browsers.** Full-size requests explicitly accepting `image/jxl` receive the original bytes; JPEG fallback remains for other browsers, with separate cache validation by Accept.
 
 - **The photo-detail Keep button is a real toggle.** It announced its pressed state to assistive technology, but activating it on a kept photo kept it again. It now resets the decision, and its icon is outlined until the photo is kept, so the state no longer relies on colour alone.
 - **Show readable scan phase labels.** Moment and junk detection no longer display `[object Object]` in the scan dialog; future phase names are shown as plain text.
