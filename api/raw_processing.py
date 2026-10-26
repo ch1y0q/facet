@@ -199,14 +199,17 @@ def _companion_entry_path(candidate: Path) -> str:
     descriptor = os.open(candidate, os.O_EVTONLY | os.O_SYMLINK)
     try:
         actual = os.fsdecode(fcntl.fcntl(descriptor, fcntl.F_GETPATH, bytes(1024)).split(b'\0', 1)[0])
+        name = os.path.basename(actual)
+        if unicodedata.normalize('NFC', name).casefold() != unicodedata.normalize('NFC', candidate.name).casefold():
+            raise OSError('RAW companion name changed during lookup')
+        # Preserve the supplied parent, including any symlink spelling. Check
+        # the leaf itself: O_SYMLINK opened the symlink entry, not its target.
+        result = candidate.with_name(name)
+        if not os.path.samestat(os.fstat(descriptor), os.lstat(result)):
+            raise OSError('RAW companion entry changed during lookup')
+        return str(result)
     finally:
         os.close(descriptor)
-    name = os.path.basename(actual)
-    if unicodedata.normalize('NFC', name).casefold() != unicodedata.normalize('NFC', candidate.name).casefold():
-        raise OSError('RAW companion name changed during lookup')
-    # Preserve the supplied parent, including any symlink spelling/containment
-    # boundary; only the filename comes from the opened directory entry.
-    return str(candidate.with_name(name))
 
 
 _companion_raw_cache: dict[tuple[str, str], tuple[float, str | None]] = {}

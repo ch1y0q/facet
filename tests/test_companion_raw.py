@@ -74,7 +74,19 @@ def test_cold_lookup_is_independent_of_directory_size_and_warm_lookup_skips_cand
     probes = []
     real_is_file = Path.is_file
     real_open = os.open
+    real_fstat = os.fstat
+    real_lstat = os.lstat
     opens = []
+    identities = []
+    returned_entries = []
+
+    def fstat(descriptor):
+        identities.append(descriptor)
+        return real_fstat(descriptor)
+
+    def lstat(path):
+        returned_entries.append(path)
+        return real_lstat(path)
 
     def open_path(*args, **kwargs):
         opens.append(args[0])
@@ -87,15 +99,17 @@ def test_cold_lookup_is_independent_of_directory_size_and_warm_lookup_skips_cand
     with monkeypatch.context() as patch:
         patch.setattr(Path, 'is_file', is_file)
         patch.setattr(raw_processing.os, 'open', open_path)
+        patch.setattr(raw_processing.os, 'fstat', fstat)
+        patch.setattr(raw_processing.os, 'lstat', lstat)
         patch.setattr(raw_processing.os, 'scandir', lambda *args: pytest.fail('companion lookup enumerated the directory'))
         first = raw_processing._find_companion_raw_cached('shot', str(tmp_path), ('.cr2', '.nef'))
         cold_probes = len(probes)
         assert 1 <= cold_probes <= 4
         native_opens = int(exists and sys.platform == 'darwin')
-        assert len(opens) == native_opens
+        assert len(opens) == len(identities) == len(returned_entries) == native_opens
         second = raw_processing._find_companion_raw_cached('shot', str(tmp_path), ('.cr2', '.nef'))
         assert len(probes) == cold_probes
-        assert len(opens) == 2 * native_opens
+        assert len(opens) == len(identities) == len(returned_entries) == 2 * native_opens
     assert first == second == (str(raw) if exists else None)
 
 
@@ -263,3 +277,144 @@ def test_native_lookup_failure_refuses_culling_before_any_file_changes(edition_c
     assert photo.read_bytes() == b'JPEG fixture'
     assert raw.read_bytes() == b'RAW fixture'
     assert not target.exists()
+
+
+@pytest.mark.skipif(sys.platform != 'darwin', reason='macOS native filename lookup')
+@pytest.mark.parametrize('cached', [False, True])
+@pytest.mark.parametrize('replacement', ['parent', 'leaf'])
+def test_native_lookup_refuses_an_entry_replaced_during_resolution(tmp_path, monkeypatch, replacement, cached):
+    import fcntl
+
+    folder = tmp_path / 'source'
+    folder.mkdir()
+    raw = folder / 'shot.CR2'
+    raw.write_bytes(b'original RAW fixture')
+    moved = tmp_path / 'moved'
+    displaced = folder / 'displaced.CR2'
+    if cached:
+        assert raw_processing._find_companion_raw_cached('shot', str(folder), ('.cr2',)) == str(raw)
+    real_fcntl = fcntl.fcntl
+    descriptors = []
+
+    def replace_during_read(descriptor, *args):
+        descriptors.append(descriptor)
+        if replacement == 'parent':
+            folder.rename(moved)
+            folder.mkdir()
+            raw.write_bytes(b'replacement RAW fixture')
+            return real_fcntl(descriptor, *args)
+        result = real_fcntl(descriptor, *args)
+        raw.rename(displaced)
+        raw.write_bytes(b'replacement RAW fixture')
+        return result
+
+    with monkeypatch.context() as patch:
+        patch.setattr(fcntl, 'fcntl', replace_during_read)
+        with pytest.raises(OSError, match='companion.*changed during lookup'):
+            raw_processing._find_companion_raw_cached('shot', str(folder), ('.cr2',))
+    with pytest.raises(OSError):
+        os.fstat(descriptors[0])
+    original = moved / raw.name if replacement == 'parent' else displaced
+    assert original.read_bytes() == b'original RAW fixture'
+    assert raw.read_bytes() == b'replacement RAW fixture'
+    # A later request can inspect the currently present entry again.
+    assert raw_processing._find_companion_raw_cached('shot', str(folder), ('.cr2',)) == str(raw)
+
+
+@pytest.mark.skipif(sys.platform != 'darwin', reason='macOS native filename lookup')
+def test_companion_hardlink_keeps_its_entry_name(tmp_path):
+    original = tmp_path / 'original.bin'
+    original.write_bytes(b'original RAW fixture')
+    raw = tmp_path / 'shot.CR2'
+    os.link(original, raw)
+    assert raw_processing._find_companion_raw_cached('shot', str(tmp_path), ('.cr2',)) == str(raw)
+    assert os.path.samefile(raw, original)
+
+
+@pytest.mark.skipif(sys.platform != 'darwin', reason='macOS native filename lookup')
+def test_parent_replacement_refuses_real_cull_before_any_writes(edition_client, seed_photos_prefix, tmp_path, monkeypatch):
+    import fcntl
+    from fastapi.testclient import TestClient
+    from api import config
+
+    folder = tmp_path / 'source'
+    folder.mkdir()
+    photo = folder / 'shot.jpg'
+    raw = folder / 'shot.CR2'
+    photo.write_bytes(b'original JPEG fixture')
+    raw.write_bytes(b'original RAW fixture')
+    moved = tmp_path / 'moved'
+    target = tmp_path / 'out'
+    monkeypatch.setitem(config.VIEWER_CONFIG, 'scan_directories', [str(folder)])
+    monkeypatch.setitem(config.VIEWER_CONFIG, 'export', {'allowed_target_dirs': [str(target)]})
+    seed_photos_prefix(str(folder), [{'path': str(photo), 'filename': photo.name, 'is_rejected': 1}])
+    real_fcntl = fcntl.fcntl
+
+    def replace_parent(descriptor, *args):
+        folder.rename(moved)
+        folder.mkdir()
+        photo.write_bytes(b'replacement JPEG fixture')
+        raw.write_bytes(b'replacement RAW fixture')
+        return real_fcntl(descriptor, *args)
+
+    client = TestClient(edition_client.app, raise_server_exceptions=False)
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(fcntl, 'fcntl', replace_parent)
+            response = client.post('/api/cull/apply', json={'paths': [str(photo)], 'action': 'move_rejects',
+                'target_dir': str(target), 'include_companions': True, 'dry_run': False})
+    finally:
+        client.close()
+    assert response.status_code == 500
+    assert str(tmp_path) not in response.text
+    assert (moved / photo.name).read_bytes() == b'original JPEG fixture'
+    assert (moved / raw.name).read_bytes() == b'original RAW fixture'
+    assert photo.read_bytes() == b'replacement JPEG fixture'
+    assert raw.read_bytes() == b'replacement RAW fixture'
+    assert not target.exists()
+
+
+@pytest.mark.skipif(sys.platform != 'darwin', reason='macOS native filename lookup')
+def test_recreated_hardlink_to_the_opened_file_remains_valid(tmp_path, monkeypatch):
+    import fcntl
+
+    raw = tmp_path / 'shot.CR2'
+    raw.write_bytes(b'original RAW fixture')
+    displaced = tmp_path / 'displaced.CR2'
+    real_fcntl = fcntl.fcntl
+
+    def relink_opened_file(descriptor, *args):
+        result = real_fcntl(descriptor, *args)
+        raw.rename(displaced)
+        os.link(displaced, raw)
+        return result
+
+    monkeypatch.setattr(fcntl, 'fcntl', relink_opened_file)
+    assert raw_processing._find_companion_raw_cached('shot', str(tmp_path), ('.cr2',)) == str(raw)
+    assert os.path.samefile(raw, displaced)
+    assert raw.read_bytes() == b'original RAW fixture'
+
+
+@pytest.mark.skipif(sys.platform != 'darwin', reason='macOS native filename lookup')
+def test_replaced_symlink_is_not_the_opened_entry(tmp_path, monkeypatch):
+    import fcntl
+
+    first = tmp_path / 'first.bin'
+    second = tmp_path / 'second.bin'
+    first.write_bytes(b'original RAW fixture')
+    second.write_bytes(b'replacement RAW fixture')
+    raw = tmp_path / 'shot.CR2'
+    raw.symlink_to(first)
+    real_fcntl = fcntl.fcntl
+
+    def replace_symlink(descriptor, *args):
+        result = real_fcntl(descriptor, *args)
+        raw.unlink()
+        raw.symlink_to(second)
+        return result
+
+    monkeypatch.setattr(fcntl, 'fcntl', replace_symlink)
+    with pytest.raises(OSError, match='companion.*changed during lookup'):
+        raw_processing._find_companion_raw_cached('shot', str(tmp_path), ('.cr2',))
+    assert first.read_bytes() == b'original RAW fixture'
+    assert second.read_bytes() == b'replacement RAW fixture'
