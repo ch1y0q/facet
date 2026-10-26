@@ -2551,7 +2551,7 @@
     "mode_copy": "Copier la sélection dans un dossier",
     "mode_symlink": "Lier (symlink) la sélection dans un dossier",
     "overwrite": "Écraser les fichiers .xmp existants",
-    "overwrite_hint": "Désactivé par défaut : un .xmp créé par darktable est conservé et Facet écrit plutôt un .facet.xmp.",
+    "overwrite_hint": "Avec ExifTool, les sidecars existants sont fusionnés. Sans lui, le .xmp est conservé et Facet écrit .facet.xmp sauf si l’écrasement est activé.",
     "target_dir": "Dossier cible",
     "run": "Exporter",
     "running": "Exportation…",
@@ -2569,6 +2569,26 @@
       "invalid_json": "Ce fichier n'est pas un JSON valide",
       "imported": "État Lightroom importé : {matched} correspondance(s), {unmatched} introuvable(s), {changed} modifiée(s)",
       "import_failed": "Impossible d'importer le fichier d'état Lightroom"
+    },
+    "jobs": {
+      "running": "Export des sidecars",
+      "completed": "Export terminé",
+      "cancelled": "Export annulé",
+      "failed": "Échec de l’export",
+      "interrupted": "Export interrompu",
+      "progress": "{processed} / {total} fichiers traités",
+      "counts": "{written} écrits · {skipped} ignorés · {errors} erreurs",
+      "close": "Fermer",
+      "close_hint": "L’export continue après fermeture. Rouvrez ce dialogue pour retrouver les exports récents.",
+      "cancel": "Arrêter après le fichier actuel",
+      "cancelling": "Arrêt après le fichier actuel…",
+      "cancel_hint": "Les sidecars écrits sont conservés. Le fichier actuel peut se terminer avant l’arrêt.",
+      "retry": "Réessayer les fichiers restants",
+      "retry_hint": "Réessaie les fichiers échoués, ignorés et non terminés avec les métadonnées actuelles. Un fichier interrompu peut être réécrit si sa progression n’a pas été enregistrée.",
+      "refresh": "Actualiser l’état",
+      "recent": "Exports récents de sidecars",
+      "none": "Aucun export récent de sidecars.",
+      "read_failed": "Impossible de lire la progression. Actualisez l’état pour réessayer."
     }
   },
   "undo": {

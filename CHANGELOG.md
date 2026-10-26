@@ -6,6 +6,7 @@ All notable changes to Facet are documented in this file.
 
 
 ### Changed
+- Album sidecar exports use bounded background jobs (at most 10,000 photos) and share the library job lock with scans and recomputes. Larger albums are refused before writes; album copy/symlink exports retain their existing behavior.
 - Verify webhook-supplied Immich asset IDs against all exact-path search pages before pushing metadata, matching CLI ambiguity refusal.
 - Keep the stored thumbnail visible while a previously loaded render is fetched again, and allow focus peaking on that thumbnail when the render fails.
 - Preserve Unicode metadata on Windows with UTF-8 ExifTool argument transport and output decoding, including names, keywords and multiline captions.
@@ -15,6 +16,7 @@ All notable changes to Facet are documented in this file.
 ### Added
 
 - Filter photos with unassigned faces or unnamed people from the gallery Persons section.
+- **Background sidecar exports.** Export selected photos, filtered views and albums with progress, counts, explicit stop-between-files cancellation, and recent private receipts. Retry failed, skipped and unfinished files only when requested; closing the dialog leaves submitted work running.
 - **Explicit keyword reconciliation.** `--export-sidecars --reconcile-keywords` removes only previously Facet-owned keywords and preserves foreign names and AI provenance. Deletion markers expire when a name reappears in the file or Facet writes it again, allowing externally re-added manual keywords to be imported. Both export modes still write current Facet keywords back after external removal; no implicit database deletion or bidirectional sync is added. Additive exports remain the default; reconciliation requires ExifTool. Existing files whose metadata cannot be read reliably now refuse export before any metadata-clearing write, including ordinary CLI and viewer exports and embedding. Keyword names such as `2024`, `1.50`, `1e3`, `true`, `false` and `null` retain their exact spelling when ExifTool returns numeric or boolean JSON tokens.
 - Assign people from a searchable picker ordered by recent successful assignments in this browser, then visible face counts. Signing out clears saved recents.
 
