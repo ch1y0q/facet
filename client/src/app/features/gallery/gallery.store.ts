@@ -335,7 +335,15 @@ export class GalleryStore {
     const scope = buildApiParams(this.filters(), this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
     delete scope['page'];
     delete scope['per_page'];
-    return JSON.stringify([scope, this.currentAlbum()?.smart_filter_json]);
+    return JSON.stringify([scope, this.currentAlbum()?.smart_filter_json, this.useSavedReviewStatus()]);
+  }
+
+  /** This mode selects the smart album's saved decision criterion for both
+   *  the request and its snapshot key; edition can change without identity. */
+  private useSavedReviewStatus(): boolean {
+    const album = this.currentAlbum();
+    return !!album?.is_smart && !!album.smart_filter_json
+      && (this.transientReviewStatus() || !this.auth.isEdition());
   }
 
   async startReviewQueue(): Promise<void> {
@@ -363,7 +371,7 @@ export class GalleryStore {
     if (album?.is_smart && album.smart_filter_json) {
       try {
         const saved = JSON.parse(album.smart_filter_json).review_status;
-        const status = this.transientReviewStatus() || !this.auth.isEdition() ? saved : this.filters().review_status;
+        const status = this.useSavedReviewStatus() ? saved : this.filters().review_status;
         if (status) params['scope_review_status'] = status;
       } catch { return; }
     }
