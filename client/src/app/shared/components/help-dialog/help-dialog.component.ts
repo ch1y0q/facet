@@ -4,10 +4,33 @@ import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/materia
 import { MatIconModule } from '@angular/material/icon';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { i18nKeys } from '../../../core/i18n/keys';
+import { CULLING_SHORTCUT_SECTIONS, type CullingShortcutRow } from '../../../features/gallery/culling-shortcuts';
+
+interface ShortcutSection { titleKey: string; rows: CullingShortcutRow[]; }
+
+/** The gallery page's own keyboard reference (the card rating keys and the
+ *  view toggles), shown when the Help entry fires there. */
+const GALLERY_SHORTCUT_SECTIONS: ShortcutSection[] = [
+  {
+    titleKey: 'culling.shortcuts.page_title',
+    rows: [
+      { keys: ['1', '–', '5'], labelKey: 'gallery.shortcuts.rate' },
+      { keys: ['F'], labelKey: 'gallery.shortcuts.favourite' },
+      { keys: ['X'], labelKey: 'gallery.shortcuts.reject' },
+      { keys: ['/'], labelKey: 'gallery.shortcuts.focus_search' },
+      { keys: ['B'], labelKey: 'gallery.shortcuts.toggle_sidebar' },
+      { keys: ['V'], labelKey: 'gallery.shortcuts.swap_layout' },
+      { keys: ['Space'], labelKey: 'gallery.shortcuts.select' },
+      { keys: ['Enter'], labelKey: 'culling.shortcuts.open' },
+    ],
+  },
+];
 
 /** The "?" menu entry's dialog: the current page's help text in a proper
  *  modal, instead of toggling the in-page banner — a menu affordance that
- *  opens a banner reads as a misfire. */
+ *  opens a banner reads as a misfire. On the gallery and culling routes the
+ *  dialog also carries that page's keyboard reference, which used to live
+ *  only in the in-page banners. */
 @Component({
   selector: 'app-help-dialog',
   standalone: true,
@@ -24,7 +47,7 @@ import { i18nKeys } from '../../../core/i18n/keys';
     </div>
     <mat-dialog-content class="!px-6">
       @if (descriptionKey; as key) {
-        <ul class="m-0 pl-0 list-none flex flex-col gap-2.5">
+        <ul class="m-0 pl-0 list-none flex flex-col gap-2.5 mb-1">
           @for (line of (key | translate).split('\n'); track $index) {
             <li class="flex items-start gap-2.5 text-sm leading-relaxed">
               <span class="mt-[7px] w-1.5 h-1.5 rounded-full bg-[var(--mat-sys-primary)] shrink-0" aria-hidden="true"></span>
@@ -34,6 +57,27 @@ import { i18nKeys } from '../../../core/i18n/keys';
         </ul>
       } @else {
         <p class="text-sm leading-relaxed m-0 opacity-70">{{ I18N.gallery.help_none | translate }}</p>
+      }
+      @if (shortcutSections.length) {
+        <div class="mt-4 pt-3 border-t border-[var(--mat-sys-outline-variant)] flex flex-wrap gap-x-10 gap-y-3">
+          @for (section of shortcutSections; track section.titleKey) {
+            <div>
+              <div class="text-xs font-semibold uppercase opacity-50 mb-1.5">{{ section.titleKey | translate }}</div>
+              <div class="space-y-1">
+                @for (row of section.rows; track row.labelKey) {
+                  <div class="flex items-center gap-2 text-xs">
+                    <span class="flex gap-1">
+                      @for (k of row.keys; track k) {
+                        <kbd class="px-1.5 py-0.5 rounded border border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface-container-high)] text-xs font-mono">{{ k }}</kbd>
+                      }
+                    </span>
+                    <span class="opacity-80">{{ row.labelKey | translate }}</span>
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </div>
       }
     </mat-dialog-content>
     <mat-dialog-actions class="!px-6 !pb-5">
@@ -47,6 +91,10 @@ import { i18nKeys } from '../../../core/i18n/keys';
 export class HelpDialogComponent {
   protected readonly I18N = i18nKeys();
   private readonly dialogRef = inject(MatDialogRef<HelpDialogComponent>);
-  /** Set by the opener from PageHelpService before open(). */
+  /** Set by the opener from PageHelpService before open(); the opener also
+   *  resolves the keyboard sections for the current route (the dialog cannot
+   *  trust its own constructor timing for router state). */
   readonly descriptionKey = (inject(MAT_DIALOG_DATA) as { key?: string | null }).key ?? null;
+  readonly shortcutSections: ShortcutSection[] =
+    (inject(MAT_DIALOG_DATA) as { shortcutSections?: ShortcutSection[] }).shortcutSections ?? [];
 }

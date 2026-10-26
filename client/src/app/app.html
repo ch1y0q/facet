@@ -339,13 +339,11 @@
       <!-- Global per-page help toggle (present on all routes) -->
       <button
         mat-icon-button
-        (click)="pageHelp.toggle()"
-        [class.!text-[var(--mat-sys-primary)]]="pageHelp.open()"
-        [attr.aria-pressed]="pageHelp.open()"
+        (click)="openHelpDialog()"
         [matTooltip]="I18N.culling.help | translate"
         [attr.aria-label]="I18N.culling.help | translate"
       >
-        <mat-icon>{{ pageHelp.open() ? 'help' : 'help_outline' }}</mat-icon>
+        <mat-icon>help_outline</mat-icon>
       </button>
 
       <!-- User menu (authenticated: account + language + edition + logout) -->
@@ -464,11 +462,6 @@
       target="_blank"
       rel="noopener noreferrer"
     >{{ I18N.edition.read_only_hint | translate }}</a>
-  }
-
-  <!-- Global per-page help panel (shows the current page's description) -->
-  @if (pageHelp.open() && pageHelp.descriptionKey(); as key) {
-    <div class="mx-4 mt-3 p-3 rounded-lg bg-[var(--mat-sys-surface-container)] text-sm opacity-80 whitespace-pre-line">{{ key | translate }}</div>
   }
 
   <!-- Mobile search bar is rendered as the first row of the gallery bottom stack -->
