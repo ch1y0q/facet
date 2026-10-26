@@ -247,6 +247,7 @@ def test_exact_region_read_failure_refuses_without_changing_packet(tmp_path, mon
     target.write_bytes(before)
     def run(args, **kwargs):
         assert '-overwrite_original' not in args
+        assert 'XMP-mwg-rs:RegionInfo' in _requested_tags(args)
         if '-X' in args:
             if failure == 'timeout':
                 raise subprocess.TimeoutExpired(args, 1)
@@ -258,6 +259,10 @@ def test_exact_region_read_failure_refuses_without_changing_packet(tmp_path, mon
     with pytest.raises(xe.MetadataPreconditionError):
         xe._read_existing_regions(str(target), 'exiftool', timeout=1)
     assert target.read_bytes() == before
+
+
+def _requested_tags(args):
+    return {arg.lstrip('-') for arg in args if arg.startswith('-') and ':' in arg}
 
 
 def _rdf_node(xml):

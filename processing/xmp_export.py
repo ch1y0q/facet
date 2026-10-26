@@ -27,6 +27,15 @@ Field mapping (chosen to be read by Lightroom *and* darktable)
   ``xmp:Label`` colour names.
 * ``dc:subject``  = an ``rdf:Bag`` of the photo's tags (the standard keyword
   field every editor reads).
+* ``facet:ReviewDecision`` = the explicit review state (kept / rejected / undecided)
+  so a reject is not inferred from the rating alone.
+* ``facet:GPSState`` = ``set`` / ``cleared`` for a hand-set location, with
+  ``exif:GPSLatitude`` / ``exif:GPSLongitude`` carrying the coordinates when
+  ``set`` (degrees,decimal-minutes plus hemisphere letter).
+* ``facet:DateState`` = ``set`` for a hand-set capture date, with
+  ``exif:DateTimeOriginal`` carrying it.
+* ``facet:KeywordState`` = the names Facet itself wrote, so
+  ``--reconcile-keywords`` can remove only those.
 
 Clobber safety
 --------------
@@ -176,6 +185,18 @@ def score_to_stars(score: float | None, sr_cfg: dict | None) -> tuple[int, str]:
     return 0, ""
 
 
+def valid_coordinate_pair(latitude: float | None, longitude: float | None) -> bool:
+    """True for a finite latitude/longitude pair inside +-90 / +-180."""
+    return (latitude is not None and longitude is not None
+            and math.isfinite(latitude) and math.isfinite(longitude)
+            and abs(latitude) <= 90 and abs(longitude) <= 180)
+
+
+def _gps_ref(value: float, axis: str) -> tuple[float, str]:
+    """Split a signed coordinate into magnitude and hemisphere letter (``axis`` is "NS" or "EW")."""
+    return abs(value), axis[0] if value >= 0 else axis[1]
+
+
 @dataclass
 class XmpRating:
     """The Facet rating fields written into a sidecar."""
@@ -245,9 +266,7 @@ class XmpRating:
             return None
         if self.gps_latitude is None and self.gps_longitude is None:
             return "cleared"
-        if (self.gps_latitude is not None and self.gps_longitude is not None
-                and math.isfinite(self.gps_latitude) and math.isfinite(self.gps_longitude)
-                and abs(self.gps_latitude) <= 90 and abs(self.gps_longitude) <= 180):
+        if valid_coordinate_pair(self.gps_latitude, self.gps_longitude):
             return "set"
         raise ValueError("Manual GPS must be a valid coordinate pair or both null")
 
@@ -376,9 +395,10 @@ def _apply_facet_nodes(desc, rating: XmpRating) -> None:
         for name, value, directions in (("GPSLatitude", rating.gps_latitude, "NS"),
                                         ("GPSLongitude", rating.gps_longitude, "EW")):
             assert value is not None
-            degrees = int(abs(value))
-            minutes = (abs(value) - degrees) * 60
-            desc.set(f"{{{NS_EXIF}}}{name}", f"{degrees},{minutes:.10f}{directions[value < 0]}")
+            magnitude, reference = _gps_ref(value, directions)
+            degrees = int(magnitude)
+            minutes = (magnitude - degrees) * 60
+            desc.set(f"{{{NS_EXIF}}}{name}", f"{degrees},{minutes:.10f}{reference}")
 
     keywords = rating.all_keywords()
     if keywords:
@@ -933,14 +953,15 @@ def _exiftool_write_args(target: str, rating: XmpRating, exe: str, *, timeout: i
     manual_date = rating.manual_date()
     if not target.lower().endswith(".xmp") and manual_date is not None:
         tag_args.append(f"-EXIF:DateTimeOriginal={manual_date}")
-    if not target.lower().endswith(".xmp") and rating.gps_state():
-        state = rating.gps_state()
+    gps_state = rating.gps_state()
+    if not target.lower().endswith(".xmp") and gps_state:
         for axis, value, directions in (("Latitude", rating.gps_latitude, "NS"),
                                          ("Longitude", rating.gps_longitude, "EW")):
             coordinate, reference = "", ""
-            if state == "set":
+            if gps_state == "set":
                 assert value is not None
-                coordinate, reference = str(abs(value)), directions[value < 0]
+                magnitude, reference = _gps_ref(value, directions)
+                coordinate = str(magnitude)
             tag_args += [f"-EXIF:GPS{axis}={coordinate}", f"-EXIF:GPS{axis}Ref={reference}"]
     return [exe, "-config", config, "-q", "-m", "-overwrite_original", *tag_args, target]
 

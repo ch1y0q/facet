@@ -73,6 +73,7 @@ from processing.xmp_export import (
     NS_RDF,
     NS_XMP,
     sidecar_scope,
+    valid_coordinate_pair,
 )
 from processing.xmp_keywords import keyword_key, parse_keyword_state
 from utils.image_loading import WATCHABLE_IMAGE_EXTENSIONS
@@ -138,8 +139,11 @@ def _parse_xmp(path: str):
     return ET.fromstring(data)
 
 
-def _coordinate(raw: str | None, limit: int) -> float | None:
-    """Parse standard XMP degrees/minutes[/seconds] plus hemisphere."""
+def _coordinate(raw: str | None, axis: str) -> float | None:
+    """Parse standard XMP degrees/minutes[/seconds] plus a hemisphere of ``axis`` ("NS" or "EW").
+
+    Range is checked on the pair by ``valid_coordinate_pair``.
+    """
     if not raw:
         return None
     match = re.fullmatch(r"\s*(\d+(?:\.\d+)?)(?:,(\d+(?:\.\d+)?))?(?:,(\d+(?:\.\d+)?))?([NSEW])\s*", raw)
@@ -148,8 +152,7 @@ def _coordinate(raw: str | None, limit: int) -> float | None:
     degrees, minutes, seconds, direction = match.groups()
     d, m, sec = float(degrees), float(minutes or 0), float(seconds or 0)
     value = d + m / 60 + sec / 3600
-    if (not math.isfinite(value) or m >= 60 or sec >= 60 or value > limit
-            or direction not in ("NS" if limit == 90 else "EW")):
+    if not math.isfinite(value) or m >= 60 or sec >= 60 or direction not in axis:
         return None
     return -value if direction in "SW" else value
 
@@ -165,9 +168,9 @@ def _gps_override(root):
     # coordinates must never delete the destination location.
     if state == "cleared" and not (latitude or "").strip() and not (longitude or "").strip():
         return (None, None)
-    lat = _coordinate(latitude, 90)
-    lon = _coordinate(longitude, 180)
-    return (lat, lon) if lat is not None and lon is not None else None
+    lat = _coordinate(latitude, "NS")
+    lon = _coordinate(longitude, "EW")
+    return (lat, lon) if valid_coordinate_pair(lat, lon) else None
 
 
 def parse_sidecar(path: str):
@@ -588,9 +591,10 @@ def _import_sidecars(conn, root, *, user_id, overwrite_manual_gps, dry_run, fiel
         if rejected:
             kept = False
         gps = parsed["gps"]
-        gps_changed = (gps is not None and (not row["gps_manually_set"] or overwrite_manual_gps)
-                       and (not row["gps_manually_set"]
-                            or gps != (row["gps_latitude"], row["gps_longitude"])))
+        manual_gps = row["gps_manually_set"]
+        gps_changed = gps is not None and (
+            not manual_gps
+            or (overwrite_manual_gps and gps != (row["gps_latitude"], row["gps_longitude"])))
 
         original_review = {field: row[field] or 0 for field in REVIEW_FIELDS}
         proposed_review = dict(zip(REVIEW_FIELDS, (star, int(favorite), int(rejected), int(kept))))
