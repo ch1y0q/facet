@@ -1,13 +1,14 @@
 /**
- * True when a keyboard event originates from a text-entry context (input,
- * textarea, native select, or contenteditable), where global single-key
- * shortcuts must not fire. Shared by the gallery grid and the burst-culling
- * darkroom so both gate keyboard shortcuts the same way.
+ * True when a keyboard event belongs to text entry or a control with keyboard
+ * navigation/typeahead (including ARIA menus, selects and comboboxes), where
+ * page-level shortcuts must not fire. Shared by the gallery, photo page and
+ * darkroom so they gate keyboard shortcuts the same way.
  */
 export function isTypingContext(event: Event): boolean {
   const target = event.target as HTMLElement | null;
   if (!target) return false;
-  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable;
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable
+    || !!target.closest?.('[role="combobox"], [role="listbox"], [role="option"], [role="menu"], [role="menubar"], [role^="menuitem"]');
 }
 
 /**
