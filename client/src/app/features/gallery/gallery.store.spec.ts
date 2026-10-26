@@ -104,7 +104,7 @@ describe('GalleryStore', () => {
       providers: [
         GalleryStore,
         { provide: ApiService, useValue: { get: apiGet, post: apiPost } },
-        { provide: Router, useValue: { navigate: routerNavigate, events: routerEvents, currentNavigation: () => null } },
+        { provide: Router, useValue: { url: '/', navigate: routerNavigate, events: routerEvents, currentNavigation: () => null } },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { queryParams } },

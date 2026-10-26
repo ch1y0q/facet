@@ -15,7 +15,7 @@ import { PageContextService } from '../../core/agent/page-context.service';
 describe('ManagePersonsComponent', () => {
   let component: ManagePersonsComponent;
   let mockApi: { get: Mock; post: Mock };
-  let mockAuth: { isEdition: Mock };
+  let mockAuth: { isEdition: Mock; identity: () => string };
   let mockI18n: { t: Mock };
   let mockDialog: { open: Mock };
   let mockSnackBar: { open: Mock };
@@ -36,7 +36,7 @@ describe('ManagePersonsComponent', () => {
       get: vi.fn(() => of(mockPersonsResponse)),
       post: vi.fn(() => of({})),
     };
-    mockAuth = { isEdition: vi.fn(() => true) };
+    mockAuth = { isEdition: vi.fn(() => true), identity: () => 'test' };
     mockI18n = { t: vi.fn((key: string) => key) };
     mockDialog = {
       open: vi.fn(() => ({ afterClosed: () => of(true) })),
@@ -54,7 +54,7 @@ describe('ManagePersonsComponent', () => {
         { provide: MatDialog, useValue: mockDialog },
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: UserActivityJournal, useValue: journal },
-        { provide: Router, useValue: { navigate: vi.fn(), events: routerEvents, parseUrl: (url: string) => new DefaultUrlSerializer().parse(url) } },
+        { provide: Router, useValue: { url: '/persons', navigate: vi.fn(), events: routerEvents, parseUrl: (url: string) => new DefaultUrlSerializer().parse(url) } },
         { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: { get: () => null } } } },
       ],
     });
