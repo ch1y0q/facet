@@ -215,10 +215,12 @@ describe('GalleryStore', () => {
       expect(store.viewScopeSelected()).toBe(true);
     });
 
-    it('shows 100% only when no undecided photos remain', () => {
-      store.reviewProgress.set({ total: 1000, undecided: 1, kept: 999, rejected: 0 });
+    it('shows 100% only when no undecided photos remain', async () => {
+      apiGet.mockReturnValue(of({ total: 1000, undecided: 1, kept: 999, rejected: 0 }));
+      await store.loadReviewProgress();
       expect(store.reviewPercent()).toBe(99);
-      store.reviewProgress.set({ total: 1000, undecided: 0, kept: 999, rejected: 1 });
+      apiGet.mockReturnValue(of({ total: 1000, undecided: 0, kept: 999, rejected: 1 }));
+      await store.loadReviewProgress();
       expect(store.reviewPercent()).toBe(100);
     });
 
