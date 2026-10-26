@@ -1339,11 +1339,15 @@ export class GalleryStore {
       if (this.loading()) return;
       // Repair shifted offsets once per paging action; an error leaves debt for retry.
       const seq = this._loadSeq;
+      const identity = this.auth.identity();
+      const query = this.filterKey();
       this.listingPageRepairSeq = seq;
       this.listingRefreshOwed = false;
       try { await this.refreshPaths(null); }
       finally { if (this.listingPageRepairSeq === seq) this.listingPageRepairSeq = null; }
-      if (seq !== this._loadSeq || !this.listingReadsActive || this.listingRefreshOwed || this.viewRefreshOwed) return;
+      if (seq !== this._loadSeq || identity !== this.auth.identity() || query !== this.filterKey()
+        || !acceptResult() || this.destroyRef.destroyed || !this.listingReadsActive
+        || this.listingRefreshOwed || this.viewRefreshOwed) return;
     }
     if (!this.listingReadsActive && (this.listingPagesInterrupted || this.listingRefreshOwed)) {
       if (this.loading()) return;

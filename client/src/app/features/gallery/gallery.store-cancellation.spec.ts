@@ -862,8 +862,9 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     http.expectNone(r => r.url === '/api/photos');
   });
 
-  it.each(['success', 'failure', 'cancellation', 'active', 'active-failure', 'active-identity', 'active-filter', 'parked'] as const)('refills filtered page offsets after membership loss and %s before nextPage', async outcome => {
+  it.each(['success', 'failure', 'cancellation', 'active', 'active-failure', 'active-identity', 'active-filter', 'parked', 'active-queued-identity', 'active-queued-query', 'active-queued-rejected', 'active-queued-destroyed'] as const)('refills filtered page offsets after membership loss and %s before nextPage', async outcome => {
     const activeRetry = outcome.startsWith('active');
+    let acceptPaging = true;
     store.filters.update(f => ({ ...f, per_page: 2, no_gps: '1' }));
     const photos = Array.from({ length: 6 }, (_, i) => makePhoto({ path: `/gps${i}.jpg` }));
     const loading = store.loadPhotos();
@@ -911,7 +912,7 @@ describe('GalleryStore read cancellation with HttpClient', () => {
       }
       for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
       await returning;
-      if (activeRetry) returning = store.nextPage();
+      if (activeRetry) returning = store.nextPage(() => acceptPaging);
       else if (outcome === 'parked') {
         events.next(new NavigationStart(3, '/photo?path=/gps3.jpg'));
         store.parkListingReads();
@@ -965,6 +966,31 @@ describe('GalleryStore read cancellation with HttpClient', () => {
         if (page === 2) await vi.waitFor(() => { refill = request('/photos'); });
         expect(refill.request.params.get('page')).toBe(String(page));
         refill.flush({ ...EMPTY_PAGE, photos: remaining.slice((page - 1) * 2, page * 2), total: 5, has_more: true });
+        if (page === 2 && outcome.startsWith('active-queued')) {
+          // Change ownership after HTTP completion queues the repair continuation,
+          // before an auth effect or replacement load can invalidate its sequence.
+          if (outcome === 'active-queued-identity') identity.set('bob');
+          if (outcome === 'active-queued-query') store.filters.update(f => ({ ...f, camera: 'Canon' }));
+          if (outcome === 'active-queued-rejected') acceptPaging = false;
+          if (outcome === 'active-queued-destroyed') destroyStore();
+          let settled = false;
+          const completion = returning.then(() => { settled = true; });
+          const unexpected: TestRequest[] = [];
+          await vi.waitFor(() => {
+            // Settle any erroneous tail request so the assertion reports its effect,
+            // rather than hanging on an unflushed request or a fixed microtask count.
+            const reads = http.match(r => r.url === '/api/photos');
+            unexpected.push(...reads);
+            for (const read of reads) if (!read.cancelled) read.flush({ ...EMPTY_PAGE, photos: [], total: 5, has_more: false });
+            for (const read of http.match(r => r.url === '/api/photos/review_progress')) if (!read.cancelled) read.flush(COUNTS);
+            for (const read of http.match(r => r.url === '/api/photos/keeper_hints')) if (!read.cancelled) read.flush({});
+            expect(settled).toBe(true);
+          });
+          await completion;
+          expect(unexpected.map(read => read.request.params.get('page'))).toEqual([]);
+          expect(store.filters().page).toBe(2);
+          return;
+        }
       }
     }
     for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
