@@ -1681,6 +1681,8 @@ Corrections do not write originals or change file modification times. Existing e
 
 Edition API: `POST /api/photos/capture_date/preview` accepts `photo_paths` or `filters`, optional `exclude`, and `offset_seconds`; `POST /api/photos/capture_date/apply` also requires the returned `preview_token`. `DELETE /api/photo/capture_date?path=` restores the file date.
 
+Reset retries brief database contention. If the library stays busy, it returns HTTP 503 (`library_busy`) with `Retry-After`; other database failures return HTTP 500 without internal details. A failed database transaction keeps the manual date and adds no history entry.
+
 ## Organization history
 
 Open **Organization history** from the gallery history button or photo details in edition mode. Expand an entry to compare the exact before/after values, then choose **Revert this entry**. GPS and capture dates are shared library values; review decisions, stars and favorites use your existing account preferences. Only these organization edits are recorded; files and face recognition are outside this history. Original files are never written. The existing short Undo and assistant activity list remain separate.
