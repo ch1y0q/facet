@@ -1187,6 +1187,7 @@ export class GalleryStore {
 
   private async runRefresh(paths: string[] | null, loadSeq: number, claimedPaths: string[]): Promise<void> {
     if (!this.claimRefresh(loadSeq)) return;
+    let membershipChanged = false;
     try {
       if (paths === null) {
         if (this.pinnedPaths() !== null) await this.refreshPinnedList(loadSeq);
@@ -1207,9 +1208,15 @@ export class GalleryStore {
       this.mergeRows(rows);
       // A similarity view ranks outside the gallery's WHERE clause: by_paths cannot say a photo left it.
       if (pinned || membership) this.dropMissing(missing);
+      if (membership && missing.length && this.hasMore()) {
+        // Removing a filtered row shifts the offsets of every following page.
+        membershipChanged = true;
+        await this.refreshViewInPlace(loadSeq);
+      }
     } catch {
       // Keep a failed row repair for the next attach; parking already claimed cancelled reads.
       if (this.claimRefresh(loadSeq)) {
+        if (membershipChanged) this.listingRefreshOwed = true;
         const loaded = new Set(this.photos().map(photo => photo.path));
         for (const path of paths ?? claimedPaths) if (loaded.has(path)) this.parkedRefreshPaths.add(path);
       }

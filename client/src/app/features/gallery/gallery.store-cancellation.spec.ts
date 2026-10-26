@@ -862,6 +862,86 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     http.expectNone(r => r.url === '/api/photos');
   });
 
+  it.each(['success', 'failure', 'cancellation'] as const)('refills filtered page offsets after membership loss and %s before nextPage', async outcome => {
+    store.filters.update(f => ({ ...f, per_page: 2, no_gps: '1' }));
+    const photos = Array.from({ length: 6 }, (_, i) => makePhoto({ path: `/gps${i}.jpg` }));
+    const loading = store.loadPhotos();
+    const first = request('/photos');
+    expect(first.request.params.get('no_gps')).toBe('1');
+    first.flush({ ...EMPTY_PAGE, photos: photos.slice(0, 2), total: 6, has_more: true });
+    request('/photos/review_progress').flush(COUNTS);
+    await loading;
+    request('/photos/keeper_hints').flush({});
+    const paging = store.nextPage();
+    request('/photos').flush({ ...EMPTY_PAGE, photos: photos.slice(2, 4), total: 6, has_more: true });
+    await paging;
+    request('/photos/keeper_hints').flush({});
+    store.selectedPaths.set(new Set(['/gps2.jpg', '/gps3.jpg']));
+    const writing = firstValueFrom(TestBed.inject(ApiService).put('/photo/gps', {
+      path: '/gps2.jpg', gps_latitude: 1, gps_longitude: 2,
+    })).then(() => store.refreshPaths(['/gps2.jpg']));
+    request('/photo/gps').flush({ gps_latitude: 1, gps_longitude: 2 });
+    let obsolete!: TestRequest;
+    await vi.waitFor(() => { obsolete = request('/photos/by_paths'); });
+    events.next(new NavigationStart(1, '/photo?path=/gps2.jpg'));
+    store.parkListingReads();
+    expect(obsolete.cancelled).toBe(true);
+    await writing;
+    for (const progress of http.match(r => r.url === '/api/photos/review_progress')) expect(progress.cancelled).toBe(true);
+    events.next(new NavigationStart(2, '/'));
+    (TestBed.inject(Router) as unknown as { url: string }).url = '/';
+    events.next(new NavigationEnd(2, '/', '/'));
+    let returning = store.resumeListingReads();
+    let target!: TestRequest;
+    await vi.waitFor(() => { target = request('/photos/by_paths'); });
+    expect(target.request.body.paths).toEqual(['/gps2.jpg']);
+    expect(target.request.body.filters.no_gps).toBe('1');
+    target.flush({ photos: [] });
+    const remaining = photos.filter(photo => photo.path !== '/gps2.jpg');
+    await vi.waitFor(() => { expect(store.photos().some(photo => photo.path === '/gps2.jpg')).toBe(false); });
+    let refills = http.match(r => r.url === '/api/photos');
+    if (outcome !== 'success') {
+      expect(refills).toHaveLength(1);
+      if (outcome === 'failure') refills[0].flush({}, { status: 500, statusText: 'Failed' });
+      else {
+        events.next(new NavigationStart(3, '/photo?path=/gps3.jpg'));
+        store.parkListingReads();
+        expect(refills[0].cancelled).toBe(true);
+      }
+      for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+      await returning;
+      store.parkListingReads();
+      events.next(new NavigationStart(4, '/'));
+      (TestBed.inject(Router) as unknown as { url: string }).url = '/';
+      events.next(new NavigationEnd(4, '/', '/'));
+      returning = store.resumeListingReads();
+      let retry!: TestRequest;
+      await vi.waitFor(() => { retry = request('/photos'); });
+      refills = [retry];
+    }
+    if (refills.length) {
+      expect(refills).toHaveLength(1);
+      for (let page = 1; page <= 2; page++) {
+        let refill = refills[0];
+        if (page === 2) await vi.waitFor(() => { refill = request('/photos'); });
+        expect(refill.request.params.get('page')).toBe(String(page));
+        refill.flush({ ...EMPTY_PAGE, photos: remaining.slice((page - 1) * 2, page * 2), total: 5, has_more: true });
+      }
+    }
+    for (const progress of http.match(r => r.url === '/api/photos/review_progress')) if (!progress.cancelled) progress.flush(COUNTS);
+    await returning;
+    for (const hints of http.match(r => r.url === '/api/photos/keeper_hints')) if (!hints.cancelled) hints.flush({});
+    const tail = store.nextPage();
+    const last = request('/photos');
+    expect(last.request.params.get('page')).toBe('3');
+    last.flush({ ...EMPTY_PAGE, photos: remaining.slice(4), total: 5, has_more: false });
+    await tail;
+    request('/photos/keeper_hints').flush({});
+    expect(store.photos().map(photo => photo.path)).toEqual(remaining.map(photo => photo.path));
+    expect(store.total()).toBe(5);
+    expect(store.selectedPaths()).toEqual(new Set(['/gps3.jpg']));
+  });
+
   it.each(['attach', 'explicit'] as const)('retains failed targeted debt for %s retry without a later redundant Back read', async retryKind => {
     await loadAndParkThreePages();
     await store.refreshPaths(['/p64.jpg']);
