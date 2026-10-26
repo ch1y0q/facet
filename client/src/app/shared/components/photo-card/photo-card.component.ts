@@ -425,6 +425,18 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
             <mat-icon class="!text-base !w-4 !h-4 !leading-4 text-white">check</mat-icon>
           </div>
         }
+
+        <!-- Keyboard hint on the ONE focused card: the rating and view keys
+             only help a user who knows they exist, and the ? reference is
+             easy to never open. Rendered for keyboard-adjacent discovery on
+             the single non-dimmed card, never per-hover across the grid. -->
+        @if (isActive() && isEditionMode() && gridHasActiveCard() && !mosaicMode()) {
+          <div class="absolute bottom-1.5 left-1.5 z-20 px-1.5 py-0.5 rounded-md
+                      bg-black/60 text-white/90 text-[10px] leading-4 pointer-events-none
+                      hidden md:block whitespace-nowrap" aria-hidden="true">
+            {{ 'photoCard.key_hint' | translate }}
+          </div>
+        }
       </div>
 
       <!-- Details below photo -->

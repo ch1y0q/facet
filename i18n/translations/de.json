@@ -208,7 +208,8 @@
     "duplicate_set": "Duplikatgruppe öffnen",
     "burst_set": "Seriengruppe öffnen",
     "sequence_set": "Belichtungsreihe/Panorama öffnen",
-    "open_detail": "Fotoseite öffnen"
+    "open_detail": "Fotoseite öffnen",
+    "key_hint": "1-5 bewerten · F fav · X verwerfen · Space auswählen · Enter öffnen"
   },
   "notifications": {
     "copied": "Kopiert!",
@@ -986,7 +987,8 @@
       "avg_monochrome": "Monochrom (%)",
       "avg_dynamic_range": "Durchschn. Dynamikumfang",
       "usage_timeline": "Nutzungszeitraum"
-    }
+    },
+    "gear_metric_label": "Diagrammmetrik"
   },
   "login": {
     "title": "Anmelden",
@@ -1034,7 +1036,7 @@
     "user_menu": "Benutzermenü"
   },
   "gallery": {
-    "help": "Durchsuchen und filtern Sie Ihre Bibliothek. Sortieren Sie nach Bewertung, Datum oder Ihrem persönlichen Geschmack; nutzen Sie die Filter in der Seitenleiste (Personen, Schlagwörter, Kamera, Kategorie, Wertungsbereich, Momente) und die Suche, um Fotos zu finden.",
+    "help": "Durchsuchen und filtern Sie Ihre Bibliothek. Sortieren Sie nach Bewertung, Datum oder Ihrem persönlichen Geschmack; nutzen Sie die Filter in der Seitenleiste (Personen, Schlagwörter, Kamera, Kategorie, Wertungsbereich, Momente) und die Suche, um Fotos zu finden. Tasten auf der fokussierten Karte: 1–5 bewerten, F favorisieren, X verwirft (Bearbeitungsmodus); / fokussiert die Suche, B blendet die Filterseitenleiste ein/aus, V wechselt Raster und Mosaik.",
     "hidden_banner": {
       "message": "{n} Fotos durch aktuelle Filter ausgeblendet",
       "some_hidden": "Einige Fotos werden durch Ihre Filter ausgeblendet",
@@ -1710,7 +1712,8 @@
     "split_select_face": "Gesicht {index} auswählen",
     "no_faces": "Keine Gesichter für diese Person gefunden",
     "split_done": "Person aufgeteilt",
-    "split_error": "Person konnte nicht aufgeteilt werden"
+    "split_error": "Person konnte nicht aufgeteilt werden",
+    "empty_hint": "Personen entstehen aus Gesichtern, die du auf einer Fotoseite zuweist (Bearbeitungsmodus). Öffne ein Foto mit Gesichtern und wähle „Person zuweisen“, um die erste anzulegen."
   },
   "person_selector": {
     "create_new": "Neue Person erstellen",
@@ -2424,7 +2427,9 @@
     "cluster_photos": "{count} Fotos",
     "score": "Bewertung: {score}",
     "date_from": "Von",
-    "date_to": "Bis"
+    "date_to": "Bis",
+    "no_gps_title": "Keine Fotos mit Standort",
+    "no_gps_hint": "Nichts im Umfang trägt GPS-Koordinaten. Öffne ein Foto und lege es über dessen Standort-Panel fest — platzierte Fotos erscheinen hier."
   },
   "photo_detail": {
     "back": "Zurück",
@@ -2617,6 +2622,9 @@
     "rate": "Bewerten (1–5 Sterne)",
     "reject": "Ablehnen",
     "favorite": "Favorit umschalten",
+    "focus_search": "Suchfeld fokussieren",
+    "toggle_filters": "Filterleiste ein- / ausblenden",
+    "toggle_layout": "Zwischen Raster und Mosaik wechseln",
     "comp_left_wins": "Linkes Foto gewinnt",
     "comp_right_wins": "Rechtes Foto gewinnt"
   },
