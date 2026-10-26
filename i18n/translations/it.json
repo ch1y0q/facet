@@ -1037,7 +1037,7 @@
     "user_menu": "Menu utente"
   },
   "gallery": {
-    "help": "Ordina per punteggio, data o il tuo gusto personale\nFiltra con la barra laterale: persone, tag, fotocamera, categorie\nCerca per nome file o descrizione\nSulla scheda a fuoco: 1–5 valuta, F preferiti, X scarta (modalità modifica)\n/ attiva la ricerca, B mostra/nasconde la barra laterale, V cambia il layout\n? mostra questo riferimento",
+    "help": "• Ordina per punteggio, data o il tuo gusto personale\n• Filtra con la barra laterale: persone, tag, fotocamera, categorie\n• Cerca per nome file o descrizione\n• Uso da tastiera: vedi la tabella qui sotto",
     "hidden_banner": {
       "message": "{n} foto nascoste dai filtri attivi",
       "some_hidden": "Alcune foto sono nascoste dai tuoi filtri",
@@ -1335,7 +1335,8 @@
       "reject": "Scarta la foto a fuoco",
       "focus_search": "Attiva la ricerca",
       "toggle_sidebar": "Mostra / nascondi la barra laterale",
-      "swap_layout": "Cambia griglia / mosaico"
+      "swap_layout": "Cambia griglia / mosaico",
+      "select": "Seleziona la foto a fuoco"
     }
   },
   "composition_patterns": {

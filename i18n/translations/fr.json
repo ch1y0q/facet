@@ -1037,7 +1037,7 @@
     "user_menu": "Menu utilisateur"
   },
   "gallery": {
-    "help": "Triez par score, date ou votre goût personnel\nFiltrez avec la barre latérale : personnes, tags, appareil, catégories\nRecherchez par nom de fichier ou description\nSur la carte ciblée : 1–5 note, F favori, X rejette (mode édition)\n/ cible la recherche, B affiche la barre latérale, V change la disposition\n? affiche cette référence",
+    "help": "• Triez par score, date ou votre goût personnel\n• Filtrez avec la barre latérale : personnes, tags, appareil, catégories\n• Recherchez par nom de fichier ou description\n• Au clavier : voir le tableau ci-dessous",
     "hidden_banner": {
       "message": "{n} photos masquées par les filtres actuels",
       "some_hidden": "Certaines photos sont masquées par vos filtres",
@@ -1335,7 +1335,8 @@
       "reject": "Rejeter la photo ciblée",
       "focus_search": "Cibler le champ de recherche",
       "toggle_sidebar": "Afficher / masquer la barre latérale",
-      "swap_layout": "Basculer grille / mosaïque"
+      "swap_layout": "Basculer grille / mosaïque",
+      "select": "Sélectionner la photo ciblée"
     }
   },
   "composition_patterns": {

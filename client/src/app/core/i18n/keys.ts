@@ -1350,6 +1350,7 @@ export const I18N = {
       focus_search: "gallery.shortcuts.focus_search",
       toggle_sidebar: "gallery.shortcuts.toggle_sidebar",
       swap_layout: "gallery.shortcuts.swap_layout",
+      select: "gallery.shortcuts.select",
     },
   },
   composition_patterns: {

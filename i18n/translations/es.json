@@ -1037,7 +1037,7 @@
     "user_menu": "Menú de usuario"
   },
   "gallery": {
-    "help": "Ordena por puntuación, fecha o tu gusto personal\nFiltra con la barra lateral: personas, etiquetas, cámara, categorías\nBusca por nombre de archivo o descripción\nEn la tarjeta enfocada: 1–5 puntúa, F favorita, X rechaza (modo edición)\n/ enfoca la búsqueda, B alterna la barra lateral, V cambia el diseño\n? muestra esta referencia",
+    "help": "• Ordena por puntuación, fecha o tu gusto personal\n• Filtra con la barra lateral: personas, etiquetas, cámara, categorías\n• Busca por nombre de archivo o descripción\n• Manejo con teclado: ver la tabla de abajo",
     "hidden_banner": {
       "message": "{n} fotos ocultas por los filtros actuales",
       "some_hidden": "Algunas fotos están ocultas por tus filtros",
@@ -1335,7 +1335,8 @@
       "reject": "Rechazar la foto enfocada",
       "focus_search": "Enfocar el cuadro de búsqueda",
       "toggle_sidebar": "Mostrar / ocultar la barra lateral",
-      "swap_layout": "Cambiar cuadrícula / mosaico"
+      "swap_layout": "Cambiar cuadrícula / mosaico",
+      "select": "Seleccionar la foto enfocada"
     }
   },
   "composition_patterns": {

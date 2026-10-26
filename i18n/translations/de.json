@@ -1037,7 +1037,7 @@
     "user_menu": "Benutzermenü"
   },
   "gallery": {
-    "help": "Nach Bewertung, Datum oder deinem Geschmack sortieren\nSeitenleistenfilter: Personen, Tags, Kamera, Kategorien\nSuche nach Dateiname oder Beschreibung\nAuf der fokussierten Karte 1–5 bewerten, F favorisieren, X verwerfen (Bearbeitungsmodus)\n/ fokussiert die Suche, B blendet die Seitenleiste ein/aus, V wechselt das Layout\n? zeigt diese Referenz",
+    "help": "• Nach Bewertung, Datum oder deinem Geschmack sortieren\n• Mit der Seitenleiste filtern: Personen, Tags, Kamera, Kategorien\n• Suche nach Dateiname oder Beschreibung\n• Tastaturbedienung siehe Tabelle unten",
     "hidden_banner": {
       "message": "{n} Fotos durch aktuelle Filter ausgeblendet",
       "some_hidden": "Einige Fotos werden durch Ihre Filter ausgeblendet",
@@ -1335,7 +1335,8 @@
       "reject": "Fokusfoto verwerfen",
       "focus_search": "Suchfeld fokussieren",
       "toggle_sidebar": "Filterseitenleiste ein-/ausblenden",
-      "swap_layout": "Raster / Mosaik wechseln"
+      "swap_layout": "Raster / Mosaik wechseln",
+      "select": "Fokusfoto auswählen"
     }
   },
   "composition_patterns": {
