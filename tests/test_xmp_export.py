@@ -7,6 +7,7 @@ plus the no-clobber / overwrite behaviour around an existing darktable sidecar.
 
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from xml.etree import ElementTree as ET
@@ -36,6 +37,39 @@ _NS = {
     "dc": "http://purl.org/dc/elements/1.1/",
     "lr": "http://ns.adobe.com/lightroom/1.0/",
 }
+
+
+@pytest.mark.skipif(shutil.which('exiftool') is None, reason='requires ExifTool')
+@pytest.mark.parametrize('embed_original', [False, True])
+@pytest.mark.parametrize('resource', ['missing', 'directory'])
+def test_missing_packaged_exiftool_config_refuses_before_any_write(tmp_path, monkeypatch, embed_original, resource):
+    from PIL import Image
+
+    image = tmp_path / 'photo.jpg'
+    Image.new('RGB', (16, 16), 'blue').save(image)
+    companion = Path(str(image) + '.xmp')
+    companion.write_text(build_xmp(XmpRating(star_rating=1)), encoding='utf-8')
+    before = image.read_bytes(), companion.read_bytes()
+    # Model an installed package lacking its non-Python resource.
+    if resource == 'directory':
+        (tmp_path / 'installed' / 'facet_exiftool.config').mkdir(parents=True)
+    monkeypatch.setattr(xe, '__file__', str(tmp_path / 'installed' / 'xmp_export.py'))
+    with pytest.raises(RuntimeError, match='configuration is unavailable'):
+        write_metadata(str(image), XmpRating(star_rating=5, is_kept=True), embed_original=embed_original)
+    assert (image.read_bytes(), companion.read_bytes()) == before
+
+
+def test_missing_exiftool_config_does_not_prevent_dependency_free_sidecars(tmp_path, monkeypatch):
+    image = tmp_path / 'photo.jpg'
+    image.write_bytes(b'original')
+    monkeypatch.setattr(xe, '__file__', str(tmp_path / 'installed' / 'xmp_export.py'))
+    monkeypatch.setattr(xe, 'exiftool_available', lambda: False)
+    result = write_metadata(str(image), XmpRating(star_rating=5, is_kept=True))
+    assert result['embedded'] is None
+    packet = _parse(Path(result['sidecar']).read_text(encoding='utf-8'))
+    assert packet.get(f'{{{_NS["xmp"]}}}Rating') == '5'
+    assert packet.get(f'{{{xe.NS_FACET}}}ReviewDecision') == 'kept'
+    assert image.read_bytes() == b'original'
 
 
 def _parse(xml: str):

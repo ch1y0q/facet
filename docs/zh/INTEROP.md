@@ -8,6 +8,8 @@
 
 命名空间 `https://github.com/ncoevoet/facet/ns/1.0/` 定义 `facet:ReviewDecision`（`kept`、`rejected`、`undecided`）和 `facet:GPSState`（`set`、`cleared`），以及 `facet:DateState`（`set`），用于标记 Facet 导出到 sidecar 的拍摄日期。保留独立于星级和收藏；淘汰会清除保留、星级和收藏。`--import-sidecars` 在标准审阅字段一致或缺失时应用私人决定。如果标准淘汰状态与私人字段不一致，说明外部编辑器更改了标准字段而保留了旧的私人标签：此时忽略私人决定，标准字段仍按现有的扫描时间规则判断是否导入。只包含决定的导入仍可明确应用，无需比较扫描时间。与标准审阅字段一同导出的决定采用同样的“较新者优先”检查，但尚无审阅状态（无星级、收藏、保留或拒绝）的照片除外：这样重新扫描的照片库仍能恢复其决定，而较旧的导出无法撤销此后做出的决定。已有手动 GPS 默认保留；使用 `--overwrite-manual-gps` 才会覆盖。明确清除的位置可以导入；缺失字段或无效坐标不会清除位置。`--user alice` 遵守该用户的可见目录和私人决定；GPS 仍为共享数据。未指定用户时使用全局状态。ExifTool 保留其他软件的元数据；没有 ExifTool 时，保留原有附属文件并写入 `.facet.xmp`。只有明确请求嵌入时才修改原始文件。
 
+ExifTool 导出需要 Facet 随附的标签定义。如果这些定义不可用，导出会在修改照片或附属文件之前停止；请重新安装 Facet 以恢复它们。
+
 ## RAW 附属文件命名陷阱
 
 Facet 在 `IMG_1234.CR2` 旁导出 `IMG_1234.CR2.xmp`，继续使用 darktable 的完整文件名约定。Lightroom Classic 和 Capture One 通常为专有 RAW 使用 `IMG_1234.xmp`。下面的导入策略不会改变导出文件名。JPEG/HEIC/TIFF/PNG/DNG 可通过 `--embed-originals` 使用文件内嵌通道；GIF/WebP/BMP/AVIF 和专有 RAW 仍需匹配的附属文件命名。
