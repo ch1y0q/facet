@@ -901,6 +901,48 @@ class TestSmartAlbumParity:
         if case not in ("type_top_picks", "empty"):
             assert 0 < page
 
+    @pytest.mark.parametrize("show_rejected", [True, False])
+    @pytest.mark.parametrize("review_status", [None, "kept", "undecided", "rejected"])
+    def test_rejected_filter_albums_preserve_boolean_shape_and_membership(
+            self, edition, seed_photos_prefix, album_cleanup, album_headers, show_rejected, review_status):
+        env, token = edition
+        prefix = ALBUM_DIR + "rejected-parity/"
+        seed_photos_prefix(prefix, [{"path": prefix + state + ".jpg", "filename": state + ".jpg",
+            "is_kept": int(state == "kept"), "is_rejected": int(state == "rejected")}
+            for state in ["undecided", "kept", "rejected"]])
+        filters = {"path_prefix": prefix, "show_rejected": show_rejected}
+        if review_status:
+            filters["review_status"] = review_status
+        created = env.call(token, "create_album", {"name": "rejected parity", "filters": filters})
+        assert created["ok"], created
+        data = created["data"]
+        album_cleanup.append(data["id"])
+        stored = json.loads(data["smart_filter_json"])
+        assert stored.get("show_rejected") is (True if show_rejected else None)
+        expected = [review_status] if review_status else (["rejected"] if show_rejected else ["kept", "undecided"])
+        assert data["photo_count"] == len(expected)
+        reopened = env.client.get(f"/api/albums/{data['id']}", headers=album_headers)
+        assert reopened.status_code == 200, reopened.text
+        assert json.loads(reopened.json()["smart_filter_json"]) == stored
+        members = env.client.get(f"/api/albums/{data['id']}/photos", headers=album_headers)
+        assert members.status_code == 200, members.text
+        # Album membership ignores viewer display hides; reopening the gallery applies them.
+        member_states = expected if show_rejected or review_status else ["kept", "undecided", "rejected"]
+        assert sorted(photo["path"] for photo in members.json()["photos"]) == sorted(prefix + state + ".jpg" for state in member_states)
+        from api.agent.album_filters import query_form
+        from api.agent.tools_read import _hide_defaults
+        page = env.client.get("/api/photos", params={**_hide_defaults({}), **query_form(stored)}, headers=album_headers)
+        assert page.status_code == 200, page.text
+        assert sorted(photo["path"] for photo in page.json()["photos"]) == sorted(prefix + state + ".jpg" for state in expected)
+
+    def test_conflicting_positive_filters_cannot_create_an_album_that_reopens_broader(self, edition, album_photos):
+        env, token = edition
+        before = db_row("SELECT COUNT(*) FROM albums")[0]
+        result = env.call(token, "create_album", {"name": "conflict", "filters": {
+            "show_rejected": True, "favorites_only": True}})
+        assert result["error"] == "invalid_input", result
+        assert db_row("SELECT COUNT(*) FROM albums")[0] == before
+
     def test_every_configured_category_agrees(self, edition, album_photos, album_cleanup, album_headers, monkeypatch):
         from api.types import TYPE_FILTERS
         monkeypatch.setattr(limits, "check_rate", lambda *args: (True, 0.0))  # ~70 calls, past the write window
@@ -948,7 +990,7 @@ class TestSmartAlbumParity:
 
     @pytest.mark.parametrize("filters", [
         {"exclude_tags": "x"}, {"require_tags": "x"}, {"is_silhouette": True}, {"junk_kind": "blurry"},
-        {"narrative_moment": "other"}, {"min_rating": 3}, {"min_aggregate": 5}, {"show_rejected": True},
+        {"narrative_moment": "other"}, {"min_rating": 3}, {"min_aggregate": 5},
         {"hide_bursts": False}, {"hide_rejected": True}, {"gps_lat": 1.0}, {"album_id": 5},
     ])
     def test_unsupported_filters_are_refused_and_create_nothing(self, edition, album_photos, filters):

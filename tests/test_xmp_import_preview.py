@@ -1009,3 +1009,81 @@ def test_malformed_basename_preview_retains_selection_and_parse_diagnostics(tmp_
         assert conn.execute('SELECT star_rating FROM photos').fetchone()[0] == 0
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize('dry_run', [True, False])
+@pytest.mark.parametrize('secret_store', ['missing', 'directory'])
+def test_global_import_cli_does_not_initialize_viewer_secret(tmp_path, dry_run, secret_store):
+    import os
+    import subprocess
+    import sys
+
+    conn, image, db = setup(tmp_path)
+    packet = sidecar(image).read_bytes()
+    conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+    conn.close()
+    before = db.read_bytes()
+    install = tmp_path / 'config'
+    install.mkdir()
+    config = install / 'scoring_config.json'
+    config.write_text('{}', encoding='utf-8')
+    secret = install / '.facet_secret'
+    if secret_store == 'directory':
+        secret.mkdir()
+    environment = os.environ.copy()
+    environment.pop('FACET_JWT_SECRET', None)
+    environment['FACET_CONFIG'] = str(config)
+    command = [sys.executable, 'facet.py', '--db', str(db), '--import-sidecars', str(image)]
+    if dry_run:
+        command.append('--dry-run')
+    result = subprocess.run(command, cwd=Path(__file__).resolve().parents[1],
+                            env=environment, capture_output=True, text=True, encoding='utf-8', timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert 'Traceback' not in result.stderr
+    if dry_run:
+        assert json.loads(result.stdout)['updated'] == 1
+        assert db.read_bytes() == before
+    with sqlite3.connect(db) as output:
+        assert output.execute('SELECT star_rating FROM photos').fetchone()[0] == (1 if dry_run else 5)
+    assert Path(str(image) + '.xmp').read_bytes() == packet
+    assert config.read_bytes() == b'{}'
+    if secret_store == 'directory':
+        assert secret.is_dir() and list(secret.iterdir()) == []
+    else:
+        assert not secret.exists()
+    assert {entry.name for entry in install.iterdir()} == (
+        {'scoring_config.json', '.facet_secret'} if secret_store == 'directory' else {'scoring_config.json'})
+
+
+@pytest.mark.parametrize('database_state', ['corrupt', 'empty'])
+def test_global_import_preview_database_refusal_needs_no_viewer_secret(tmp_path, database_state):
+    import os
+    import subprocess
+    import sys
+
+    db = tmp_path / 'library.db'
+    if database_state == 'corrupt':
+        db.write_bytes(b'not a SQLite database')
+    else:
+        with sqlite3.connect(db):
+            pass
+    before = db.read_bytes()
+    config = tmp_path / 'scoring_config.json'
+    config.write_text('{}', encoding='utf-8')
+    secret = tmp_path / '.facet_secret'
+    secret.mkdir()
+    environment = os.environ.copy()
+    environment.pop('FACET_JWT_SECRET', None)
+    environment['FACET_CONFIG'] = str(config)
+    result = subprocess.run(
+        [sys.executable, 'facet.py', '--db', str(db), '--import-sidecars', '--dry-run'],
+        cwd=Path(__file__).resolve().parents[1], env=environment, capture_output=True,
+        text=True, encoding='utf-8', timeout=30)
+    assert result.returncode == 1
+    assert result.stdout == ''
+    assert 'Sidecar import preview failed' in result.stderr
+    assert 'readable Facet database' in result.stderr
+    assert 'Traceback' not in result.stderr
+    assert db.read_bytes() == before
+    assert secret.is_dir() and list(secret.iterdir()) == []
+    assert config.read_bytes() == b'{}'

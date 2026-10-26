@@ -519,6 +519,8 @@ python facet.py --recompute-average        # Aplica los nuevos pesos
 
 Tras mover los archivos manualmente, `python database.py --relink-photos` permite previsualizar rutas antiguas/nuevas exactas y conservar sus asociaciones en la base. La vista previa es el modo predeterminado. Aplicar exige el ID del plan guardado y `--acknowledge-unverified-identity`: la base no contiene prueba criptográfica del original ausente. Detén visor/escáneres y revisa el plan. Ambas rutas deben permanecer en raíces configuradas con la misma visibilidad de usuarios; se rechazan copias, nombres ambiguos, planes obsoletos y asignaciones de rutas. Los acompañantes deben ser explícitos; los rectángulos manuales requieren revisión en el editor y el estado Immich no cambia. Contrato y ejemplos: [Volver a vincular fotos movidas](RELINK.md).
 
+Aplicar usa el bloqueo de biblioteca: el código 75 indica otro trabajo en curso y el 1, un bloqueo inutilizable. La vista previa no toma el bloqueo.
+
 `sidecar_facet` identifica explícitamente `photo.ext.facet.xmp`; también se rechazan paquetes alternativos no listados. Los planes guardados son privados (0600 en POSIX). Un directorio legible no demuestra que el volumen esté montado: `source_mount_status` sigue en `not_verified`; el operador debe confirmar que el original se movió y no está sin conexión.
 
 ```sh
