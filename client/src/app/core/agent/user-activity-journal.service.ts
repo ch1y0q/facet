@@ -6,6 +6,7 @@ import { pathOf } from '../../shared/utils/url-path';
 export type UserActivityKind =
   | 'rating'
   | 'reject'
+  | 'review'
   | 'favorite'
   | 'cull_confirm'
   | 'cull_skip'

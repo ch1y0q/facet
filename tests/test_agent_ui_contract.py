@@ -64,7 +64,7 @@ def test_version_changes_with_a_description():
 def test_ui_get_context_describes_the_culling_block_and_its_activity_kinds():
     description = next(t for t in UI_TOOLS if t.name == "ui_get_context").description
     for term in ("culling", "plan_digest", "groups_total", "confirmed", "pending", "changed", "untouched",
-                 "cull_confirm", "cull_skip"):
+                 "cull_confirm", "cull_skip", "review (a manual Keep or Reset: value kept or undecided)"):
         assert term in description, term
     for gone in ("review.applied", "groups_applied", "`review`"):
         assert gone not in description, gone
