@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Clear private review bookmarks on logout.** Remove every identity’s browser-local queue filters and prevent pending reads from recreating them; normal same-account navigation and reloads still retain resume queues.
+
 ## [1.24.0] "Diaphragme" — 2026-10-26
 
 
