@@ -208,6 +208,50 @@ def test_epoch_zero_metadata_date_never_falls_back_to_recent_file_mtime(tmp_path
         conn.close()
 
 
+@pytest.mark.parametrize('database_state', ['missing', 'corrupt', 'unreadable', 'empty'])
+def test_cli_preview_refuses_unusable_database_without_traceback_or_writes(tmp_path, database_state):
+    import os
+    import subprocess
+    import sys
+
+    db = tmp_path / 'library.db'
+    if database_state == 'corrupt':
+        db.write_bytes(b'not a SQLite database')
+    elif database_state == 'empty':
+        with sqlite3.connect(db):
+            pass
+    elif database_state == 'unreadable':
+        db.write_bytes(b'private database')
+        db.chmod(0)
+        if os.access(db, os.R_OK):
+            db.chmod(0o600)
+            pytest.skip('This account can read files with all permission bits removed')
+    before = db.read_bytes() if db.exists() and database_state != 'unreadable' else None
+    try:
+        result = subprocess.run(
+            [sys.executable, 'facet.py', '--db', str(db), '--import-sidecars', '--dry-run'],
+            cwd=Path(__file__).resolve().parents[1], capture_output=True,
+            text=True, encoding='utf-8', timeout=30,
+        )
+        assert result.returncode == 1
+        assert result.stdout == ''
+        assert 'Sidecar import preview failed' in result.stderr
+        assert 'readable Facet database' in result.stderr
+        assert 'Traceback' not in result.stderr
+        assert 'sqlite3.' not in result.stderr
+        if database_state == 'missing':
+            assert not db.exists()
+        elif before is not None:
+            assert db.read_bytes() == before
+        assert not Path(str(db) + '-wal').exists()
+        assert not Path(str(db) + '-shm').exists()
+        assert not Path(str(db) + '-journal').exists()
+    finally:
+        if database_state == 'unreadable':
+            db.chmod(0o600)
+            assert db.read_bytes() == b'private database'
+
+
 def test_cli_preview_opens_existing_database_readonly_without_schema_migration(tmp_path):
     import subprocess
     import sys
