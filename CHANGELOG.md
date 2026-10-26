@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - **Keep targeted gallery repairs targeted.** Returning from a photo retries cancelled row updates without replaying completed pages when paging was idle and membership stays unchanged. A row leaving a paginated filter refills loaded pages to prevent skipped results. Failed repairs retain their targets, and obsolete returns cannot start follow-up reads for another account or filter.
+- **Match focus peaking to each compare pane.** Track render failures and retries per pane so a previous single-view fallback does not select the wrong image source in compare mode.
 - **Readable sidecar import preview errors.** Missing, unreadable or invalid databases now produce a clear refusal instead of a SQLite traceback, without creating or upgrading the database.
 
 ## [1.24.0] "Diaphragme" — 2026-10-26
