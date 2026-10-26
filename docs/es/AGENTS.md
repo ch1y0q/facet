@@ -63,7 +63,7 @@ Las trece herramientas de datos son de solo lectura:
 | `status` | Quién es el token, su nivel efectivo y las banderas del servidor y las pestañas abiertas que puede manejar |
 | `available_actions` | Las tareas que se aplican ahora a su pestaña abierta y a este token, cada una con sus herramientas; las herramientas por encima del nivel del token no se listan |
 
-En cada objeto de filtros, `show_rejected` es un booleano: `true` lista solo las fotos descartadas, `false` u omitido da el listado normal. Los agentes pueden aplicar `show_rejected` con `ui_set_gallery_filters` y mostrar estas búsquedas en la pestaña. Un `review_status` explícito determina la decisión de revisión en lugar de `show_rejected` o `hide_rejected`.
+En cada objeto de filtros, `show_rejected` es un booleano: `true` lista solo las fotos descartadas, `false` u omitido da el listado normal. Los agentes pueden aplicar `show_rejected` con `ui_set_gallery_filters` y mostrar estas búsquedas en la pestaña. Un `review_status` explícito determina la decisión de revisión en lugar de `show_rejected` o `hide_rejected`. Los álbumes inteligentes también pueden guardar este filtro; false se omite. Combinar `show_rejected: true` y `favorites_only: true` se rechaza en los cambios de pestaña y la creación de álbumes inteligentes (`invalid_input`); la búsqueda sigue devolviendo su intersección, pero informa `shown_in_tab.reason: invalid_combination` y no modifica la pestaña.
 
 ## Los resultados se muestran en tu pestaña
 

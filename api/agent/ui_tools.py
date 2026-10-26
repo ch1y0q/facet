@@ -72,6 +72,14 @@ TAB_UNSUPPORTED_FILTER_KEYS = frozenset({
     "exclude_tags", "require_tags", "is_silhouette", "junk_kind", "narrative_moment",
     "min_rating", "min_aggregate",
 })
+
+
+def conflicting_rejected_filters(filters: dict) -> bool:
+    """The tab cannot represent both positive filters without clearing one."""
+    return all(filters.get(key) == 1 or str(filters.get(key, "")).strip().lower() in ("1", "true")
+               for key in ("show_rejected", "favorites_only"))
+
+
 # The contract names a filter the way the server's `GalleryParams` does; the tab's store keeps a few under
 # another name. Python is canonical: the client's own table is checked against the emitted JSON.
 CONTRACT_TO_CLIENT_KEY = {
@@ -119,6 +127,8 @@ class _PatchBase(BaseModel):
 
     @model_validator(mode="after")
     def _check_patch(self) -> "_PatchBase":
+        if conflicting_rejected_filters(self.model_dump()):
+            raise ValueError("`show_rejected` and `favorites_only` cannot be combined in the tab")
         threshold = getattr(self, "semantic_threshold", None)
         similarity = getattr(self, "min_similarity", None)
         if threshold is not None and not 0 <= threshold <= SEMANTIC_THRESHOLD_MAX:
@@ -336,6 +346,9 @@ UI_TOOLS: tuple[UiTool, ...] = (
     UiTool("ui_set_gallery_filters",
            "Change the gallery filters and sort in the user's open tab. `patch` merges into the "
            "current filters (null removes one); `replace: true` starts from none."
+           " Refused with `invalid_input` when `show_rejected` and `favorites_only` are both true;"
+           " the tab cannot represent that intersection. Explicit `review_status` takes precedence"
+           " over `show_rejected` and `hide_rejected`."
            " Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines.",
            UiSetGalleryFilters, False),
     UiTool("ui_get_gallery_view",

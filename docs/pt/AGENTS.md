@@ -63,7 +63,7 @@ As treze ferramentas de dados são só de leitura:
 | `status` | Quem é o token, o seu nível efetivo e as sinalizações do servidor e os separadores abertos que pode controlar |
 | `available_actions` | As tarefas que se aplicam agora à sua aba aberta e a este token, cada uma com as suas ferramentas; ferramentas acima do nível do token não são listadas |
 
-Em cada objeto de filtros, `show_rejected` é um booleano: `true` lista apenas as fotos rejeitadas, `false` ou omitido dá a listagem normal. Os agentes podem aplicar `show_rejected` com `ui_set_gallery_filters` e mostrar estas pesquisas na aba. Um `review_status` explícito determina a decisão de revisão em vez de `show_rejected` ou `hide_rejected`.
+Em cada objeto de filtros, `show_rejected` é um booleano: `true` lista apenas as fotos rejeitadas, `false` ou omitido dá a listagem normal. Os agentes podem aplicar `show_rejected` com `ui_set_gallery_filters` e mostrar estas pesquisas na aba. Um `review_status` explícito determina a decisão de revisão em vez de `show_rejected` ou `hide_rejected`. Os álbuns inteligentes também podem guardar este filtro; false é omitido. Combinar `show_rejected: true` e `favorites_only: true` é recusado nas alterações da aba e na criação de álbuns inteligentes (`invalid_input`); a pesquisa continua a devolver a interseção, mas informa `shown_in_tab.reason: invalid_combination` e mantém a aba inalterada.
 
 ## Os resultados aparecem na sua aba
 

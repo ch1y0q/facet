@@ -308,6 +308,36 @@ class TestCreateAlbumFromTheView:
         assert [(c["tool"], c["args"]) for c in tab.calls] == [("ui_get_gallery_view", {"limit": 1})]
         assert len(albums_named(ALBUM_PREFIX + "view")) == 1
 
+    @pytest.mark.parametrize("show_rejected", [True, False])
+    def test_rejected_only_view_is_saved_and_reads_the_same_members(self, setup, made_albums, show_rejected):
+        with sqlite3.connect(_TEST_DB_FILE.name) as conn:
+            conn.execute("UPDATE photos SET is_rejected = ? WHERE path = ?", [int(show_rejected), PATHS[0]])
+        stored = {"path_prefix": PFX, "show_rejected": show_rejected}
+        expected = PATHS[:1] if show_rejected else PATHS
+        view = gallery_view(stored, total=len(expected), filters={"path_prefix": PFX, "show_rejected": "1" if show_rejected else "0"})
+        env, token, _ = setup(view)
+        result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "rejected", "target": "view"})
+        assert result["ok"], result
+        assert json.loads(result["data"]["smart_filter_json"])["show_rejected"] is show_rejected
+        members = env.client.get(f"/api/albums/{result['data']['id']}/photos", headers=env.login(edition=True))
+        assert members.status_code == 200, members.text
+        assert sorted(photo["path"] for photo in members.json()["photos"]) == sorted(expected)
+
+    @pytest.mark.parametrize("value", ["0", "1"])
+    def test_rejected_only_view_requires_the_clients_boolean_shape(self, setup, made_albums, value):
+        env, token, _ = setup(gallery_view({"path_prefix": PFX, "show_rejected": value}))
+        name = ALBUM_PREFIX + "bad rejected shape"
+        result = env.call(token, "create_album", {"name": name, "target": "view"})
+        assert result["error"] == "invalid_input", result
+        assert albums_named(name) == []
+
+    def test_conflicting_positive_view_filters_create_nothing(self, setup, made_albums):
+        env, token, _ = setup(gallery_view({"path_prefix": PFX, "show_rejected": True, "favorites_only": True}))
+        name = ALBUM_PREFIX + "conflicting filters"
+        result = env.call(token, "create_album", {"name": name, "target": "view"})
+        assert result["error"] == "invalid_input", result
+        assert albums_named(name) == []
+
     def test_a_top_picks_view_is_stored_with_its_type(self, setup, made_albums):
         env, token, _ = setup(gallery_view({"type": "top_picks", "path_prefix": PFX}, total=0))
         result = env.call(token, "create_album", {"name": ALBUM_PREFIX + "picks", "target": "view"})

@@ -120,6 +120,18 @@ class TestSearchRelay:
         assert tab.calls[0]["args"]["patch"]["show_rejected"] is True
         assert tab.calls[0]["args"]["replace"] is True
 
+    def test_favorite_reject_intersection_is_not_broadened_in_the_tab(self, agent_app, fake_tab, seed_photos_prefix):
+        seed_photos_prefix(PREFIX, [{**row, "is_rejected": int(i > 0), "is_favorite": int(i == 1)}
+                                   for i, row in enumerate(ROWS)])
+        env = agent_app("open")
+        tab = fake_tab(env, None, reply=reply_total(1))
+        result = env.call(env.token(env.login()), "search_photos", {"filters": {
+            "path_prefix": PREFIX, "show_rejected": True, "favorites_only": True}})
+        assert result["ok"] is True
+        assert [row["path"] for row in result["data"]["rows"]] == [ROWS[1]["path"]]
+        assert result["shown_in_tab"]["reason"] == "invalid_combination"
+        assert tab.calls == []
+
     def test_a_tab_on_the_comparison_page_is_left_alone(self, agent_app, fake_tab, photos):
         env = agent_app("open")
         tab = fake_tab(env, None, reply=reply_total(7), route="/compare")

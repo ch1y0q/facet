@@ -63,7 +63,7 @@ I tredici strumenti dati sono di sola lettura:
 | `status` | Chi è il token, il suo livello effettivo e i flag del server e le schede aperte che può pilotare |
 | `available_actions` | Le attività che si applicano ora alla scheda aperta e a questo token, ciascuna con i suoi strumenti; gli strumenti oltre il livello del token non sono elencati |
 
-In ogni oggetto filtro, `show_rejected` è un booleano: `true` elenca solo le foto scartate, `false` o omesso dà l'elenco normale. Gli agenti possono applicare `show_rejected` con `ui_set_gallery_filters` e mostrare queste ricerche nella scheda. Un `review_status` esplicito determina la decisione di revisione al posto di `show_rejected` o `hide_rejected`.
+In ogni oggetto filtro, `show_rejected` è un booleano: `true` elenca solo le foto scartate, `false` o omesso dà l'elenco normale. Gli agenti possono applicare `show_rejected` con `ui_set_gallery_filters` e mostrare queste ricerche nella scheda. Un `review_status` esplicito determina la decisione di revisione al posto di `show_rejected` o `hide_rejected`. Anche gli album intelligenti possono salvare questo filtro; false viene omesso. La combinazione di `show_rejected: true` e `favorites_only: true` viene rifiutata nelle modifiche della scheda e nella creazione di album intelligenti (`invalid_input`); la ricerca restituisce comunque l’intersezione, ma segnala `shown_in_tab.reason: invalid_combination` e lascia invariata la scheda.
 
 ## I risultati compaiono nella tua scheda
 

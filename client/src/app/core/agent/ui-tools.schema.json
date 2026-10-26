@@ -647,7 +647,7 @@
         "readOnlyHint": false,
         "untrustedContentHint": true
       },
-      "description": "Change the gallery filters and sort in the user's open tab. `patch` merges into the current filters (null removes one); `replace: true` starts from none. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
+      "description": "Change the gallery filters and sort in the user's open tab. `patch` merges into the current filters (null removes one); `replace: true` starts from none. Refused with `invalid_input` when `show_rejected` and `favorites_only` are both true; the tab cannot represent that intersection. Explicit `review_status` takes precedence over `show_rejected` and `hide_rejected`. Refused with `unsaved_decisions` when it would leave /culling while the user holds unconfirmed decisions; `navigation_refused` when the tab declines. Refused with `modal_open` while a dialog, bottom sheet or slideshow is open in the tab; read-only tools are not affected.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -2112,5 +2112,5 @@
       "name": "ui_show_comparison"
     }
   ],
-  "version": "82c67fd6fb8f32ce"
+  "version": "168cbf013dde31ba"
 }

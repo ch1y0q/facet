@@ -63,7 +63,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `status` | 令牌是谁、它的有效级别、服务器标志以及它能控制的已打开标签页 |
 | `available_actions` | 此刻适用于你已打开的标签页和该令牌的任务,每项附带其工具;超出令牌级别的工具不会列出 |
 
-在每个筛选对象中，`show_rejected` 是布尔值：`true` 只列出被淘汰的照片，`false` 或省略则为常规列表。代理可通过 `ui_set_gallery_filters` 应用 `show_rejected`，并在标签页中显示仅含淘汰照片的搜索。明确设置的 `review_status` 决定审阅状态，优先于 `show_rejected` 和 `hide_rejected`。
+在每个筛选对象中，`show_rejected` 是布尔值：`true` 只列出被淘汰的照片，`false` 或省略则为常规列表。代理可通过 `ui_set_gallery_filters` 应用 `show_rejected`，并在标签页中显示仅含淘汰照片的搜索。明确设置的 `review_status` 决定审阅状态，优先于 `show_rejected` 和 `hide_rejected`。智能相册也可保存此筛选，false 会省略。标签页修改和智能相册创建会拒绝同时设置 `show_rejected: true` 与 `favorites_only: true`（`invalid_input`）；搜索仍返回两者的交集，但报告 `shown_in_tab.reason: invalid_combination`，并保持标签页不变。
 
 ## 结果会显示在你的标签页中
 

@@ -23,7 +23,7 @@ from api.agent.album_filters import unsupported as unsupported_filters
 from api.agent.bridge import TabRegistry
 from api.agent.internal_client import InternalClient, err
 from api.agent.tokens import ResolvedGrant
-from api.agent.ui_tools import SMART_ALBUM_EXCLUDE_KEYS, TAB_UNSUPPORTED_FILTER_KEYS
+from api.agent.ui_tools import SMART_ALBUM_EXCLUDE_KEYS, TAB_UNSUPPORTED_FILTER_KEYS, conflicting_rejected_filters
 from api.models.gallery import GALLERY_PAGING_KEYS, gallery_filter_keys, query_value
 
 SELECTION = "selection"
@@ -238,6 +238,10 @@ def _stored_view(raw: Any) -> tuple[Optional[dict], dict]:
     refused = [key for key in parsed if key in SMART_ALBUM_EXCLUDE_KEYS or key in TAB_UNSUPPORTED_FILTER_KEYS]
     if refused:
         return unsupported_filters(refused), {}
+    if "show_rejected" in parsed and not isinstance(parsed["show_rejected"], bool):
+        return _view_refusal("The tab's rejected-only filter must be a boolean"), {}
+    if conflicting_rejected_filters(parsed):
+        return _view_refusal("`show_rejected` and `favorites_only` cannot be combined in a smart album"), {}
     return None, parsed
 
 
