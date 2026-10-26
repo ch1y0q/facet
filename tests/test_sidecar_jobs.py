@@ -140,7 +140,7 @@ def test_api_returns_before_export_completes_and_rechecks_visibility(edition_cli
         assert entered.wait(3)
         response = edition_client.get(f'/api/export/sidecar_jobs/{job_id}')
         assert response.json()['processed'] == 0
-        assert edition_client.post('/api/export/sidecar_jobs', json={'paths': paths}).status_code == 409
+        assert edition_client.post('/api/export/sidecar_jobs', json={'paths': paths}).status_code == 503
         # Revocation of filesystem scope prevents the next file write.
         monkeypatch.setitem(config.VIEWER_CONFIG, 'scan_directories', [str(tmp_path / 'other')])
     finally:
@@ -367,8 +367,10 @@ def test_api_distinguishes_unusable_lock_from_busy(edition_client, monkeypatch, 
     monkeypatch.setattr(jobs, 'start', refuse)
     route = '/api/export/sidecar_jobs' + ('/job/retry' if operation == 'retry' else '')
     response = edition_client.post(route, json={'paths': ['/unregistered-job-fixture.jpg']})
-    assert response.status_code == (503 if unusable else 409), response.text
-    assert ('lock is unavailable' if unusable else 'library job') in response.json()['detail'].lower()
+    assert response.status_code == 503, response.text
+    assert ('lock is unavailable' if unusable else 'library_busy') in response.json()['detail'].lower()
+    assert ('Retry-After' in response.headers) is not unusable
+    assert response.headers['Cache-Control'] == 'no-store'
     assert 'private-cache-path' not in response.text
 
 
@@ -472,3 +474,144 @@ def test_background_export_preserves_foreign_keywords_and_ai_manual_provenance(e
     assert parsed['keyword_state']['manual'] == ['manual', 'shared']
     assert 'foreign' in parsed['tags']
     assert image.read_bytes() == original
+
+
+@pytest.fixture(params=['start', 'retry'])
+def job_admission(request, library, edition_client, monkeypatch):
+    from api import database
+    from fastapi.testclient import TestClient
+
+    # Each admission test owns its entire real cache directory and lock.
+    monkeypatch.setattr(database, 'DEFAULT_DB_PATH', library)
+    client = TestClient(edition_client.app, raise_server_exceptions=False)
+    route = '/api/export/sidecar_jobs'
+    payload = {'paths': ['/unregistered-admission-photo.jpg']}
+    if request.param == 'retry':
+        response = client.post(route, json=payload)
+        assert response.status_code == 202, response.text
+        _done(library, response.json()['id'], 'test')
+        route += '/' + response.json()['id'] + '/retry'
+    try:
+        yield library, client, route, payload
+    finally:
+        client.close()
+
+
+def test_api_real_held_library_lock_uses_busy_contract(job_admission):
+    from facet import LibraryLock
+    from api.db_helpers import LIBRARY_BUSY_DETAIL, LIBRARY_BUSY_RETRY_AFTER_SECONDS
+
+    library, client, route, payload = job_admission
+    directory = jobs._directory(library)
+    before = {path.name: path.read_bytes() for path in directory.iterdir()}
+    with LibraryLock(library, 'scan'):
+        response = client.post(route, json=payload)
+        assert response.status_code == 503, response.text
+        assert response.json() == {'detail': LIBRARY_BUSY_DETAIL}
+        assert response.headers['Cache-Control'] == 'no-store'
+        assert response.headers['Retry-After'] == str(LIBRARY_BUSY_RETRY_AFTER_SECONDS)
+        assert library_job_holder(library)['kind'] == 'scan'
+        assert {path.name: path.read_bytes() for path in directory.iterdir()} == before
+    recovered = client.post(route, json=payload)
+    assert recovered.status_code == 202, recovered.text
+    assert _done(library, recovered.json()['id'], 'test')['processed'] == 1
+
+
+@pytest.mark.parametrize('obstruction', ['directory', 'plan', 'receipt'])
+def test_api_real_receipt_storage_failure_is_safe_and_recoverable(job_admission, monkeypatch, obstruction):
+    from uuid import UUID
+
+    library, client, route, payload = job_admission
+    directory = jobs._directory(library)
+    existing = {path.name: path.read_bytes() for path in directory.iterdir()}
+    job_id = '11111111-1111-4111-8111-111111111111'
+    monkeypatch.setattr(jobs, 'uuid4', lambda: UUID(job_id))
+    blocker = directory if obstruction == 'directory' else directory / (job_id + ('.plan' if obstruction == 'plan' else '.json'))
+    # Real portable publication errors; chmod is ineffective for privileged CI.
+    if obstruction == 'directory':
+        parked = directory.with_name('parked-receipts')
+        directory.rename(parked)
+        blocker.write_bytes(b'keep existing obstruction')
+    else:
+        blocker.mkdir()
+        (blocker / 'keep').write_bytes(b'keep existing obstruction')
+    runs = []
+    original_run = jobs._run
+    def run(*args):
+        runs.append(args[0])
+        return original_run(*args)
+    monkeypatch.setattr(jobs, '_run', run)
+    response = client.post(route, json=payload)
+    assert response.status_code == 503, response.text
+    assert response.json() == {'detail': 'Export job storage is unavailable; check server logs and library cache permissions'}
+    assert 'Retry-After' not in response.headers
+    assert response.headers['Cache-Control'] == 'no-store'
+    assert str(Path(library).parent) not in response.text
+    assert runs == []
+    assert library_job_holder(library) is None
+    if obstruction == 'directory':
+        assert blocker.read_bytes() == b'keep existing obstruction'
+        blocker.unlink()
+        parked.rename(directory)
+    else:
+        assert (blocker / 'keep').read_bytes() == b'keep existing obstruction'
+        (blocker / 'keep').unlink()
+        blocker.rmdir()
+    # Neither a partial plan/receipt nor private temporary files survived.
+    assert {path.name: path.read_bytes() for path in directory.iterdir()} == existing
+    recovered = client.post(route, json=payload)
+    assert recovered.status_code == 202, recovered.text
+    result = _done(library, recovered.json()['id'], 'test')
+    assert result['processed'] == result['skipped'] == 1
+    assert len(runs) == 1
+
+
+
+def test_api_real_unusable_library_lock_has_no_retry_hint(job_admission):
+    from facet import _library_lock_path
+
+    library, client, route, payload = job_admission
+    directory = jobs._directory(library)
+    before = {path.name: path.read_bytes() for path in directory.iterdir()}
+    lock_path = Path(_library_lock_path(library))
+    lock_path.unlink(missing_ok=True)
+    lock_path.mkdir()
+    (lock_path / 'keep').write_bytes(b'keep existing obstruction')
+    response = client.post(route, json=payload)
+    assert response.status_code == 503, response.text
+    assert response.json()['detail'] == 'Library lock is unavailable; check server logs and library cache permissions'
+    assert 'Retry-After' not in response.headers
+    assert response.headers['Cache-Control'] == 'no-store'
+    assert str(Path(library).parent) not in response.text
+    assert {path.name: path.read_bytes() for path in directory.iterdir()} == before
+    assert (lock_path / 'keep').read_bytes() == b'keep existing obstruction'
+    (lock_path / 'keep').unlink()
+    lock_path.rmdir()
+    recovered = client.post(route, json=payload)
+    assert recovered.status_code == 202, recovered.text
+    assert _done(library, recovered.json()['id'], 'test')['processed'] == 1
+
+
+@pytest.mark.parametrize('operation', ['recent', 'status', 'cancel'])
+def test_job_read_routes_share_safe_storage_error_mapping(library, edition_client, monkeypatch, operation):
+    from api import database
+
+    monkeypatch.setattr(database, 'DEFAULT_DB_PATH', library)
+    directory = jobs._directory(library)
+    directory.rmdir()
+    directory.write_bytes(b'keep existing obstruction')
+    job_id = '11111111-1111-4111-8111-111111111111'
+    route = '/api/export/sidecar_jobs' + ('' if operation == 'recent' else '/' + job_id)
+    response = (edition_client.post(route + '/cancel') if operation == 'cancel'
+                else edition_client.get(route))
+    assert response.status_code == 503, response.text
+    assert response.json()['detail'] == 'Export job storage is unavailable; check server logs and library cache permissions'
+    assert response.headers['Cache-Control'] == 'no-store'
+    assert 'Retry-After' not in response.headers
+    assert str(Path(library).parent) not in response.text
+    assert directory.read_bytes() == b'keep existing obstruction'
+    directory.unlink()
+    recovered = (edition_client.post(route + '/cancel') if operation == 'cancel'
+                 else edition_client.get(route))
+    assert recovered.status_code == (200 if operation == 'recent' else 404)
+    assert recovered.headers['Cache-Control'] == 'no-store'

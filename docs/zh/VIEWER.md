@@ -1575,7 +1575,7 @@ python database.py --stats-info
 |----------|-------------|
 | `POST /api/photo/export_xmp` | `[Edition]` 写入一个 XMP 附属文件 |
 | `POST /api/export/sidecars` | `[Edition]` 为显式给出的路径或一组筛选条件写入附属文件。请求体 `{paths?, filters?, exclude?, overwrite}`——必须恰好是 `paths`（最多 10000）或一组照片库 `filters` 之一：两者都给返回 `422`，都不给返回 `400`。`exclude`（可选，最多 1000）会从所发送的目标中剔除指定路径——从 `paths` 中减去，或从 `filters` 范围中排除；`filters` 会走与 `GET /api/photos` 相同的归一化流程，与下面的 `POST /api/cull/apply` 完全一致，而指定了相册的 `filters` 会像该相册自身的 GET 一样做访问检查——相册不存在返回 `404`，在受访问控制的安装上访问他人的相册返回 `403`。匹配超过 10000 张照片的 `filters` 会以 `412` 拒绝并给出数量和上限，该计数在构建任何路径列表之前完成，且绝不截断 |
-| `POST /api/export/sidecar_jobs` | `[Edition]` 启动有限的后台附属文件导出；paths 或 filters、exclude、overwrite；返回私人进度记录（202） |
+| `POST /api/export/sidecar_jobs` | `[Edition]` 启动有限的后台附属文件导出；paths 或 filters、exclude、overwrite；返回私人进度记录（202）。启动和重试在图库锁被占用时返回 `503 library_busy` 及 `Retry-After: 5`。锁无法使用或回执存储不可用时返回不同的 `503`，不附带重试提示；请检查服务器日志和图库缓存权限。重试仍在运行的导出仍返回 `409`。 |
 | `GET /api/export/sidecar_jobs` | `[Edition]` 读取调用者最近最多 20 条导出记录 |
 | `GET /api/export/sidecar_jobs/{id}` | `[Edition]` 读取调用者拥有的导出进度 |
 | `POST /api/export/sidecar_jobs/{id}/cancel` | `[Edition]` 请求在文件之间停止；已完成的写入保留 |
