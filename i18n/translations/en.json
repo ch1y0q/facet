@@ -2591,7 +2591,12 @@
       "refresh": "Refresh status",
       "recent": "Recent sidecar exports",
       "none": "No recent sidecar exports.",
-      "read_failed": "Could not read export progress. Refresh to check again."
+      "read_failed": "Could not read export progress. Refresh to check again.",
+      "errors": {
+        "metadata_repair": "Existing metadata needs repair before exporting.",
+        "write_failed": "Could not write metadata. Check the server logs.",
+        "stopped": "Export stopped unexpectedly. Check the server logs and retry the remaining photos."
+      }
     }
   },
   "undo": {

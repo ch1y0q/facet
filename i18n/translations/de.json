@@ -2591,7 +2591,12 @@
       "refresh": "Status aktualisieren",
       "recent": "Letzte Sidecar-Exporte",
       "none": "Keine letzten Sidecar-Exporte.",
-      "read_failed": "Exportfortschritt nicht lesbar. Aktualisieren Sie den Status erneut."
+      "read_failed": "Exportfortschritt nicht lesbar. Aktualisieren Sie den Status erneut.",
+      "errors": {
+        "metadata_repair": "Vorhandene Metadaten müssen vor dem Export repariert werden.",
+        "write_failed": "Metadaten konnten nicht geschrieben werden. Prüfen Sie die Serverprotokolle.",
+        "stopped": "Der Export wurde unerwartet beendet. Prüfen Sie die Serverprotokolle und wiederholen Sie die übrigen Fotos."
+      }
     }
   },
   "undo": {

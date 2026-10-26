@@ -22,6 +22,7 @@ All notable changes to Facet are documented in this file.
 - **Keep menu and selector keys inside their controls.** Gallery view shortcuts and photo rating shortcuts no longer intercept typing or keyboard navigation in menus, comboboxes and selection lists.
 - **Relink applies respect running library jobs.** Both relink command entry points hold the shared maintenance lock while applying a reviewed plan; read-only previews remain available while another job runs.
 - **Make export job controls clearer for assistive technology.** Refresh controls have distinct names, the viewed receipt is identified, and live announcements cover status changes rather than the entire progress panel.
+- **Translate sidecar export errors.** The export dialog showed the server's English error message in every language. Job status now carries a `first_error_code` that the dialog maps to a translated message; `first_error` keeps its English text for API and agent callers.
 - **Show the manual-face review filter chip.** The active filter can be removed above the gallery without clearing other filters.
 - **Keep review progress steady during updates.** Review rebuilds fetch counts once, retain the same-scope summary while loading, and announce updated counts without moving focus. Account or scope changes hide old counts immediately.
 - **Recover face exports after a temporary ExifTool version-check failure.** Failed checks are retried rather than disabling face writes until restart; known defective versions remain refused before any metadata write.

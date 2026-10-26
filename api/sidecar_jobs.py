@@ -21,7 +21,9 @@ _TERMINAL = {'completed', 'cancelled', 'failed', 'interrupted'}
 METADATA_REPAIR_MESSAGE = 'Existing metadata needs repair before exporting'
 WRITE_FAILURE_MESSAGE = 'Failed to write metadata; check server logs'
 _STOPPED_MESSAGE = 'Export stopped unexpectedly; inspect server logs and retry remaining photos'
-_PUBLIC_ERRORS = {METADATA_REPAIR_MESSAGE, WRITE_FAILURE_MESSAGE, _STOPPED_MESSAGE}
+# Stable codes the client maps to translated text; the English messages stay for API and agent callers.
+_ERROR_CODES = {METADATA_REPAIR_MESSAGE: 'metadata_repair', WRITE_FAILURE_MESSAGE: 'write_failed',
+                _STOPPED_MESSAGE: 'stopped'}
 
 
 def _directory(db_path):
@@ -118,9 +120,10 @@ def _open_receipt(path):
 def _public(state, *, cancel_requested):
     result = {key: value for key, value in state.items() if key not in {'owner', 'retry'}}
     # Older receipts can contain raw exception text, including server paths.
-    if result.get('first_error') and result['first_error'] not in _PUBLIC_ERRORS:
+    if result.get('first_error') and result['first_error'] not in _ERROR_CODES:
         result['first_error'] = WRITE_FAILURE_MESSAGE
-    return result | {'cancel_requested': cancel_requested}
+    return result | {'first_error_code': _ERROR_CODES.get(result.get('first_error')),
+                     'cancel_requested': cancel_requested}
 
 
 def _read(path):
