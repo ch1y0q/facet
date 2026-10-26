@@ -978,6 +978,22 @@ def test_pillow_heif_transposes_probe_agrees_with_the_decoder():
     assert image_loading._pillow_heif_transposes() is probe  # cached, not re-derived
 
 
+@requires_heif
+@pytest.mark.parametrize('decoder_transposes, expected_orientation', [(True, 1), (False, 8)])
+def test_native_pq_exif_is_neutralised_only_when_the_decoder_already_turned_the_plane(
+        monkeypatch, decoder_transposes, expected_orientation):
+    """Neutralise on a transposing decoder; pass the blob verbatim on one that leaves the plane alone."""
+    monkeypatch.setattr(image_loading, '_heif_transposes', decoder_transposes)
+    img = image_loading._decode_pq_native(
+        CANON_PQ_ROTATED_HIF, image_loading.get_hdr_pq_tonemap_settings())
+    assert img is not None
+    exif = img.info['exif']
+    Image_, _ = image_loading._ensure_pil()
+    parsed = Image_.Exif()
+    parsed.load(exif[6:] if exif[:6] == b'Exif\x00\x00' else exif)
+    assert parsed.get(image_loading._EXIF_ORIENTATION_TAG) == expected_orientation
+
+
 def test_exif_with_neutral_orientation_rewrites_only_the_orientation():
     Image_, _ = image_loading._ensure_pil()
     exif = Image_.Exif()
