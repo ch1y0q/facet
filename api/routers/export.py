@@ -390,7 +390,9 @@ def _write_sidecars_for_paths(conn, paths, user_id, overwrite):
             logger.exception("Failed to write metadata for %s", path)
             errors += 1
             if first_error is None:
-                first_error = str(ex)[:300]
+                first_error = (sidecar_jobs.METADATA_REPAIR_MESSAGE
+                               if isinstance(ex, MetadataPreconditionError)
+                               else sidecar_jobs.WRITE_FAILURE_MESSAGE)
     return {
         "ok": True,
         "written": written,
