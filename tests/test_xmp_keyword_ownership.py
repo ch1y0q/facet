@@ -356,7 +356,7 @@ def test_embedded_marker_and_unicode_case_normalization_preserve_foreign_collisi
     result = run_exiftool_process(['exiftool', '-overwrite_original', '-XMP-dc:Subject=CAFÉ', '-XMP-dc:Subject=STRASSE', str(image)], timeout=30)
     assert result.returncode == 0, result.stderr
     write_metadata(str(image), XmpRating(), embed_original=True, reconcile_keywords=True)
-    flat, _ = xe._read_existing_keywords(str(image), xe._resolve_exiftool(), timeout=30, strict=True)
+    flat, _, _ = xe._read_existing_metadata(str(image), xe._resolve_exiftool(), timeout=30, strict=True)
     assert flat == ['CAFÉ']
     state = xe._read_keyword_state(str(image), xe._resolve_exiftool(), timeout=30)
     assert state['deleted'] == ['Straße']
@@ -417,7 +417,7 @@ def test_raw_json_keyword_tokens_preserve_exact_lexical_names(monkeypatch):
 @pytest.mark.skipif(not exiftool_available(), reason='requires ExifTool')
 @pytest.mark.parametrize('reconcile', [False, True])
 @pytest.mark.parametrize('embed', [False, True])
-def test_real_numeric_keywords_survive_cli_writer_paths(tmp_path, embed, reconcile):
+def test_real_numeric_keywords_survive_cli_writer_paths(tmp_path, embed, reconcile, seed_keywords):
     import subprocess
     from PIL import Image
     from processing import xmp_export as xe
@@ -434,17 +434,15 @@ def test_real_numeric_keywords_survive_cli_writer_paths(tmp_path, embed, reconci
     else:
         sidecar.write_bytes(source.read_bytes())
     target = image if embed else sidecar
-    names = ['True', 'FALSE', 'tRuE', 'true', 'false', 'null', '1.50', '1e3', '2024']
-    subprocess.run(['exiftool', '-overwrite_original', *[f'-XMP-dc:Subject={name}' for name in names],
-                    '-IPTC:Keywords=FALSE', '-XMP-lr:HierarchicalSubject=tRuE',
-                    str(target)], check=True, capture_output=True)
+    names = seed_keywords([target], ['True', 'FALSE', 'tRuE', 'true', 'false', 'null', '1.50', '1e3', '2024'],
+                          '-IPTC:Keywords=FALSE', '-XMP-lr:HierarchicalSubject=tRuE')
     conn = database(tmp_path)
     try:
         conn.execute('INSERT INTO photos(path,tags) VALUES (?,?)', (str(image), 'facet-tag'))
         conn.commit()
         for _ in range(2):
             assert export_sidecars(conn, embed_original=embed, reconcile_keywords=reconcile)['written'] == 1
-            flat, hierarchy = xe._read_existing_keywords(str(target), xe._resolve_exiftool(), timeout=30, strict=True)
+            flat, hierarchy, _ = xe._read_existing_metadata(str(target), xe._resolve_exiftool(), timeout=30, strict=True)
             assert flat == [*names, 'facet-tag']
             assert hierarchy == ['tRuE']
             raw = subprocess.check_output(['exiftool', '-b', '-XMP', str(target)])
