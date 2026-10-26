@@ -6,6 +6,8 @@ FastAPI + Angular Single-Page-Application zum Durchsuchen, Filtern und Verwalten
 
 JPEG XL (`.jxl`) kann mit dem optionalen Decoder `pillow-jxl-plugin` gescannt und im Überwachungsmodus erkannt werden (`pip install "facet-photo[jpegxl]"`). Nach der Installation den Viewer neu starten. Facet erzeugt JPEG-Vorschauen für Browser; das Original bleibt JPEG XL. Der gemeinsame Bildlader berücksichtigt Ausrichtung und Transparenz. Ohne Decoder werden JPEG-XL-Dateien beim Scan übersprungen. Originaldownloads bleiben `.jxl`. Dies ermöglicht Import und Anzeige, jedoch keinen eingebetteten Metadatenexport: Facet-Bewertungen verwenden für JPEG XL Sidecars.
 
+Bei der JPEG-XL-Vollbildanzeige erhalten Browser, die `image/jxl` ausdrücklich im HTTP-Accept-Header angeben, die unveränderten `.jxl`-Originaldaten. Andere Browser erhalten eine JPEG-Konvertierung. Beide Varianten berücksichtigen Accept im Cache; Galerievorschaubilder bleiben kleine JPEGs.
+
 ## Inhalt
 
 - [Galerie starten](#galerie-starten) · [Authentifizierung](#authentifizierung) · [Filteroptionen](#filteroptionen) · [Sortierung](#sortierung) · [Galeriefunktionen](#galeriefunktionen)

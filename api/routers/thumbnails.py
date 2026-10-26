@@ -52,6 +52,25 @@ _BROWSER_IMAGE_MEDIA_TYPES = {
 }
 
 
+def _accepts_jpegxl(accept: str) -> bool:
+    """Require explicit decoder support; image/* alone cannot establish it."""
+    for item in accept.split(','):
+        parts = [part.strip().lower() for part in item.split(';')]
+        if parts[0] != 'image/jxl':
+            continue
+        quality = 1.0
+        for parameter in parts[1:]:
+            key, separator, value = parameter.partition('=')
+            if separator and key.strip() == 'q':
+                try:
+                    quality = float(value.strip())
+                except ValueError:
+                    quality = 0.0
+        if 0 < quality <= 1:
+            return True
+    return False
+
+
 def _cached_image_response(image_bytes: bytes, request: Request,
                            max_age: int = 31536000) -> Response:
     """Build a cached JPEG response with ETag and conditional 304."""
@@ -418,13 +437,17 @@ def person_thumbnail(
     return Response(content="Person thumbnail not found", status_code=404)
 
 
-def _stored_thumbnail_response(path, request):
+def _stored_thumbnail_response(path, request, vary_accept=False):
     """Serve the stored thumbnail as a stand-in for an unavailable original."""
     with get_db() as conn:
         row = conn.execute("SELECT thumbnail FROM photos WHERE path = ?", (path,)).fetchone()
     if row and row['thumbnail']:
-        return _cached_image_response(row['thumbnail'], request, max_age=_FALLBACK_MAX_AGE)
-    return Response(content="Not found", status_code=404)
+        response = _cached_image_response(row['thumbnail'], request, max_age=_FALLBACK_MAX_AGE)
+    else:
+        response = Response(content="Not found", status_code=404)
+    if vary_accept:
+        response.headers['Vary'] = 'Accept'
+    return response
 
 
 @router.get("/image")
@@ -455,12 +478,13 @@ def image(
         return Response(content="Not found", status_code=404)
 
     want_fallback = fallback == "thumbnail"
+    is_jxl = Path(row['path']).suffix.lower() in KNOWN_JXL_EXTENSIONS
 
     try:
         real_disk = resolve_photo_disk_path(row['path'])
     except HTTPException:
         if want_fallback:
-            return _stored_thumbnail_response(path, request)
+            return _stored_thumbnail_response(path, request, vary_accept=is_jxl)
         return Response(content="Not found", status_code=404)
 
     # Convert RAW files to JPEG for browser display (cached to avoid repeated conversion)
@@ -489,6 +513,22 @@ def image(
                 return _stored_thumbnail_response(path, request)
             return Response(content="Failed to convert HEIF file", status_code=500)
 
+    is_jxl = Path(real_disk).suffix.lower() in KNOWN_JXL_EXTENSIONS
+    if is_jxl and _accepts_jpegxl(request.headers.get('accept', '')):
+        # Native viewing preserves the lossless original, colour profile and
+        # progressive bitstream. Both representations vary on Accept.
+        try:
+            original = FileResponse(real_disk, media_type='image/jxl',
+                                    headers={'Vary': 'Accept'}, stat_result=os.stat(real_disk))
+        except OSError:
+            if want_fallback:
+                return _stored_thumbnail_response(path, request, vary_accept=True)
+            return Response(content="Not found", status_code=404, headers={'Vary': 'Accept'})
+        if request.headers.get('if-none-match') == original.headers['etag']:
+            return Response(status_code=304,
+                            headers={'ETag': original.headers['etag'], 'Vary': 'Accept'})
+        return original
+
     # Convert TIFF and JPEG XL to JPEG. Native browser formats below keep their original
     # bytes and receive a known media type independent of the OS MIME registry.
     if Path(real_disk).suffix.lower() in TIFF_EXTENSIONS | KNOWN_JXL_EXTENSIONS:
@@ -496,11 +536,14 @@ def image(
             mtime = os.path.getmtime(real_disk)
             quality = _get_image_jpeg_quality()
             jpeg_bytes = _convert_nonraw_cached(real_disk, mtime, quality)
-            return _cached_image_response(jpeg_bytes, request)
+            response = _cached_image_response(jpeg_bytes, request)
+            if is_jxl:
+                response.headers['Vary'] = 'Accept'
+            return response
         except Exception:
             logger.exception("Failed to convert TIFF/JPEG XL file: %s", real_disk)
             if want_fallback:
-                return _stored_thumbnail_response(path, request)
+                return _stored_thumbnail_response(path, request, vary_accept=is_jxl)
             return Response(content="Failed to convert TIFF/JPEG XL file", status_code=500)
 
     return FileResponse(real_disk, media_type=_BROWSER_IMAGE_MEDIA_TYPES.get(Path(real_disk).suffix.lower()))

@@ -10,6 +10,8 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Serve native JPEG XL to capable browsers.** Full-size requests explicitly accepting `image/jxl` receive the original bytes; JPEG fallback remains for other browsers, with separate cache validation by Accept.
+
 - **The photo-detail Keep button is a real toggle.** It announced its pressed state to assistive technology, but activating it on a kept photo kept it again. It now resets the decision, and its icon is outlined until the photo is kept, so the state no longer relies on colour alone.
 - **Show readable scan phase labels.** Moment and junk detection no longer display `[object Object]` in the scan dialog; future phase names are shown as plain text.
 - **LIQE and CLIPIQA load again in the legacy CUDA image.** Its restricted lock pinned setuptools 84.1.0, which no longer ships `pkg_resources`, so PyPI `openai-clip` failed to import. It is held at 81.0.0 like the default image's lock, and the runtime cap is corrected to `<82` (setuptools 82 removed `pkg_resources`, not 81).

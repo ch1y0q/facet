@@ -108,6 +108,7 @@ def test_bad_jpegxl_can_fall_back_to_stored_thumbnail(tmp_path, seed_photos_pref
     response = jxl_client.get("/image", params={"path": str(path), "fallback": "thumbnail"})
     assert response.status_code == 200
     assert response.content == stored.getvalue()
+    assert "Accept" in {v.strip() for v in response.headers["vary"].split(",")}
     assert jxl_client.get("/image", params={"path": str(path)}).status_code == 500
 
 
@@ -117,3 +118,85 @@ def test_scanner_reads_original_capture_date(tmp_path):
     _jpegxl(path)
     scorer = object.__new__(Facet)
     assert scorer.get_exif_data(path)["date_taken"] == "2024:01:13 11:36:39"
+
+
+@pytest.mark.parametrize("accept,native", [
+    ("image/jxl", True),
+    ("image/avif,image/jxl,image/webp,image/*;q=0.8,*/*;q=0.5", True),
+    ("image/jxl;q=0.8", True),
+    ("IMAGE/JXL; Q = 0.5", True),
+    ("image/jxl;q=0", False),
+    ("image/*", False),
+    ("*/*", False),
+    ("image/jxl;q=invalid", False),
+    ("image/jxl;q=1.5", False),
+    ("image/jxl;q=NaN", False),
+])
+def test_native_jxl_requires_explicit_browser_support(tmp_path, seed_photos_prefix, jxl_client, accept, native):
+    path = tmp_path / "award.jxl"
+    _jpegxl(path)
+    seed_photos_prefix(str(tmp_path) + "/", [{"path": str(path), "filename": path.name}])
+    response = jxl_client.get("/image", params={"path": str(path)}, headers={"Accept": accept})
+    assert response.status_code == 200
+    assert "Accept" in {v.strip() for v in response.headers["vary"].split(",")}
+    assert response.headers["content-type"] == ("image/jxl" if native else "image/jpeg")
+    if native:
+        assert response.content == path.read_bytes()
+    else:
+        assert response.content.startswith(b"\xff\xd8")
+    cached = jxl_client.get("/image", params={"path": str(path)},
+                            headers={"Accept": accept, "If-None-Match": response.headers["etag"]})
+    assert cached.status_code == 304
+    assert "Accept" in {v.strip() for v in cached.headers["vary"].split(",")}
+    # An ETag for the other representation must never turn this one into 304.
+    other = jxl_client.get("/image", params={"path": str(path)},
+                           headers={"Accept": "*/*" if native else "image/jxl",
+                                    "If-None-Match": response.headers["etag"]})
+    assert other.status_code == 200
+    assert other.headers["etag"] != response.headers["etag"]
+
+
+def test_native_request_still_requires_visible_library_row(tmp_path, jxl_client):
+    path = tmp_path / "unindexed.jxl"
+    _jpegxl(path)
+    response = jxl_client.get("/image", params={"path": str(path)}, headers={"Accept": "image/jxl"})
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize("accept", ["image/jxl", "*/*"])
+def test_missing_original_after_resolution_uses_thumbnail_and_varies_accept(
+        tmp_path, seed_photos_prefix, jxl_client, monkeypatch, accept):
+    from api.routers import thumbnails
+    path = tmp_path / "disappeared.jxl"
+    stored = BytesIO()
+    Image.new("RGB", (4, 6)).save(stored, format="JPEG")
+    seed_photos_prefix(str(tmp_path) + "/", [{
+        "path": str(path), "filename": path.name, "thumbnail": stored.getvalue(),
+    }])
+    monkeypatch.setattr(thumbnails, "resolve_photo_disk_path", lambda _: str(path))
+    response = jxl_client.get("/image", params={"path": str(path), "fallback": "thumbnail"},
+                              headers={"Accept": accept})
+    assert response.status_code == 200
+    assert response.content == stored.getvalue()
+    assert "Accept" in {v.strip() for v in response.headers["vary"].split(",")}
+
+
+@pytest.mark.parametrize("accept", ["image/jxl", "*/*"])
+def test_resolution_failure_fallback_varies_accept(
+        tmp_path, seed_photos_prefix, jxl_client, monkeypatch, accept):
+    from fastapi import HTTPException
+    from api.routers import thumbnails
+    path = tmp_path / "offline.jxl"
+    stored = BytesIO()
+    Image.new("RGB", (4, 6)).save(stored, format="JPEG")
+    seed_photos_prefix(str(tmp_path) + "/", [{
+        "path": str(path), "filename": path.name, "thumbnail": stored.getvalue(),
+    }])
+    def refuse(_):
+        raise HTTPException(status_code=404)
+    monkeypatch.setattr(thumbnails, "resolve_photo_disk_path", refuse)
+    response = jxl_client.get("/image", params={"path": str(path), "fallback": "thumbnail"},
+                              headers={"Accept": accept})
+    assert response.status_code == 200
+    assert response.content == stored.getvalue()
+    assert "Accept" in {v.strip() for v in response.headers["vary"].split(",")}

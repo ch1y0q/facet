@@ -6,6 +6,8 @@
 
 安装可选解码器 `pillow-jxl-plugin`（`pip install "facet-photo[jpegxl]"`）后，扫描和监视模式支持 JPEG XL（`.jxl`）。安装后请重启查看器。Facet 为浏览器生成 JPEG 预览，原文件仍为 JPEG XL；共享加载器会处理方向和透明度。未安装解码器时，扫描会跳过 JPEG XL。下载原文件仍使用 `.jxl`。此功能支持导入和显示，不支持将元数据嵌入 JPEG XL 导出；Facet 的审核更改使用旁车文件。
 
+查看完整尺寸的 JPEG XL 时，如果浏览器在 HTTP Accept 标头中明确声明 `image/jxl`，Facet 会返回原始 `.jxl` 字节；其他浏览器收到 JPEG 转换版本。两种响应均按 Accept 区分缓存；图库缩略图仍使用小尺寸 JPEG。
+
 ## 目录
 
 - [启动查看器](#启动查看器) · [身份验证](#身份验证) · [筛选选项](#筛选选项) · [排序](#排序) · [照片库功能](#照片库功能)
