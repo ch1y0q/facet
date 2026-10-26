@@ -76,6 +76,7 @@ describe('GalleryComponent', () => {
       config: signal(null),
       activeFilterCount: signal(0),
       filterDrawerOpen: signal(false),
+      reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(),
       currentAlbum: signal(null),
       initializing: signal(false),
       galleryMounts: signal(0),

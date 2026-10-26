@@ -1318,7 +1318,9 @@
       "complete": "{percent}% di {total} revisionate",
       "start": "Rivedi le indecise",
       "resume": "Continua revisione",
-      "browser": "Riprendi la coda memorizzata in questo browser."
+      "browser": "Riprendi la coda memorizzata in questo browser.",
+      "hide_from_menu": "Nascondi avanzamento revisione",
+      "show_from_menu": "Mostra avanzamento revisione"
     },
     "manual_faces_need_review": "Volti manuali da verificare",
     "manual_faces_review_hint": "In base all’ultima scansione o verifica nell’editor dei volti, senza monitoraggio continuo. Apri l’editor dei volti di una foto per verificare i riquadri salvati.",

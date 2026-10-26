@@ -1318,7 +1318,9 @@
       "complete": "{percent}% of {total} reviewed",
       "start": "Review undecided",
       "resume": "Continue reviewing",
-      "browser": "Resume the remembered queue on this browser."
+      "browser": "Resume the remembered queue on this browser.",
+      "hide_from_menu": "Hide review progress",
+      "show_from_menu": "Show review progress"
     },
     "manual_faces_need_review": "Manual faces need review",
     "manual_faces_review_hint": "Based on the last scan or face-editor check, not continuous monitoring. Open a photo’s face editor to review saved marks.",

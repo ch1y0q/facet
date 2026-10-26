@@ -1318,7 +1318,9 @@
       "complete": "{percent}% de {total} revistas",
       "start": "Rever por decidir",
       "resume": "Continuar revisão",
-      "browser": "Retomar a fila guardada neste navegador."
+      "browser": "Retomar a fila guardada neste navegador.",
+      "hide_from_menu": "Ocultar progresso da revisão",
+      "show_from_menu": "Mostrar progresso da revisão"
     },
     "manual_faces_need_review": "Rostos manuais a rever",
     "manual_faces_review_hint": "Com base na última análise ou verificação no editor de rostos, sem monitorização contínua. Abra o editor de rostos de uma fotografia para rever as marcações guardadas.",

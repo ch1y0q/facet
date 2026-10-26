@@ -604,6 +604,7 @@ describe('App', () => {
         filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null),
         types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), reloadPhotos, loadConfig: vi.fn(),
         viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(false), hiddenFiltersStash: signal(null),
+        reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(),
         slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(),
       };
       TestBed.configureTestingModule({
@@ -698,6 +699,7 @@ describe('App', () => {
         filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null),
         types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), reloadPhotos: vi.fn(), loadConfig: vi.fn(),
         viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(true), hiddenFiltersStash: signal(null),
+        reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(),
         slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(),
         resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(),
       };

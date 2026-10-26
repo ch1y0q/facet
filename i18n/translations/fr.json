@@ -1318,7 +1318,9 @@
       "complete": "{percent}% sur {total} triées",
       "start": "Trier les indécises",
       "resume": "Continuer le tri",
-      "browser": "Reprendre la file mémorisée dans ce navigateur."
+      "browser": "Reprendre la file mémorisée dans ce navigateur.",
+      "hide_from_menu": "Masquer la progression de revue",
+      "show_from_menu": "Afficher la progression de revue"
     },
     "manual_faces_need_review": "Visages manuels à vérifier",
     "manual_faces_review_hint": "Selon le dernier scan ou contrôle dans l’éditeur de visages, sans surveillance continue. Ouvrez l’éditeur de visages d’une photo pour vérifier les repères enregistrés.",

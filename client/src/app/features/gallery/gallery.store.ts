@@ -16,6 +16,7 @@ import { Photo, KeeperHint, normalisePhotoFlagsAll } from '../../shared/models/p
 import type { CardSetKind } from '../../shared/components/photo-card/card-actions';
 import { I18N } from '../../core/i18n/keys';
 import { readReviewQueue, saveReviewQueue } from './review-queue.util';
+import { REVIEW_PROGRESS_VISIBLE_KEY, readReviewProgressVisible } from './review-progress-dismiss.util';
 import type { components } from '../../core/api/schema';
 import {
   type GalleryFilters, type GalleryMode, type TooltipMode, type PanelActivation, type DisplayOptions,
@@ -309,6 +310,17 @@ export class GalleryStore {
   private journal = inject(UserActivityJournal);
 
   readonly reviewProgress = signal<components['schemas']['ReviewProgressResponse'] | null>(null);
+  /** Whether the review-progress banner is shown at all — a persisted viewer
+   *  setting (user menu), not a per-dismissal memory: users who just browse
+   *  turn it off once instead of closing the same fixture every visit. */
+  readonly reviewProgressVisible = signal(readReviewProgressVisible());
+
+  setReviewProgressVisible(visible: boolean): void {
+    this.reviewProgressVisible.set(visible);
+    try {
+      localStorage.setItem(REVIEW_PROGRESS_VISIBLE_KEY, visible ? 'true' : 'false');
+    } catch { /* session-only then */ }
+  }
   readonly reviewPercent = computed(() => {
     const progress = this.reviewProgress();
     return progress?.total ? Math.floor(100 * (progress.kept + progress.rejected) / progress.total) : 0;

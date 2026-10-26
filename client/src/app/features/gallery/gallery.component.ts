@@ -237,17 +237,24 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
       <!-- Main content. The drawer reserves its own strip, so the grid gets
            exactly the width it has whenever the filters are open. -->
       <mat-sidenav-content>
-        @if (store.reviewProgress(); as progress) {
+        @if (store.reviewProgressVisible(); as visible) {
+          @if (store.reviewProgress(); as progress) {
           <section class="mx-2 md:mx-4 mt-2 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] text-sm" [attr.aria-label]="I18N.gallery.review_progress.title | translate">
             <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span>{{ I18N.gallery.review_progress.counts | translate:{ undecided: progress.undecided, kept: progress.kept, rejected: progress.rejected } }}</span>
+              <span class="flex-1">{{ I18N.gallery.review_progress.counts | translate:{ undecided: progress.undecided, kept: progress.kept, rejected: progress.rejected } }}</span>
               <span>{{ I18N.gallery.review_progress.complete | translate:{ percent: store.reviewPercent(), total: progress.total } }}</span>
               @if (progress.undecided > 0 && store.filters().review_status !== 'undecided') {
                 <button mat-button (click)="store.startReviewQueue()">{{ I18N.gallery.review_progress.start | translate }}</button>
               }
+              <button mat-icon-button class="!w-7 !h-7 !min-w-0 -mr-1" (click)="store.setReviewProgressVisible(false)"
+                      [matTooltip]="I18N.ui.buttons.dismiss | translate"
+                      [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
+                <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
+              </button>
             </div>
             <progress class="w-full h-1" max="100" [value]="store.reviewPercent()" [attr.aria-label]="I18N.gallery.review_progress.title | translate"></progress>
           </section>
+          }
         }
         @if (store.reviewBookmark()) {
           <div class="mx-2 md:mx-4 mt-2 flex flex-wrap items-center gap-x-3 text-sm">
