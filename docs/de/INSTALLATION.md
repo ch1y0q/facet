@@ -814,6 +814,7 @@ Fallback verwendet.
 |---------|-------------------|-----------|
 | `watchdog` | Watch-Modus (`--watch`-Daemon scannt neue Dateien erneut) — **nicht in `requirements.txt`**; wird nur über `pip install .[watch]` nachgezogen, sodass direkte `requirements.txt`-Nutzer `--watch` nicht erhalten | `--watch` nicht verfügbar |
 | `pillow-heif` | HEIF/HEIC-Dekodierung | HEIF/HEIC-Dateien werden übersprungen |
+| `pillow-jxl-plugin` | JPEG-XL-Dekodierung (`pip install "facet-photo[jpegxl]"`; GPL-3.0-or-later, nicht im Docker-Image) | JPEG-XL-Dateien werden übersprungen |
 | `rawpy` | RAW-Dekodierung (CR2/CR3/NEF/ARW/…) | RAW-Dateien werden übersprungen (bereits in der Basis-`requirements.txt`) |
 | `cuml`, `cupy` | GPU-gestütztes Gesichtsclustering (conda + CUDA) | Clustering läuft auf der CPU via `hdbscan` (Standard) |
 | `onnxruntime-gpu` | GPU-gestützte Gesichtserkennung — wird **anstelle von** `onnxruntime` installiert, nie daneben; siehe [ONNX Runtime für die Gesichtserkennung](#onnx-runtime-für-die-gesichtserkennung) | CPU-`onnxruntime` (langsamer) |

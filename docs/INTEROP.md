@@ -14,7 +14,7 @@ ExifTool exports require the bundled Facet tag definitions. If these are unavail
 
 ## The RAW sidecar naming gotcha
 
-Facet exports `IMG_1234.CR2.xmp` beside `IMG_1234.CR2`, preserving darktable's full-filename convention. Lightroom Classic and Capture One generally use `IMG_1234.xmp` for proprietary RAW. Export filenames do not change with the import policy below. For JPEG/HEIC/TIFF/PNG/DNG, `--embed-originals` offers a separate in-file channel; GIF/WebP/BMP/AVIF and proprietary RAW still need a matching sidecar convention.
+Facet exports `IMG_1234.CR2.xmp` beside `IMG_1234.CR2`, preserving darktable's full-filename convention. Lightroom Classic and Capture One generally use `IMG_1234.xmp` for proprietary RAW. Export filenames do not change with the import policy below. For JPEG/HEIC/TIFF/PNG/DNG, `--embed-originals` offers a separate in-file channel; GIF/WebP/BMP/AVIF/JPEG XL and proprietary RAW still need a matching sidecar convention.
 
 Choose discovery explicitly with `--import-sidecars --sidecar-naming full|basename|auto`:
 

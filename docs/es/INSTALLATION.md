@@ -805,6 +805,7 @@ alternativa.
 |---------|-------------------|-----------|
 | `watchdog` | Modo de vigilancia (el demonio `--watch` reescanea archivos nuevos) — **no está en `requirements.txt`**; solo se instala mediante `pip install .[watch]`, por lo que quienes usen directamente `requirements.txt` no obtienen `--watch` | `--watch` no disponible |
 | `pillow-heif` | Decodificación HEIF/HEIC | Los archivos HEIF/HEIC se omiten |
+| `pillow-jxl-plugin` | Decodificación JPEG XL (`pip install "facet-photo[jpegxl]"`; GPL-3.0-or-later, ausente de la imagen Docker) | Los archivos JPEG XL se omiten |
 | `rawpy` | Decodificación RAW (CR2/CR3/NEF/ARW/…) | Los archivos RAW se omiten (ya incluido en `requirements.txt` base) |
 | `cuml`, `cupy` | Agrupación de rostros acelerada por GPU (conda + CUDA) | La agrupación se ejecuta en CPU mediante `hdbscan` (predeterminado) |
 | `onnxruntime-gpu` | Detección de rostros acelerada por GPU — se instala **en lugar de** `onnxruntime`, nunca junto a él; consulta [ONNX Runtime para la detección de rostros](#onnx-runtime-para-la-detección-de-rostros) | `onnxruntime` en CPU (más lento) |

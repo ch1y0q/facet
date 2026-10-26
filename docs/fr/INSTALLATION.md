@@ -807,6 +807,7 @@ solution de repli est utilisée.
 |---------|-------------------|-----------|
 | `watchdog` | Mode surveillance (le démon `--watch` re-scanne les nouveaux fichiers) — **absent de `requirements.txt`** ; uniquement installé via `pip install .[watch]`, donc les utilisateurs de `requirements.txt` direct n'ont pas `--watch` | `--watch` indisponible |
 | `pillow-heif` | Décodage HEIF/HEIC | Les fichiers HEIF/HEIC sont ignorés |
+| `pillow-jxl-plugin` | Décodage JPEG XL (`pip install "facet-photo[jpegxl]"` ; GPL-3.0-or-later, absent de l'image Docker) | Les fichiers JPEG XL sont ignorés |
 | `rawpy` | Décodage RAW (CR2/CR3/NEF/ARW/…) | Les fichiers RAW sont ignorés (déjà dans le `requirements.txt` de base) |
 | `cuml`, `cupy` | Clustering de visages accéléré sur GPU (conda + CUDA) | Le clustering s'exécute sur CPU via `hdbscan` (par défaut) |
 | `onnxruntime-gpu` | Détection de visages accélérée sur GPU — s'installe **à la place de** `onnxruntime`, jamais à côté ; voir [ONNX Runtime pour la détection de visages](#onnx-runtime-pour-la-détection-de-visages) | `onnxruntime` sur CPU (plus lent) |

@@ -1282,7 +1282,7 @@ Os tipos TypeScript do cliente são gerados a partir desse esquema em `client/sr
 | `GET /thumbnail` | Miniatura da foto. Um `size` maior que 640 é gerado a partir do original em até 1920 px (nunca ampliado), seja qual for o valor maior pedido; se o original estiver indisponível, o render não puder começar em 5 s ou o render não tiver sinal (uma decodificação totalmente preta, p. ex. um RAW truncado), a miniatura armazenada é servida com um `max-age` de 60 segundos |
 | `GET /face_thumbnail/{id}` | Miniatura de recorte de rosto |
 | `GET /person_thumbnail/{id}` | Miniatura representativa da pessoa |
-| `GET /image` | Imagem em resolução total. Os ficheiros nativos JPEG, PNG, GIF, WebP, BMP e AVIF mantêm os bytes originais e usam tipos de imagem consistentes, independentemente do registo MIME do sistema. |
+| `GET /image` | Imagem em resolução total. Os ficheiros nativos JPEG, PNG, GIF, WebP, BMP e AVIF mantêm os bytes originais e usam tipos de imagem consistentes, independentemente do registo MIME do sistema. O JPEG XL é enviado como `.jxl` original apenas a um navegador cujo cabeçalho Accept inclui `image/jxl`, e como conversão JPEG caso contrário (`Vary: Accept`). |
 
 ### Opções de Filtro
 

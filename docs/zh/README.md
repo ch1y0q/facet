@@ -27,6 +27,7 @@ Facet 是一个多维度的照片分析引擎：它为本地照片库评分、�
 - **RAW**（.cr2、.cr3、.nef、.arw、.raf、.rw2、.dng、.orf、.srw、.pef）——当存在同名的 JPEG/HEIC 时会跳过
 - **PNG、GIF、WebP、BMP、TIFF**（.png、.gif、.webp、.bmp、.tif、.tiff）——16 位灰度会缩放为 8 位，alpha 通道会合成到白色背景上，动图 GIF/WebP 只对第一帧评分；TIFF 会被转换成 JPEG 提供给浏览器。PNG、WebP 与 TIFF 在写入方保存了 EXIF 时会携带它；GIF 与 BMP 无法携带，因此这两种格式的 `date_taken` 与相机/镜头信息为空
 - **AVIF**（.avif）——需要编译了 AVIF 支持的 Pillow（`pillow>=11.3` 起原生支持）；HDR PQ AVIF 照片会像佳能 `.HIF` 一样被 tone map 到 SDR sRGB；存在 EXIF 时会读取
+- **JPEG XL**（.jxl）——需要可选的 `pillow-jxl-plugin`（`pip install "facet-photo[jpegxl]"`，GPL-3.0-or-later，默认安装和 Docker 镜像均不包含）；未安装时跳过。评分和预览使用 8 位 SDR sRGB 渲染（不做 HDR tone map）；动画文件只使用第一帧；存在 EXIF 时会读取
 
 ## 常见问题
 

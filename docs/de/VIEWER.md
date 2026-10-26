@@ -1283,7 +1283,7 @@ Die TypeScript-Typen des Clients werden mit `cd client && npm run gen:api` aus d
 | `GET /thumbnail` | Foto-Vorschaubild. Ein `size` über 640 wird aus dem Original mit bis zu 1920 px gerendert (nie hochskaliert), egal welcher größere Wert angefragt wurde; ist das Original nicht verfügbar, kann das Rendering nicht binnen 5 s starten oder enthält das Rendering kein Signal (ein komplett schwarzes Dekodierergebnis, z. B. bei einem abgeschnittenen RAW), wird das gespeicherte Vorschaubild mit einem `max-age` von 60 Sekunden geliefert |
 | `GET /face_thumbnail/{id}` | Gesichts-Ausschnitt-Vorschaubild |
 | `GET /person_thumbnail/{id}` | Repräsentatives Personen-Vorschaubild |
-| `GET /image` | Bild in voller Auflösung. Native JPEG-, PNG-, GIF-, WebP-, BMP- und AVIF-Dateien behalten ihre Originalbytes und verwenden einheitliche Bildmedientypen unabhängig vom MIME-Verzeichnis des Systems. |
+| `GET /image` | Bild in voller Auflösung. Native JPEG-, PNG-, GIF-, WebP-, BMP- und AVIF-Dateien behalten ihre Originalbytes und verwenden einheitliche Bildmedientypen unabhängig vom MIME-Verzeichnis des Systems. JPEG XL wird nur an einen Browser, dessen Accept-Header `image/jxl` nennt, als Original-`.jxl` gesendet, sonst als JPEG-Konvertierung (`Vary: Accept`). |
 
 ### Filteroptionen
 

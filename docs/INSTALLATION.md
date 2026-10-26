@@ -765,6 +765,7 @@ Each unlocks a feature; without it the feature is skipped or a fallback is used.
 |---------|-------------------|-----------|
 | `watchdog` | Watch mode (`--watch` daemon re-scans new files) — **not in `requirements.txt`**; only pulled via `pip install .[watch]`, so direct `requirements.txt` users don't get `--watch` | `--watch` unavailable |
 | `pillow-heif` | HEIF/HEIC decode | HEIF/HEIC files skipped |
+| `pillow-jxl-plugin` | JPEG XL decode (`pip install "facet-photo[jpegxl]"`; GPL-3.0-or-later, not in the Docker image) | JPEG XL files skipped |
 | `rawpy` | RAW decode (CR2/CR3/NEF/ARW/…) | RAW files skipped (already in base `requirements.txt`) |
 | `cuml`, `cupy` | GPU-accelerated face clustering (conda + CUDA) | Clustering runs on CPU via `hdbscan` (default) |
 | `onnxruntime-gpu` | GPU-accelerated face detection — installed **instead of** `onnxruntime`, never beside it; see [ONNX Runtime for face detection](#onnx-runtime-for-face-detection) | CPU `onnxruntime` (slower) |

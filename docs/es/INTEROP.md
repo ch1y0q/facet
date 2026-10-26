@@ -14,7 +14,7 @@ Las exportaciones con ExifTool requieren las definiciones de etiquetas incluidas
 
 ## La trampa del nombre de los sidecars RAW
 
-Facet exporta `IMG_1234.CR2.xmp` junto a `IMG_1234.CR2`, conservando la convención de nombre completo de darktable. Lightroom Classic y Capture One suelen usar `IMG_1234.xmp` para RAW propietario. La política de importación no cambia los nombres de exportación. Para JPEG/HEIC/TIFF/PNG/DNG, `--embed-originals` ofrece un canal dentro del archivo; GIF/WebP/BMP/AVIF y RAW propietario necesitan nombres de sidecar compatibles.
+Facet exporta `IMG_1234.CR2.xmp` junto a `IMG_1234.CR2`, conservando la convención de nombre completo de darktable. Lightroom Classic y Capture One suelen usar `IMG_1234.xmp` para RAW propietario. La política de importación no cambia los nombres de exportación. Para JPEG/HEIC/TIFF/PNG/DNG, `--embed-originals` ofrece un canal dentro del archivo; GIF/WebP/BMP/AVIF/JPEG XL y RAW propietario necesitan nombres de sidecar compatibles.
 
 Elige la búsqueda con `--import-sidecars --sidecar-naming full|basename|auto`:
 

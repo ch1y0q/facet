@@ -28,6 +28,7 @@ copiar e colar.
 - **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — pulado quando existe um JPEG/HEIC correspondente
 - **PNG, GIF, WebP, BMP, TIFF** (.png, .gif, .webp, .bmp, .tif, .tiff) — a escala de cinza de 16 bits é convertida para 8 bits, um canal alfa é composto sobre branco, e GIF/WebP animados são pontuados pelo primeiro quadro; o TIFF é convertido para JPEG para o navegador. PNG, WebP e TIFF contêm EXIF quando o programa que os gravou o armazenou; GIF e BMP não podem, então para esses dois `date_taken` e câmera/lente ficam vazios
 - **AVIF** (.avif) — precisa de um Pillow compilado com suporte a AVIF (nativo a partir de `pillow>=11.3`); fotos AVIF HDR PQ são convertidas (tone mapping) para sRGB SDR, como os `.HIF` Canon; o EXIF é lido quando está presente
+- **JPEG XL** (.jxl) — precisa do plugin opcional `pillow-jxl-plugin` (`pip install "facet-photo[jpegxl]"`, GPL-3.0-or-later, ausente da instalação padrão e da imagem Docker); sem ele, é ignorado. Renderizado em sRGB SDR de 8 bits para pontuação e pré-visualizações (sem tone mapping HDR); de um arquivo animado só o primeiro quadro é usado; o EXIF é lido quando está presente
 
 ## Perguntas frequentes
 

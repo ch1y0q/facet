@@ -795,6 +795,7 @@ Cada um desbloqueia um recurso; sem ele, o recurso é pulado ou um fallback é u
 |---------|-------------------|-----------|
 | `watchdog` | Modo de observação (daemon `--watch` reescaneia novos arquivos) — **não está em `requirements.txt`**; só é puxado via `pip install .[watch]`, então usuários diretos de `requirements.txt` não obtêm o `--watch` | `--watch` indisponível |
 | `pillow-heif` | Decodificação HEIF/HEIC | Arquivos HEIF/HEIC pulados |
+| `pillow-jxl-plugin` | Decodificação JPEG XL (`pip install "facet-photo[jpegxl]"`; GPL-3.0-or-later, ausente da imagem Docker) | Arquivos JPEG XL pulados |
 | `rawpy` | Decodificação RAW (CR2/CR3/NEF/ARW/…) | Arquivos RAW pulados (já está no `requirements.txt` base) |
 | `cuml`, `cupy` | Agrupamento de faces acelerado por GPU (conda + CUDA) | O agrupamento roda em CPU via `hdbscan` (padrão) |
 | `onnxruntime-gpu` | Detecção de faces acelerada por GPU — instalado **no lugar do** `onnxruntime`, nunca ao lado dele; veja [ONNX Runtime para detecção de faces](#onnx-runtime-para-detecção-de-faces) | `onnxruntime` em CPU (mais lento) |

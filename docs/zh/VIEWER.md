@@ -1341,7 +1341,7 @@ python database.py --stats-info
 | `GET /thumbnail` | 照片缩略图。`size` 大于 640 时，无论请求的更大值是多少，都从原图渲染为最大 1920 px（从不放大）；原图不可用、渲染无法在 5 秒内开始或渲染结果没有信号（全黑解码，例如被截断的 RAW）时返回已存储的缩略图，`max-age` 为 60 秒 |
 | `GET /face_thumbnail/{id}` | 人脸裁切缩略图 |
 | `GET /person_thumbnail/{id}` | 人物代表缩略图 |
-| `GET /image` | 全分辨率图片。原生 JPEG、PNG、GIF、WebP、BMP 和 AVIF 文件保留原始字节，并使用一致的图片媒体类型，不受系统 MIME 注册表影响。 |
+| `GET /image` | 全分辨率图片。原生 JPEG、PNG、GIF、WebP、BMP 和 AVIF 文件保留原始字节，并使用一致的图片媒体类型，不受系统 MIME 注册表影响。JPEG XL 仅在浏览器的 Accept 头列出 `image/jxl` 时以原始 `.jxl` 发送，否则发送 JPEG 转换结果（`Vary: Accept`）。 |
 
 ### 筛选项
 

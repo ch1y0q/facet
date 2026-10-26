@@ -803,6 +803,7 @@ fallback.
 |---------|-------------------|-----------|
 | `watchdog` | Modalità watch (il daemon `--watch` riesamina i nuovi file) — **non in `requirements.txt`**; viene incluso solo tramite `pip install .[watch]`, quindi chi usa direttamente `requirements.txt` non ottiene `--watch` | `--watch` non disponibile |
 | `pillow-heif` | Decodifica HEIF/HEIC | I file HEIF/HEIC vengono saltati |
+| `pillow-jxl-plugin` | Decodifica JPEG XL (`pip install "facet-photo[jpegxl]"`; GPL-3.0-or-later, assente dall'immagine Docker) | I file JPEG XL vengono saltati |
 | `rawpy` | Decodifica RAW (CR2/CR3/NEF/ARW/…) | I file RAW vengono saltati (già in `requirements.txt` di base) |
 | `cuml`, `cupy` | Clustering dei volti accelerato da GPU (conda + CUDA) | Il clustering viene eseguito su CPU tramite `hdbscan` (predefinito) |
 | `onnxruntime-gpu` | Rilevamento dei volti accelerato da GPU — si installa **al posto di** `onnxruntime`, mai accanto; vedi [ONNX Runtime per il rilevamento dei volti](#onnx-runtime-per-il-rilevamento-dei-volti) | CPU `onnxruntime` (più lento) |
