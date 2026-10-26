@@ -2708,19 +2708,30 @@ describe('GalleryStore optimistic mutations', () => {
     expect(history.recentIds()[0]).toBe(9001);
   });
 
-  it('records only committed face assignments and ignores old-owner responses', async () => {
+  it('does not record a face assignment the server reports as failed', async () => {
     const record = vi.spyOn(TestBed.inject(PersonAssignmentHistoryService), 'record');
     apiPost.mockReturnValue(of({ success: false }));
     expect(await store.assignFace(1, 9, '/a.jpg', 'Ada')).toBe(false);
     expect(record).not.toHaveBeenCalled();
+  });
+
+  it('does not record a created person that carries no assigned faces', async () => {
+    const record = vi.spyOn(TestBed.inject(PersonAssignmentHistoryService), 'record');
     apiPost.mockReturnValue(of({ id: 9, name: 'Ada', face_count: 0 }));
     await store.createPerson('Ada');
     await store.createPerson('Ada', [1]);
     expect(record).not.toHaveBeenCalled();
+  });
+
+  it('records a successful face assignment', async () => {
+    const record = vi.spyOn(TestBed.inject(PersonAssignmentHistoryService), 'record');
     apiPost.mockReturnValue(of({ success: true }));
     expect(await store.assignFace(1, 9, '/a.jpg', 'Ada')).toBe(true);
     expect(record).toHaveBeenCalledWith(9, '0|');
-    record.mockClear();
+  });
+
+  it('ignores a face assignment response that lands after the owner switched', async () => {
+    const record = vi.spyOn(TestBed.inject(PersonAssignmentHistoryService), 'record');
     const pending = new Subject<{ success: boolean }>();
     apiPost.mockReturnValue(pending);
     const write = store.assignFace(2, 9, '/a.jpg', 'Ada');
@@ -2728,7 +2739,7 @@ describe('GalleryStore optimistic mutations', () => {
     pending.next({ success: true });
     pending.complete();
     expect(await write).toBe(false);
-    expect(TestBed.inject(PersonAssignmentHistoryService).recentIds()).toEqual([]);
+    expect(record.mock.calls).toEqual([[9, '0|']]);
   });
 
   it('rebuilds a review queue when a single rating changes its sort order', async () => {
