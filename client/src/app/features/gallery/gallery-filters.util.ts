@@ -25,6 +25,10 @@ export const CARD_WIDTH_KEY = 'facet_card_width';
 /** The gallery's last synced query, for the nav-icon return from another page:
  *  sessionStorage, so it survives tab-wide navigation but not a new session. */
 export const GALLERY_SESSION_QUERY_KEY = 'facet_gallery_session_query';
+/** The last sort the user picked, remembered across visits (localStorage):
+ *  a fresh landing sorts by what you used last, not the viewer default. The
+ *  URL always wins — a shared or bookmarked link means what it says. */
+export const LAST_SORT_KEY = 'facet_last_sort';
 
 export interface GalleryFilters {
   page: number;
@@ -584,18 +588,19 @@ export function applyQueryParams(
   return result;
 }
 
-/** Build the query-param map for URL sync — only values that differ from defaults. */
+/** Build the query-param map for URL sync — only values that differ from defaults, plus the sort, which is always written. */
 export function buildSyncParams(
   f: GalleryFilters,
   defaults: FilterDefaults | undefined,
   searchThresholdDefault?: number | null,
 ): Record<string, string> {
   const params: Record<string, string> = {};
-  // A semantic query implies Relevance (DESC), so that is the sort left unwritten while one is set;
-  // any other sort is written even when it equals the viewer default, or the link would reload as Relevance.
-  const impliedSort = f.semanticQuery ? RELEVANCE_SORT : (defaults?.sort ?? 'aggregate');
+  // A semantic query implies Relevance (DESC), so that is the only sort left unwritten. Every other
+  // sort is written even when it equals the viewer default: a URL without one falls back to the
+  // browser's remembered sort (see GalleryStore.loadConfig), so an unwritten default would reopen a
+  // link, bookmark or reload on whatever sort the opening browser last picked.
   const impliedDirection = f.semanticQuery ? 'DESC' : (defaults?.sort_direction ?? 'DESC');
-  if (f.sort !== impliedSort) params['sort'] = f.sort;
+  if (!(f.semanticQuery && f.sort === RELEVANCE_SORT)) params['sort'] = f.sort;
   if (f.sort_direction !== impliedDirection)
     params['sort_direction'] = f.sort_direction;
 

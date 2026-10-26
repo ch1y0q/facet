@@ -1,6 +1,6 @@
 import { GalleryStore } from '../gallery/gallery.store';
 import { makePhoto } from '../../../testing/photo.fixture';
-import type { Mock } from 'vitest';
+import type { Mock, MockInstance } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, ParamMap, Router, NavigationStart, convertToParamMap } from '@angular/router';
 import { Location } from '@angular/common';
@@ -950,6 +950,88 @@ describe('PhotoDetailComponent', () => {
       await component.toggleRejected('/photos/test.jpg');
 
       expect(mockApi.post).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rating keyboard shortcuts', () => {
+    let setRating: MockInstance;
+    let toggleFavorite: MockInstance;
+    let toggleRejected: MockInstance;
+
+    beforeEach(() => {
+      createComponent();
+      component.store.config.set({ features: { show_rating_controls: true } });
+      component.photo.set({ ...samplePhoto });
+      setRating = vi.spyOn(component, 'setRating').mockResolvedValue(undefined);
+      toggleFavorite = vi.spyOn(component, 'toggleFavorite').mockResolvedValue(undefined);
+      toggleRejected = vi.spyOn(component, 'toggleRejected').mockResolvedValue(undefined);
+    });
+
+    function press(init: KeyboardEventInit, target?: HTMLElement): KeyboardEvent {
+      const event = new KeyboardEvent('keydown', { cancelable: true, ...init });
+      if (target) Object.defineProperty(event, 'target', { value: target });
+      component.onRatingShortcut(event);
+      return event;
+    }
+
+    function expectNothing(event: KeyboardEvent): void {
+      expect(event.defaultPrevented).toBe(false);
+      expect(setRating).not.toHaveBeenCalled();
+      expect(toggleFavorite).not.toHaveBeenCalled();
+      expect(toggleRejected).not.toHaveBeenCalled();
+    }
+
+    it.each([1, 2, 3, 4, 5])('%i rates the open photo', stars => {
+      const event = press({ key: String(stars) });
+      expect(event.defaultPrevented).toBe(true);
+      expect(setRating).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg', stars);
+    });
+
+    it.each(['f', 'F'])('%s toggles the favourite', key => {
+      expect(press({ key }).defaultPrevented).toBe(true);
+      expect(toggleFavorite).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+    });
+
+    it.each(['x', 'X', '0'])('%s toggles the reject', key => {
+      expect(press({ key }).defaultPrevented).toBe(true);
+      expect(toggleRejected).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+    });
+
+    it.each(['6', '9', 'q', 'Enter'])('leaves %s alone', key => {
+      expectNothing(press({ key }));
+    });
+
+    it('does nothing outside edition mode', () => {
+      mockAuth.isEdition.set(false);
+      expectNothing(press({ key: '3' }));
+    });
+
+    it('does nothing when the rating controls are turned off', () => {
+      component.store.config.set({ features: { show_rating_controls: false } });
+      expectNothing(press({ key: 'f' }));
+    });
+
+    it('does nothing before the photo has loaded', () => {
+      component.photo.set(null);
+      expectNothing(press({ key: '3' }));
+    });
+
+    it('does nothing while typing in a field', () => {
+      expectNothing(press({ key: '3' }, document.createElement('input')));
+    });
+
+    it.each([['ctrlKey'], ['metaKey'], ['altKey']])('does nothing with %s held', mod => {
+      expectNothing(press({ key: 'x', [mod]: true }));
+    });
+
+    it('does nothing while a dialog is open', () => {
+      const dialog = document.createElement('mat-dialog-container');
+      document.body.appendChild(dialog);
+      try {
+        expectNothing(press({ key: '3' }));
+      } finally {
+        dialog.remove();
+      }
     });
   });
 

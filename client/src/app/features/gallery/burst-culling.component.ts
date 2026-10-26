@@ -269,11 +269,12 @@ interface ShortcutRow {
             <!-- Not behind the albums check: a date window needs no album. The range input is an invisible
                  anchor for the custom picker's popup; it never takes focus or pointer events. -->
             <div class="relative inline-flex shrink-0">
-              <button mat-icon-button data-testid="cull-date-range" [matMenuTriggerFor]="dateRangeMenu"
+              <button mat-button class="!min-w-0 !px-3 shrink-0" data-testid="cull-date-range" [matMenuTriggerFor]="dateRangeMenu"
                       [class.!text-[var(--mat-sys-primary)]]="cull.dateRangeActive()"
                       [matTooltip]="cull.dateRangeActive() ? (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : (I18N.culling.date_range.label | translate)"
                       [attr.aria-label]="cull.dateRangeActive() ? (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : (I18N.culling.date_range.label | translate)">
                 <mat-icon>date_range</mat-icon>
+                <span class="hidden xl:inline text-sm">{{ I18N.culling.date_range.label | translate }}</span>
               </button>
               <mat-date-range-input #rangeInput [rangePicker]="rangePicker" aria-hidden="true"
                                     class="absolute inset-0 overflow-hidden opacity-0 pointer-events-none">
@@ -304,11 +305,12 @@ interface ShortcutRow {
                 <span>{{ I18N.culling.date_range.all_dates | translate }}</span>
               </button>
             </mat-menu>
-            <button mat-icon-button [matMenuTriggerFor]="cullGroupByMenu"
+            <button mat-button class="!min-w-0 !px-3 shrink-0" [matMenuTriggerFor]="cullGroupByMenu"
                     [class.!text-[var(--mat-sys-primary)]]="cull.groupBy() !== 'all'"
                     [matTooltip]="I18N.culling.group_by.label | translate"
                     [attr.aria-label]="I18N.culling.group_by.label | translate">
               <mat-icon>{{ cull.groupBy() | cullGroupIcon }}</mat-icon>
+              <span class="hidden xl:inline text-sm">{{ I18N.culling.group_by.label | translate }}</span>
             </button>
             <mat-menu #cullGroupByMenu="matMenu">
               <button mat-menu-item (click)="onGroupByChange('all')">
@@ -343,11 +345,12 @@ interface ShortcutRow {
               </button>
             </mat-menu>
             @if (cull.groupBy() !== 'scene') {
-              <button mat-icon-button [matMenuTriggerFor]="cullSortMenu" [disabled]="cull.planActive()"
+              <button mat-button class="!min-w-0 !px-3 shrink-0" [matMenuTriggerFor]="cullSortMenu" [disabled]="cull.planActive()"
                       [class.!text-[var(--mat-sys-primary)]]="cull.sortMode() !== 'easiest'"
                       [matTooltip]="'culling.sort.' + cull.sortMode() | translate"
                       [attr.aria-label]="'culling.sort.' + cull.sortMode() | translate">
                 <mat-icon>{{ cull.sortMode() | sortIcon }}</mat-icon>
+                <span class="hidden xl:inline text-sm">{{ 'culling.sort.' + cull.sortMode() | translate }}</span>
               </button>
               <mat-menu #cullSortMenu="matMenu">
                 @for (m of sortModes; track m) {
@@ -544,8 +547,23 @@ interface ShortcutRow {
       <div class="flex-1 min-h-0 overflow-y-auto -mx-2 px-2 md:-mx-3 md:px-3 pb-4 max-lg:pb-24" data-culling-scroll>
       <!-- Content -->
       @if (cull.loading()) {
-        <div class="flex justify-center items-center py-20">
-          <mat-spinner diameter="40" [attr.aria-label]="I18N.ui.labels.loading | translate" />
+        <!-- Skeleton groups instead of a bare spinner: the first load of a
+             10k+ library takes seconds, and a shape the result will resemble
+             reads as "working" rather than "stuck". -->
+        <div class="space-y-3 pb-4" [attr.aria-label]="I18N.ui.labels.loading | translate" role="status">
+          @for (h of [340, 380, 300, 340]; track $index) {
+            <div class="rounded-xl border-2 border-[var(--mat-sys-surface-container-high)] overflow-hidden bg-[var(--mat-sys-surface-container)]">
+              <div class="flex gap-2 p-2" [style.height.px]="h * 0.55">
+                <div class="flex-1 rounded-md animate-pulse bg-[var(--mat-sys-surface-container-high)]"></div>
+                <div class="flex-1 rounded-md animate-pulse bg-[var(--mat-sys-surface-container-high)] [animation-delay:150ms]"></div>
+                <div class="hidden xl:block w-1/4 rounded-md animate-pulse bg-[var(--mat-sys-surface-container-high)] [animation-delay:300ms]"></div>
+              </div>
+              <div class="h-9 border-t border-[var(--mat-sys-surface-container-high)] flex items-center px-3 gap-2">
+                <div class="h-3 w-16 rounded animate-pulse bg-[var(--mat-sys-surface-container-high)]"></div>
+                <div class="h-3 w-10 rounded animate-pulse bg-[var(--mat-sys-surface-container-high)] [animation-delay:150ms]"></div>
+              </div>
+            </div>
+          }
         </div>
       } @else if (visibleGroups().length === 0) {
         <p class="text-center py-20 opacity-60">{{ emptyKey() | translate }}</p>
@@ -622,8 +640,12 @@ interface ShortcutRow {
                   </span>
                 </div>
               }
-              <!-- Photos -->
-              <div class="flex gap-2 md:gap-3 overflow-x-auto px-2 py-3 items-center transition-opacity duration-300 [&::-webkit-scrollbar]:h-2.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--mat-sys-outline-variant)] [&::-webkit-scrollbar-track]:bg-transparent"
+              <!-- Photos. w-fit + max-w-full + mx-auto: a two-photo group
+                   centres instead of squatting in the left quarter, while a
+                   wide group still caps at the row and scrolls — auto margins
+                   never clip the leading tile the way justify-center does
+                   with overflow. -->
+              <div class="flex gap-2 md:gap-3 overflow-x-auto px-2 py-3 items-center mx-auto w-fit max-w-full transition-opacity duration-300 [&::-webkit-scrollbar]:h-2.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--mat-sys-outline-variant)] [&::-webkit-scrollbar-track]:bg-transparent"
                    [class.pointer-events-none]="(group | isConfirmed:cull.confirmedGroups())"
                    [class.opacity-40]="(group | isConfirmed:cull.confirmedGroups())">
                 @for (photo of group.photos; track photo.path; let pIdx = $index) {

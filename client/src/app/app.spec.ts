@@ -32,6 +32,7 @@ function createApp(routerUrl = '/', extraProviders: Provider[] = []) {
     persons: personsSignal,
     selectionCount: selectionCountSignal,
     updateFilter: vi.fn(),
+    setUserSort: vi.fn(() => Promise.resolve()),
     resetFilters: vi.fn(() => Promise.resolve()),
     config: signal(null),
     types: signal<{ id: string; count: number }[]>([]),
@@ -362,6 +363,15 @@ describe('App', () => {
       const { app, compareCategorySig } = createApp('/');
       (app as any).onCompareCategoryChange('portrait');
       expect(compareCategorySig()).toBe('portrait');
+    });
+  });
+
+  describe('onSortChange', () => {
+    it('goes through setUserSort, the one path that remembers the sort', () => {
+      const { app, mockStore } = createApp('/');
+      (app as any).onSortChange('date_taken');
+      expect(mockStore.setUserSort).toHaveBeenCalledExactlyOnceWith('date_taken');
+      expect(mockStore.updateFilter).not.toHaveBeenCalledWith('sort', 'date_taken');
     });
   });
 

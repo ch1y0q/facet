@@ -179,6 +179,8 @@ da `models/samp_net.py`):
 
 ## Ordinamento
 
+**Ordinamento memorizzato.** La galleria si apre sull'ultimo ordinamento scelto nel selettore di ordinamento, e questa scelta prevale su `viewer.defaults.sort`. Viene memorizzata nel `localStorage` per browser, non per account utente. Solo una scelta fatta nel selettore di ordinamento viene memorizzata: un ordinamento che arriva da un link condiviso o da un segnalibro, o che un assistente applica, cambia la vista senza essere memorizzato, e il `sort` proprio di un link prevale comunque su quello memorizzato. Scegliere di nuovo l'ordinamento predefinito configurato dimentica la scelta, così come reimpostare i filtri. **Pertinenza** non viene mai memorizzato, perché richiede una query di ricerca.
+
 I tempi di scatto sono ordinati per durata dell'esposizione in secondi, compresi
 i valori EXIF decimali e razionali: `1/250` e `0.004` sono uguali. I valori
 mancanti, malformati, nulli, negativi e non finiti compaiono per ultimi in
@@ -911,9 +913,17 @@ Tutte le statistiche sono consapevoli dell'utente in modalità multiutente — o
 | `Shift+Click` | Selezione di un intervallo di foto tra l'ultima selezionata e quella cliccata |
 | `Double-click` | Apri la foto |
 | `Shift+F10` / `Menu` | Apri il menu contestuale della scheda foto con il focus (il clic destro fa lo stesso) |
+| `1`–`5` | Vota da 1 a 5 stelle la foto a fuoco (modalità modifica; passa alla successiva) |
+| `F` | Aggiungi / togli dai preferiti la foto a fuoco (modalità modifica) |
+| `X` o `0` | Scarta / annulla lo scarto della foto a fuoco (modalità modifica; passa alla successiva) |
+| `/` | Attiva la casella di ricerca |
+| `B` | Mostra / nascondi la barra laterale dei filtri |
+| `V` | Passa tra layout griglia e mosaico |
 | `?` | Mostra il riferimento delle scorciatoie da tastiera (funziona su ogni pagina) |
 
 La foto corrente — quella su cui agiscono le scorciatoie di valutazione, preferito e scarto — è contrassegnata da un contorno di 4px attorno alla sua scheda; tutte le altre schede si affievoliscono al 50% di opacità. Nulla è contrassegnato finché il cursore non si è effettivamente spostato su una foto tra i risultati, quindi una galleria che non hai ancora esplorato resta a piena intensità. Cliccare su una foto sposta il marcatore su di essa, così una scorciatoia digitata subito dopo un clic si applica alla foto cliccata, non a quella dove le frecce l'avevano lasciata. Tornando da una foto (Indietro o Esc) il marcatore resta sull'ultima foto che hai visto, così le scorciatoie proseguono da lì.
+
+**Nella pagina della foto**, `1`–`5`, `F` e `X` (o `0`) valutano, aggiungono ai preferiti e scartano la foto aperta, alle stesse condizioni dei pulsanti di valutazione: modalità modifica, con `viewer.features.show_rating_controls` attivo. A differenza della galleria, non passano mai a un'altra foto; per farlo usa `←` `→`. Il riferimento `?` le elenca sotto *Vista foto*.
 
 ## Annulla
 

@@ -36,6 +36,7 @@ import { CompareFiltersService } from './features/comparison/compare-filters.ser
 import { MapFiltersService } from './features/map/map-filters.service';
 import { CapsuleFiltersService } from './features/capsules/capsule-filters.service';
 import { TranslatePipe } from './shared/pipes/translate.pipe';
+import { CardActionsDialogComponent } from './features/gallery/card-actions-dialog.component';
 import { AssistantActivityChipComponent } from './features/agent/assistant-activity-chip.component';
 import { CONNECT_ASSISTANT_DIALOG_ID } from './core/agent/page-context.service';
 import { SortGroupKeyPipe } from './shared/pipes/sort-group-key.pipe';
@@ -160,6 +161,12 @@ export class App implements OnInit {
   protected readonly i18n = inject(I18nService);
   protected readonly themeService = inject(ThemeService);
   protected readonly pageHelp = inject(PageHelpService);
+
+  /** Open the photo-card hover-button customiser from the user menu — the
+   *  same dialog the filter sidebar offers, reachable from every route. */
+  protected openCardActionsDialog(): void {
+    this.dialog.open(CardActionsDialogComponent, { width: '26rem', autoFocus: false });
+  }
   protected readonly headerSlot = inject(HeaderSlotService);
   protected readonly store = inject(GalleryStore);
   protected readonly statsFilters = inject(StatsFiltersService);
@@ -550,7 +557,7 @@ export class App implements OnInit {
 
 
   protected onSortChange(sort: string): void {
-    this.store.updateFilter('sort', sort);
+    void this.store.setUserSort(sort);
   }
 
   protected toggleSortDirection(): void {
