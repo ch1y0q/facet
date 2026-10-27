@@ -35,8 +35,10 @@ def baseline(readme):
     """``{report value: baseline}`` from the gate table's CPU column."""
     rows = [[c.strip() for c in line.strip().strip("|").split("|")]
             for line in readme.read_text(encoding="utf8").splitlines() if line.startswith("|")]
-    header = next(r for r in rows if r and r[0] == "Measure")
-    col = next(i for i, c in enumerate(header) if c.startswith("CPU"))
+    header = next((r for r in rows if r and r[0] == "Measure"), None)
+    col = next((i for i, c in enumerate(header or []) if c.startswith("CPU")), None)
+    if col is None:
+        raise SystemExit(f"no gate table with a CPU column in {readme}")
     values = {}
     for prefix, (names, _) in GATES.items():
         row = next((r for r in rows if r[0].startswith(prefix)), None)
