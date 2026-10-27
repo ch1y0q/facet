@@ -39,6 +39,7 @@ import { GalleryStore, BatchResult, REVIEW_RESUME_NAVIGATION } from './gallery.s
 import { NoticeDismissals, NoticeKind, readNoticeDismissals, saveNoticeDismissals, withDismissal } from './notice-dismiss.util';
 import { Photo } from '../../shared/models/photo.model';
 import { isPageShortcutBlocked, isTypingContext } from '../../shared/utils/keyboard';
+import { KeyboardMappingService } from '../../core/services/keyboard-mapping.service';
 import { closeOverlayDirectives } from '../../shared/utils/overlays';
 import { PHOTO_PATH } from '../../core/gallery-reuse.strategy';
 import { UndoService } from '../../core/services/undo.service';
@@ -828,6 +829,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   protected readonly store = inject(GalleryStore);
   protected readonly auth = inject(AuthService);
   private readonly cardActionsService = inject(CardActionsService);
+  private readonly keymap = inject(KeyboardMappingService);
   /** The user's hover-button layout for every card, from localStorage. */
   protected readonly cardActions = this.cardActionsService.config;
   protected readonly scan = inject(ScanService);
@@ -2582,40 +2584,41 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (value !== this.store.filters().search) this.store.updateFilter('search', value);
   }
 
-  /** `/` focuses the search (the toolbar's, else the sidebar's), `B` toggles the filter sidebar, `V`
-   *  switches grid/mosaic — the three view-level toggles that had no
-   *  keyboard path. Typing contexts and open dialogs bow out, matching the
-   *  select-all shortcut's guards, and so does the slideshow: it is an inline
-   *  overlay, not a MatDialog, so the dialog query below cannot see it. */
+  /** Focuses the search (the toolbar's, else the sidebar's), toggles the
+   *  filter sidebar, switches grid/mosaic — the three view-level toggles
+   *  that had no keyboard path. The keys come from the user's key mapping
+   *  (the keyboard settings dialog); typing contexts and open dialogs bow
+   *  out, matching the select-all shortcut's guards, and so does the
+   *  slideshow: it is an inline overlay, not a MatDialog, so the dialog
+   *  query below cannot see it. */
   protected onGalleryShortcut(event: KeyboardEvent): void {
     if (this.parked || this.store.slideshowActive()) return;
     if (isPageShortcutBlocked(event)) return;
 
-    switch (event.key) {
-      case '/': {
-        const search = this.toolbarSearch()?.nativeElement;
-        if (!search) return;
-        event.preventDefault();
-        if (window.matchMedia(TOOLBAR_SEARCH_QUERY).matches) {
-          search.focus();
-          search.select();
-          break;
-        }
-        // Below 1360 px the toolbar search is hidden; the sidebar carries its own.
-        this.store.setFilterDrawerOpen(true);
-        afterNextRender(() => this.filterSidebar()?.focusSearch(), { injector: this.injector });
-        break;
-      }
-      case 'b': case 'B':
-        event.preventDefault();
-        this.store.setFilterDrawerOpen(!this.store.filterDrawerOpen());
-        break;
-      case 'v': case 'V':
-        event.preventDefault();
-        this.store.setGalleryMode(this.effectiveGalleryMode() === 'grid' ? 'mosaic' : 'grid');
-        break;
-      default:
+    const key = event.key.toLowerCase();
+    const map = this.keymap.keymap();
+    if (key === map.focusSearch) {
+      const search = this.toolbarSearch()?.nativeElement;
+      if (!search) return;
+      event.preventDefault();
+      if (window.matchMedia(TOOLBAR_SEARCH_QUERY).matches) {
+        search.focus();
+        search.select();
         return;
+      }
+      // Below 1360 px the toolbar search is hidden; the sidebar carries its own.
+      this.store.setFilterDrawerOpen(true);
+      afterNextRender(() => this.filterSidebar()?.focusSearch(), { injector: this.injector });
+      return;
+    }
+    if (key === map.toggleSidebar) {
+      event.preventDefault();
+      this.store.setFilterDrawerOpen(!this.store.filterDrawerOpen());
+      return;
+    }
+    if (key === map.swapLayout) {
+      event.preventDefault();
+      this.store.setGalleryMode(this.effectiveGalleryMode() === 'grid' ? 'mosaic' : 'grid');
     }
   }
 
@@ -2860,35 +2863,38 @@ export class GalleryComponent implements OnInit, OnDestroy {
     this.focusCard(next);
   }
 
-  /** Rate-and-advance shortcuts on the focused card: 1-5 set stars, 0/X reject
-   * (both auto-advance), F toggles favorite (stays put — a tag-like toggle).
-   * Edition-only and gated on the rating-controls feature flag, mirroring the
-   * card's own template guards. */
+  /** Rate-and-advance shortcuts on the focused card: 1-5 set stars, the mapped
+   *  reject key (or 0) rejects (both auto-advance), the mapped favourite key
+   *  toggles favorite (stays put — a tag-like toggle), the mapped keep key
+   *  keeps (review queue). Edition-only and gated on the rating-controls
+   *  feature flag, mirroring the card's own template guards. */
   private handleRatingKey(event: KeyboardEvent, photos: Photo[], index: number): void {
     // Don't hijack modified combos (Ctrl/Cmd+1..5 switch browser tabs).
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     if (!this.auth.isEdition() || !this.store.config()?.features?.show_rating_controls) return;
     const photo = photos[index];
     if (!photo) return;
+    const map = this.keymap.keymap();
+    const key = event.key.toLowerCase();
 
     let advance = false;
     if (event.key >= '1' && event.key <= '5') {
       this.store.setRating(photo.path, Number(event.key));
       advance = true;
-    } else if (event.key.toLowerCase() === 'k') {
+    } else if (key === map.keep) {
       event.preventDefault();
       void this.reviewSingle(photo.path, 'kept').then(result => {
         if (result) this.focusAfterDecision(photos, index);
       });
       return;
-    } else if (event.key === '0' || event.key === 'x' || event.key === 'X') {
+    } else if (event.key === '0' || key === map.reject) {
       if (this.store.filters().review_status) {
         void this.store.toggleRejected(photo.path).then(() => this.focusAfterDecision(photos, index));
       } else {
         this.store.toggleRejected(photo.path);
         advance = true;
       }
-    } else if (event.key === 'f' || event.key === 'F') {
+    } else if (key === map.favourite) {
       this.store.toggleFavorite(photo.path);
     } else {
       return;

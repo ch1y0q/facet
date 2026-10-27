@@ -2663,7 +2663,12 @@
     "toggle_filters": "Mostrar / ocultar la barra de filtros",
     "toggle_layout": "Alternar cuadrícula / mosaico",
     "comp_left_wins": "Gana la foto izquierda",
-    "comp_right_wins": "Gana la foto derecha"
+    "comp_right_wins": "Gana la foto derecha",
+    "keymap_hint": "Haz clic en una acción y pulsa la nueva tecla.",
+    "press_key": "Pulsa una tecla…",
+    "reset_keys": "Restablecer todo",
+    "key_in_use": "Esa tecla ya está asignada",
+    "key_reserved": "Esa tecla está reservada"
   },
   "pwa": {
     "update_available": "Hay una nueva versión disponible",

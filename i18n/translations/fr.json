@@ -2663,7 +2663,12 @@
     "toggle_filters": "Afficher / masquer le panneau de filtres",
     "toggle_layout": "Basculer grille / mosaïque",
     "comp_left_wins": "La photo de gauche gagne",
-    "comp_right_wins": "La photo de droite gagne"
+    "comp_right_wins": "La photo de droite gagne",
+    "keymap_hint": "Cliquez sur une action, puis appuyez sur la nouvelle touche.",
+    "press_key": "Appuyez sur une touche…",
+    "reset_keys": "Tout réinitialiser",
+    "key_in_use": "Cette touche est déjà attribuée",
+    "key_reserved": "Cette touche est réservée"
   },
   "pwa": {
     "update_available": "Une nouvelle version est disponible",

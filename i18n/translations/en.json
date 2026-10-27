@@ -2663,7 +2663,12 @@
     "toggle_filters": "Show / hide the filter sidebar",
     "toggle_layout": "Switch grid / mosaic",
     "comp_left_wins": "Left photo wins",
-    "comp_right_wins": "Right photo wins"
+    "comp_right_wins": "Right photo wins",
+    "keymap_hint": "Click an action, then press the new key.",
+    "press_key": "Press a key…",
+    "reset_keys": "Reset all",
+    "key_in_use": "That key is already assigned",
+    "key_reserved": "That key is reserved"
   },
   "pwa": {
     "update_available": "A new version is available",

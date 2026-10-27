@@ -1,9 +1,10 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { i18nKeys } from '../../../core/i18n/keys';
-import { GALLERY_SHORTCUT_SECTION } from '../../../features/gallery/gallery-shortcuts';
+import { galleryShortcutSection } from '../../../features/gallery/gallery-shortcuts';
+import { KeyboardMappingService } from '../../../core/services/keyboard-mapping.service';
 
 interface ShortcutRow {
   keys: string[];
@@ -50,19 +51,26 @@ interface ShortcutSection {
 })
 export class ShortcutsDialogComponent {
   protected readonly I18N = i18nKeys();
-  protected readonly sections: ShortcutSection[] = [
-    GALLERY_SHORTCUT_SECTION,
-    {
-      titleKey: 'shortcuts.section_detail',
-      rows: [
-        { keys: ['K'], labelKey: this.I18N.review.shortcut },
-        { keys: ['←', '→'], labelKey: 'shortcuts.navigate' },
-        { keys: ['1', '–', '5'], labelKey: 'shortcuts.rate' },
-        { keys: ['0', 'X'], labelKey: 'shortcuts.reject' },
-        { keys: ['F'], labelKey: 'shortcuts.favorite' },
-        { keys: ['Esc'], labelKey: 'shortcuts.close' },
-      ],
-    },
+  private readonly keymap = inject(KeyboardMappingService);
+
+  /** Built at open time from the live key mapping, so a remapped key shows
+   *  here the moment it is saved. */
+  protected readonly sections: ShortcutSection[] = (() => {
+    const map = this.keymap.keymap();
+    const label = (k: string) => k.toUpperCase();
+    return [
+      galleryShortcutSection(map),
+      {
+        titleKey: 'shortcuts.section_detail',
+        rows: [
+          { keys: [label(map.keep)], labelKey: this.I18N.review.shortcut },
+          { keys: ['←', '→'], labelKey: 'shortcuts.navigate' },
+          { keys: ['1', '–', '5'], labelKey: 'shortcuts.rate' },
+          { keys: ['0', label(map.reject)], labelKey: 'shortcuts.reject' },
+          { keys: [label(map.favourite)], labelKey: 'shortcuts.favorite' },
+          { keys: ['Esc'], labelKey: 'shortcuts.close' },
+        ],
+      },
     {
       titleKey: 'shortcuts.section_comparison',
       rows: [
@@ -78,5 +86,6 @@ export class ShortcutsDialogComponent {
         { keys: ['?'], labelKey: 'shortcuts.show_help' },
       ],
     },
-  ];
+    ];
+  })();
 }

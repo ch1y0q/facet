@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Gallery and photo-page shortcuts are remappable.** User menu → Keyboard shortcuts opens a dialog where clicking an action and pressing a key reassigns it — favourite, reject, keep, search focus, the filter sidebar toggle and the grid/mosaic switch, stored per browser in `localStorage`. Digits, Space and `?` stay reserved for rating, selection and the reference, and a key another action already holds is refused. The `?` shortcuts dialog and the Help dialog's gallery and photo-view tables always show the keys in effect.
+
 ## [1.25.0] "Hyperfocale" — 2026-10-27
 
 ### Added

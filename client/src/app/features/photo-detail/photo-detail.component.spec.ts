@@ -16,6 +16,7 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
+import { KeyboardMappingService } from '../../core/services/keyboard-mapping.service';
 import { AssistantChangesService, AssistantChangeBatch } from '../../core/agent/assistant-changes.service';
 
 // Mock Leaflet via vi.doMock + dynamic import: the component pulls in shared/leaflet
@@ -1089,6 +1090,20 @@ describe('PhotoDetailComponent', () => {
     it.each(['x', 'X', '0'])('%s toggles the reject', key => {
       expect(press({ key }).defaultPrevented).toBe(true);
       expect(toggleRejected).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+    });
+
+    it('rejects with a remapped key and retires the default X', () => {
+      const keymap = TestBed.inject(KeyboardMappingService);
+      keymap.setKey('reject', 'r');
+      try {
+        expect(press({ key: 'r' }).defaultPrevented).toBe(true);
+        expect(toggleRejected).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+        press({ key: 'x' });
+        // Still exactly the one call from 'r': the retired default does nothing.
+        expect(toggleRejected).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+      } finally {
+        keymap.resetAll();
+      }
     });
 
     it.each(['6', '9', 'q', 'Enter'])('leaves %s alone', key => {

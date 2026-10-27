@@ -2663,7 +2663,12 @@
     "toggle_filters": "Mostrar / ocultar a barra de filtros",
     "toggle_layout": "Alternar grade / mosaico",
     "comp_left_wins": "Foto da esquerda vence",
-    "comp_right_wins": "Foto da direita vence"
+    "comp_right_wins": "Foto da direita vence",
+    "keymap_hint": "Clique numa ação e pressione a nova tecla.",
+    "press_key": "Pressione uma tecla…",
+    "reset_keys": "Restaurar tudo",
+    "key_in_use": "Essa tecla já está em uso",
+    "key_reserved": "Essa tecla é reservada"
   },
   "pwa": {
     "update_available": "Uma nova versão está disponível",

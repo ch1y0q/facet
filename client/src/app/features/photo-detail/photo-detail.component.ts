@@ -44,6 +44,7 @@ import * as L from 'leaflet';
 import { createLeafletMap } from '../../shared/leaflet';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 import { isPageShortcutBlocked, isTypingContext } from '../../shared/utils/keyboard';
+import { KeyboardMappingService } from '../../core/services/keyboard-mapping.service';
 import type { CategoryOverrideResult } from './category-override-dialog.component';
 
 const SOCIAL_SOURCE_KEYS: Record<string, string> = {
@@ -676,6 +677,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   private readonly assistantChanges = inject(AssistantChangesService);
   private readonly photoActions = inject(PhotoActionsService);
   private readonly journal = inject(UserActivityJournal);
+  private readonly keymap = inject(KeyboardMappingService);
 
   readonly photo = signal<Photo | null>(null);
   protected readonly photoMissing = signal(false);
@@ -984,26 +986,27 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     void this.navigateAdjacentPhoto(1);
   }
 
-  /** 1-5 rate, F favourite, X/0 reject the open photo — the same rating keys
-   *  the grid's focused card answers, so a reviewer never has to reach for
-   *  the panel. Gated the same way the rating buttons are (edition mode +
-   *  the rating-controls feature flag); typing contexts and open dialogs bow
-   *  out first. No auto-advance: a single-photo view has no "next" contract
-   *  with the filters it came from. */
+  /** The mapped rating keys act on the open photo — the same keys the grid's
+   *  focused card answers, so a reviewer never has to reach for the panel.
+   *  Gated the same way the rating buttons are (edition mode + the
+   *  rating-controls feature flag); typing contexts and open dialogs bow out
+   *  first. No auto-advance: a single-photo view has no "next" contract with
+   *  the filters it came from. */
   @HostListener('document:keydown', ['$event'])
   protected onRatingShortcut(event: KeyboardEvent): void {
     if (isPageShortcutBlocked(event)) return;
     if (!this.auth.isEdition() || !this.store.config()?.features?.show_rating_controls) return;
     const p = this.photo();
     if (!p) return;
-    const key = event.key;
-    if (key >= '1' && key <= '5') {
+    const key = event.key.toLowerCase();
+    const map = this.keymap.keymap();
+    if (event.key >= '1' && event.key <= '5') {
       event.preventDefault();
-      void this.setRating(p.path, Number(key));
-    } else if (key === 'f' || key === 'F') {
+      void this.setRating(p.path, Number(event.key));
+    } else if (key === map.favourite) {
       event.preventDefault();
       void this.toggleFavorite(p.path);
-    } else if (key === 'x' || key === 'X' || key === '0') {
+    } else if (event.key === '0' || key === map.reject) {
       event.preventDefault();
       void this.toggleRejected(p.path);
     }
@@ -1128,7 +1131,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
 
   @HostListener('document:keydown', ['$event'])
   protected onReviewKey(event: KeyboardEvent): void {
-    if (this.dialog.openDialogs.length || isTypingContext(event) || event.ctrlKey || event.metaKey || event.altKey || event.key.toLowerCase() !== 'k' || !this.auth.isEdition()) return;
+    if (this.dialog.openDialogs.length || isTypingContext(event) || event.ctrlKey || event.metaKey || event.altKey || event.key.toLowerCase() !== this.keymap.key('keep') || !this.auth.isEdition()) return;
     event.preventDefault();
     void this.reviewPhoto('kept');
   }

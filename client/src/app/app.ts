@@ -40,7 +40,9 @@ import { TranslatePipe } from './shared/pipes/translate.pipe';
 import { CardActionsDialogComponent } from './features/gallery/card-actions-dialog.component';
 import { HelpDialogComponent } from './shared/components/help-dialog/help-dialog.component';
 import { CULLING_SHORTCUT_SECTIONS } from './features/gallery/culling-shortcuts';
-import { GALLERY_SHORTCUT_SECTION } from './features/gallery/gallery-shortcuts';
+import { galleryShortcutSection } from './features/gallery/gallery-shortcuts';
+import { KeyboardMappingDialogComponent } from './shared/components/keyboard-mapping-dialog/keyboard-mapping-dialog.component';
+import { KeyboardMappingService } from './core/services/keyboard-mapping.service';
 import { AssistantActivityChipComponent } from './features/agent/assistant-activity-chip.component';
 import { CONNECT_ASSISTANT_DIALOG_ID } from './core/agent/page-context.service';
 import { SortGroupKeyPipe } from './shared/pipes/sort-group-key.pipe';
@@ -167,11 +169,18 @@ export class App implements OnInit {
   protected readonly i18n = inject(I18nService);
   protected readonly themeService = inject(ThemeService);
   protected readonly pageHelp = inject(PageHelpService);
+  private readonly keymap = inject(KeyboardMappingService);
 
   /** Open the photo-card hover-button customiser from the user menu — the
    *  same dialog the filter sidebar offers, reachable from every route. */
   protected openCardActionsDialog(): void {
     this.dialog.open(CardActionsDialogComponent, { width: '26rem', autoFocus: false });
+  }
+
+  /** The keyboard settings dialog: reassign the primary key of the gallery
+   *  and photo-page actions. Reachable from every route, like Help. */
+  protected openKeymapDialog(): void {
+    this.dialog.open(KeyboardMappingDialogComponent, { width: '26rem', autoFocus: false });
   }
 
   /** The menu's Help entry opens a modal with the current page's help text
@@ -182,7 +191,7 @@ export class App implements OnInit {
   protected openHelpDialog(): void {
     const shortcuts = this.url().split('?')[0].startsWith('/culling')
       ? CULLING_SHORTCUT_SECTIONS
-      : this.isGalleryRoute() ? [GALLERY_SHORTCUT_SECTION] : [];
+      : this.isGalleryRoute() ? [galleryShortcutSection(this.keymap.keymap())] : [];
     this.dialog.open(HelpDialogComponent, {
       width: '32rem', autoFocus: false,
       data: { key: this.pageHelp.descriptionKey(), note: this.pageHelp.note(), shortcutSections: shortcuts },

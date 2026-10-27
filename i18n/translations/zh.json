@@ -2663,7 +2663,12 @@
     "toggle_filters": "显示／隐藏筛选侧栏",
     "toggle_layout": "切换网格／拼贴",
     "comp_left_wins": "左侧照片更好",
-    "comp_right_wins": "右侧照片更好"
+    "comp_right_wins": "右侧照片更好",
+    "keymap_hint": "点击一个操作，然后按下新键。",
+    "press_key": "请按新键…",
+    "reset_keys": "全部恢复默认",
+    "key_in_use": "该按键已被其他操作使用",
+    "key_reserved": "该按键为保留按键"
   },
   "pwa": {
     "update_available": "有新版本可用",

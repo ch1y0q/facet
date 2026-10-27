@@ -2663,7 +2663,12 @@
     "toggle_filters": "Mostra / nascondi la barra dei filtri",
     "toggle_layout": "Alterna griglia / mosaico",
     "comp_left_wins": "Vince la foto a sinistra",
-    "comp_right_wins": "Vince la foto a destra"
+    "comp_right_wins": "Vince la foto a destra",
+    "keymap_hint": "Clicca un'azione e premi il nuovo tasto.",
+    "press_key": "Premi un tasto…",
+    "reset_keys": "Ripristina tutto",
+    "key_in_use": "Questo tasto è già assegnato",
+    "key_reserved": "Questo tasto è riservato"
   },
   "pwa": {
     "update_available": "È disponibile una nuova versione",

@@ -1,12 +1,15 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { I18nService } from '../../../core/services/i18n.service';
+import { DEFAULT_KEYMAP } from '../../../core/services/keyboard-mapping.service';
 import { ShortcutsDialogComponent } from './shortcuts-dialog.component';
 
 describe('ShortcutsDialogComponent', () => {
   /** Each row as "label=keys", the label being the raw i18n key (the stub
    *  translates a key to itself), grouped by the section heading. */
   function rowsBySection(): Record<string, string[]> {
+    // Some tests render the dialog twice in one test; reset keeps re-configure legal.
+    TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [ShortcutsDialogComponent],
       providers: [{ provide: I18nService, useValue: { translations: signal({}), t: (key: string) => key } }],
@@ -39,5 +42,18 @@ describe('ShortcutsDialogComponent', () => {
       'shortcuts.reject=0 X',
       'shortcuts.favorite=F',
     ]));
+  });
+
+  it('lists the keys in effect, not the defaults, once the user remapped one', () => {
+    localStorage.setItem('facet_keymap', JSON.stringify({ ...DEFAULT_KEYMAP, reject: 'r' }));
+    try {
+      for (const section of ['shortcuts.section_gallery', 'shortcuts.section_detail']) {
+        expect(rowsBySection()[section]).toEqual(expect.arrayContaining([
+          'shortcuts.reject=0 R',
+        ]));
+      }
+    } finally {
+      localStorage.removeItem('facet_keymap');
+    }
   });
 });

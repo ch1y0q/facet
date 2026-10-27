@@ -864,17 +864,21 @@ describe('App', () => {
       expect(bar.classList.contains('!border-b-2')).toBe(edition);
     });
 
-    it('lists Card actions then the shell-level Help, and calls their handlers', () => {
+    it('lists Card actions, Keyboard shortcuts, then the shell-level Help, and calls their handlers', () => {
       const { fixture, root } = render(false);
-      const app = fixture.componentInstance as unknown as { openCardActionsDialog: () => void; openHelpDialog: () => void };
+      const app = fixture.componentInstance as unknown as { openCardActionsDialog: () => void; openKeymapDialog: () => void; openHelpDialog: () => void };
       const openCardActions = vi.spyOn(app, 'openCardActionsDialog').mockImplementation(() => undefined);
+      const openKeymap = vi.spyOn(app, 'openKeymapDialog').mockImplementation(() => undefined);
       const openHelp = vi.spyOn(app, 'openHelpDialog').mockImplementation(() => undefined);
       const items = openUserMenu(fixture, root);
       const labels = items.map(i => i.textContent!.replace(/\s+/g, ' ').trim());
-      expect(labels.at(-2)).toContain(I18N.gallery.card_actions.title);
+      expect(labels.at(-3)).toContain(I18N.gallery.card_actions.title);
+      expect(labels.at(-2)).toContain(I18N.shortcuts.title);
       expect(labels.at(-1)).toContain(I18N.nav.help);
-      items.at(-2)!.click();
+      items.at(-3)!.click();
       expect(openCardActions).toHaveBeenCalledOnce();
+      items.at(-2)!.click();
+      expect(openKeymap).toHaveBeenCalledOnce();
       items.at(-1)!.click();
       expect(openHelp).toHaveBeenCalledOnce();
     });
