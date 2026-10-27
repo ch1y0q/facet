@@ -1038,7 +1038,7 @@
     "user_menu": "User menu"
   },
   "gallery": {
-    "help": "Sort by score, date or your personal taste\nFilter with the sidebar: people, tags, camera, categories\nSearch by filename or description\nRate and curate with the keyboard — see the table below",
+    "help": "Sort by score, date or your personal taste\nFilter with the sidebar: people, tags, camera, categories\nSearch by filename or description",
     "hidden_banner": {
       "message": "{n} photos hidden by current filters",
       "some_hidden": "Some photos are hidden by your filters",
@@ -1329,17 +1329,7 @@
     "faces_need_names": "Faces without names",
     "faces_need_names_hint": "Includes unassigned faces and unnamed person groups. Use + to assign a face, or name a group in People. Photos with no detected faces are excluded.",
     "faces_need_names_readonly_hint": "Includes unassigned faces and unnamed person groups. Someone with edition access can assign faces or name groups. Photos with no detected faces are excluded.",
-    "help_none": "This page has no help text yet. The ? button in the header shows the same content as this dialog, per page.",
-    "shortcuts": {
-      "rate": "Rate the focused photo",
-      "favourite": "Favourite the focused photo",
-      "reject": "Reject the focused photo",
-      "focus_search": "Focus the search box",
-      "toggle_sidebar": "Show / hide the filter sidebar",
-      "swap_layout": "Switch grid / mosaic",
-      "select": "Select the focused photo",
-      "page_title": "Gallery shortcuts"
-    }
+    "help_none": "This page has no help text yet."
   },
   "composition_patterns": {
     "none": "None",

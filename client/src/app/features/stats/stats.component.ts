@@ -319,9 +319,6 @@ export class StatsComponent {
   protected readonly cameras = signal<GearItem[]>([]);
   protected readonly lenses = signal<GearItem[]>([]);
   protected readonly combos = signal<GearItem[]>([]);
-  /** Two cards without the combos chart, three with — a fixed 3-column grid
-   *  left a blank third column on 2xl screens whenever combos had no data. */
-  protected readonly gearGridClass = 'grid grid-cols-1 xl:grid-cols-2 gap-4 mt-4';
   protected readonly gearLoading = signal(false);
 
   protected readonly categoryStats = signal<CategoryStat[]>([]);

@@ -5277,13 +5277,31 @@ describe('GalleryComponent', () => {
     });
 
     describe('/, B and V', () => {
+      const stubWide = (matches: boolean) => vi.stubGlobal('matchMedia', (media: string) => ({ matches, media, addEventListener() {}, removeEventListener() {} }));
+      afterEach(() => vi.unstubAllGlobals());
+
       it('/ focuses and selects the toolbar search', () => {
+        stubWide(true);
         search.value = 'cat';
         const event = key({ key: '/' });
         expect(event.defaultPrevented).toBe(true);
         expect(document.activeElement).toBe(search);
         expect(search.selectionStart).toBe(0);
         expect(search.selectionEnd).toBe(3);
+      });
+
+      it('/ opens the sidebar and focuses its search below 1360 px, where the toolbar search is hidden', async () => {
+        stubWide(false);
+        const [sidebarBlock] = await fixture.getDeferBlocks();
+        await sidebarBlock.render(DeferBlockState.Complete);
+        const focusSearch = vi.spyOn(GalleryFilterSidebarComponent.prototype, 'focusSearch').mockImplementation(() => undefined);
+        expect(key({ key: '/' }).defaultPrevented).toBe(true);
+        expect(document.activeElement).not.toBe(search);
+        expect(mockStore.setFilterDrawerOpen).toHaveBeenCalledWith(true);
+        expect(gallery['filterSidebar']()).toBeTruthy();
+        fixture.detectChanges();
+        await fixture.whenStable();
+        expect(focusSearch).toHaveBeenCalledOnce();
       });
 
       it.each(['b', 'B'])('%s toggles the filter sidebar', k => {

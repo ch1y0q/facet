@@ -382,7 +382,7 @@
           <mat-divider />
           <button mat-menu-item (click)="store.setReviewProgressVisible(!store.reviewProgressVisible())">
             <mat-icon>{{ store.reviewProgressVisible() ? 'visibility' : 'visibility_off' }}</mat-icon>
-            {{ (store.reviewProgressVisible() ? 'gallery.review_progress.hide_from_menu' : 'gallery.review_progress.show_from_menu') | translate }}
+            {{ (store.reviewProgressVisible() ? I18N.gallery.review_progress.hide_from_menu : I18N.gallery.review_progress.show_from_menu) | translate }}
           </button>
           <button mat-menu-item (click)="openCardActionsDialog()">
             <mat-icon>tune</mat-icon>

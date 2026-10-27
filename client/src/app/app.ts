@@ -39,7 +39,7 @@ import { TranslatePipe } from './shared/pipes/translate.pipe';
 import { CardActionsDialogComponent } from './features/gallery/card-actions-dialog.component';
 import { HelpDialogComponent } from './shared/components/help-dialog/help-dialog.component';
 import { CULLING_SHORTCUT_SECTIONS } from './features/gallery/culling-shortcuts';
-import { GALLERY_HELP_SHORTCUT_SECTIONS } from './features/gallery/gallery-shortcuts';
+import { GALLERY_SHORTCUT_SECTION } from './features/gallery/gallery-shortcuts';
 import { AssistantActivityChipComponent } from './features/agent/assistant-activity-chip.component';
 import { CONNECT_ASSISTANT_DIALOG_ID } from './core/agent/page-context.service';
 import { SortGroupKeyPipe } from './shared/pipes/sort-group-key.pipe';
@@ -171,19 +171,18 @@ export class App implements OnInit {
     this.dialog.open(CardActionsDialogComponent, { width: '26rem', autoFocus: false });
   }
 
-  /** The menu's Help entry and the header ? button open a modal with the
-   *  current page's help text — toggling the in-page banner from either read
-   *  as a misfire. The keyboard sections resolve from the live path at click
-   *  time; the dialog must not read router state itself, because its
-   *  construction timing is not guaranteed to see the active route. */
+  /** The menu's Help entry opens a modal with the current page's help text
+   *  and, on the gallery and culling routes, that page's keyboard reference.
+   *  The sections resolve from the router URL at click time; the dialog must
+   *  not read router state itself, because its construction timing is not
+   *  guaranteed to see the active route. */
   protected openHelpDialog(): void {
-    const path = document.location.pathname;
-    const shortcuts = path.startsWith('/culling')
+    const shortcuts = this.url().split('?')[0].startsWith('/culling')
       ? CULLING_SHORTCUT_SECTIONS
-      : (path === '/' || path.startsWith('/album/')) ? GALLERY_HELP_SHORTCUT_SECTIONS : [];
+      : this.isGalleryRoute() ? [GALLERY_SHORTCUT_SECTION] : [];
     this.dialog.open(HelpDialogComponent, {
       width: '32rem', autoFocus: false,
-      data: { key: this.pageHelp.descriptionKey(), shortcutSections: shortcuts },
+      data: { key: this.pageHelp.descriptionKey(), note: this.pageHelp.note(), shortcutSections: shortcuts },
     });
   }
   protected readonly headerSlot = inject(HeaderSlotService);

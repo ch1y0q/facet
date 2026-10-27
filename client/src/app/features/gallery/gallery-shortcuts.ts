@@ -1,19 +1,25 @@
-/** The gallery page's keyboard reference, shown in the help dialog. Mirrors
- *  the card hint chip and the grid/photo-page key handlers. */
+import { I18N } from '../../core/i18n/keys';
+
+/** The gallery's keyboard reference. One table feeds both the `?` shortcuts
+ *  dialog and the help dialog the user menu opens on the gallery routes, so
+ *  the two can never list different keys. */
 export interface GalleryShortcutRow { keys: string[]; labelKey: string; }
 
-export const GALLERY_HELP_SHORTCUT_SECTIONS: { titleKey: string; rows: GalleryShortcutRow[] }[] = [
-  {
-    titleKey: 'gallery.shortcuts.page_title',
-    rows: [
-      { keys: ['1', '–', '5'], labelKey: 'gallery.shortcuts.rate' },
-      { keys: ['F'], labelKey: 'gallery.shortcuts.favourite' },
-      { keys: ['X'], labelKey: 'gallery.shortcuts.reject' },
-      { keys: ['/'], labelKey: 'gallery.shortcuts.focus_search' },
-      { keys: ['B'], labelKey: 'gallery.shortcuts.toggle_sidebar' },
-      { keys: ['V'], labelKey: 'gallery.shortcuts.swap_layout' },
-      { keys: ['Space'], labelKey: 'gallery.shortcuts.select' },
-      { keys: ['Enter'], labelKey: 'culling.shortcuts.open' },
-    ],
-  },
-];
+export const GALLERY_SHORTCUT_SECTION: { titleKey: string; rows: GalleryShortcutRow[] } = {
+  titleKey: I18N.shortcuts.section_gallery,
+  rows: [
+    { keys: ['←', '→', '↑', '↓'], labelKey: I18N.shortcuts.navigate },
+    { keys: ['Enter'], labelKey: I18N.shortcuts.open_detail },
+    { keys: ['Space'], labelKey: I18N.shortcuts.toggle_select },
+    { keys: ['Ctrl', 'A'], labelKey: I18N.shortcuts.select_all },
+    { keys: ['1', '–', '5'], labelKey: I18N.shortcuts.rate },
+    { keys: ['K'], labelKey: I18N.review.shortcut },
+    { keys: ['0', 'X'], labelKey: I18N.shortcuts.reject },
+    { keys: ['F'], labelKey: I18N.shortcuts.favorite },
+    { keys: ['Esc'], labelKey: I18N.shortcuts.clear_selection },
+    { keys: ['Shift', 'F10'], labelKey: I18N.shortcuts.context_menu },
+    { keys: ['/'], labelKey: I18N.shortcuts.focus_search },
+    { keys: ['B'], labelKey: I18N.shortcuts.toggle_filters },
+    { keys: ['V'], labelKey: I18N.shortcuts.toggle_layout },
+  ],
+};

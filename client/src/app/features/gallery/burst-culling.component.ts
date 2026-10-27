@@ -24,6 +24,7 @@ import { ThumbnailUrlPipe, FaceThumbnailUrlPipe, ImageUrlPipe, STORED_THUMBNAIL_
 import { LoupeDirective } from '../../shared/directives/loupe.directive';
 import { SwipeDecisionDirective } from '../../shared/directives/swipe-decision.directive';
 import { I18nService } from '../../core/services/i18n.service';
+import { PageHelpService } from '../../core/services/page-help.service';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { InfiniteScrollDirective } from '../../shared/directives/infinite-scroll.directive';
 import { isControlActivation, isTypingContext } from '../../shared/utils/keyboard';
@@ -44,7 +45,7 @@ import { UserActivityJournal } from '../../core/agent/user-activity-journal.serv
 import { PageContextService } from '../../core/agent/page-context.service';
 import { AssistantCullPlanService, type CullPlanPin } from '../../core/agent/assistant-cull-plan.service';
 import { firstValueFrom } from 'rxjs';
-import { CULLING_SHORTCUT_SECTIONS, DARKROOM_SHORTCUTS } from './culling-shortcuts';
+import { DARKROOM_SHORTCUTS } from './culling-shortcuts';
 import {
   CullingStore, RunGeneration, GroupBy, GROUP_BY_VALUES,
   CULL_GROUP_BY_KEY, CULL_SORT_KEY, CULL_SORT_DIR_KEY, updateMapSignal,
@@ -1455,6 +1456,7 @@ export class BurstCullingComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly snackBar = inject(MatSnackBar);
   private readonly i18n = inject(I18nService);
+  private readonly pageHelp = inject(PageHelpService);
   private readonly headerSlot = inject(HeaderSlotService);
   private readonly albumService = inject(AlbumService);
   private readonly compareFilters = inject(CompareFiltersService);
@@ -2046,9 +2048,15 @@ export class BurstCullingComponent implements OnDestroy {
   });
 
   protected readonly darkroomShortcuts = DARKROOM_SHORTCUTS;
-  protected readonly shortcutSections = CULLING_SHORTCUT_SECTIONS;
 
   constructor() {
+    this.pageHelp.setDescription(this.I18N.culling.help_text);
+    // The help dialog's My Taste line: how many comparisons the ranker has.
+    effect(() => {
+      const count = this.cull.rankerComparisons();
+      const key = this.cull.rankerTrained() ? this.I18N.culling.my_taste_trained : this.I18N.culling.my_taste_learning;
+      this.pageHelp.note.set(count === null ? null : { key, params: { count } });
+    });
     this.cull.notice$.pipe(takeUntilDestroyed()).subscribe(notice => {
       const text = notice.params ? this.i18n.t(notice.key, notice.params) : this.i18n.t(notice.key);
       this.snackBar.open(text, '', { duration: notice.duration, horizontalPosition: 'right', verticalPosition: 'bottom' });
@@ -2269,6 +2277,7 @@ export class BurstCullingComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.pageHelp.setDescription(null);
     this.coarsePointer.cleanup();
     this.cull.clearAllPassTimers();
     this.stopDetectionPolling();

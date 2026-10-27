@@ -1,14 +1,17 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { MatDialogModule, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { i18nKeys } from '../../../core/i18n/keys';
+import type { PageHelpNote } from '../../../core/services/page-help.service';
 import type { CullingShortcutRow } from '../../../features/gallery/culling-shortcuts';
 
 interface ShortcutSection { titleKey: string; rows: CullingShortcutRow[]; }
 
-/** The "?" menu entry's dialog: the current page's help text in a proper
+interface HelpDialogData { key?: string | null; note?: PageHelpNote | null; shortcutSections?: ShortcutSection[]; }
+
+/** The user menu's Help dialog: the current page's help text in a proper
  *  modal, instead of toggling the in-page banner — a menu affordance that
  *  opens a banner reads as a misfire. On the gallery and culling routes the
  *  dialog also carries that page's keyboard reference, which used to live
@@ -24,7 +27,7 @@ interface ShortcutSection { titleKey: string; rows: CullingShortcutRow[]; }
         <div class="w-9 h-9 rounded-lg bg-[var(--mat-sys-primary-container)] flex items-center justify-center shrink-0">
           <mat-icon class="!text-base !w-5 !h-5 !leading-5 text-[var(--mat-sys-on-primary-container)]">help_outline</mat-icon>
         </div>
-        <h2 class="text-base font-semibold m-0">{{ I18N.culling.help | translate }}</h2>
+        <h2 mat-dialog-title class="!text-base !font-semibold !m-0 !p-0">{{ I18N.nav.help | translate }}</h2>
       </div>
     </div>
     <mat-dialog-content class="!px-6">
@@ -39,6 +42,9 @@ interface ShortcutSection { titleKey: string; rows: CullingShortcutRow[]; }
         </ul>
       } @else {
         <p class="text-sm leading-relaxed m-0 opacity-70">{{ I18N.gallery.help_none | translate }}</p>
+      }
+      @if (note; as n) {
+        <p class="text-xs opacity-70 mt-3 mb-0">{{ n.key | translate:(n.params ?? {}) }}</p>
       }
       @if (shortcutSections.length) {
         <div class="mt-4 pt-3 border-t border-[var(--mat-sys-outline-variant)] flex flex-wrap gap-x-10 gap-y-3">
@@ -72,11 +78,11 @@ interface ShortcutSection { titleKey: string; rows: CullingShortcutRow[]; }
 })
 export class HelpDialogComponent {
   protected readonly I18N = i18nKeys();
-  private readonly dialogRef = inject(MatDialogRef<HelpDialogComponent>);
+  private readonly data = inject(MAT_DIALOG_DATA) as HelpDialogData;
   /** Set by the opener from PageHelpService before open(); the opener also
    *  resolves the keyboard sections for the current route (the dialog cannot
    *  trust its own constructor timing for router state). */
-  readonly descriptionKey = (inject(MAT_DIALOG_DATA) as { key?: string | null }).key ?? null;
-  readonly shortcutSections: ShortcutSection[] =
-    (inject(MAT_DIALOG_DATA) as { shortcutSections?: ShortcutSection[] }).shortcutSections ?? [];
+  readonly descriptionKey = this.data.key ?? null;
+  readonly note = this.data.note ?? null;
+  readonly shortcutSections: ShortcutSection[] = this.data.shortcutSections ?? [];
 }
