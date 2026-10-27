@@ -18,7 +18,6 @@ import { I18N } from './core/i18n/keys';
 import { ScanService } from './core/services/scan.service';
 import { By } from '@angular/platform-browser';
 import { MatTooltip } from '@angular/material/tooltip';
-import { PageHelpService } from './core/services/page-help.service';
 
 function createApp(routerUrl = '/', extraProviders: Provider[] = []) {
   const filtersSignal = signal<GalleryFilters>({ ...DEFAULT_FILTERS });
@@ -630,6 +629,7 @@ describe('App', () => {
         filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null),
         types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), reloadPhotos, loadConfig: vi.fn(),
         viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(false), hiddenFiltersStash: signal(null),
+        reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(),
         slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(),
       };
       TestBed.configureTestingModule({
@@ -724,6 +724,7 @@ describe('App', () => {
         filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null),
         types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), reloadPhotos: vi.fn(), loadConfig: vi.fn(),
         viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(true), hiddenFiltersStash: signal(null),
+        reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(),
         slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(),
         resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(),
       };
@@ -802,7 +803,7 @@ describe('App', () => {
       TestBed.configureTestingModule({
         providers: [
           provideRouter([]),
-          { provide: GalleryStore, useValue: { filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null), types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), loadConfig: vi.fn(), viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(false), hiddenFiltersStash: signal(null), slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn() } },
+          { provide: GalleryStore, useValue: { filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null), types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), loadConfig: vi.fn(), viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(false), hiddenFiltersStash: signal(null), slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(), reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn() } },
           { provide: ScanService, useValue: { canLaunch: signal(false), openLauncher: vi.fn() } },
           { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(true), isReadOnlyInstall: signal(false), features: signal({}), user: signal(null), logout: vi.fn(), isEdition: signal(edition), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(multiUser), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
           { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string) => k), translations: signal({}) } },
@@ -835,9 +836,9 @@ describe('App', () => {
 
     it('lists Card actions then the shell-level Help, and calls their handlers', () => {
       const { fixture, root } = render(false);
-      const app = fixture.componentInstance as unknown as { openCardActionsDialog: () => void };
+      const app = fixture.componentInstance as unknown as { openCardActionsDialog: () => void; openHelpDialog: () => void };
       const openCardActions = vi.spyOn(app, 'openCardActionsDialog').mockImplementation(() => undefined);
-      const toggle = vi.spyOn(TestBed.inject(PageHelpService), 'toggle').mockImplementation(() => undefined);
+      const openHelp = vi.spyOn(app, 'openHelpDialog').mockImplementation(() => undefined);
       const items = openUserMenu(fixture, root);
       const labels = items.map(i => i.textContent!.replace(/\s+/g, ' ').trim());
       expect(labels.at(-2)).toContain(I18N.gallery.card_actions.title);
@@ -846,7 +847,7 @@ describe('App', () => {
       items.at(-2)!.click();
       expect(openCardActions).toHaveBeenCalledOnce();
       items.at(-1)!.click();
-      expect(toggle).toHaveBeenCalledOnce();
+      expect(openHelp).toHaveBeenCalledOnce();
     });
 
     it('puts Logout last in the menu', () => {

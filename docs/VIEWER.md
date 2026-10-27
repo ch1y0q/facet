@@ -236,6 +236,8 @@ The gallery shows **undecided**, **kept** and **rejected** counts for the comple
 
 Choose **Review undecided** to begin a queue. **Continue reviewing** restores your most recently opened Needs review queue on this browser and opens its first remaining undecided photo. Changing gallery filters does not replace that bookmark unless you open another Needs review queue. Kept, rejected and deleted photos are skipped using the current database state; this resumes the queue rather than an exact photo cursor. The bookmark survives reloads, is isolated by signed-in identity, and is limited to 20 browser identities. It does not sync across devices. Album queues use the album’s current saved criteria, and temporary reviewing does not change those criteria. A later sidebar edit returns to normal album filter editing. Navigating away cancels an in-flight Continue action. Temporary burst/sequence groups are not bookmarked because a rescan can reassign their IDs. If browser storage is disabled or full, reviewing still works, but the bookmark may not persist. An unavailable album leaves the current view unchanged. Logging out clears review-queue bookmarks for every identity on this browser, including their search, person, folder and album filters.
 
+The review-progress banner has a close (×) button, and the user menu has a **Hide review progress** / **Show review progress** item. The choice is stored in this browser (localStorage), persists across reloads and applies to every account using that browser. While the banner is hidden, its **Review undecided** button is hidden too: show it again from the user menu to start the queue (the sidebar's Review status filter still filters undecided photos).
+
 Review status applies to the regular gallery; choosing a status exits semantic and Similar Photos searches.
 
 
@@ -795,7 +797,7 @@ For each group, pick the keeper(s); confirming rejects the rest. Confirms are de
 
 **Date range.** The **date range** toolbar button (icon `date_range`) opens a menu of presets (**Last 7 days**, **Last 30 days**, **This year**, **Last year**), **Custom range...** (a date-range picker) and **All dates**; dates are shown as dd/MM/yyyy. The range stacks with the album scope and narrows the feed to photos taken in that window (photos without a capture date drop out of a dated scope); picking an album scene from the scope menu sets its own dates and replaces the range. Presets are resolved when you pick them, so a bookmarked "Last 7 days" is a fixed window. The range lives in the URL only (`?from=2026-07-01&to=2026-07-31`, next to `album` and `scene`), not in `localStorage`: a fresh visit starts on all dates and reloading restores it. Changing the range in the manual feed reloads it: a confirm still counting down is committed at once, while skips and unconfirmed selections are dropped. Its accessible name includes the visible button label followed by the selected dates.
 
-**My Taste chip.** Every confirm records `source='culling'` comparison rows that train the personal ranker, so the header shows a small "My Taste · N comparisons" chip that updates after each decision — the AI learns your eye as you cull (`GET /api/ranker/status`).
+**My Taste line.** Every confirm records `source='culling'` comparison rows that train the personal ranker, so the `/culling` Help dialog (user menu → Help) shows a "My Taste · N comparisons" line that updates after each decision — the AI learns your eye as you cull (`GET /api/ranker/status`). That Help dialog also lists the culling page and darkroom keyboard shortcuts.
 
 **Genre profiles.** A **Profile** selector in the toolbar applies a genre preset that bundles every culling knob at once — strictness, keeper budget, similarity threshold and the darkroom's eyes-closed / poor-expression face cutoffs — so sports keeps only the sharpest of a burst, weddings keep more eyes-open variants, concerts and wildlife relax the face gates. The choice persists in `localStorage`, and so does the strictness slider (it survives reloads; usable in plan mode, where it re-plans); nudging any knob by hand reverts the label to "Custom". Presets live in the [`cull_profiles`](CONFIGURATION.md#genre-aware-culling-profiles) block (`GET /api/culling/profiles`).
 
@@ -1010,10 +1012,10 @@ Single-key gallery and photo shortcuts stay inactive while focus is in a text fi
 | `1`–`5` | Rate the focused photo 1–5 stars (edition mode; auto-advances to the next photo) |
 | `F` | Favourite / unfavourite the focused photo (edition mode) |
 | `X` or `0` | Reject / un-reject the focused photo (edition mode; auto-advances) |
-| `/` | Focus the search box |
+| `/` | Focus the toolbar search (shown from 1360 px wide); below that width, opens the filter sidebar and focuses its search field |
 | `B` | Show / hide the filter sidebar |
 | `V` | Switch between grid and mosaic layout |
-| `?` | Show the keyboard shortcuts reference (works on every page) |
+| `?` | Show the keyboard shortcuts reference (works on every page; the gallery shortcuts are also listed in user menu → Help) |
 
 The current photo — the one star-rating, favorite and reject shortcuts act on — is marked with a 4px outline around its card; every other card dims to 50% opacity. Nothing is marked until the cursor has actually moved onto a photo in the results, so a gallery you have not navigated yet stays at full strength. Clicking a photo moves the marker onto it, so a shortcut typed right after a click lands on the photo you clicked, not on wherever the arrow keys last left it. Coming back from a photo (Back or Escape) leaves the marker on the last photo you viewed there, so the shortcuts carry on from there. The focused-card shortcut hint appears only in edition mode with `viewer.features.show_rating_controls` enabled.
 

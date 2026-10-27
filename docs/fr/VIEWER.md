@@ -235,6 +235,8 @@ La galerie affiche le nombre de photos **à trier**, **conservées** et **rejet�
 
 Choisissez **Trier les indécises** pour commencer une file. **Continuer le tri** restaure dans ce navigateur la dernière file **À examiner** ouverte et affiche sa première photo encore indécise. Modifier les filtres de la galerie ne remplace pas ce signet, sauf si vous ouvrez une autre file **À examiner**. Les photos conservées, rejetées et supprimées sont ignorées d’après l’état actuel de la base de données : c’est la file qui reprend, pas une position exacte. Le signet survit aux rechargements, est isolé par identité connectée et limité à 20 identités par navigateur. Il n’est pas synchronisé entre appareils. Les files d’album utilisent les critères actuellement enregistrés de l’album, et un tri temporaire ne modifie pas ces critères. Une modification ultérieure dans le panneau latéral revient à l’édition normale des filtres de l’album. Quitter la page annule une reprise en cours. Les groupes temporaires de rafales et de séquences ne sont pas mémorisés, car une nouvelle analyse peut réattribuer leurs identifiants. Si le stockage du navigateur est désactivé ou plein, le tri fonctionne toujours, mais le signet peut ne pas être conservé. Un album indisponible laisse la vue actuelle inchangée. La déconnexion efface les signets de tri de toutes les identités de ce navigateur, y compris leurs filtres de recherche, de personne, de dossier et d’album.
 
+La bannière de progression du tri comporte un bouton de fermeture (×), et le menu utilisateur propose l'élément **Masquer la progression de revue** / **Afficher la progression de revue**. Ce choix est mémorisé dans ce navigateur (localStorage), persiste après rechargement et s'applique à tous les comptes utilisant ce navigateur. Tant que la bannière est masquée, son bouton **Trier les indécises** l'est aussi : réaffichez-la depuis le menu utilisateur pour commencer la file (le filtre d'état de revue de la barre latérale filtre toujours les photos indécises).
+
 La décision de tri s’applique à la galerie normale ; choisir une décision quitte la recherche sémantique et la recherche de photos similaires.
 
 
@@ -731,7 +733,7 @@ Pour chaque groupe, choisissez la ou les photos à conserver ; la confirmation r
 
 **Plage de dates.** Le bouton **plage de dates** de la barre d'outils (icône `date_range`) ouvre un menu de préréglages (**7 derniers jours**, **30 derniers jours**, **Cette année**, **Année dernière**), **Plage personnalisée...** (un sélecteur de plage de dates) et **Toutes les dates** ; les dates s'affichent au format jj/MM/aaaa. La plage se cumule avec la portée d'album et limite le flux aux photos prises dans cette fenêtre (les photos sans date de prise de vue sortent d'une portée datée) ; choisir une scène d'album dans le menu de portée applique ses propres dates et remplace la plage. Les préréglages sont résolus au moment du choix : un « 7 derniers jours » mis en favori est donc une fenêtre fixe. La plage ne vit que dans l'URL (`?from=2026-07-01&to=2026-07-31`, à côté de `album` et `scene`), pas dans le `localStorage` : une nouvelle visite démarre sur toutes les dates et recharger la page la rétablit. Changer la plage dans le flux manuel le recharge : une confirmation encore en compte à rebours est validée aussitôt, tandis que les passages et les sélections non confirmées sont abandonnés. Son nom accessible comprend le libellé visible du bouton suivi des dates sélectionnées.
 
-**Puce My Taste.** Chaque confirmation enregistre des lignes de comparaison `source='culling'` qui entraînent le classeur personnel, de sorte que l'en-tête affiche une petite puce « My Taste · N comparaisons » qui se met à jour après chaque décision — l'IA apprend votre œil au fil du tri (`GET /api/ranker/status`).
+**Ligne My Taste.** Chaque confirmation enregistre des lignes de comparaison `source='culling'` qui entraînent le classeur personnel, de sorte que la boîte de dialogue d'aide de `/culling` (menu utilisateur → Aide) affiche une ligne « My Taste · N comparaisons » qui se met à jour après chaque décision — l'IA apprend votre œil au fil du tri (`GET /api/ranker/status`). Cette boîte de dialogue d'aide liste aussi les raccourcis clavier de la page de tri et de la chambre noire.
 
 ### Tri automatique
 
@@ -944,10 +946,10 @@ Les raccourcis à une seule touche de la galerie et des photos restent inactifs 
 | `1`–`5` | Noter la photo ciblée de 1 à 5 étoiles (mode édition ; passe à la suivante) |
 | `F` | Mettre en favori / retirer des favoris la photo ciblée (mode édition) |
 | `X` ou `0` | Rejeter / annuler le rejet de la photo ciblée (mode édition ; passe à la suivante) |
-| `/` | Cibler le champ de recherche |
+| `/` | Cibler la recherche de la barre d'outils (affichée à partir de 1360 px de large) ; en dessous, ouvre la barre latérale des filtres et cible son champ de recherche |
 | `B` | Afficher / masquer la barre latérale de filtres |
 | `V` | Basculer entre les dispositions grille et mosaïque |
-| `?` | Afficher la référence des raccourcis clavier (fonctionne sur chaque page) |
+| `?` | Afficher la référence des raccourcis clavier (fonctionne sur chaque page ; les raccourcis de la galerie figurent aussi dans menu utilisateur → Aide) |
 
 La photo courante — celle sur laquelle agissent les raccourcis de note, de favori et de rejet — est marquée par un contour de 4px autour de sa carte ; toutes les autres cartes passent à 50% d'opacité. Rien n'est marqué tant que le curseur ne s'est pas réellement déplacé sur une photo des résultats, si bien qu'une galerie que vous n'avez pas encore parcourue reste à pleine intensité. Cliquer sur une photo y déplace le marqueur, si bien qu'un raccourci tapé juste après un clic s'applique à la photo cliquée, et non à celle où les flèches l'avaient laissé. Revenir d'une photo (Retour ou Échap) laisse le marqueur sur la dernière photo que vous y avez vue, si bien que les raccourcis reprennent à partir de là. L’indication des raccourcis sur la carte active apparaît uniquement en mode édition lorsque `viewer.features.show_rating_controls` est activé.
 

@@ -235,6 +235,8 @@ La galería muestra el número de fotos **sin decidir**, **conservadas** y **rec
 
 Elige **Revisar sin decidir** para empezar una cola. **Continuar revisión** restaura en este navegador la última cola **Por revisar** que abriste y muestra su primera foto aún sin decidir. Cambiar los filtros de la galería no sustituye ese marcador salvo que abras otra cola **Por revisar**. Las fotos conservadas, rechazadas y eliminadas se omiten según el estado actual de la base de datos; se reanuda la cola, no una posición exacta. El marcador sobrevive a las recargas, está aislado por identidad conectada y se limita a 20 identidades por navegador. No se sincroniza entre dispositivos. Las colas de álbum usan los criterios guardados actuales del álbum, y revisar temporalmente no cambia esos criterios. Una edición posterior en la barra lateral vuelve a la edición normal de filtros del álbum. Salir de la página cancela una acción Continuar en curso. Los grupos temporales de ráfaga y secuencia no se guardan porque un nuevo escaneo puede reasignar sus ID. Si el almacenamiento del navegador está desactivado o lleno, la revisión sigue funcionando, pero el marcador puede no conservarse. Un álbum no disponible deja la vista actual sin cambios. Al cerrar sesión se borran los marcadores de revisión de todas las identidades de este navegador, incluidos sus filtros de búsqueda, persona, carpeta y álbum.
 
+El banner de progreso de revisión tiene un botón de cierre (×), y el menú de usuario incluye el elemento **Ocultar el progreso de revisión** / **Mostrar el progreso de revisión**. La elección se guarda en este navegador (localStorage), persiste tras recargar y se aplica a todas las cuentas que usen ese navegador. Mientras el banner está oculto, su botón **Revisar sin decidir** también lo está: vuelve a mostrarlo desde el menú de usuario para empezar la cola (el filtro de estado de revisión de la barra lateral sigue filtrando las fotos sin decidir).
+
 El estado de revisión se aplica a la galería normal; elegir un estado cierra las búsquedas semánticas y de fotos similares.
 
 
@@ -729,7 +731,7 @@ Para cada grupo, elige la foto o fotos a conservar; al confirmar se descartan el
 
 **Rango de fechas.** El botón de **rango de fechas** de la barra de herramientas (icono `date_range`) abre un menú de preajustes (**Últimos 7 días**, **Últimos 30 días**, **Este año**, **Año pasado**), **Rango personalizado...** (un selector de rango de fechas) y **Todas las fechas**; las fechas se muestran como dd/MM/aaaa. El rango se suma al ámbito del álbum y limita el flujo a las fotos tomadas en esa ventana (las fotos sin fecha de captura salen de un ámbito con fechas); elegir una escena de álbum en el menú de ámbito establece sus propias fechas y sustituye el rango. Los preajustes se resuelven al elegirlos, así que un «Últimos 7 días» guardado en favoritos es una ventana fija. El rango vive solo en la URL (`?from=2026-07-01&to=2026-07-31`, junto a `album` y `scene`), no en `localStorage`: una visita nueva empieza con todas las fechas y recargar la página lo restablece. Cambiar el rango en el flujo manual lo recarga: una confirmación cuya cuenta atrás sigue en marcha se aplica de inmediato, mientras que las omisiones y las selecciones sin confirmar se descartan. Su nombre accesible incluye la etiqueta visible del botón seguida de las fechas seleccionadas.
 
-**Chip de My Taste.** Cada confirmación registra filas de comparación con `source='culling'` que entrenan al clasificador personal, así que la cabecera muestra un pequeño chip "My Taste · N comparaciones" que se actualiza tras cada decisión: la IA aprende tu ojo mientras descartas (`GET /api/ranker/status`).
+**Línea de My Taste.** Cada confirmación registra filas de comparación con `source='culling'` que entrenan al clasificador personal, así que el diálogo de ayuda de `/culling` (menú de usuario → Ayuda) muestra una línea "My Taste · N comparaciones" que se actualiza tras cada decisión: la IA aprende tu ojo mientras descartas (`GET /api/ranker/status`). Ese diálogo de ayuda también lista los atajos de teclado de la página de descarte y del cuarto oscuro.
 
 ### Descarte automático
 
@@ -942,10 +944,10 @@ Los atajos de una sola tecla de la galería y las fotos permanecen inactivos cua
 | `1`–`5` | Puntuar la foto enfocada con 1–5 estrellas (modo edición; avanza a la siguiente) |
 | `F` | Marcar / desmarcar como favorita la foto enfocada (modo edición) |
 | `X` o `0` | Rechazar / anular el rechazo de la foto enfocada (modo edición; avanza) |
-| `/` | Enfocar el cuadro de búsqueda |
+| `/` | Enfocar la búsqueda de la barra de herramientas (visible desde 1360 px de ancho); por debajo, abre la barra lateral de filtros y enfoca su campo de búsqueda |
 | `B` | Mostrar / ocultar la barra lateral de filtros |
 | `V` | Cambiar entre cuadrícula y mosaico |
-| `?` | Mostrar la referencia de atajos de teclado (funciona en todas las páginas) |
+| `?` | Mostrar la referencia de atajos de teclado (funciona en todas las páginas; los atajos de la galería también aparecen en menú de usuario → Ayuda) |
 
 La foto actual — aquella sobre la que actúan los atajos de valoración, favorito y descarte — está marcada con un contorno de 4px alrededor de su tarjeta; el resto de las tarjetas baja al 50% de opacidad. Nada queda marcado hasta que el cursor se ha movido realmente sobre una foto de los resultados, así que una galería que aún no has recorrido permanece a intensidad completa. Al hacer clic en una foto, el marcador se mueve a ella, de modo que un atajo pulsado justo después de un clic se aplica a la foto en la que hiciste clic, no a la que dejaron las flechas. Al volver de una foto (Atrás o Esc) el marcador se queda en la última foto que viste, de modo que los atajos continúan desde ahí. La indicación de atajos de la tarjeta enfocada solo aparece en modo edición con `viewer.features.show_rating_controls` activado.
 

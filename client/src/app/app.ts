@@ -37,6 +37,9 @@ import { MapFiltersService } from './features/map/map-filters.service';
 import { CapsuleFiltersService } from './features/capsules/capsule-filters.service';
 import { TranslatePipe } from './shared/pipes/translate.pipe';
 import { CardActionsDialogComponent } from './features/gallery/card-actions-dialog.component';
+import { HelpDialogComponent } from './shared/components/help-dialog/help-dialog.component';
+import { CULLING_SHORTCUT_SECTIONS } from './features/gallery/culling-shortcuts';
+import { GALLERY_SHORTCUT_SECTION } from './features/gallery/gallery-shortcuts';
 import { AssistantActivityChipComponent } from './features/agent/assistant-activity-chip.component';
 import { CONNECT_ASSISTANT_DIALOG_ID } from './core/agent/page-context.service';
 import { SortGroupKeyPipe } from './shared/pipes/sort-group-key.pipe';
@@ -166,6 +169,21 @@ export class App implements OnInit {
    *  same dialog the filter sidebar offers, reachable from every route. */
   protected openCardActionsDialog(): void {
     this.dialog.open(CardActionsDialogComponent, { width: '26rem', autoFocus: false });
+  }
+
+  /** The menu's Help entry opens a modal with the current page's help text
+   *  and, on the gallery and culling routes, that page's keyboard reference.
+   *  The sections resolve from the router URL at click time; the dialog must
+   *  not read router state itself, because its construction timing is not
+   *  guaranteed to see the active route. */
+  protected openHelpDialog(): void {
+    const shortcuts = this.url().split('?')[0].startsWith('/culling')
+      ? CULLING_SHORTCUT_SECTIONS
+      : this.isGalleryRoute() ? [GALLERY_SHORTCUT_SECTION] : [];
+    this.dialog.open(HelpDialogComponent, {
+      width: '32rem', autoFocus: false,
+      data: { key: this.pageHelp.descriptionKey(), note: this.pageHelp.note(), shortcutSections: shortcuts },
+    });
   }
   protected readonly headerSlot = inject(HeaderSlotService);
   protected readonly store = inject(GalleryStore);

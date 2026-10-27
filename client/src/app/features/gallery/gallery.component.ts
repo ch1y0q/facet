@@ -91,6 +91,9 @@ function assertNever(action: never): never {
 
 const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
 
+/** Width from which the toolbar search is shown (its `min-[1360px]:` class). */
+const TOOLBAR_SEARCH_QUERY = '(min-width: 1360px)';
+
 /** Where the focused card sat in the viewport when the gallery parked. */
 interface ReturnAnchor { offset: number; width: number; height: number }
 
@@ -134,7 +137,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
          Type filter + semantic search, rebound to the gallery store. -->
     <ng-template #galleryToolbar>
       @if (!pinned()) {
-        <mat-form-field class="!hidden lg:!inline-flex w-52 ml-2 2xl:shrink-0" subscriptSizing="dynamic">
+        <mat-form-field class="!hidden lg:!inline-flex w-44 ml-2 2xl:shrink-0" subscriptSizing="dynamic">
           <mat-label>{{ I18N.ui.filters.type | translate }}</mat-label>
           <mat-select panelWidth="auto" panelClass="nowrap-panel !max-h-[70vh]" [value]="store.filters().type" (selectionChange)="onTypeChange($event.value)">
             <mat-option value="">{{ I18N.gallery.all_photos | translate }}</mat-option>
@@ -144,10 +147,12 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
           </mat-select>
         </mat-form-field>
 
-        <!-- Search. Visible from lg up, beside the type dropdown it pairs with.
-             Filters as you type (400 ms debounce); Enter and leaving the box
-             commit immediately, so clicking a photo never drops typed text. -->
-        <mat-form-field class="!hidden lg:!inline-flex w-52 min-w-0 shrink" subscriptSizing="dynamic">
+        <!-- Search. Visible from 1360 px up — the same threshold as the count
+             label, below which the toolbar has no room for it — and filters as
+             you type (400 ms debounce; Enter and leaving the box commit, so
+             clicking a photo never drops typed text). flex-1 fills whatever
+             the type dropdown and the buttons leave. -->
+        <mat-form-field class="!hidden min-[1360px]:!inline-flex min-w-0 flex-1 mr-2" subscriptSizing="dynamic">
           <input
             #toolbarSearch
             matInput
@@ -247,19 +252,26 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
       <!-- Main content. The drawer reserves its own strip, so the grid gets
            exactly the width it has whenever the filters are open. -->
       <mat-sidenav-content>
-        @if (store.reviewProgress(); as progress) {
+        @if (store.reviewProgressVisible()) {
+          @if (store.reviewProgress(); as progress) {
           <section class="mx-2 md:mx-4 mt-2 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] text-sm" [attr.aria-label]="I18N.gallery.review_progress.title | translate">
             <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span class="inline-flex flex-wrap gap-x-4 gap-y-1" role="status" aria-live="polite" aria-atomic="true">
+              <span class="flex-1 inline-flex flex-wrap gap-x-4 gap-y-1" role="status" aria-live="polite" aria-atomic="true">
                 <span>{{ I18N.gallery.review_progress.counts | translate:{ undecided: progress.undecided, kept: progress.kept, rejected: progress.rejected } }}</span>
                 <span>{{ I18N.gallery.review_progress.complete | translate:{ percent: store.reviewPercent(), total: progress.total } }}</span>
               </span>
               @if (progress.undecided > 0 && store.filters().review_status !== 'undecided') {
                 <button mat-button (click)="store.startReviewQueue()">{{ I18N.gallery.review_progress.start | translate }}</button>
               }
+              <button mat-icon-button class="!w-7 !h-7 !min-w-0 -mr-1" (click)="store.setReviewProgressVisible(false)"
+                      [matTooltip]="I18N.ui.buttons.dismiss | translate"
+                      [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
+                <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
+              </button>
             </div>
             <progress class="w-full h-1" max="100" [value]="store.reviewPercent()" [attr.aria-label]="I18N.gallery.review_progress.title | translate"></progress>
           </section>
+          }
         }
         @if (store.reviewBookmark()) {
           <div class="mx-2 md:mx-4 mt-2 flex flex-wrap items-center gap-x-3 text-sm">
@@ -2538,7 +2550,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (value !== this.store.filters().search) this.store.updateFilter('search', value);
   }
 
-  /** `/` focuses the toolbar search, `B` toggles the filter sidebar, `V`
+  /** `/` focuses the search (the toolbar's, else the sidebar's), `B` toggles the filter sidebar, `V`
    *  switches grid/mosaic — the three view-level toggles that had no
    *  keyboard path. Typing contexts and open dialogs bow out, matching the
    *  select-all shortcut's guards, and so does the slideshow: it is an inline
@@ -2549,11 +2561,17 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
     switch (event.key) {
       case '/': {
-        const search = this.toolbarSearch();
+        const search = this.toolbarSearch()?.nativeElement;
         if (!search) return;
         event.preventDefault();
-        search.nativeElement.focus();
-        search.nativeElement.select();
+        if (window.matchMedia(TOOLBAR_SEARCH_QUERY).matches) {
+          search.focus();
+          search.select();
+          break;
+        }
+        // Below 1360 px the toolbar search is hidden; the sidebar carries its own.
+        this.store.setFilterDrawerOpen(true);
+        afterNextRender(() => this.filterSidebar()?.focusSearch(), { injector: this.injector });
         break;
       }
       case 'b': case 'B':

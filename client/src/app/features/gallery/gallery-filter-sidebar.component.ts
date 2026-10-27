@@ -277,7 +277,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
         <mat-form-field subscriptSizing="dynamic" class="w-full">
           <mat-label>{{ I18N.ui.filters.search | translate }}</mat-label>
           <mat-icon matPrefix class="mr-1 opacity-60">search</mat-icon>
-          <input matInput
+          <input matInput #sidebarSearch
             [placeholder]="I18N.gallery.search_placeholder | translate"
             [value]="store.filters().search"
             (input)="onSidebarSearchChange($event)"
@@ -1192,6 +1192,15 @@ export class GalleryFilterSidebarComponent {
     firstValueFrom(this.albumService.list()).then(res =>
       this.albums.set(res.albums),
     ).catch(() => {});
+  }
+
+  private readonly sidebarSearch = viewChild<ElementRef<HTMLInputElement>>('sidebarSearch');
+
+  /** The `/` shortcut's target when the toolbar search is hidden (below 1360 px). */
+  focusSearch(): void {
+    const input = this.sidebarSearch()?.nativeElement;
+    input?.focus();
+    input?.select();
   }
 
   onSidebarSearchChange(event: Event): void {

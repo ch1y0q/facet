@@ -129,7 +129,8 @@
       "inpage_hint": "When on, an assistant running in this browser can search and, if your session allows it, change your library through the page. Off by default; it only applies to this browser.",
       "inpage_changed": "Assistant changed {count} photo",
       "inpage_changed_plural": "Assistant changed {count} photos"
-    }
+    },
+    "ok": "OK"
   },
   "pagination": {
     "scroll_for_more": "Scroll for more",
@@ -1037,7 +1038,7 @@
     "user_menu": "User menu"
   },
   "gallery": {
-    "help": "Browse and filter your library. Sort by score, date or your personal taste; use the sidebar filters (people, tags, camera, category, score range, moments) and the search to find photos. Keys on a focused card: 1–5 rate, F favourite, X rejects (edition mode); / focuses the search, B toggles the filter sidebar, V swaps grid and mosaic.",
+    "help": "Sort by score, date or your personal taste\nFilter with the sidebar: people, tags, camera, categories\nSearch by filename or description",
     "hidden_banner": {
       "message": "{n} photos hidden by current filters",
       "some_hidden": "Some photos are hidden by your filters",
@@ -1319,13 +1320,16 @@
       "complete": "{percent}% of {total} reviewed",
       "start": "Review undecided",
       "resume": "Continue reviewing",
-      "browser": "Resume the remembered queue on this browser."
+      "browser": "Resume the remembered queue on this browser.",
+      "hide_from_menu": "Hide review progress",
+      "show_from_menu": "Show review progress"
     },
     "manual_faces_need_review": "Manual faces need review",
     "manual_faces_review_hint": "Based on the last scan or face-editor check, not continuous monitoring. Open a photo’s face editor to review saved marks.",
     "faces_need_names": "Faces without names",
     "faces_need_names_hint": "Includes unassigned faces and unnamed person groups. Use + to assign a face, or name a group in People. Photos with no detected faces are excluded.",
-    "faces_need_names_readonly_hint": "Includes unassigned faces and unnamed person groups. Someone with edition access can assign faces or name groups. Photos with no detected faces are excluded."
+    "faces_need_names_readonly_hint": "Includes unassigned faces and unnamed person groups. Someone with edition access can assign faces or name groups. Photos with no detected faces are excluded.",
+    "help_none": "This page has no help text yet."
   },
   "composition_patterns": {
     "none": "None",
