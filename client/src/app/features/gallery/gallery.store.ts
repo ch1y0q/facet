@@ -351,11 +351,10 @@ export class GalleryStore {
   private resumeSeq = 0;
   private readonly transientReviewStatus = signal(false);
 
-  /** The review-progress scope: the full query minus paging. */
+  /** The review-progress scope: the full query minus paging and ordering, which never change the counts. */
   reviewProgressKey(): string {
     const scope = buildApiParams(this.filters(), this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
-    delete scope['page'];
-    delete scope['per_page'];
+    for (const key of ['page', 'per_page', 'sort', 'sort_direction']) delete scope[key];
     return JSON.stringify([scope, this.currentAlbum()?.smart_filter_json, this.useSavedReviewStatus()]);
   }
 

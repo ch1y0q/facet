@@ -206,6 +206,23 @@ describe('Capture-date dialog rendered controls and HTTP', () => {
     expect(root.querySelector('[data-reference]')).toBeNull();
   });
 
+  it.each([['a space', '2024-01-01 00:00:00'], ['a T', '2024-01-01T00:00:00']])(
+    'reads an ISO-stored reference date written with %s, as the server does', async (_, date) => {
+      await create({ ...single, reference: { path: '/photo.jpg', date } }); await flushPreview();
+      (root.querySelector('[data-mode="exact"]') as HTMLButtonElement).click(); await settle();
+      expect((root.querySelector('input[data-exact]') as HTMLInputElement).value).toBe('2024-01-01T01:00');
+      await flushPreview();
+    });
+
+  it.each([
+    ['an impossible day', '2024:04:31 00:00:00'], ['an impossible hour', '2024:01:01 24:00:00'],
+    ['trailing text', '2024:01:01 00:00:00+02:00'], ['a date-only value', '2024-01-01'],
+  ])('treats a reference date with %s as undated, as the server skips it', async (_, date) => {
+    await create({ ...single, reference: { path: '/photo.jpg', date } }); await flushPreview();
+    expect(root.querySelector('[data-mode]')).toBeNull();
+    expect(root.querySelector('[data-reference]')).toBeNull();
+  });
+
   it('renders preview failure and retries through its Preview button without publishing edits', async () => {
     await create();
     (await nextPreview()).flush({}, { status: 503, statusText: 'Unavailable' }); await settle();

@@ -32,19 +32,28 @@ const MAX_OFFSET_SECONDS = 31622400;
 export const PREVIEW_DEBOUNCE_MS = 300;
 const UNIT_SECONDS: Record<keyof OffsetParts, number> = { days: 86400, hours: 3600, minutes: 60, seconds: 1 };
 const UNITS = ['days', 'hours', 'minutes', 'seconds'] as const;
-const EXIF_DATE = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/;
+/** The stored forms the server's `parse_capture_date` accepts, whole-string only. */
+const CAPTURE_DATE = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$|^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})$/;
 const LOCAL_DATE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/;
 const SEGMENT_ON = '!bg-[var(--mat-sys-secondary-container)] !text-[var(--mat-sys-on-secondary-container)]';
 
-/** Walltime as epoch seconds read in UTC, so no timezone or DST shift ever applies. */
-function wallSeconds(match: RegExpExecArray | null): number | null {
-  if (!match) return null;
-  const [, y, mo, d, h, mi, se] = match;
-  return Date.UTC(+y, +mo - 1, +d, +h, +mi, +(se ?? 0)) / 1000;
+/** Walltime as epoch seconds read in UTC, so no timezone or DST shift ever applies;
+ *  null for a date the calendar does not have (31 April, 25:00), as the server rejects it. */
+function wallSeconds(fields: (string | undefined)[] | null): number | null {
+  if (!fields) return null;
+  const [y, mo, d, h, mi, se] = fields.map(field => +(field ?? 0));
+  const date = new Date(Date.UTC(y, mo - 1, d, h, mi, se));
+  const same = date.getUTCFullYear() === y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === d
+    && date.getUTCHours() === h && date.getUTCMinutes() === mi && date.getUTCSeconds() === se;
+  return same ? date.getTime() / 1000 : null;
 }
-function exifToLocal(date: string): string {
-  const m = EXIF_DATE.exec(date);
-  return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}` : '';
+function captureDateSeconds(date: string): number | null {
+  const m = CAPTURE_DATE.exec(date);
+  return m ? wallSeconds(m[1] ? m.slice(1, 7) : m.slice(7, 13)) : null;
+}
+/** Seconds as the `datetime-local` input's value. */
+function localInput(seconds: number): string {
+  return new Date(seconds * 1000).toISOString().slice(0, 19);
 }
 function formatExif(seconds: number): string {
   return new Date(seconds * 1000).toISOString().slice(0, 19).replace(/-/g, ':').replace('T', ' ');
@@ -164,15 +173,15 @@ export class CaptureDateDialogComponent {
   private readonly target = this.data.filters
     ? { filters: structuredClone(this.data.filters), exclude: [...(this.data.exclude ?? [])] }
     : { photo_paths: [...this.data.paths], exclude: [...(this.data.exclude ?? [])] };
-  protected readonly reference = this.data.reference && EXIF_DATE.test(this.data.reference.date) ? this.data.reference : null;
-  private readonly referenceSeconds = this.reference ? wallSeconds(EXIF_DATE.exec(this.reference.date)) : null;
+  private readonly referenceSeconds = this.data.reference ? captureDateSeconds(this.data.reference.date) : null;
+  protected readonly reference = this.referenceSeconds === null ? null : this.data.reference;
   readonly mode = signal<Mode>('shift');
   readonly direction = signal<1 | -1>(1);
   readonly parts = signal<OffsetParts>({ days: 0, hours: 1, minutes: 0, seconds: 0 });
-  readonly exactValue = signal(this.reference ? exifToLocal(this.reference.date) : '');
+  readonly exactValue = signal(this.referenceSeconds === null ? '' : localInput(this.referenceSeconds));
   readonly offset = computed<number | null>(() => {
     if (this.mode() === 'exact') {
-      const target = wallSeconds(LOCAL_DATE.exec(this.exactValue() ?? ''));
+      const target = wallSeconds(LOCAL_DATE.exec(this.exactValue() ?? '')?.slice(1) ?? null);
       return target === null || this.referenceSeconds === null ? null : target - this.referenceSeconds;
     }
     const parts = this.parts();
@@ -257,7 +266,7 @@ export class CaptureDateDialogComponent {
   setMode(mode: Mode): void {
     if (mode === 'exact' && !this.reference) return;
     if (mode === 'exact' && this.valid() && this.referenceSeconds !== null) {
-      this.exactValue.set(exifToLocal(formatExif(this.referenceSeconds + this.offset()!)));
+      this.exactValue.set(localInput(this.referenceSeconds + this.offset()!));
     }
     if (mode === 'shift' && this.valid()) this.showOffset(this.offset()!);
     this.mode.set(mode);

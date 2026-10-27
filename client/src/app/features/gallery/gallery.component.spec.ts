@@ -137,7 +137,11 @@ describe('GalleryComponent', () => {
       pinnedPaths: signal<string[] | null>(null),
       clearPinned: vi.fn(() => Promise.resolve()),
       filterKey: vi.fn((f?: GalleryFilters) => JSON.stringify(buildApiParams(f ?? mockStore.filters(), false, undefined))),
-      reviewProgressKey: vi.fn(() => JSON.stringify(buildApiParams(mockStore.filters(), false, undefined))),
+      reviewProgressKey: vi.fn(() => {
+        const scope = buildApiParams(mockStore.filters(), false, undefined);
+        for (const key of ['page', 'per_page', 'sort', 'sort_direction']) delete scope[key];
+        return JSON.stringify(scope);
+      }),
       hiddenSummary: signal({ total: 0, blinks: 0, bursts: 0, duplicates: 0 }),
       hiddenFiltersStash: signal(null),
       showAllHidden: vi.fn(),
@@ -1497,6 +1501,28 @@ describe('GalleryComponent', () => {
       mockStore.hiddenSummary.set({ total: 9, blinks: 0, bursts: 7, duplicates: 0, brackets: 2, panoramas: 0 });
       fixture.detectChanges();
       expect(stack(html)?.textContent).toContain(I18N.gallery.hidden_banner.message);
+    });
+
+    it('keeps each scope\'s closed notice closed on return, and ignores re-sorting', () => {
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
+      closeFor(html, I18N.gallery.hidden_banner.message).click();
+      fixture.detectChanges();
+      mockStore.filters.set({ ...mockStore.filters(), sort: 'date_taken', sort_direction: 'ASC' });
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+
+      const scopeA = mockStore.filters();
+      mockStore.filters.set({ ...scopeA, tag: 'beach' });
+      fixture.detectChanges();
+      expect(stack(html)?.textContent).toContain(I18N.gallery.hidden_banner.message);
+      closeFor(html, I18N.gallery.hidden_banner.message).click();
+      fixture.detectChanges();
+
+      mockStore.filters.set(scopeA);
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
     });
 
     it('closes the resume bookmark without resuming, and reopens it for another remembered queue', () => {

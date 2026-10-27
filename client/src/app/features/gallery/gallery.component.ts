@@ -36,7 +36,7 @@ import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { filter, firstValueFrom } from 'rxjs';
 import { GalleryStore, BatchResult, REVIEW_RESUME_NAVIGATION } from './gallery.store';
-import { NoticeDismissals, NoticeKind, readNoticeDismissals, saveNoticeDismissals } from './notice-dismiss.util';
+import { NoticeDismissals, NoticeKind, readNoticeDismissals, saveNoticeDismissals, withDismissal } from './notice-dismiss.util';
 import { Photo } from '../../shared/models/photo.model';
 import { isPageShortcutBlocked, isTypingContext } from '../../shared/utils/keyboard';
 import { closeOverlayDirectives } from '../../shared/utils/overlays';
@@ -1149,27 +1149,27 @@ export class GalleryComponent implements OnInit, OnDestroy {
       && !f.blinks_only && !f.duplicates_only && !f.show_rejected;
   });
 
-  /** Notices closed in this tab, with the signature each had when closed. */
+  /** Notices closed in this tab, with the signatures each had when closed. */
   private readonly noticeDismissals = signal<NoticeDismissals>(readNoticeDismissals());
 
-  /** What makes each notice "the same one": its scope or its count, never the live review counts. */
+  /** What makes each notice "the same one": its scope (never its sort) or its count, never the live review counts. */
   private readonly noticeSignatures = computed<Record<NoticeKind, string>>(() => ({
     review_progress: this.store.reviewProgressKey(),
     review_bookmark: JSON.stringify(this.store.reviewBookmark()?.filters ?? null),
-    hidden: String(this.store.hiddenSummary().total),
+    hidden: JSON.stringify([this.store.reviewProgressKey(), this.store.hiddenSummary().total]),
     restore_hidden: JSON.stringify(this.store.hiddenFiltersStash()),
     render_migration: String(this.renderMigrationPending()),
   }));
 
   private noticeClosed(kind: NoticeKind): boolean {
-    return this.noticeDismissals()[kind] === this.noticeSignatures()[kind];
+    return this.noticeDismissals()[kind]?.includes(this.noticeSignatures()[kind]) ?? false;
   }
 
   /** Close one notice for this tab, for as long as it stays the same notice. Nothing else changes. */
   protected dismissNotice(kind: NoticeKind): void {
     const host = this.noticeHost()?.nativeElement;
     const hadFocus = !!host?.contains(document.activeElement);
-    const next = { ...this.noticeDismissals(), [kind]: this.noticeSignatures()[kind] };
+    const next = withDismissal(this.noticeDismissals(), kind, this.noticeSignatures()[kind]);
     this.noticeDismissals.set(next);
     saveNoticeDismissals(next);
     // The focused × leaves the DOM with its card: hand focus to the next card's ×, else the grid.
