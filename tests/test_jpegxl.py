@@ -11,8 +11,26 @@ from api import create_app
 from api.auth import CurrentUser, get_optional_user
 from utils import image_loading
 
-pytest.importorskip("pillow_jxl")
 imagecodecs = pytest.importorskip("imagecodecs")
+
+
+def _native_jpegxl(path, pixels, *, container=False, exif=None, compressed=False, bare_tiff=False):
+    import struct
+    raw = imagecodecs.jpegxl_encode(pixels, lossless=True, numthreads=1)
+    if container or exif is not None:
+        def box(kind, payload):
+            return struct.pack(">I4s", len(payload) + 8, kind) + payload
+        metadata = b''
+        if exif is not None:
+            payload = exif.tobytes()[6:]
+            if not bare_tiff:
+                payload = b'\x00' * 4 + payload
+            metadata = (box(b'brob', b'Exif' + imagecodecs.brotli_encode(payload))
+                        if compressed else box(b'Exif', payload))
+        raw = (b'\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a'
+               + box(b'ftyp', b'jxl \x00\x00\x00\x00jxl ')
+               + metadata + box(b'jxlc', raw))
+    path.write_bytes(raw)
 
 
 def _jpegxl(path, orientation=1):
@@ -48,7 +66,7 @@ def test_decode_matches_original_jpeg_and_preserves_metadata(tmp_path, orientati
 def test_native_lossless_jpegxl_alpha_and_discovery(tmp_path):
     from facet import _gather_scan_files
     path = tmp_path / "certificate.JXL"
-    Image.new("RGBA", (30, 20), (255, 0, 0, 0)).save(path, format="JXL", lossless=True)
+    _native_jpegxl(path, np.asarray(Image.new("RGBA", (30, 20), (255, 0, 0, 0))))
     actual = image_loading.open_nonraw_image(path)
     assert actual.mode == "RGB"
     assert actual.getpixel((0, 0)) == (255, 255, 255)
@@ -192,26 +210,26 @@ def test_resolution_failure_fallback_varies_accept(
 @pytest.mark.parametrize("size", [(8, 8), (240, 200), (320, 240), (512, 257), (1920, 1080)])
 @pytest.mark.parametrize("container", [False, True])
 def test_header_dimensions_match_real_decodes(tmp_path, size, container):
-    from utils.jpegxl import jpegxl_dimensions
+    from utils.jpegxl_header import jpegxl_basic_info
     path = tmp_path / "size.jxl"
-    Image.new("RGB", size).save(path, format="JXL", lossless=True, use_container=container, num_threads=1)
+    _native_jpegxl(path, np.zeros((size[1], size[0], 3), dtype=np.uint8), container=container)
     with path.open("rb") as stream:
-        assert jpegxl_dimensions(stream) == size
+        info = jpegxl_basic_info(stream)
+        assert (info.width, info.height) == size
         assert stream.tell() == 0
     assert image_loading.open_nonraw_image(path).size == size
 
 
 @pytest.mark.parametrize("container", [False, True])
 def test_pixel_limit_precedes_eager_decoder(tmp_path, monkeypatch, container):
-    from pillow_jxl import JpegXLImagePlugin
     path = tmp_path / "oversized.jxl"
-    Image.new("RGB", (40, 24)).save(path, format="JXL", lossless=True, use_container=container, num_threads=1)
+    _native_jpegxl(path, np.zeros((24, 40, 3), dtype=np.uint8), container=container)
     calls = []
-    decoder = JpegXLImagePlugin.Decoder
+    decoder = imagecodecs.jpegxl_decode
     def observed(*args, **kwargs):
         calls.append(True)
         return decoder(*args, **kwargs)
-    monkeypatch.setattr(JpegXLImagePlugin, "Decoder", observed)
+    monkeypatch.setattr(imagecodecs, "jpegxl_decode", observed)
     monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)
     with pytest.raises(ValueError, match="MAX_IMAGE_PIXELS"):
         Image.open(path)
@@ -220,7 +238,7 @@ def test_pixel_limit_precedes_eager_decoder(tmp_path, monkeypatch, container):
 
 def test_fragmented_header_and_large_metadata_box(tmp_path):
     import struct
-    from utils.jpegxl import jpegxl_dimensions
+    from utils.jpegxl_header import jpegxl_basic_info
     path = tmp_path / "fragments.jxl"
     raw = imagecodecs.jpegxl_encode(np.zeros((24, 40, 3), dtype=np.uint8), lossless=True, numthreads=1)
     assert raw[:2] == b"\xff\x0a"
@@ -234,21 +252,22 @@ def test_fragmented_header_and_large_metadata_box(tmp_path):
                      + box(b"jxlp", struct.pack(">I", 0) + raw[:5])
                      + box(b"jxlp", struct.pack(">I", 0x80000001) + raw[5:]))
     with path.open("rb") as stream:
-        assert jpegxl_dimensions(stream) == (40, 24)
+        info = jpegxl_basic_info(stream)
+        assert (info.width, info.height) == (40, 24)
     assert image_loading.open_nonraw_image(path).size == (40, 24)
 
 
 @pytest.mark.parametrize("payload", [b"", b"bad", b"\xff\x0a", b"\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a\x00\x00\x00\x04jxlc"])
 def test_invalid_headers_are_refused_without_decoding(payload):
-    from utils.jpegxl import jpegxl_dimensions
+    from utils.jpegxl_header import jpegxl_basic_info
     with pytest.raises(ValueError):
-        jpegxl_dimensions(BytesIO(payload))
+        jpegxl_basic_info(BytesIO(payload))
 
 
 def test_grayscale_sixteen_bit_jxl_keeps_tonal_range(tmp_path):
     path = tmp_path / "gray.jxl"
     source = np.arange(256, dtype=np.uint16).reshape(16, 16) * 257
-    Image.fromarray(source).save(path, format="JXL", lossless=True, num_threads=1)
+    _native_jpegxl(path, source)
     actual = np.asarray(image_loading.open_nonraw_image(path))
     assert len(np.unique(actual)) > 150
     assert actual.min() == 0
@@ -293,15 +312,20 @@ def test_color_managed_fallback_and_source_bytes_are_preserved(tmp_path, seed_ph
 
 
 @pytest.mark.parametrize("kind", ["float", "sixteen_bit_alpha"])
-def test_unsupported_gray_types_are_refused_instead_of_corrupting_pixels(tmp_path, kind):
+def test_gray_float_and_sixteen_bit_alpha_keep_their_values(tmp_path, kind):
     path = tmp_path / "unsupported.jxl"
     if kind == "float":
         data = np.linspace(0, 1, 960, dtype=np.float32).reshape(24, 40)
     else:
         data = np.full((24, 40, 2), [32768, 65535], dtype=np.uint16)
     path.write_bytes(imagecodecs.jpegxl_encode(data, lossless=True, numthreads=1))
-    with pytest.raises(ValueError, match="Unsupported JPEG XL"):
-        image_loading.open_nonraw_image(path)
+    actual = image_loading.open_nonraw_image(path)
+    assert actual.size == (40, 24) and actual.mode == 'RGB'
+    if kind == 'float':
+        assert actual.getpixel((0, 0)) == (0, 0, 0)
+        assert actual.getpixel((39, 23)) == (255, 255, 255)
+    else:
+        assert np.unique(np.asarray(actual).reshape(-1, 3), axis=0).tolist() == [[128, 128, 128]]
 
 
 def test_native_delivery_skips_decode_and_supports_byte_ranges(tmp_path, seed_photos_prefix, jxl_client, monkeypatch):
@@ -312,7 +336,7 @@ def test_native_delivery_skips_decode_and_supports_byte_ranges(tmp_path, seed_ph
     seed_photos_prefix(str(tmp_path) + os.sep, [{"path": str(path), "filename": path.name}])
     def forbid(*args, **kwargs):
         raise AssertionError("native delivery must not decode or generate a JPEG")
-    monkeypatch.setattr(thumbnails, "_convert_nonraw_cached", forbid)
+    monkeypatch.setattr(thumbnails, "_encode_nonraw_jpeg", forbid)
     response = jxl_client.get("/image", params={"path": str(path)},
                               headers={"Accept": "image/jxl", "Range": "bytes=0-15"})
     assert response.status_code == 206
@@ -352,7 +376,7 @@ def test_concurrent_fallbacks_share_decode_and_retry_failures(
     stored = BytesIO()
     Image.new("RGB", (4, 6), (80, 100, 120)).save(stored, format="JPEG")
     seed_photos_prefix(str(tmp_path) + os.sep, [{"path": str(path), "filename": path.name, "thumbnail": stored.getvalue()}])
-    thumbnails._convert_nonraw_cached.cache_clear()
+    thumbnails._convert_jpegxl_cached.cache_clear()
     started, joined, release = threading.Event(), threading.Event(), threading.Event()
     calls = []
     load = image_loading.open_nonraw_image
@@ -400,7 +424,7 @@ def test_concurrent_fallbacks_share_decode_and_retry_failures(
         assert Image.open(BytesIO(results[0].content)).size == (40, 24)
         assert jxl_client.get("/image", params={"path": str(path)}).content == results[0].content
         assert len(calls) == 1
-    thumbnails._convert_nonraw_cached.cache_clear()
+    thumbnails._convert_jpegxl_cached.cache_clear()
 
 
 def test_fallback_timeout_releases_budget_and_is_retryable(tmp_path, seed_photos_prefix, jxl_client, monkeypatch):
@@ -411,7 +435,7 @@ def test_fallback_timeout_releases_budget_and_is_retryable(tmp_path, seed_photos
     stored = BytesIO()
     Image.new("RGB", (4, 6)).save(stored, format="JPEG")
     seed_photos_prefix(str(tmp_path) + os.sep, [{"path": str(path), "filename": path.name, "thumbnail": stored.getvalue()}])
-    thumbnails._convert_nonraw_cached.cache_clear()
+    thumbnails._convert_jpegxl_cached.cache_clear()
     nonjpeg = threading.BoundedSemaphore(3)
     slots = threading.BoundedSemaphore(0)
     monkeypatch.setattr(thumbnails, "_nonjpeg_render_slots", nonjpeg)
@@ -433,7 +457,7 @@ def test_fallback_timeout_releases_budget_and_is_retryable(tmp_path, seed_photos
     retry = jxl_client.get("/image", params={"path": str(path)})
     assert retry.status_code == 200 and len(called) == 1
     assert Image.open(BytesIO(retry.content)).size == (40, 24)
-    thumbnails._convert_nonraw_cached.cache_clear()
+    thumbnails._convert_jpegxl_cached.cache_clear()
 
 
 @pytest.mark.parametrize("compressed", [False, True])
@@ -474,7 +498,7 @@ def test_full_jxl_conversions_reserve_a_slot_for_sharp_jpegs(tmp_path, seed_phot
     Image.new("RGB", (4, 6)).save(stored, format="JPEG")
     seed_photos_prefix(str(tmp_path) + os.sep, [
         {"path": str(p), "filename": p.name, "thumbnail": stored.getvalue()} for p in [*paths, jpeg]])
-    thumbnails._convert_nonraw_cached.cache_clear()
+    thumbnails._convert_jpegxl_cached.cache_clear()
     fourth_attempt, three_entered, release = threading.Event(), threading.Event(), threading.Event()
     guard = threading.Lock()
     attempts, entered = [], []
@@ -519,7 +543,7 @@ def test_full_jxl_conversions_reserve_a_slot_for_sharp_jpegs(tmp_path, seed_phot
     assert not errors and len(results) == 4 and all(r.status_code == 200 for r in results)
     assert all(not worker.is_alive() for worker in workers)
     assert len(entered) == 4 and not thumbnails._render_inflight
-    thumbnails._convert_nonraw_cached.cache_clear()
+    thumbnails._convert_jpegxl_cached.cache_clear()
 
 
 @pytest.mark.parametrize("compressed", [False, True])
@@ -528,12 +552,145 @@ def test_plugin_written_native_exif_is_preserved(tmp_path, compressed):
     exif = Image.Exif()
     exif[274] = 1
     exif[34665] = {36867: "2024:01:13 11:36:39"}
-    Image.new("RGB", (40, 24), (10, 80, 200)).save(
-        path, format="JXL", lossless=True, use_container=True,
-        exif=exif.tobytes(), compress_metadata=compressed, num_threads=1,
-    )
+    _native_jpegxl(path, np.full((24, 40, 3), [10, 80, 200], dtype=np.uint8),
+                   exif=exif, compressed=compressed, bare_tiff=True)
     original = path.read_bytes()
     actual = image_loading.open_nonraw_image(path)
     assert actual.size == (40, 24)
     assert actual.getexif().get_ifd(34665)[36867] == "2024:01:13 11:36:39"
     assert path.read_bytes() == original
+
+
+def test_metadata_reads_are_lazy_without_the_gpl_plugin(tmp_path, monkeypatch):
+    import sys
+    path = tmp_path / "metadata.jxl"
+    _jpegxl(path)
+    monkeypatch.setitem(sys.modules, "pillow_jxl", None)
+    def forbidden(*args, **kwargs):
+        raise AssertionError("metadata inspection must not decode pixels")
+    monkeypatch.setattr(imagecodecs, "jpegxl_decode", forbidden)
+    monkeypatch.setattr(imagecodecs, "jpegxl_decode_jpeg", forbidden)
+    with Image.open(path) as image:
+        assert image.size == (40, 24)
+        assert image.getexif().get_ifd(34665)[36867] == "2024:01:13 11:36:39"
+
+
+@pytest.mark.parametrize("depth", [1, 2, 4, 6, 7, 8, 10, 12, 16])
+def test_integer_depth_uses_declared_range_not_brightest_pixel(tmp_path, depth):
+    from utils.jpegxl_header import jpegxl_basic_info
+    path = tmp_path / "depth.jxl"
+    maximum = (1 << depth) - 1
+    samples = np.array([[0, maximum // 4, maximum // 2]], dtype=np.uint8 if depth <= 8 else np.uint16)
+    path.write_bytes(imagecodecs.jpegxl_encode(samples, lossless=True, bitspersample=depth, numthreads=1))
+    with path.open("rb") as stream:
+        actual_depth = jpegxl_basic_info(stream).bits_per_sample
+    if actual_depth != depth:
+        pytest.skip("this older encoder stores samples at the full dtype depth")
+    actual = np.asarray(image_loading.open_nonraw_image(path))[:, :, 0]
+    expected = np.floor(samples.astype(float) * 255 / maximum + .5).astype(np.uint8)
+    np.testing.assert_array_equal(actual, expected)
+
+
+def test_fixed_ten_bit_white_decodes_correctly_on_old_and_new_codecs(tmp_path):
+    path = tmp_path / "ten-bit.jxl"
+    path.write_bytes(bytes.fromhex('ff0a00101450b408080001002c004b188b15c259c11e80fe03'))
+    assert image_loading.open_nonraw_image(path).getpixel((0, 0)) == (255, 255, 255)
+
+
+def test_animation_reads_only_first_frame(tmp_path, monkeypatch):
+    path = tmp_path / "animation.jxl"
+    frames = np.zeros((2, 24, 40, 3), dtype=np.uint8)
+    frames[0, :, :] = (255, 0, 0)
+    frames[1, :, :] = (0, 0, 255)
+    _native_jpegxl(path, frames)
+    decoder = imagecodecs.jpegxl_decode
+    calls = []
+    def observed(data, *args, **kwargs):
+        calls.append(kwargs.get('index'))
+        return decoder(data, *args, **kwargs)
+    monkeypatch.setattr(imagecodecs, "jpegxl_decode", observed)
+    image = image_loading.open_nonraw_image(path)
+    assert image.size == (40, 24) and image.getpixel((0, 0)) == (255, 0, 0)
+    assert calls == [0]
+
+
+@pytest.mark.parametrize("oversized", [False, True])
+def test_bad_exif_does_not_discard_readable_pixels(tmp_path, monkeypatch, oversized):
+    import struct
+    from utils import jpegxl
+    path = tmp_path / "bad-exif.jxl"
+    pixels = np.full((24, 40, 3), [10, 80, 200], dtype=np.uint8)
+    raw = imagecodecs.jpegxl_encode(pixels, lossless=True, numthreads=1)
+    def box(kind, data):
+        return struct.pack('>I4s', len(data) + 8, kind) + data
+    if oversized:
+        exif = Image.Exif()
+        exif[270] = 'description ' * 100
+        payload = b'\x00' * 4 + exif.tobytes()[6:]
+        monkeypatch.setattr(jpegxl, '_MAX_EXIF_BYTES', 64)
+    else:
+        payload = b'\x00' * 4 + b'not TIFF'
+    path.write_bytes(b'\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a'
+                     + box(b'ftyp', b'jxl \x00\x00\x00\x00jxl ')
+                     + box(b'Exif', payload) + box(b'jxlc', raw))
+    original = path.read_bytes()
+    image = image_loading.open_nonraw_image(path)
+    np.testing.assert_array_equal(np.asarray(image), pixels)
+    assert not image.getexif()
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("format_name,extension", [('TIFF', '.tiff'), ('HEIF', '.heif')])
+def test_existing_non_jxl_conversions_do_not_wait_for_jxl_slots(
+        tmp_path, seed_photos_prefix, jxl_client, monkeypatch, format_name, extension):
+    import threading
+    from api.routers import thumbnails
+    if format_name == 'HEIF' and not image_loading._heif_available:
+        pytest.skip('HEIF codec unavailable')
+    path = tmp_path / ('existing' + extension)
+    Image.new('RGB', (40, 24), (10, 80, 200)).save(path, format=format_name)
+    seed_photos_prefix(str(tmp_path) + os.sep, [{'path': str(path), 'filename': path.name}])
+    thumbnails._convert_nonraw_cached.cache_clear()
+    monkeypatch.setattr(thumbnails, '_render_slots', threading.BoundedSemaphore(0))
+    monkeypatch.setattr(thumbnails, '_nonjpeg_render_slots', threading.BoundedSemaphore(0))
+    monkeypatch.setattr(thumbnails, '_RENDER_WAIT_SECONDS', 0)
+    response = jxl_client.get('/image', params={'path': str(path)})
+    assert response.status_code == 200
+    assert Image.open(BytesIO(response.content)).size == (40, 24)
+    assert thumbnails._convert_nonraw_cached.cache_info().maxsize == 32
+    thumbnails._convert_nonraw_cached.cache_clear()
+
+
+
+def test_lazy_decode_rechecks_changed_stream_before_native_allocation(monkeypatch):
+    small = imagecodecs.jpegxl_encode(np.zeros((8, 8, 3), dtype=np.uint8), lossless=True, numthreads=1)
+    larger = imagecodecs.jpegxl_encode(np.zeros((24, 40, 3), dtype=np.uint8), lossless=True, numthreads=1)
+    stream = BytesIO(small)
+    image = Image.open(stream)
+    stream.seek(0)
+    stream.write(larger)
+    stream.truncate()
+    def forbidden(*args, **kwargs):
+        raise AssertionError("changed oversized stream reached native allocation")
+    monkeypatch.setattr(imagecodecs, "jpegxl_decode", forbidden)
+    monkeypatch.setattr(Image, 'MAX_IMAGE_PIXELS', 100)
+    try:
+        with pytest.raises(ValueError, match='MAX_IMAGE_PIXELS'):
+            image.load()
+    finally:
+        image.close()
+
+
+def test_truncated_exif_after_codestream_keeps_readable_pixels():
+    import struct
+    pixels = np.full((8, 12, 3), [10, 80, 200], dtype=np.uint8)
+    raw = imagecodecs.jpegxl_encode(pixels, lossless=True, numthreads=1)
+    def box(kind, data):
+        return struct.pack('>I4s', len(data) + 8, kind) + data
+    payload = (b'\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a'
+               + box(b'ftyp', b'jxl \x00\x00\x00\x00jxl ') + box(b'jxlc', raw)
+               + struct.pack('>I4s', 1000, b'Exif') + b'broken')
+    with Image.open(BytesIO(payload)) as image:
+        image.load()
+        np.testing.assert_array_equal(np.asarray(image), pixels)
+        assert not image.getexif()

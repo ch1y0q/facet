@@ -39,14 +39,13 @@ try:
 except ImportError:
     logger.warning("pillow-heif not installed — HEIF/HEIC files will be skipped")
 
-# Optional JPEG XL decoder. Importing the plugin registers its Pillow opener.
+# JPEG XL uses the imagecodecs dependency already needed for DNG previews.
 _jxl_available = False
 try:
     from utils.jpegxl import register_bounded_jpegxl_opener
-    register_bounded_jpegxl_opener()
-    _jxl_available = True
+    _jxl_available = register_bounded_jpegxl_opener()
 except ImportError:
-    logger.debug("pillow-jxl-plugin not installed — JPEG XL files will be skipped")
+    logger.debug("imagecodecs JPEG XL codec unavailable — JPEG XL files will be skipped")
 
 # AVIF codec availability (soft dependency, native in Pillow >= 11.3). Checked
 # eagerly, at import time, for the same reason pillow-heif is registered

@@ -140,24 +140,25 @@ def _image_render_budget(file_path: str):
             _nonjpeg_render_slots.release()
 
 
-@lru_cache(maxsize=_FULL_IMAGE_CACHE_SIZE)
-def _convert_nonraw_cached(file_path: str, mtime: float, quality: int = 96) -> bytes:
-    """Convert a non-RAW, non-browser-renderable file to JPEG bytes, cached by path+mtime+quality.
-
-    Used for HEIF/HEIC, TIFF and JPEG XL: open_nonraw_image is format-agnostic for
-    every non-RAW extension (RGBA/16-bit/AVIF-PQ handling all live there), so
-    one cached conversion serves both branches below rather than pasting a
-    second near-identical function. Goes through the same loader as the
-    scanner so EXIF orientation and HDR PQ -> sRGB tone mapping (Canon .HIF)
-    are applied here too — otherwise the browser image would be dark/rotated
-    relative to what was actually scored.
-    """
+def _encode_nonraw_jpeg(file_path: str, quality: int) -> bytes:
     from utils.image_loading import open_nonraw_image
 
+    buf = BytesIO()
+    open_nonraw_image(file_path).save(buf, format="JPEG", quality=quality)
+    return buf.getvalue()
+
+
+@lru_cache(maxsize=32)
+def _convert_nonraw_cached(file_path: str, mtime: float, quality: int = 96) -> bytes:
+    """Keep the existing HEIF/TIFF full-image cache and admission behavior."""
+    return _encode_nonraw_jpeg(file_path, quality)
+
+
+@lru_cache(maxsize=_FULL_IMAGE_CACHE_SIZE)
+def _convert_jpegxl_cached(file_path: str, mtime: float, quality: int) -> bytes:
+    """Only new JXL full conversions join the sharp-preview resource budget."""
     with _image_render_budget(file_path):
-        buf = BytesIO()
-        open_nonraw_image(file_path).save(buf, format="JPEG", quality=quality)
-        return buf.getvalue()
+        return _encode_nonraw_jpeg(file_path, quality)
 
 
 def _do_resize(thumbnail_bytes: bytes, size: int) -> bytes:
@@ -271,11 +272,11 @@ def _coalesced_render(key: tuple[str, float, Optional[str]]) -> Optional[bytes]:
     return _coalesced_image(key, render)
 
 
-def _coalesced_nonraw_conversion(file_path: str, mtime: float, quality: int) -> bytes:
+def _coalesced_jpegxl_conversion(file_path: str, mtime: float, quality: int) -> bytes:
     # Tag full-size keys so they can never join a 1920 px render of this file.
     result = _coalesced_image(
-        ('full', file_path, mtime, quality),
-        lambda: _convert_nonraw_cached(file_path, mtime, quality),
+        ('jxl-full', file_path, mtime, quality),
+        lambda: _convert_jpegxl_cached(file_path, mtime, quality),
     )
     assert result is not None
     return result
@@ -539,7 +540,7 @@ def image(
         try:
             mtime = os.path.getmtime(real_disk)
             quality = _get_image_jpeg_quality()
-            jpeg_bytes = _coalesced_nonraw_conversion(real_disk, mtime, quality)
+            jpeg_bytes = _convert_nonraw_cached(real_disk, mtime, quality)
             return _cached_image_response(jpeg_bytes, request)
         except Exception:
             logger.exception("Failed to convert HEIF file: %s", real_disk)
@@ -569,7 +570,8 @@ def image(
         try:
             mtime = os.path.getmtime(real_disk)
             quality = _get_image_jpeg_quality()
-            jpeg_bytes = _coalesced_nonraw_conversion(real_disk, mtime, quality)
+            jpeg_bytes = (_coalesced_jpegxl_conversion(real_disk, mtime, quality)
+                          if is_jxl else _convert_nonraw_cached(real_disk, mtime, quality))
             response = _cached_image_response(jpeg_bytes, request)
             if is_jxl:
                 response.headers['Vary'] = 'Accept'

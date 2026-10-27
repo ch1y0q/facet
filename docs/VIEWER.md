@@ -12,6 +12,8 @@ Decoding checks the existing Pillow pixel limit before allocating pixels; contai
 
 JPEG XL compatibility conversions share the sharp-preview admission budget, join identical in-flight requests and retain at most five cached conversions. Existing HEIF/TIFF full-size conversion behavior is unchanged. Codestream orientation is respected, and valid EXIF, including Brotli-compressed EXIF and nonzero TIFF offsets, is read without changing the source. Encoded and decompressed EXIF are each limited to 16 MiB; malformed or oversized EXIF is dropped while the image remains readable.
 
+The display adapter refuses unsupported auxiliary-channel layouts, including premultiplied, downsampled or mixed-depth alpha, before decoding pixels.
+
 ## Contents
 
 - [Starting the Viewer](#starting-the-viewer) · [Authentication](#authentication) · [Filtering Options](#filtering-options) · [Sorting](#sorting) · [Gallery Features](#gallery-features)

@@ -1018,12 +1018,14 @@ def test_exif_with_neutral_orientation_survives_a_malformed_blob():
     assert image_loading._exif_with_neutral_orientation(garbage) == garbage
 
 
-def test_optional_decoder_missing_skips_scan_but_watch_knows_extension():
+def test_unavailable_imagecodecs_jxl_skips_scan_but_watch_knows_extension():
     import subprocess
     import sys
     code = """
 import sys
-sys.modules['pillow_jxl'] = None
+import imagecodecs
+from types import SimpleNamespace
+imagecodecs.JPEGXL = SimpleNamespace(available=False)
 from utils.image_loading import JXL_EXTENSIONS, SCANNABLE_IMAGE_EXTENSIONS, WATCHABLE_IMAGE_EXTENSIONS
 assert not JXL_EXTENSIONS
 assert '.jxl' not in SCANNABLE_IMAGE_EXTENSIONS

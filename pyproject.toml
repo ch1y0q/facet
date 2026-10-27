@@ -73,7 +73,7 @@ dependencies = [
     # and Pillow cannot decode JPEG XL, so utils.image_loading reads the
     # preview through tifffile, which decodes JPEG XL tiles via imagecodecs.
     "tifffile>=2024.1.1",
-    "imagecodecs>=2024.1.1",
+    "imagecodecs>=2024.1.1",  # also backs the standalone JPEG XL Pillow opener
     "numpy>=1.24.0",
     "scipy>=1.10.0",
     "hdbscan>=0.8.40",
@@ -92,7 +92,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-jpegxl = ["pillow-jxl-plugin>=1.3.8"]
 vlm = [
     # Bounded to match requirements.txt: floor 5.3.0 patches GHSA-29pf-2h5f-8g72;
     # 5.15.x is the newest validated ceiling for the batched Qwen3.5 tagger.

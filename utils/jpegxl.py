@@ -1,4 +1,4 @@
-"""Check JPEG XL dimensions before the optional Pillow plugin eagerly decodes.
+"""JPEG XL Pillow opener backed by the existing imagecodecs dependency.
 
 Dimensions and bounded EXIF metadata are read without decoding image pixels.
 SizeHeader is defined in libjxl's lib/jxl/headers.cc. Container boxes follow
@@ -6,16 +6,19 @@ ISO/IEC 18181-2; fragmented codestream prefixes are joined in index order.
 """
 
 import os
+import logging
+from functools import lru_cache
+from io import BytesIO
 import struct
 
-from PIL import Image
+import numpy as np
+from PIL import Image, ImageFile
+
+logger = logging.getLogger(__name__)
 
 _CONTAINER_SIGNATURE = b"\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a"
-# Signature plus the largest possible size header (68 bits).
-_PREFIX_BYTES = 11
 _MAX_HEADER_BOXES = 4096
 _MAX_EXIF_BYTES = 16 * 1024 * 1024
-_RATIOS = ((1, 1), (12, 10), (4, 3), (3, 2), (16, 9), (5, 4), (2, 1))
 
 
 def _container_boxes(stream, end):
@@ -43,35 +46,6 @@ def _container_boxes(stream, end):
         stream.seek(start + size)
     if stream.tell() != end:
         raise ValueError("JPEG XL container exceeds 4096 boxes")
-
-
-def _codestream_prefix(stream):
-    stream.seek(0, os.SEEK_END)
-    end = stream.tell()
-    stream.seek(0)
-    signature = stream.read(12)
-    if signature.startswith(b"\xff\x0a"):
-        return signature[:_PREFIX_BYTES]
-    if signature != _CONTAINER_SIGNATURE:
-        raise ValueError("Invalid JPEG XL signature")
-    prefix = bytearray()
-    next_index = 0
-    for kind, payload_size in _container_boxes(stream, end):
-        if kind == b"jxlc":
-            if prefix:
-                raise ValueError("Mixed JPEG XL codestream boxes")
-            return stream.read(min(_PREFIX_BYTES, payload_size))
-        if kind == b"jxlp":
-            if payload_size < 4:
-                raise ValueError("Truncated JPEG XL fragment")
-            index = struct.unpack(">I", stream.read(4))[0]
-            if index & 0x7fffffff != next_index:
-                raise ValueError("Out-of-order JPEG XL fragment")
-            next_index += 1
-            prefix.extend(stream.read(min(_PREFIX_BYTES - len(prefix), payload_size - 4)))
-            if len(prefix) == _PREFIX_BYTES or index & 0x80000000:
-                return bytes(prefix)
-    raise ValueError("JPEG XL size header not found within 4096 boxes")
 
 
 def _jpegxl_exif(stream):
@@ -116,70 +90,154 @@ def _jpegxl_exif(stream):
         stream.seek(position)
 
 
-def jpegxl_dimensions(stream):
-    """Read dimensions without decoding; restore the caller's stream position."""
+def _accept_jpegxl(prefix):
+    return prefix.startswith(b"\xff\x0a") or prefix.startswith(_CONTAINER_SIGNATURE)
+
+
+def _has_jpeg_reconstruction(stream):
     position = stream.tell()
     try:
-        prefix = _codestream_prefix(stream)
+        stream.seek(0, os.SEEK_END)
+        end = stream.tell()
+        stream.seek(0)
+        if stream.read(12) != _CONTAINER_SIGNATURE:
+            return False
+        return any(kind == b'jbrd' for kind, _ in _container_boxes(stream, end))
+    except ValueError:
+        return False
     finally:
         stream.seek(position)
-    if not prefix.startswith(b"\xff\x0a"):
-        raise ValueError("Invalid JPEG XL codestream")
-    data = int.from_bytes(prefix[2:], "little")
-    available = (len(prefix) - 2) * 8
-    offset = 0
 
-    def bits(count):
-        nonlocal offset
-        if offset + count > available:
-            raise ValueError("Truncated JPEG XL size header")
-        value = (data >> offset) & ((1 << count) - 1)
-        offset += count
-        return value
 
-    small = bits(1)
+def _read_exif_safely(stream, *, native: bool):
+    try:
+        raw = _jpegxl_exif(stream)
+        if raw is None:
+            return None
+        parsed = Image.Exif()
+        parsed.load(raw)
+        # Validate the fields Pillow consumers actually inspect, before the
+        # image is handed to exif_transpose or the scanner's metadata reader.
+        dict(parsed)
+        parsed.get_ifd(34665)
+        parsed.get_ifd(34853)
+        if native and 274 in parsed:
+            parsed[274] = 1
+        return parsed.tobytes()
+    except MemoryError:
+        raise
+    except Exception as error:
+        logger.debug("Ignoring unreadable JPEG XL EXIF: %s", error)
+        return None
 
-    def dimension():
-        return (bits(5) + 1) * 8 if small else bits((9, 13, 18, 30)[bits(2)]) + 1
 
-    height = dimension()
-    ratio = bits(3)
-    if ratio:
-        numerator, denominator = _RATIOS[ratio - 1]
-        width = height * numerator // denominator
+@lru_cache(maxsize=1)
+def _decoder_returns_code_values():
+    """Older imagecodecs scaled integer samples; newer releases retain depth."""
+    import imagecodecs
+    # Synthetic 1x1 white 10-bit RGB frame. Older encoders can silently write
+    # 16 bits, so the probe must not depend on the installed encoder's behavior.
+    encoded = bytes.fromhex('ff0a00101450b408080001002c004b188b15c259c11e80fe03')
+    return imagecodecs.jpegxl_decode(encoded, index=0, numthreads=1).reshape(-1)[0] == 1023
+
+
+def _pixel_image(pixels, bits_per_sample):
+    """Build an 8-bit Pillow frame with bounded temporary scaling buffers."""
+    if pixels.ndim not in (2, 3) or (pixels.ndim == 3 and pixels.shape[-1] not in (2, 3, 4)):
+        raise ValueError("Unsupported JPEG XL channel layout")
+    floating_point = pixels.dtype.kind == 'f'
+    if floating_point:
+        maximum = 1
+    elif pixels.dtype.kind == 'u':
+        maximum = np.iinfo(pixels.dtype).max
+        if bits_per_sample not in (8, 16) and _decoder_returns_code_values():
+            maximum = (1 << bits_per_sample) - 1
     else:
-        width = dimension()
-    if not width or not height:
-        raise ValueError("Empty JPEG XL image")
-    return width, height
+        raise ValueError("Unsupported JPEG XL sample type")
+    if maximum != 255:
+        output = np.empty(pixels.shape, dtype=np.uint8)
+        channels = pixels.shape[-1] if pixels.ndim == 3 else 1
+        rows = max(1, (4 * 1024 * 1024) // (pixels.shape[1] * channels * 4))
+        for start in range(0, pixels.shape[0], rows):
+            source = pixels[start:start + rows]
+            if floating_point and (not np.isfinite(source).all() or source.min() < 0 or source.max() > 1):
+                raise ValueError("JPEG XL floating-point samples require SDR range [0, 1]")
+            band = np.multiply(source, 255.0 / maximum, dtype=np.float32)
+            np.clip(band, 0, 255, out=band)
+            band += 0.5
+            output[start:start + rows] = band.astype(np.uint8)
+        pixels = output
+    return Image.fromarray(pixels)
+
+
+class JpegXLImageFile(ImageFile.ImageFile):
+    """Inspect headers lazily; decode only the first frame when pixels are used."""
+    format = 'JXL'
+    format_description = 'JPEG XL'
+
+    def _open(self):
+        from utils.jpegxl_header import jpegxl_basic_info
+        self._basic_info = jpegxl_basic_info(self.fp)
+        width, height = self._basic_info.width, self._basic_info.height
+        if Image.MAX_IMAGE_PIXELS is not None and width * height > Image.MAX_IMAGE_PIXELS:
+            raise ValueError("JPEG XL image exceeds MAX_IMAGE_PIXELS limit")
+        self._reconstructed_jpeg = _has_jpeg_reconstruction(self.fp)
+        self._size = ((height, width) if not self._reconstructed_jpeg and self._basic_info.orientation >= 5
+                      else (width, height))
+        self._mode = 'RGB'
+        self.tile = []
+        self._pixels_loaded = False
+        self.n_frames = 1
+        self.is_animated = False
+        exif = _read_exif_safely(self.fp, native=not self._reconstructed_jpeg)
+        if exif is not None:
+            self.info['exif'] = exif
+
+    def load(self):
+        if not self._pixels_loaded:
+            import imagecodecs
+            self.fp.seek(0)
+            encoded = self.fp.read()
+            # The file/stream may have changed after lazy header inspection.
+            # Validate the immutable bytes actually passed to the native codec.
+            from utils.jpegxl_header import jpegxl_basic_info
+            snapshot = BytesIO(encoded)
+            current = jpegxl_basic_info(snapshot)
+            if Image.MAX_IMAGE_PIXELS is not None and current.width * current.height > Image.MAX_IMAGE_PIXELS:
+                raise ValueError("JPEG XL image exceeds MAX_IMAGE_PIXELS limit")
+            if current != self._basic_info or _has_jpeg_reconstruction(snapshot) != self._reconstructed_jpeg:
+                raise ValueError("JPEG XL headers changed before pixel decoding")
+            exif = _read_exif_safely(snapshot, native=not self._reconstructed_jpeg)
+            self.info.pop('exif', None)
+            self._exif = None
+            if exif is not None:
+                self.info['exif'] = exif
+            if self._reconstructed_jpeg:
+                jpeg = imagecodecs.jpegxl_decode_jpeg(encoded, numthreads=1)
+                with Image.open(BytesIO(jpeg)) as source:
+                    plane = source.copy()
+                    # Preserve JPEG ICC, but use the bounded/validated EXIF
+                    # already read from the JXL container rather than bad TIFF.
+                    self.info.update({k: v for k, v in source.info.items() if k != 'exif'})
+            else:
+                pixels = imagecodecs.jpegxl_decode(encoded, index=0, numthreads=1)
+                plane = _pixel_image(pixels, self._basic_info.bits_per_sample)
+            self._im = plane.im
+            self._size = plane.size
+            self._mode = plane.mode
+            self._pixels_loaded = True
+            if self._exclusive_fp:
+                self.fp.close()
+            self.fp = None
+        return Image.Image.load(self)
 
 
 def register_bounded_jpegxl_opener():
-    """Register only when installed; every Pillow consumer gets the same limit."""
-    from pillow_jxl.JpegXLImagePlugin import JXLImageFile, _accept
-
-    class BoundedJXLImageFile(JXLImageFile):
-        def _open(self):
-            width, height = jpegxl_dimensions(self.fp)
-            if Image.MAX_IMAGE_PIXELS is not None and width * height > Image.MAX_IMAGE_PIXELS:
-                raise ValueError("JPEG XL image exceeds MAX_IMAGE_PIXELS limit")
-            exif = _jpegxl_exif(self.fp)
-            super()._open()
-            if exif is not None:
-                self.info['exif'] = exif
-            if not self.jpeg and self.info.get('exif'):
-                # libjxl already applied native codestream orientation. EXIF
-                # orientation is authoritative only for reconstructed JPEGs.
-                parsed = self.getexif()
-                if 274 in parsed:
-                    parsed[274] = 1
-                    self.info['exif'] = parsed.tobytes()
-            # The plugin labels 16-bit grey+alpha bytes as 8-bit LA, and
-            # exposes float greyscale without a display-range contract. Refuse
-            # these rather than silently scoring/rendering corrupted pixels.
-            if self.rawmode.startswith('F') or (
-                self.rawmode == 'LA' and len(self._data) != self.width * self.height * 2
-            ):
-                raise ValueError("Unsupported JPEG XL floating-point or grayscale alpha bit depth")
-
-    Image.register_open("JXL", BoundedJXLImageFile, _accept)
+    """Enable standard/Docker installs when their core codec is available."""
+    import imagecodecs
+    if not imagecodecs.JPEGXL.available:
+        return False
+    Image.register_open('JXL', JpegXLImageFile, _accept_jpegxl)
+    Image.register_extension('JXL', '.jxl')
+    Image.register_mime('JXL', 'image/jxl')
+    return True

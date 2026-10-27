@@ -12,6 +12,8 @@ Il limite di pixel di Pillow viene verificato prima della decodifica; l’ispezi
 
 Le conversioni di compatibilità JPEG XL condividono il limite di concorrenza delle anteprime nitide, uniscono richieste identiche in corso e conservano al massimo cinque conversioni in cache. Il comportamento precedente delle conversioni HEIF/TIFF a piena risoluzione non cambia. Si rispetta l’orientamento del flusso e si legge l’EXIF valido, inclusi Brotli e offset TIFF non nulli, senza modificare la sorgente. EXIF codificato e decompresso sono limitati ciascuno a 16 MiB; i metadati non validi o eccessivi vengono ignorati e l’immagine resta leggibile.
 
+L’adattatore di visualizzazione rifiuta i canali ausiliari non supportati, inclusi alfa premoltiplicato, sottocampionato o con profondità diversa, prima di decodificare i pixel.
+
 ## Contenuti
 
 - [Avvio della galleria](#avvio-della-galleria) · [Autenticazione](#autenticazione) · [Opzioni di filtraggio](#opzioni-di-filtraggio) · [Ordinamento](#ordinamento) · [Funzionalità della galleria](#funzionalità-della-galleria)

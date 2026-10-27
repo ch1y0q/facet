@@ -12,6 +12,8 @@ Vor der Pixeldekodierung gilt das vorhandene Pillow-Pixellimit; die Header-Prüf
 
 JPEG-XL-Kompatibilitätskonvertierungen teilen das Zugriffslimit der scharfen Vorschau, bündeln identische laufende Anfragen und speichern höchstens fünf Konvertierungen im Cache. Das bisherige Verhalten der HEIF/TIFF-Vollbildkonvertierung bleibt unverändert. Die Codestream-Ausrichtung wird beachtet; gültiges EXIF einschließlich Brotli-Kompression und TIFF-Offsets ungleich null wird ohne Änderung der Quelle gelesen. Kodiertes und entpacktes EXIF sind jeweils auf 16 MiB begrenzt; ungültiges oder zu großes EXIF wird verworfen, das Bild bleibt lesbar.
 
+Der Anzeigeadapter lehnt nicht unterstützte Zusatzkanäle, einschließlich vormultipliziertem, verkleinertem oder anders tiefem Alpha, vor der Pixeldekodierung ab.
+
 ## Inhalt
 
 - [Galerie starten](#galerie-starten) · [Authentifizierung](#authentifizierung) · [Filteroptionen](#filteroptionen) · [Sortierung](#sortierung) · [Galeriefunktionen](#galeriefunktionen)

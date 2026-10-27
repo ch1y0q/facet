@@ -92,7 +92,7 @@ jobs:
         # tests/test_device.py (CUDA/MPS/CPU resolution) are the original
         # platform surface; the others cover path, permission, symlink and
         # subprocess handling that differs on Windows.
-        run: python -m pytest tests/test_scan.py tests/test_device.py tests/test_auto_cull_cli.py tests/test_config_merge.py tests/test_config_path_env.py tests/test_config_writes.py tests/test_manifest_builder.py tests/test_system_memory.py tests/test_weight_optimizer_sources.py tests/test_xmp_export.py tests/test_exiftool_process.py tests/test_xmp_keyword_ownership.py tests/test_xmp_face_ownership.py tests/test_visibility_fail_open.py tests/test_cull.py tests/test_raw_decode.py tests/test_config_schema.py tests/test_sidecar_job_receipts.py tests/test_embedding_revision.py tests/test_jpegxl.py tests/test_jpegxl_headers.py -q --tb=short
+        run: python -m pytest tests/test_scan.py tests/test_device.py tests/test_auto_cull_cli.py tests/test_config_merge.py tests/test_config_path_env.py tests/test_config_writes.py tests/test_manifest_builder.py tests/test_system_memory.py tests/test_weight_optimizer_sources.py tests/test_xmp_export.py tests/test_exiftool_process.py tests/test_xmp_keyword_ownership.py tests/test_xmp_face_ownership.py tests/test_visibility_fail_open.py tests/test_cull.py tests/test_raw_decode.py tests/test_config_schema.py tests/test_sidecar_job_receipts.py tests/test_embedding_revision.py tests/test_jpegxl.py tests/test_jpegxl_headers.py tests/test_jpegxl_basic_info.py -q --tb=short
 
   lock-resolve:
     name: Dependency locks resolve (${{ matrix.lock }})
