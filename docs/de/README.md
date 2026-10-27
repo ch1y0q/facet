@@ -28,7 +28,7 @@ Copy-and-paste-Blöcken ab.
 - **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — übersprungen, wenn ein passendes JPEG/HEIC vorhanden ist
 - **PNG, GIF, WebP, BMP, TIFF** (.png, .gif, .webp, .bmp, .tif, .tiff) — 16-Bit-Graustufen werden auf 8 Bit skaliert, ein Alphakanal wird auf Weiß compositet, und animierte GIF/WebP werden anhand des ersten Frames bewertet; TIFF wird für den Browser in JPEG umgewandelt. PNG, WebP und TIFF enthalten EXIF, sofern das schreibende Programm es gespeichert hat; GIF und BMP können das nicht, daher bleiben bei diesen beiden `date_taken` sowie Kamera/Objektiv leer
 - **AVIF** (.avif) — erfordert ein Pillow, das mit AVIF-Unterstützung gebaut wurde (nativ ab `pillow>=11.3`); HDR-PQ-AVIF-Aufnahmen werden wie Canon-`.HIF` auf SDR-sRGB tone-gemappt; EXIF wird gelesen, wenn es vorhanden ist
-- **JPEG XL** (.jxl) — wird über die vorhandene Abhängigkeit `imagecodecs` in Standardinstallation und Docker dekodiert; kein Zusatzpaket nötig. Bewertung und Vorschauen verwenden 8-Bit-SDR-sRGB (kein HDR-Tone-Mapping), bei animierten Dateien nur das erste Bild; gültiges EXIF wird gelesen
+- **JPEG XL** (.jxl) — wird über die vorhandene Abhängigkeit `imagecodecs` in Standardinstallation und Docker dekodiert; kein Zusatzpaket nötig. Vorschauen verwenden 8-Bit-RGB ohne HDR-Tonemapping; bei animierten Dateien nur das erste Bild; gültiges EXIF wird gelesen. Rekonstruierte JPEGs behalten ICC-Farbmanagement; native JXL-Vorschauprofile sind über `imagecodecs` nicht verfügbar
 
 ## Häufige Fragen
 
