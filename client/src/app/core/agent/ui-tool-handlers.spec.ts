@@ -615,8 +615,10 @@ describe('UI tool registry and handlers', () => {
       expect(store.filters()).toMatchObject({ show_rejected: true, hide_rejected: false, favorites_only: false, camera: 'Canon' });
       expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ show_rejected: '1', camera: 'Canon' }));
       expect(await run('ui_set_gallery_filters', { patch: { show_rejected: true, review_status: 'kept' } })).toMatchObject({ ok: true });
-      expect(store.filters()).toMatchObject({ show_rejected: true, review_status: 'kept' });
-      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ show_rejected: '1', review_status: 'kept' }));
+      // The review decision wins: a review queue never carries "Only rejected", which would release every hide toggle.
+      expect(store.filters()).toMatchObject({ show_rejected: false, review_status: 'kept' });
+      expect(apiGet).toHaveBeenLastCalledWith('/photos', expect.objectContaining({ review_status: 'kept' }));
+      expect(apiGet.mock.lastCall?.[1]).not.toHaveProperty('show_rejected');
     });
 
     it('refuses conflicting rejected-only and favorite-only patches without changing the tab', async () => {

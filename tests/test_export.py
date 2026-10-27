@@ -779,3 +779,28 @@ def test_batch_failure_details_stay_private_and_later_photos_export(client, tmp_
     assert body["sidecars"] == [good + ".xmp"]
     assert _read_sidecar_desc(good + ".xmp").get(f"{{{_NS['xmp']}}}Rating") == "4"
     assert not os.path.exists(failed + ".xmp")
+
+
+UPGRADE_MESSAGE = "ExifTool 13.23 to 13.27 corrupts XMP sidecars; upgrade to 13.28 or newer"
+
+
+@pytest.mark.parametrize("endpoint", ["/api/export/sidecars", "/api/photo/export_xmp", "/api/photo/embed_metadata"])
+def test_defective_exiftool_refusal_is_reported_not_hidden(client, tmp_path, monkeypatch, endpoint):
+    """The 13.23-13.27 refusal names its own remedy; a generic "check server logs" hides it."""
+    from api.routers import export
+    import processing.xmp_export as xe
+
+    photo, row = _make_photo(tmp_path, "refused.jpg", star_rating=3)
+    db = str(tmp_path / "refused.db")
+    _seed_db(db, [row])
+    monkeypatch.setattr(export, "get_db", _db_cm(db))
+    monkeypatch.setattr(xe, "exiftool_available", lambda: True)
+    monkeypatch.setattr(xe, "exiftool_defective_version", lambda: (13, 25))
+    payload = {"paths": [photo]} if endpoint == "/api/export/sidecars" else {"path": photo}
+    response = client.post(endpoint, json=payload)
+    if endpoint == "/api/export/sidecars":
+        assert response.status_code == 200, response.text
+        assert (response.json()["errors"], response.json()["first_error"]) == (1, UPGRADE_MESSAGE)
+    else:
+        assert (response.status_code, response.json()["detail"]) == (412, UPGRADE_MESSAGE)
+    assert not os.path.exists(photo + ".xmp")

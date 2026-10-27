@@ -843,7 +843,6 @@ describe('App', () => {
       const labels = items.map(i => i.textContent!.replace(/\s+/g, ' ').trim());
       expect(labels.at(-2)).toContain(I18N.gallery.card_actions.title);
       expect(labels.at(-1)).toContain(I18N.nav.help);
-      expect(labels.join('|')).not.toContain(I18N.culling.help);
       items.at(-2)!.click();
       expect(openCardActions).toHaveBeenCalledOnce();
       items.at(-1)!.click();

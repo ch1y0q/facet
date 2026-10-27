@@ -359,6 +359,21 @@ def test_api_returns_not_found_for_invalid_private_retry_record(edition_client):
     assert response.status_code == 404, response.text
 
 
+def test_api_does_not_report_an_unrelated_lookup_bug_as_a_missing_job(edition_client, monkeypatch):
+    """Only an unknown job is a 404; a KeyError while selecting paths is a server error."""
+    from fastapi.testclient import TestClient
+    from api.routers import export
+
+    def broken_selection(*args, **kwargs):
+        raise KeyError('row column')
+
+    monkeypatch.setattr(export, '_selected_paths', broken_selection)
+    client = TestClient(edition_client.app, raise_server_exceptions=False)
+    response = client.post('/api/export/sidecar_jobs', json={'paths': ['/unregistered-job-fixture.jpg']})
+    assert response.status_code == 500, response.text
+    assert 'Export job not found' not in response.text
+
+
 @pytest.mark.parametrize('operation', ['start', 'retry'])
 @pytest.mark.parametrize('unusable', [False, True])
 def test_api_distinguishes_unusable_lock_from_busy(edition_client, monkeypatch, operation, unusable):

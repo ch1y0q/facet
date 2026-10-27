@@ -161,9 +161,11 @@ class TestHandshake:
         import jwt.api_jwt
 
         env = agent_app("legacy")
-        verification_time = datetime.now(timezone.utc)
         token = create_access_token({"sub": "_legacy", "role": "user"},
                                     expires_delta=timedelta(seconds=2))
+        # Read after minting: a clock frozen just before a second boundary would
+        # precede the token's whole-second iat and fail the handshake instead.
+        verification_time = datetime.now(timezone.utc)
 
         class VerificationClock(datetime):
             @classmethod

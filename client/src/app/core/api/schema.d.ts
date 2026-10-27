@@ -8351,7 +8351,7 @@ export interface components {
             /** First Error */
             first_error?: string | null;
             /** First Error Code */
-            first_error_code?: ("metadata_repair" | "write_failed" | "stopped") | null;
+            first_error_code?: ("metadata_repair" | "write_failed" | "exiftool_upgrade" | "stopped") | null;
             /** Id */
             id: string;
             /** Processed */

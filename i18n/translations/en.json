@@ -2005,7 +2005,6 @@
     "similarity_threshold": "Similarity Threshold",
     "burst_help": "Photos taken in rapid succession are grouped together. Click photos to keep them (green border), unselected photos (red border) will be hidden. The best photo is auto-selected based on sharpness and quality.",
     "similar_help": "Visually similar photos across your library are grouped using AI embeddings. Review each group, keep the best shots, and discard near-duplicates. Adjust the threshold slider to control how similar photos must be to form a group.",
-    "help": "Help",
     "help_text": "Cull near-duplicate shots fast. Pick a granularity — Bursts, Similar, Scenes, or All merged — and a sort order; Strictness sets how aggressively the auto-selection keeps only the best frame, and in Similar mode the Similarity slider tunes how alike photos must be to group. Click a photo to keep or unkeep it, double-click to keep only that one, or turn on the Loupe (Z) to pixel-peep. Open the Darkroom (Enter) for full-screen review with 2-up/4-up Compare. Use Up/Down to pick a group and Space to confirm it and move on; Skip and Confirm start a 7-second cooldown you can Cancel before the group closes, and confirming hides the rejected photos from the gallery. Scope the feed to an album or scene, toggle Exclude rejected, and note that every cull decision trains your personal \"My Taste\" ranking. See the shortcuts below for all keys.",
     "type_burst": "Burst",
     "type_similar": "Similar",
@@ -2604,6 +2603,7 @@
       "errors": {
         "metadata_repair": "Existing metadata needs repair before exporting.",
         "write_failed": "Could not write metadata. Check the server logs.",
+        "exiftool_upgrade": "ExifTool 13.23 to 13.27 corrupts XMP sidecars. Upgrade ExifTool to 13.28 or newer.",
         "stopped": "Export stopped unexpectedly. Check the server logs and retry the remaining photos."
       }
     }

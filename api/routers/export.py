@@ -48,6 +48,7 @@ from processing.xmp_export import (
     XmpRating,
     person_names_from_regions,
     write_metadata,
+    DefectiveExifToolError,
     MetadataPreconditionError,
 )
 from utils.sequence import BRACKET as BRACKET_KIND
@@ -391,9 +392,12 @@ def _write_sidecars_for_paths(conn, paths, user_id, overwrite):
             logger.exception("Failed to write metadata for %s", path)
             errors += 1
             if first_error is None:
-                first_error = (sidecar_jobs.METADATA_REPAIR_MESSAGE
-                               if isinstance(ex, MetadataPreconditionError)
-                               else sidecar_jobs.WRITE_FAILURE_MESSAGE)
+                if isinstance(ex, MetadataPreconditionError):
+                    first_error = sidecar_jobs.METADATA_REPAIR_MESSAGE
+                elif isinstance(ex, DefectiveExifToolError):
+                    first_error = sidecar_jobs.EXIFTOOL_UPGRADE_MESSAGE
+                else:
+                    first_error = sidecar_jobs.WRITE_FAILURE_MESSAGE
     return {
         "ok": True,
         "written": written,
@@ -953,6 +957,8 @@ def api_export_xmp(
                                 overwrite=body.overwrite, embed_original=False)
     except MetadataPreconditionError as ex:
         raise HTTPException(status_code=412, detail="Existing metadata needs repair before exporting") from ex
+    except DefectiveExifToolError as ex:
+        raise HTTPException(status_code=412, detail=sidecar_jobs.EXIFTOOL_UPGRADE_MESSAGE) from ex
     except (OSError, RuntimeError):
         logger.exception("Failed to write metadata for %s", body.path)
         raise HTTPException(status_code=500, detail="Failed to write metadata")
@@ -987,6 +993,8 @@ def api_embed_metadata(
         result = write_metadata(real_disk, _rating_from(row, regions_map), embed_original=True)
     except MetadataPreconditionError as ex:
         raise HTTPException(status_code=412, detail="Existing metadata needs repair before exporting") from ex
+    except DefectiveExifToolError as ex:
+        raise HTTPException(status_code=412, detail=sidecar_jobs.EXIFTOOL_UPGRADE_MESSAGE) from ex
     except (OSError, RuntimeError):
         logger.exception("Failed to embed metadata for %s", body.path)
         raise HTTPException(status_code=500, detail="Failed to embed metadata")
@@ -1021,7 +1029,7 @@ def _sidecar_job_request(response):
     response.headers["Cache-Control"] = "no-store"
     try:
         yield DEFAULT_DB_PATH
-    except LookupError as ex:
+    except sidecar_jobs.JobNotFound as ex:
         raise HTTPException(404, "Export job not found", headers={"Cache-Control": "no-store"}) from ex
     except OSError as ex:
         logger.exception('Sidecar export job storage is unavailable')

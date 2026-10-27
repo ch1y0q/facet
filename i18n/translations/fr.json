@@ -2005,7 +2005,6 @@
     "similarity_threshold": "Seuil de similarité",
     "burst_help": "Les photos prises en rafale sont regroupées ensemble. Cliquez sur les photos à conserver (bordure verte), les photos non sélectionnées (bordure rouge) seront masquées. La meilleure photo est automatiquement sélectionnée en fonction de la netteté et de la qualité.",
     "similar_help": "Les photos visuellement similaires de votre bibliothèque sont regroupées grâce aux embeddings IA. Examinez chaque groupe, conservez les meilleurs clichés et écartez les quasi-doublons. Ajustez le curseur de seuil pour contrôler le degré de similarité nécessaire pour former un groupe.",
-    "help": "Aide",
     "help_text": "Triez rapidement les prises quasi identiques. Choisissez une granularité — Rafales, Similaires, Scènes ou Tout fusionné — et un ordre de tri ; la Rigueur règle l’agressivité de la sélection automatique pour ne garder que la meilleure image, et en mode Similaires le curseur Similarité ajuste le degré de ressemblance requis pour regrouper. Cliquez sur une photo pour la garder ou la retirer, double-cliquez pour ne garder qu’elle, ou activez la Loupe (Z) pour scruter les pixels. Ouvrez la Chambre noire (Entrée) pour une revue plein écran avec Comparer 2 ou 4. Utilisez Haut/Bas pour choisir un groupe et Espace pour le confirmer et passer au suivant ; Passer et Confirmer lancent un compte à rebours de 7 secondes que vous pouvez Annuler avant la fermeture du groupe, et la confirmation masque les photos rejetées de la galerie. Limitez le flux à un album ou une scène, activez Exclure les rejetées, et notez que chaque décision de tri entraîne votre classement personnel « Mes goûts ». Consultez les raccourcis ci-dessous pour toutes les touches.",
     "type_burst": "Rafale",
     "type_similar": "Similaire",
@@ -2604,6 +2603,7 @@
       "errors": {
         "metadata_repair": "Les métadonnées existantes doivent être réparées avant l’export.",
         "write_failed": "Impossible d’écrire les métadonnées. Consultez les journaux du serveur.",
+        "exiftool_upgrade": "ExifTool 13.23 à 13.27 corrompt les fichiers XMP. Mettez ExifTool à jour en 13.28 ou plus récent.",
         "stopped": "L’export s’est arrêté de façon inattendue. Consultez les journaux du serveur et relancez les photos restantes."
       }
     }

@@ -2019,7 +2019,6 @@ export const I18N = {
     similarity_threshold: "culling.similarity_threshold",
     burst_help: "culling.burst_help",
     similar_help: "culling.similar_help",
-    help: "culling.help",
     help_text: "culling.help_text",
     type_burst: "culling.type_burst",
     type_similar: "culling.type_similar",
@@ -2618,6 +2617,7 @@ export const I18N = {
       errors: {
         metadata_repair: "export.jobs.errors.metadata_repair",
         write_failed: "export.jobs.errors.write_failed",
+        exiftool_upgrade: "export.jobs.errors.exiftool_upgrade",
         stopped: "export.jobs.errors.stopped",
       },
     },

@@ -301,17 +301,23 @@ describe('exclusiveHidePatch', () => {
 
 describe('reviewStatusPatch', () => {
   it('a review status clears the semantic and similar queries', () => {
-    expect(reviewStatusPatch({ review_status: 'kept' })).toEqual({ similar_to: '', semanticQuery: '' });
+    expect(reviewStatusPatch({ review_status: 'kept' })).toEqual({ similar_to: '', semanticQuery: '', show_rejected: false });
   });
-  it('undecided also sorts oldest first, unless the caller opts out of the sort', () => {
+  it('undecided also sorts oldest first', () => {
     expect(reviewStatusPatch({ review_status: 'undecided' }))
-      .toEqual({ similar_to: '', semanticQuery: '', sort: 'date_taken', sort_direction: 'ASC' });
-    expect(reviewStatusPatch({ review_status: 'undecided' }, false)).toEqual({ similar_to: '', semanticQuery: '' });
+      .toEqual({ similar_to: '', semanticQuery: '', show_rejected: false, sort: 'date_taken', sort_direction: 'ASC' });
   });
   it('a semantic or similar query clears the review status, and unrelated updates change nothing', () => {
     expect(reviewStatusPatch({ semanticQuery: 'dog' })).toEqual({ review_status: '' });
     expect(reviewStatusPatch({ similar_to: '/a.jpg' })).toEqual({ review_status: '' });
     expect(reviewStatusPatch({ review_status: '', semanticQuery: '' })).toEqual({});
+  });
+  it('a review status clears "Only rejected" without sorting when the caller opts out', () => {
+    expect(reviewStatusPatch({ review_status: 'undecided' }, false))
+      .toEqual({ similar_to: '', semanticQuery: '', show_rejected: false });
+    const seeded = applyQueryParams(DEFAULT_FILTERS, { review_status: 'undecided', show_rejected: 'true' });
+    expect(seeded.show_rejected).toBe(false);
+    expect(applyQueryParams(DEFAULT_FILTERS, { show_rejected: 'true' }).show_rejected).toBe(true);
   });
 });
 

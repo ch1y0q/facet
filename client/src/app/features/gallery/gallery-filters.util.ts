@@ -320,7 +320,9 @@ export function exclusiveHidePatch(updates: Partial<GalleryFilters>): Partial<Ga
  *  `applyQueryParams`; the last passes `withSort = false` because a URL carries its own sort. */
 export function reviewStatusPatch(updates: Partial<GalleryFilters>, withSort = true): Partial<GalleryFilters> {
   const patch: Partial<GalleryFilters> = {};
-  if (updates.review_status) { patch.similar_to = ''; patch.semanticQuery = ''; }
+  // "Only rejected" releases every hide toggle server-side, and its checkbox is disabled while a
+  // review status is set, so a stale one would flood the queue with set members nobody can hide.
+  if (updates.review_status) { patch.similar_to = ''; patch.semanticQuery = ''; patch.show_rejected = false; }
   else if (updates.semanticQuery || updates.similar_to) patch.review_status = '';
   if (withSort && updates.review_status === 'undecided') { patch.sort = 'date_taken'; patch.sort_direction = 'ASC'; }
   return patch;
@@ -616,6 +618,7 @@ export function applyQueryParams(
   if (params['hide_rejected'] !== undefined) result.hide_rejected = params['hide_rejected'] !== 'false';
   if (params['favorites_only'] !== undefined) result.favorites_only = params['favorites_only'] === 'true';
   if (params['show_rejected'] !== undefined) result.show_rejected = params['show_rejected'] === 'true';
+  if (result.review_status) result.show_rejected = false; // the URL's flag lands after reviewStatusPatch above
   if (params['blinks_only'] !== undefined) result.blinks_only = params['blinks_only'] === 'true';
   if (params['duplicates_only'] !== undefined) result.duplicates_only = params['duplicates_only'] === 'true';
   if (params['is_monochrome'] !== undefined) result.is_monochrome = params['is_monochrome'] === 'true';
