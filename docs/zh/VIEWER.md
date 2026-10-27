@@ -483,7 +483,7 @@ HDR 之间重新标注。**漏检**则从照片库修正，因为未被检测到
 
 ## 触发扫描
 
-当以下**两个**条件同时满足时，才会提供扫描入口：`viewer.features.show_scan_button` 为 `true`（在 `scoring_config.json` 中出厂设置为 **`false`**，需主动开启），**并且**调用者拥有扫描权限——多用户模式下为 `superadmin` 角色，或单用户模式下在已锁定的单用户安装（`viewer.edition_password` 非空）上通过编辑模式身份验证的会话。满足后，照片库会在两处提供扫描入口，二者都会打开扫描启动器对话框（`ScanLauncherComponent`）：照片库为空时的**扫描照片以开始使用**按钮，以及位于页眉中**排序**选择器之后、以彩色背景突出显示的**扫描新照片**图标按钮（小屏幕上位于底部栏的排序选择器之后）。在开放的单用户安装上（`viewer.edition_password` 为空，出厂默认值），全部四个扫描路由都会对任何调用者返回 403，即便调用者持有有效的编辑模式生成 JWT，这两个入口也绝不会渲染——启动扫描子进程绝不能被匿名访问到。例外是 `viewer.trusted_local_editing`：受信任的本地浏览器会话，以及持有完全编辑令牌的本地助手，无需 `show_scan_button` 和编辑密码即可扫描。
+当以下**两个**条件同时满足时，才会提供扫描入口：`viewer.features.show_scan_button` 为 `true`（在 `scoring_config.json` 中出厂设置为 **`false`**，需主动开启），**并且**调用者拥有扫描权限——多用户模式下为 `superadmin` 角色，或单用户模式下在已锁定的单用户安装（`viewer.edition_password` 非空）上通过编辑模式身份验证的会话。满足后，照片库会在两处提供扫描入口，二者都会打开扫描启动器对话框（`ScanLauncherComponent`）：照片库为空时的**扫描照片以开始使用**按钮，以及位于页眉末尾、账户菜单之前、以彩色背景突出显示的**扫描新照片**图标按钮（小屏幕上位于底部栏的排序选择器之后）。在开放的单用户安装上（`viewer.edition_password` 为空，出厂默认值），全部四个扫描路由都会对任何调用者返回 403，即便调用者持有有效的编辑模式生成 JWT，这两个入口也绝不会渲染——启动扫描子进程绝不能被匿名访问到。例外是 `viewer.trusted_local_editing`：受信任的本地浏览器会话，以及持有完全编辑令牌的本地助手，无需 `show_scan_button` 和编辑密码即可扫描。
 
 - 从启动器的列表中选择一个目录，直接在应用内开始扫描
 - 启动器会把实时进度（SSE，并自动回退到轮询）推送到一个由结构化 `progress` 字段驱动的 `mat-progress-bar`，另外还有一段输出日志尾部，扫描结束时会刷新照片库。各阶段名称均有翻译，包括精彩瞬间和不需要照片的检测；未知的新阶段会直接显示为纯文本。
@@ -1375,6 +1375,7 @@ python database.py --stats-info
 |----------|-------------|
 | `POST /api/photos/batch_favorite` | 把多张照片标为收藏（并清除淘汰标记）。请求体必须恰好是 `{photo_paths}`（最多 1000）或 `{filters}` 之一——`filters` 接受与 `GET /api/photos` 相同的查询参数（均为字符串），且没有上限。`exclude`（可选，最多 1000）可与两者中的任意一个同时出现，用来收窄所发送的目标——从 `photo_paths` 中减去，或从 `filters` 范围中排除——因此它只能收窄，绝不会扩大。两个目标都不给或都给都会返回 422，而指定了相册的 `filters` 会像该相册自身的 GET 一样做访问检查——相册不存在返回 `404`，在受访问控制的安装上访问他人的相册返回 `403`。响应为 `{success, count}`，其中 `count` 是实际写入的行数 |
 | `POST /api/photos/batch_reject` | 把多张照片标为淘汰（并清除收藏和评分）。请求体契约与上面的 `batch_favorite` 相同 |
+| `POST /api/photos/batch_review` | 设置审阅决定。保留/重置会保留星级和收藏；拒绝会清除它们，与其他拒绝操作相同。目标与排除约定同 `batch_favorite`，另加 `decision: kept \| undecided \| rejected`。保留会清除拒绝；拒绝会清除保留；待定会同时清除两者。返回 `{success, count}`。图库接受 `review_status=undecided\|kept\|rejected`；普通图库请省略该参数 |
 | `POST /api/photos/batch_rating` | 为多张照片设置星级评分。请求体契约与 `batch_favorite` 相同，另需必填的 `rating`（0–5） |
 | `POST /api/photos/batch_manual_tags` | 为多张照片添加或移除一个[手动标签](#手动标签)（受编辑模式限制）。请求体约定与 `batch_favorite` 相同，另加必填的 `tag` 和取值为 `add` 或 `delete` 的 `action`。响应 `{success, count}`，其中 `count` 是实际写入的行数：`add` 时，已达 50 个标签上限的照片和 AI 标签中已含该标签的照片会被跳过 |
 | `POST /api/photos/capture_date/preview` | `[编辑]` 预览拍摄日期的平移。请求体：`photo_paths` 或 `filters`（可带 `exclude`），目标约定与 `batch_favorite` 相同，另加必填的非零整数 `offset_seconds`，范围在 ±31622400 以内。返回 `{changed, skipped, samples, preview_token}`（`samples` 含前 20 个新旧日期）；超过 1000 张照片会以 `422` 拒绝。不写入任何内容 |

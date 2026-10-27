@@ -655,11 +655,11 @@ describe('App', () => {
 
     const isSortField = (el: Element | null) => !!el && el.tagName === 'MAT-FORM-FIELD' && !!el.textContent?.includes(I18N.gallery.sort);
 
-    it('renders one desktop button right after the header Sort field, in the tonal colour', () => {
+    it('renders one desktop button just before the account menu, in the tonal colour', () => {
       const { buttons } = render(true);
       const desktop = buttons.filter((b) => b.classList.contains('lg:!inline-flex'));
       expect(desktop).toHaveLength(1);
-      expect(isSortField(desktop[0].previousElementSibling)).toBe(true);
+      expect(desktop[0].nextElementSibling?.getAttribute('aria-label')).toBe(I18N.auth.user_menu);
       expect(desktop[0].classList.contains('!hidden')).toBe(true);
       for (const cls of TONAL) expect(desktop[0].classList.contains(cls)).toBe(true);
     });

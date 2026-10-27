@@ -566,7 +566,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
       @if (noticeStackVisible()) {
         <div data-gallery-notices class="pointer-events-none absolute z-10 flex flex-col gap-2 w-[min(26rem,calc(100%-1rem))]"
              [style.bottom.px]="noticeBottomPx()" [style.right.px]="noticeRightPx()" [style.maxWidth]="noticeMaxWidth()">
-          @if (showScrollTop() && !selectionCount()) {
+          @if (scrollTopShown()) {
             <ng-container *ngTemplateOutlet="scrollTopFab; context: { $implicit: 'pointer-events-auto self-end' }" />
           }
           @if (reviewProgressShown()) {
@@ -574,7 +574,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
               <section data-review-progress [class]="NOTICE_CARD_CLASS" [attr.aria-label]="I18N.gallery.review_progress.title | translate">
                 <mat-icon class="opacity-70 !text-base !w-5 !h-5 self-start">fact_check</mat-icon>
                 <div class="flex-1 min-w-0 flex flex-col gap-1">
-                  <span class="flex flex-wrap gap-x-3 gap-y-0.5" role="status" aria-live="polite" aria-atomic="true">
+                  <span id="notice-text-review_progress" class="flex flex-wrap gap-x-3 gap-y-0.5" role="status" aria-live="polite" aria-atomic="true">
                     <span>{{ I18N.gallery.review_progress.counts | translate:{ undecided: progress.undecided, kept: progress.kept, rejected: progress.rejected } }}</span>
                     <span class="opacity-70">{{ I18N.gallery.review_progress.complete | translate:{ percent: store.reviewPercent(), total: progress.total } }}</span>
                   </span>
@@ -590,7 +590,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
           @if (reviewBookmarkShown()) {
             <div [class]="NOTICE_CARD_CLASS">
               <mat-icon class="opacity-70 !text-base !w-5 !h-5">bookmark</mat-icon>
-              <span class="flex-1 opacity-80">{{ I18N.gallery.review_progress.browser | translate }}</span>
+              <span id="notice-text-review_bookmark" class="flex-1 opacity-80">{{ I18N.gallery.review_progress.browser | translate }}</span>
               <button mat-button class="!min-w-0" [disabled]="store.loading()" (click)="continueReview()">{{ I18N.gallery.review_progress.resume | translate }}</button>
               <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'review_bookmark' }" />
             </div>
@@ -598,7 +598,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
           @if (hiddenNoticeShown()) {
             <div role="status" [class]="NOTICE_CARD_CLASS">
               <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility_off</mat-icon>
-              <span class="flex-1">
+              <span id="notice-text-hidden" class="flex-1">
                 {{ I18N.gallery.hidden_banner.message | translate:{ n: store.hiddenSummary().total } }}
               </span>
               <button mat-button class="!min-w-0" (click)="store.showAllHidden()">
@@ -609,7 +609,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
           } @else if (restoreNoticeShown()) {
             <div role="status" [class]="NOTICE_CARD_CLASS">
               <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility</mat-icon>
-              <span class="flex-1">
+              <span id="notice-text-restore_hidden" class="flex-1">
                 {{ I18N.gallery.hidden_banner.showing_all | translate }}
               </span>
               <button mat-button class="!min-w-0" (click)="store.restoreHidden()">
@@ -621,7 +621,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
           @if (showRenderMigrationBanner()) {
             <div role="status" [class]="NOTICE_CARD_CLASS">
               <mat-icon class="opacity-70 !text-base !w-5 !h-5">auto_fix_high</mat-icon>
-              <span class="flex-1">
+              <span id="notice-text-render_migration" class="flex-1">
                 {{ I18N.gallery.render_migration.message | translate:{ n: renderMigrationPending() } }}
                 {{ I18N.gallery.render_migration.command_hint | translate:{ command: REFRESH_THUMBNAILS_COMMAND } }}
               </span>
@@ -760,13 +760,14 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
       </button>
     </ng-template>
     <ng-template #noticeClose let-kind let-alignTop="alignTop">
-      <button mat-icon-button class="!w-7 !h-7 !min-w-0 !p-0 -mr-1 shrink-0" [class.self-start]="alignTop" (click)="dismissNotice(kind)"
+      <button mat-icon-button data-notice-close class="!w-7 !h-7 !min-w-0 !p-0 -mr-1 shrink-0" [class.self-start]="alignTop" (click)="dismissNotice(kind)"
+              [attr.aria-describedby]="'notice-text-' + kind"
               [matTooltip]="I18N.ui.buttons.dismiss | translate"
               [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
         <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
       </button>
     </ng-template>
-    @if (showScrollTop() && !selectionCount() && !noticeStackVisible()) {
+    @if (scrollTopShown() && !noticeStackVisible()) {
       <ng-container *ngTemplateOutlet="scrollTopFab; context: { $implicit: '!fixed right-4 lg:right-6 bottom-[60px] lg:bottom-6 z-40' }" />
     }
 
@@ -884,6 +885,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   /** True once the gallery content is scrolled far enough to show the scroll-to-top button. */
   protected readonly showScrollTop = signal(false);
+  /** The scroll-to-top FAB applies: scrolled down with no selection card in its corner. */
+  protected readonly scrollTopShown = computed(() => this.showScrollTop() && !this.selectionCount());
 
   // Sidebar scroll preservation
   private savedFilterScroll = 0;
@@ -1164,9 +1167,18 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   /** Close one notice for this tab, for as long as it stays the same notice. Nothing else changes. */
   protected dismissNotice(kind: NoticeKind): void {
+    const host = this.noticeHost()?.nativeElement;
+    const hadFocus = !!host?.contains(document.activeElement);
     const next = { ...this.noticeDismissals(), [kind]: this.noticeSignatures()[kind] };
     this.noticeDismissals.set(next);
     saveNoticeDismissals(next);
+    // The focused × leaves the DOM with its card: hand focus to the next card's ×, else the grid.
+    if (hadFocus) afterNextRender(() => {
+      const target = host?.querySelector<HTMLElement>('[data-notice-close]') ?? this.scrollContent()?.getElementRef().nativeElement;
+      if (!target) return;
+      if (!target.hasAttribute('tabindex') && !target.matches('button')) target.setAttribute('tabindex', '-1');
+      target.focus({ preventScroll: true });
+    }, { injector: this.injector });
   }
 
   /** The review-progress card: on in the user menu, counts loaded, and not closed in this tab. */

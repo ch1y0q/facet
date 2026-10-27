@@ -243,7 +243,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
                   @if (p.category) { {{ p.category | categoryLabel }} }
                   <!-- Category explainer toggle: "why isn't this photo classified as X?" — kept for an uncategorized photo too. -->
                   @if (auth.isEdition()) {
-                    <button type="button" class="-mr-1 inline-flex items-center justify-center rounded-full cursor-pointer hover:bg-black/15"
+                    <button type="button" class="w-6 h-6 -my-1 -mr-1.5 inline-flex items-center justify-center rounded-full cursor-pointer hover:bg-black/15"
                             data-explainer-toggle
                             (click)="toggleExplainer()"
                             [attr.aria-expanded]="explainerOpen()"

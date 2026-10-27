@@ -13,7 +13,7 @@ const translations = { capture_date: { title: 'Correct capture date',
   invalid: 'Choose a nonzero shift of at most 366 days; select at most 1000 photos.',
   counts: '{changed} changed · {skipped} skipped', photo: 'Photo', before: 'Before', after: 'After',
   error: 'Could not complete the action.', preview: 'Preview', apply: 'Apply correction ({count})', use_file: 'Use file date',
-  mode_shift: 'Shift by', mode_exact: 'Set exact time', direction: 'Direction', earlier: 'Earlier', later: 'Later',
+  mode_shift: 'Shift by', mode_exact: 'Set exact time', mode: 'Correction mode', direction: 'Direction', earlier: 'Earlier', later: 'Later',
   days: 'Days', hours: 'Hours', minutes: 'Minutes', seconds: 'Seconds', unit_d: 'd', unit_h: 'h', unit_min: 'min', unit_s: 's',
   quick: 'Quick adjust', summary_earlier: '{amount} earlier', summary_later: '{amount} later',
   exact_label: 'Correct date and time of the reference photo', reference: 'Reference photo:' },
@@ -141,6 +141,14 @@ describe('Capture-date dialog rendered controls and HTTP', () => {
     expect(root.querySelector('table')).toBeNull();
     expect(applyButton().disabled).toBe(true);
     await flushPreview();
+  });
+
+  it('aborts a preview still in flight when the shift changes', async () => {
+    await create();
+    const first = await nextPreview();
+    await type(unit('hours'), '2');
+    expect(first.cancelled).toBe(true);
+    expect((await flushPreview()).request.body.offset_seconds).toBe(7200);
   });
 
   it('quick buttons add to the current shift and can cross into the other direction', async () => {

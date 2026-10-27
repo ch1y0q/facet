@@ -208,7 +208,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
         @if (noFilterMatches()) {
           <p class="text-xs opacity-50 px-2 py-3">{{ I18N.gallery.sidebar.no_filters_match | translate }}</p>
         }
-        @for (group of searchResultGroups(); track group.sectionKey) {
+        @for (group of metricFilterGroups(); track group.sectionKey) {
           <div class="px-1 pt-2 pb-1">
             <div class="flex items-center gap-2 text-xs font-medium opacity-70 mb-1">
               <mat-icon class="!text-base !w-4 !h-4 !leading-4 opacity-60">{{ sectionIcons[group.sectionKey] || 'tune' }}</mat-icon>
@@ -797,14 +797,8 @@ function saveSectionStates(states: Record<string, boolean>): void {
         </mat-expansion-panel>
       }
 
-      <!-- Metric filter sections (collapsed by default) -->
-      <!-- Common metric sections -->
-      @for (group of commonFilterGroups(); track group.sectionKey) {
-        <ng-container [ngTemplateOutlet]="metricPanel" [ngTemplateOutletContext]="{ $implicit: group }" />
-      }
-
-      <!-- Advanced metric sections, listed as top-level sections like the common ones -->
-      @for (group of advancedFilterGroups(); track group.sectionKey) {
+      <!-- Metric filter sections, common then advanced, all top-level and collapsed by default -->
+      @for (group of metricFilterGroups(); track group.sectionKey) {
         <ng-container [ngTemplateOutlet]="metricPanel" [ngTemplateOutletContext]="{ $implicit: group }" />
       }
       }
@@ -1064,8 +1058,8 @@ export class GalleryFilterSidebarComponent {
 
   readonly commonFilterGroups = computed(() => this.matchGroups(COMMON_SECTION_ORDER));
   readonly advancedFilterGroups = computed(() => this.matchGroups(ADVANCED_SECTION_ORDER));
-  readonly searchResultGroups = computed(() => [...this.commonFilterGroups(), ...this.advancedFilterGroups()]);
-  readonly noFilterMatches = computed(() => !!this.filterQuery().trim() && this.searchResultGroups().length === 0);
+  readonly metricFilterGroups = computed(() => [...this.commonFilterGroups(), ...this.advancedFilterGroups()]);
+  readonly noFilterMatches = computed(() => !!this.filterQuery().trim() && this.metricFilterGroups().length === 0);
 
   readonly metricHistograms = computed(() => {
     const ranges = this.store.metricRanges();

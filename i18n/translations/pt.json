@@ -2883,6 +2883,7 @@
     "hint": "Desloca a hora local da câmara sem deduzir fuso horário ou horário de verão. Os originais só mudam com a exportação explícita dos metadados.",
     "mode_shift": "Deslocar",
     "mode_exact": "Hora exata",
+    "mode": "Modo de correção",
     "direction": "Direção",
     "earlier": "Mais cedo",
     "later": "Mais tarde",

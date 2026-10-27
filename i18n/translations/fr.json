@@ -2883,6 +2883,7 @@
     "hint": "Décale l’heure locale de l’appareil, sans déduire le fuseau ni l’heure d’été. Les originaux ne changent que lors d’un export explicite des métadonnées.",
     "mode_shift": "Décaler de",
     "mode_exact": "Heure exacte",
+    "mode": "Mode de correction",
     "direction": "Sens",
     "earlier": "Plus tôt",
     "later": "Plus tard",

@@ -5,7 +5,7 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, injec
 import { FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
-import { firstValueFrom } from 'rxjs';
+import { Subscription, finalize, firstValueFrom, take } from 'rxjs';
 import type { components } from '../../core/api/schema';
 import { ApiService } from '../../core/services/api.service';
 import { i18nKeys } from '../../core/i18n/keys';
@@ -35,7 +35,6 @@ const UNITS = ['days', 'hours', 'minutes', 'seconds'] as const;
 const EXIF_DATE = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/;
 const LOCAL_DATE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/;
 const SEGMENT_ON = '!bg-[var(--mat-sys-secondary-container)] !text-[var(--mat-sys-on-secondary-container)]';
-const SEGMENT_OFF = '';
 
 /** Walltime as epoch seconds read in UTC, so no timezone or DST shift ever applies. */
 function wallSeconds(match: RegExpExecArray | null): number | null {
@@ -51,7 +50,10 @@ function formatExif(seconds: number): string {
   return new Date(seconds * 1000).toISOString().slice(0, 19).replace(/-/g, ':').replace('T', ' ');
 }
 function splitOffset(abs: number): OffsetParts {
-  return { days: Math.floor(abs / 86400), hours: Math.floor(abs % 86400 / 3600), minutes: Math.floor(abs % 3600 / 60), seconds: abs % 60 };
+  let rest = abs;
+  const parts = {} as OffsetParts;
+  for (const unit of UNITS) { parts[unit] = Math.floor(rest / UNIT_SECONDS[unit]); rest %= UNIT_SECONDS[unit]; }
+  return parts;
 }
 
 @Component({
@@ -65,19 +67,19 @@ function splitOffset(abs: number): OffsetParts {
       <p class="text-sm mb-3">{{ I18N.capture_date.hint | translate }}</p>
       <p class="text-sm mb-3">{{ I18N.gallery.selection.count | translate:{ count: data.count } }}</p>
       @if (reference) {
-        <div class="inline-flex mb-3 rounded-full border border-[var(--mat-sys-outline-variant)] overflow-hidden" role="group">
-          <button mat-button type="button" data-mode="shift" class="!rounded-none" [class]="mode() === 'shift' ? SEGMENT_ON : SEGMENT_OFF"
+        <div class="inline-flex mb-3 rounded-full border border-[var(--mat-sys-outline-variant)] overflow-hidden" role="group" [attr.aria-label]="I18N.capture_date.mode | translate">
+          <button mat-button type="button" data-mode="shift" class="!rounded-none" [class]="mode() === 'shift' ? SEGMENT_ON : ''"
             [attr.aria-pressed]="mode() === 'shift'" [disabled]="busy()" (click)="setMode('shift')">{{ I18N.capture_date.mode_shift | translate }}</button>
-          <button mat-button type="button" data-mode="exact" class="!rounded-none" [class]="mode() === 'exact' ? SEGMENT_ON : SEGMENT_OFF"
+          <button mat-button type="button" data-mode="exact" class="!rounded-none" [class]="mode() === 'exact' ? SEGMENT_ON : ''"
             [attr.aria-pressed]="mode() === 'exact'" [disabled]="busy()" (click)="setMode('exact')">{{ I18N.capture_date.mode_exact | translate }}</button>
         </div>
       }
       @if (mode() === 'shift') {
         <div class="flex flex-wrap items-end gap-3 mb-3">
           <div class="inline-flex rounded-full border border-[var(--mat-sys-outline-variant)] overflow-hidden" role="group" [attr.aria-label]="I18N.capture_date.direction | translate">
-            <button mat-button type="button" data-direction="earlier" class="!rounded-none" [class]="direction() < 0 ? SEGMENT_ON : SEGMENT_OFF"
+            <button mat-button type="button" data-direction="earlier" class="!rounded-none" [class]="direction() < 0 ? SEGMENT_ON : ''"
               [attr.aria-pressed]="direction() < 0" [disabled]="busy()" (click)="setDirection(-1)">{{ I18N.capture_date.earlier | translate }}</button>
-            <button mat-button type="button" data-direction="later" class="!rounded-none" [class]="direction() > 0 ? SEGMENT_ON : SEGMENT_OFF"
+            <button mat-button type="button" data-direction="later" class="!rounded-none" [class]="direction() > 0 ? SEGMENT_ON : ''"
               [attr.aria-pressed]="direction() > 0" [disabled]="busy()" (click)="setDirection(1)">{{ I18N.capture_date.later | translate }}</button>
           </div>
           @for (unit of UNITS; track unit) {
@@ -96,7 +98,7 @@ function splitOffset(abs: number): OffsetParts {
             </button>
           }
         </div>
-      } @else if (reference) {
+      } @else {
         <label class="block mb-3 text-sm">{{ I18N.capture_date.exact_label | translate }}
           <input class="block w-full mt-1 border rounded p-2 bg-transparent" type="datetime-local" step="1" data-exact
             [ngModel]="exactValue()" (ngModelChange)="setExact($event)" [disabled]="busy()"
@@ -143,7 +145,6 @@ export class CaptureDateDialogComponent {
   protected readonly I18N = i18nKeys();
   protected readonly UNITS = UNITS;
   protected readonly SEGMENT_ON = SEGMENT_ON;
-  protected readonly SEGMENT_OFF = SEGMENT_OFF;
   protected readonly QUICK_STEPS = [
     { seconds: -3600, unit: this.I18N.capture_date.unit_h }, { seconds: 3600, unit: this.I18N.capture_date.unit_h },
     { seconds: -86400, unit: this.I18N.capture_date.unit_d }, { seconds: 86400, unit: this.I18N.capture_date.unit_d },
@@ -159,6 +160,7 @@ export class CaptureDateDialogComponent {
   private readonly staleness = inject(StalenessGuardFactory).create(this.destroyRef, { track: 'status', onNavigate: () => this.invalidate() });
   private closing = false;
   private previewTimer: ReturnType<typeof setTimeout> | undefined;
+  private previewRequest: Subscription | undefined;
   private readonly target = this.data.filters
     ? { filters: structuredClone(this.data.filters), exclude: [...(this.data.exclude ?? [])] }
     : { photo_paths: [...this.data.paths], exclude: [...(this.data.exclude ?? [])] };
@@ -180,7 +182,10 @@ export class CaptureDateDialogComponent {
   readonly busy = signal(false);
   readonly failed = signal(false);
   readonly result = signal<Preview | null>(null);
-  readonly valid = computed(() => this.data.count <= 1000 && this.offset() !== null && Number.isInteger(this.offset()) && this.offset() !== 0 && Math.abs(this.offset()!) <= MAX_OFFSET_SECONDS);
+  readonly valid = computed(() => {
+    const offset = this.offset();
+    return this.data.count <= 1000 && offset !== null && offset !== 0 && Math.abs(offset) <= MAX_OFFSET_SECONDS;
+  });
   protected readonly summaryKey = computed(() => this.offset()! < 0 ? this.I18N.capture_date.summary_earlier : this.I18N.capture_date.summary_later);
   protected readonly amount = computed(() => {
     const parts = splitOffset(Math.abs(this.offset() ?? 0));
@@ -210,9 +215,12 @@ export class CaptureDateDialogComponent {
     return !this.closing && this.staleness.current();
   }
 
+  /** Drops the pending debounce and aborts a request still in flight: only the latest offset is ever previewed. */
   private cancelPreview(): void {
     clearTimeout(this.previewTimer);
     this.previewTimer = undefined;
+    this.previewRequest?.unsubscribe();
+    this.previewRequest = undefined;
   }
 
   /** Any change of the offset drops the shown preview and its error, and refreshes it once the input settles. */
@@ -227,9 +235,14 @@ export class CaptureDateDialogComponent {
   /** Sets a signed offset in seconds, shown split into direction and day/hour/minute/second fields. */
   setOffset(value: number): void {
     this.mode.set('shift');
+    this.showOffset(value);
+    this.schedulePreview();
+  }
+
+  /** Projects a signed offset onto the direction toggle and unit fields; zero keeps the current direction. */
+  private showOffset(value: number): void {
     if (value !== 0) this.direction.set(value < 0 ? -1 : 1);
     this.parts.set(splitOffset(Math.abs(value)));
-    this.schedulePreview();
   }
 
   addOffset(delta: number): void { this.setOffset(Math.max(-MAX_OFFSET_SECONDS, Math.min(MAX_OFFSET_SECONDS, (this.offset() ?? 0) + delta))); }
@@ -246,11 +259,7 @@ export class CaptureDateDialogComponent {
     if (mode === 'exact' && this.valid() && this.referenceSeconds !== null) {
       this.exactValue.set(exifToLocal(formatExif(this.referenceSeconds + this.offset()!)));
     }
-    if (mode === 'shift' && this.valid()) {
-      const offset = this.offset()!;
-      this.direction.set(offset < 0 ? -1 : 1);
-      this.parts.set(splitOffset(Math.abs(offset)));
-    }
+    if (mode === 'shift' && this.valid()) this.showOffset(this.offset()!);
     this.mode.set(mode);
     this.schedulePreview();
   }
@@ -260,11 +269,17 @@ export class CaptureDateDialogComponent {
   async preview(): Promise<void> {
     if (!this.current() || this.busy() || !this.valid()) return;
     const offset = this.offset();
+    this.cancelPreview();
     this.failed.set(false); this.result.set(null);
-    try {
-      const result = await firstValueFrom(this.api.post<Preview>('/photos/capture_date/preview', { ...this.target, offset_seconds: offset }));
-      if (this.current() && this.offset() === offset) this.result.set(result);
-    } catch { if (this.current() && this.offset() === offset) this.failed.set(true); }
+    // Settles on the reply, or on cancellation when a newer offset supersedes this request.
+    await new Promise<void>(settled => {
+      this.previewRequest = this.api.post<Preview>('/photos/capture_date/preview', { ...this.target, offset_seconds: offset })
+        .pipe(take(1), finalize(settled))
+        .subscribe({
+          next: result => { if (this.current() && this.offset() === offset) this.result.set(result); },
+          error: () => { if (this.current() && this.offset() === offset) this.failed.set(true); },
+        });
+    });
   }
 
   async apply(): Promise<void> {

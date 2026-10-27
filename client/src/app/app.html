@@ -225,11 +225,16 @@
               }
             </mat-select>
           </mat-form-field>
-        }
-
-        @if (scan.canLaunch()) {
-          <button mat-icon-button class="!hidden lg:!inline-flex !bg-[var(--mat-sys-primary-container)] !text-[var(--mat-sys-on-primary-container)]" (click)="openScanLauncher()" [matTooltip]="I18N.gallery.scan_action | translate" [attr.aria-label]="I18N.gallery.scan_action | translate">
-            <mat-icon>add_photo_alternate</mat-icon>
+          <button
+            class="!hidden lg:!inline-flex -ml-1"
+            mat-icon-button
+            (click)="toggleSortDirection()"
+            [matTooltip]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)"
+            [attr.aria-label]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)"
+          >
+            <mat-icon>{{
+              store.filters().sort_direction === 'DESC' ? 'arrow_downward' : 'arrow_upward'
+            }}</mat-icon>
           </button>
         }
 
@@ -260,20 +265,6 @@
             : 'chat_bubble_outline'
           }}</mat-icon>
         </button>
-
-        @if (!pinned()) {
-          <button
-            class="!hidden lg:!inline-flex"
-            mat-icon-button
-            (click)="toggleSortDirection()"
-            [matTooltip]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)"
-            [attr.aria-label]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)"
-          >
-            <mat-icon>{{
-              store.filters().sort_direction === 'DESC' ? 'arrow_downward' : 'arrow_upward'
-            }}</mat-icon>
-          </button>
-        }
 
         <button
           class="!hidden lg:!inline-flex"
@@ -344,6 +335,13 @@
             {{ I18N.gallery.panel_activation.both | translate }}
           </button>
         </mat-menu>
+      }
+
+      <!-- Scan for new photos (gallery only), last before the account menu. -->
+      @if (auth.isAuthenticated() && isGalleryRoute() && scan.canLaunch()) {
+        <button mat-icon-button class="!hidden lg:!inline-flex !bg-[var(--mat-sys-primary-container)] !text-[var(--mat-sys-on-primary-container)]" (click)="openScanLauncher()" [matTooltip]="I18N.gallery.scan_action | translate" [attr.aria-label]="I18N.gallery.scan_action | translate">
+          <mat-icon>add_photo_alternate</mat-icon>
+        </button>
       }
 
       <!-- User menu (authenticated: account + language + edition + logout).

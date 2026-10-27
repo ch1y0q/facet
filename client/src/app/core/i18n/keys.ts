@@ -2897,6 +2897,7 @@ export const I18N = {
     hint: "capture_date.hint",
     mode_shift: "capture_date.mode_shift",
     mode_exact: "capture_date.mode_exact",
+    mode: "capture_date.mode",
     direction: "capture_date.direction",
     earlier: "capture_date.earlier",
     later: "capture_date.later",

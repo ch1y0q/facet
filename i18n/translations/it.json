@@ -2883,6 +2883,7 @@
     "hint": "Sposta l’ora locale della fotocamera senza dedurre fuso orario o ora legale. Gli originali cambiano solo con l’esportazione esplicita dei metadati.",
     "mode_shift": "Sposta di",
     "mode_exact": "Imposta ora esatta",
+    "mode": "Modalità di correzione",
     "direction": "Direzione",
     "earlier": "Prima",
     "later": "Dopo",

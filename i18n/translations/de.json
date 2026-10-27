@@ -2883,6 +2883,7 @@
     "hint": "Verschiebt die gespeicherte Kamera-Uhrzeit ohne Ableitung von Zeitzone oder Sommerzeit. Originale ändern sich erst beim ausdrücklichen Metadatenexport.",
     "mode_shift": "Verschieben um",
     "mode_exact": "Genaue Zeit festlegen",
+    "mode": "Korrekturmodus",
     "direction": "Richtung",
     "earlier": "Früher",
     "later": "Später",

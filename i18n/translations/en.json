@@ -2883,6 +2883,7 @@
     "hint": "Shift stored camera walltime; no timezone or daylight-saving inference. Originals stay unchanged until explicit metadata export.",
     "mode_shift": "Shift by",
     "mode_exact": "Set exact time",
+    "mode": "Correction mode",
     "direction": "Direction",
     "earlier": "Earlier",
     "later": "Later",
