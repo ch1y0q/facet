@@ -1,13 +1,13 @@
 """Bounded JPEG XL basic information, without decoding image pixels.
 
 Field order follows libjxl's lib/jxl/headers.cc and image_metadata.cc.
-Only the size and basic metadata preceding channel/color information are read.
+Only size, basic metadata and supported alpha-channel information are read.
 """
 
 import os
 from typing import NamedTuple
 
-_HEADER_BYTES = 64
+_HEADER_BYTES = 1152  # includes the longest possible alpha-channel name
 _RATIOS = ((1, 1), (12, 10), (4, 3), (3, 2), (16, 9), (5, 4), (2, 1))
 
 
@@ -18,6 +18,9 @@ class JpegXLBasicInfo(NamedTuple):
     exponent_bits_per_sample: int
     orientation: int
     have_animation: bool
+    num_extra_channels: int = 0
+    alpha_bits_per_sample: int = 0
+    alpha_exponent_bits_per_sample: int = 0
 
 
 class _Bits:
@@ -116,7 +119,7 @@ def _skip_animation(bits: _Bits) -> None:
 
 
 def jpegxl_basic_info(stream) -> JpegXLBasicInfo:
-    """Read at most 64 codestream bytes and restore the stream position.
+    """Read at most 1152 codestream bytes and restore the stream position.
 
     Width and height describe the stored pixel plane. A decoder applying
     orientations 5-8 swaps those dimensions; the pixel count is unchanged.
@@ -139,6 +142,34 @@ def jpegxl_basic_info(stream) -> JpegXLBasicInfo:
         animation = bool(bits.read(1))
         if animation:
             _skip_animation(bits)
+    depth, exponent = _depth(bits)
+    bits.read(1)  # modular_16_bit_buffer_sufficient
+    extra_channels = bits.u32(((0, 0), (0, 1), (4, 2), (12, 1)))
+    if extra_channels > 1:
+        raise ValueError("Unsupported JPEG XL extra channels")
+    alpha_depth = alpha_exponent = 0
+    if extra_channels:
+        if bits.read(1):  # all ExtraChannelInfo fields default: straight 8-bit alpha
+            alpha_depth = 8
+        else:
+            channel_type = bits.u32(((0, 0), (0, 1), (4, 2), (6, 18)))
+            if channel_type != 0:
+                raise ValueError("Unsupported JPEG XL non-alpha channel")
+            alpha_depth, alpha_exponent = _depth(bits)
+            shift = bits.u32(((0, 0), (0, 3), (0, 4), (3, 1)))
+            if shift:
+                raise ValueError("Unsupported JPEG XL downsampled alpha")
+            name_length = bits.u32(((0, 0), (4, 0), (5, 16), (10, 48)))
+            bits.read(name_length * 8)
+            if bits.read(1):
+                raise ValueError("Unsupported JPEG XL premultiplied alpha")
+        if (alpha_depth, alpha_exponent) != (depth, exponent):
+            raise ValueError("Unsupported JPEG XL mixed alpha depth")
+    return JpegXLBasicInfo(width, height, depth, exponent, orientation, animation,
+                          extra_channels, alpha_depth, alpha_exponent)
+
+
+def _depth(bits: _Bits) -> tuple[int, int]:
     floating_point = bits.read(1)
     if floating_point:
         depth = bits.u32(((0, 32), (0, 16), (0, 24), (6, 1)))
@@ -150,4 +181,4 @@ def jpegxl_basic_info(stream) -> JpegXLBasicInfo:
         exponent = 0
         if depth > 31:
             raise ValueError("Invalid JPEG XL integer depth")
-    return JpegXLBasicInfo(width, height, depth, exponent, orientation, animation)
+    return depth, exponent

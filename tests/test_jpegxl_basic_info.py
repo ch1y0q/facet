@@ -58,7 +58,7 @@ def _small_size(width=40, height=24):
 
 def test_default_basic_metadata():
     info = jpegxl_basic_info(BytesIO(_encoded(_small_size() + [(1, 1)])))
-    assert info == (40, 24, 8, 0, 1, False)
+    assert info == (40, 24, 8, 0, 1, False, 0, 0, 0)
 
 
 def test_intrinsic_preview_and_animation_fields_are_skipped():
@@ -74,9 +74,10 @@ def test_intrinsic_preview_and_animation_fields_are_skipped():
         (2, 2), (6, 8),  # denominator7
         (1, 2), (2, 3), (1, 1),  # loop count2, timecodes enabled
         (0, 1), (1, 2),  # integer10bit samples
+        (1, 1), (0, 2),  # modular16 buffer, no extra channels
     ]
     info = jpegxl_basic_info(BytesIO(_encoded(fields)))
-    assert info == (40, 24, 10, 0, 6, True)
+    assert info == (40, 24, 10, 0, 6, True, 0, 0, 0)
 
 
 def test_header_read_is_bounded_and_handles_fragments():
@@ -89,7 +90,7 @@ def test_header_read_is_bounded_and_handles_fragments():
     payload += box(b"jxlp", struct.pack(">I", 0x80000001) + data[5:])
     class BoundedReads(BytesIO):
         def read(self, size=-1):
-            assert 0 <= size <= 64
+            assert 0 <= size <= 1152
             return super().read(size)
     assert jpegxl_basic_info(BoundedReads(payload)).bits_per_sample == 12
 
@@ -102,3 +103,55 @@ def test_truncated_metadata_is_refused_and_position_restored(payload):
     with pytest.raises(ValueError):
         jpegxl_basic_info(stream)
     assert stream.tell() == position
+
+
+def _channel_header(count, fields=None):
+    # Non-default image metadata, no extra fields, integer 8-bit samples,
+    # modular16 buffer. The extra-channel count is a selector below.
+    return _encoded(_small_size() + [(0, 1), (0, 1), (0, 1), (0, 2),
+                    (1, 1)] + count + (fields or []))
+
+
+def test_default_alpha_channel():
+    info = jpegxl_basic_info(BytesIO(_channel_header([(1, 2)], [(1, 1)])))
+    assert (info.num_extra_channels, info.alpha_bits_per_sample) == (1, 8)
+
+
+@pytest.mark.parametrize("count", [[(2, 2), (0, 4)], [(3, 2), (4095, 12)]])
+def test_multiple_extra_channels_refused_before_channel_data(count):
+    with pytest.raises(ValueError, match="extra channels"):
+        jpegxl_basic_info(BytesIO(_channel_header(count)))
+
+
+@pytest.mark.parametrize("channel_fields,message", [
+    ([(0, 1), (1, 2)], "non-alpha"),
+    ([(0, 1), (0, 2), (0, 1), (0, 2), (1, 2)], "downsampled"),
+    ([(0, 1), (0, 2), (0, 1), (0, 2), (0, 2), (0, 2), (1, 1)], "premultiplied"),
+    ([(0, 1), (0, 2), (0, 1), (1, 2), (0, 2), (0, 2), (0, 1)], "mixed alpha"),
+])
+def test_unsupported_alpha_layouts_refused(channel_fields, message):
+    with pytest.raises(ValueError, match=message):
+        jpegxl_basic_info(BytesIO(_channel_header([(1, 2)], channel_fields)))
+
+
+def test_maximum_alpha_name_is_skipped_with_bounded_header():
+    fields = [(0, 1), (0, 2), (0, 1), (0, 2), (0, 2),
+              (3, 2), (1023, 10), (0, 1071 * 8), (0, 1)]
+    info = jpegxl_basic_info(BytesIO(_channel_header([(1, 2)], fields)))
+    assert info.alpha_bits_per_sample == 8
+
+
+def test_real_planar_extra_channels_are_refused():
+    data = imagecodecs.jpegxl_encode(np.zeros((5, 24, 40), dtype=np.uint8),
+                                    photometric="gray", planar=True,
+                                    lossless=True, numthreads=1)
+    with pytest.raises(ValueError, match="extra channels"):
+        jpegxl_basic_info(BytesIO(data))
+
+
+def test_real_single_non_alpha_planar_channel_is_refused():
+    data = imagecodecs.jpegxl_encode(np.zeros((2, 24, 40), dtype=np.uint8),
+                                    photometric="gray", planar=True,
+                                    lossless=True, numthreads=1)
+    with pytest.raises(ValueError, match="non-alpha"):
+        jpegxl_basic_info(BytesIO(data))
