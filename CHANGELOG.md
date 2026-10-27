@@ -4,8 +4,18 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **The review-progress banner can be hidden.** It has a close (×) button, and the user menu has a "Hide review progress" / "Show review progress" item. The choice is stored per browser and applies to every account using it; while hidden, the banner's "Review undecided" button is hidden too.
+
+### Changed
+
+- **Help moves to the user menu.** User menu → Help opens a dialog with the current page's help text, the gallery keyboard shortcuts on gallery routes, and the culling and darkroom shortcuts plus the "My Taste" comparison count on `/culling`. It replaces the header's `?` button and the in-page help banners; the `?` key still opens the shortcuts dialog.
+- **The Stats gear tab's combos chart spans the bottom row.** The lens and body cards sit in a two-column grid from `xl`, with the camera and lens combinations chart across the full width below them.
+
 ### Fixed
 
+- **The gallery toolbar no longer overlaps at mid widths.** The toolbar search is shown from 1360 px wide; below that, the `/` key opens the filter sidebar and focuses its search field instead.
 - **Localised labels and counts in the location dialog, menus and culling toolbar.** Batch location sentences use a singular form for one photo, the OpenStreetMap credit is translated and the dialog's new-tab links say so to screen readers, and the online-search button stays disabled for any query the server would refuse (3 to 200 code points after trimming, no control characters). The culling toolbar shows the live date range and grouping as text; the user menu's Help has its own label and Logout comes last. The card key hint names Space and Enter in the user's language, the Spanish single-face count says "rostro", and the empty-persons hint names the real "Assign face to person" control.
 - **The photo-detail Keep button is a real toggle.** It announced its pressed state to assistive technology, but activating it on a kept photo kept it again. It now resets the decision, and its icon is outlined until the photo is kept, so the state no longer relies on colour alone.
 - **Show readable scan phase labels.** Moment and junk detection no longer display `[object Object]` in the scan dialog; future phase names are shown as plain text.
