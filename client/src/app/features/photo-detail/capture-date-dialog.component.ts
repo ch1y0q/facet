@@ -29,7 +29,7 @@ type Mode = 'shift' | 'exact';
 interface OffsetParts { days: number; hours: number; minutes: number; seconds: number }
 
 const MAX_OFFSET_SECONDS = 31622400;
-const PREVIEW_DEBOUNCE_MS = 300;
+export const PREVIEW_DEBOUNCE_MS = 300;
 const UNIT_SECONDS: Record<keyof OffsetParts, number> = { days: 86400, hours: 3600, minutes: 60, seconds: 1 };
 const UNITS = ['days', 'hours', 'minutes', 'seconds'] as const;
 const EXIF_DATE = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/;
@@ -110,7 +110,7 @@ function splitOffset(abs: number): OffsetParts {
       }
       @if (reference) {
         <p class="text-sm mb-3" data-reference>
-          <span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.capture_date.reference | translate }}:</span>
+          <span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.capture_date.reference | translate }}</span>
           {{ reference.date }} → {{ referenceAfter() ?? '—' }}
         </p>
       }

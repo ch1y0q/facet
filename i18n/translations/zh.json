@@ -2879,7 +2879,7 @@
     "reset_hint": "点击“使用文件日期”按钮可移除手动校正。如果文件没有日期，拍摄日期将变为未知。",
     "use_file": "使用文件日期",
     "preview": "预览",
-    "apply": "应用更正（{count}）",
+    "apply": "应用校正（{count}）",
     "hint": "偏移相机记录的本地时间，不推断时区或夏令时。只有明确导出元数据时才会更改原始文件。",
     "mode_shift": "偏移",
     "mode_exact": "设置准确时间",
@@ -2898,7 +2898,7 @@
     "summary_earlier": "提前 {amount}",
     "summary_later": "推后 {amount}",
     "exact_label": "参考照片的正确日期和时间",
-    "reference": "参考照片"
+    "reference": "参考照片："
   },
   "organization_history": {
     "title": "整理历史",

@@ -7,7 +7,7 @@ import { Subject } from 'rxjs';
 import { AuthService, AuthStatus } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { GalleryStore } from '../gallery/gallery.store';
-import { CaptureDateDialogComponent, CaptureDateDialogData } from './capture-date-dialog.component';
+import { CaptureDateDialogComponent, CaptureDateDialogData, PREVIEW_DEBOUNCE_MS } from './capture-date-dialog.component';
 
 const translations = { capture_date: { title: 'Correct capture date',
   invalid: 'Choose a nonzero shift of at most 366 days; select at most 1000 photos.',
@@ -16,7 +16,7 @@ const translations = { capture_date: { title: 'Correct capture date',
   mode_shift: 'Shift by', mode_exact: 'Set exact time', direction: 'Direction', earlier: 'Earlier', later: 'Later',
   days: 'Days', hours: 'Hours', minutes: 'Minutes', seconds: 'Seconds', unit_d: 'd', unit_h: 'h', unit_min: 'min', unit_s: 's',
   quick: 'Quick adjust', summary_earlier: '{amount} earlier', summary_later: '{amount} later',
-  exact_label: 'Correct date and time of the reference photo', reference: 'Reference photo' },
+  exact_label: 'Correct date and time of the reference photo', reference: 'Reference photo:' },
   ui: { buttons: { cancel: 'Cancel' } } };
 const preview = { changed: 1, skipped: 2, samples: [
   { path: '/photo.jpg', old_date: '2024:01:01 00:00:00', new_date: '2023:12:31 23:58:30' },
@@ -79,7 +79,7 @@ describe('Capture-date dialog rendered controls and HTTP', () => {
   async function nextPreview() { return vi.waitFor(() => http.expectOne(PREVIEW_URL)); }
   async function flushPreview(body: object = preview) { const request = await nextPreview(); request.flush(body); await settle(); return request; }
   /** Proves no preview request goes out, waiting past the debounce. */
-  async function noPreview() { await new Promise(resolve => setTimeout(resolve, 400)); http.expectNone(PREVIEW_URL); }
+  async function noPreview() { await new Promise(resolve => setTimeout(resolve, PREVIEW_DEBOUNCE_MS + 100)); http.expectNone(PREVIEW_URL); }
   afterEach(() => { try { http?.verify(); } finally { TestBed.resetTestingModule(); } });
 
   it('previews the default one-hour shift on open, with no Preview button to click', async () => {
@@ -166,6 +166,30 @@ describe('Capture-date dialog rendered controls and HTTP', () => {
     expect([unit('days').value, unit('hours').value, unit('minutes').value, unit('seconds').value]).toEqual(['0', '1', '29', '45']);
     expect(root.querySelector('[data-direction="earlier"]')?.getAttribute('aria-pressed')).toBe('true');
     await flushPreview();
+  });
+
+  it.each([
+    ['the reference time itself', '2024-01-01T00:00'], ['a cleared field', ''], ['a time 367 days away', '2025-01-02T00:00'],
+  ])('rejects %s in exact mode with its explanation and sends nothing', async (_, value) => {
+    await create(); await flushPreview();
+    (root.querySelector('[data-mode="exact"]') as HTMLButtonElement).click(); await settle();
+    await flushPreview();
+    const exact = root.querySelector('input[data-exact]') as HTMLInputElement;
+    await type(exact, value);
+    expect(exact.getAttribute('aria-invalid')).toBe('true');
+    expect(exact.getAttribute('aria-describedby')).toBe('capture-date-offset-error');
+    expect(root.querySelector('#capture-date-offset-error')?.textContent).toContain(translations.capture_date.invalid);
+    expect(root.querySelector('[data-reference]')?.textContent).toContain('→ —');
+    expect(applyButton().disabled).toBe(true);
+    await noPreview();
+  });
+
+  it('clamps a quick adjustment at the 366-day limit', async () => {
+    await create(); await flushPreview();
+    await type(unit('hours'), '0'); await type(unit('days'), '366');
+    (root.querySelector('[data-quick="86400"]') as HTMLButtonElement).click(); await settle();
+    expect([unit('days').value, unit('hours').value]).toEqual(['366', '0']);
+    expect((await flushPreview({ ...preview, changed: 0, samples: [] })).request.body.offset_seconds).toBe(31622400);
   });
 
   it('offers no exact-time mode without a dated reference photo', async () => {

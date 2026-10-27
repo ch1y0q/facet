@@ -648,7 +648,12 @@ export class App implements OnInit {
     try {
       const { OrganizationHistoryDialogComponent } = await this.loadOrganizationHistoryDialog();
       if (!liveness.current()) return;
-      this.dialog.open(OrganizationHistoryDialogComponent, { width: '95vw', maxWidth: '820px' });
+      const ref = this.dialog.open(OrganizationHistoryDialogComponent, { width: '95vw', maxWidth: '820px' });
+      const history = ref.componentInstance;
+      // A restore may rewrite the photo an open detail page holds its own copy of.
+      void firstValueFrom(ref.afterClosed()).then(() => history.whenSettled()).then(() => {
+        if (history.wasRestored()) this.store.notifyOrganizationRestored();
+      });
     } finally { liveness.dispose(); }
   }
 

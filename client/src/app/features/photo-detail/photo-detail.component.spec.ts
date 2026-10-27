@@ -9,6 +9,7 @@ import { BehaviorSubject, finalize, Observable, of, Subject, throwError } from '
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { Component, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
+import { MatTooltip } from '@angular/material/tooltip';
 import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatSelect, MatSelectModule } from '@angular/material/select';
 import { OverlayContainer } from '@angular/cdk/overlay';
@@ -1427,6 +1428,35 @@ describe('PhotoDetailComponent', () => {
       expect(stored().star_rating).toBe(4);
     });
 
+    it.each([['a dated photo', '2024:01:01 00:00:00', { path: '/photos/a.jpg', date: '2024:01:01 00:00:00' }], ['an undated photo', null, null]])(
+      'editCaptureDate passes %s as the dialog reference', async (_, date, reference) => {
+        createComponent();
+        seedGrid({ date_taken: date });
+        mockDialog.open.mockReturnValue({ afterClosed: () => new Subject() });
+        await import('./capture-date-dialog.component');
+        component.editCaptureDate(component.photo());
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        expect(mockDialog.open.mock.calls.at(-1)![1].data.reference).toEqual(reference);
+      });
+
+    it('refetches the open photo after an Organization history restore, unless a newer edit landed first', async () => {
+      createComponent();
+      seedGrid();
+      mockApi.get.mockReturnValue(of({ ...edited, gps_latitude: 12 }));
+      component.store.notifyOrganizationRestored();
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      expect(mockApi.get).toHaveBeenCalledWith('/photo', { path: edited.path });
+      expect(component.photo().gps_latitude).toBe(12);
+
+      const delayed = new Subject();
+      mockApi.get.mockReturnValue(delayed);
+      component.store.notifyOrganizationRestored();
+      component.photo.update((photo: typeof edited) => ({ ...photo, star_rating: 5 }));
+      delayed.next({ ...edited, star_rating: 1 });
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      expect(component.photo().star_rating).toBe(5);
+    });
+
     it('capture date commits are available on immediate reopen and do not replace a newer photo', async () => {
       createComponent();
       seedGrid();
@@ -1977,6 +2007,21 @@ describe('PhotoDetailComponent', () => {
       const download = view.nativeElement.querySelector('button[aria-label="photo_detail.download"]') as HTMLButtonElement;
       expect(download.hasAttribute('mat-icon-button')).toBe(true);
       expect(download.textContent?.trim()).toBe('download');
+      const tooltip = view.debugElement.query(By.css('button[aria-label="photo_detail.download"]')).injector.get(MatTooltip);
+      expect(tooltip.message).toBe('photo_detail.download');
+    });
+
+    it('keeps the explainer toggle reachable for a photo with no category', () => {
+      const view = renderDetail();
+      view.componentInstance.photo.set(makePhoto({ category: null }));
+      view.detectChanges();
+      const toggle = view.nativeElement.querySelector('[data-explainer-toggle]') as HTMLButtonElement;
+      expect(toggle).not.toBeNull();
+      expect(toggle.closest('span')!.textContent?.trim()).toBe('expand_more');
+      toggle.click();
+      view.detectChanges();
+      expect(toggle.isConnected).toBe(true);
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
     });
 
     it('hides the toggle outside edition mode', () => {

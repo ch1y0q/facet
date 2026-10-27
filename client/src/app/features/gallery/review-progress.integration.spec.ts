@@ -110,6 +110,30 @@ describe('rendered review progress with real store and HTTP', () => {
     expect(store.photos()[0]).toMatchObject({ path: '/trip/a.jpg', star_rating: 4 });
   });
 
+  it('keeps a closed banner closed across a rating rebuild, and reopens it for another scope', async () => {
+    banner()!.querySelector<HTMLButtonElement>('button[aria-label="ui.buttons.dismiss {}"]')!.click();
+    fixture.detectChanges();
+    expect(banner()).toBeNull();
+    const rating = store.setRating('/trip/a.jpg', 4);
+    const photosStarted = requested('/api/photos');
+    http.expectOne('/api/photo/set_rating').flush({ success: true });
+    await photosStarted;
+    http.expectOne(request => request.url === '/api/photos').flush({ ...page, photos: [{ ...rows[0], star_rating: 4 }, rows[1]] });
+    progressRequests().forEach(request => request.flush({ ...counts, undecided: 1, kept: 1 }));
+    await rating;
+    flushSideData();
+    fixture.detectChanges();
+    expect(store.reviewProgress()).toEqual({ ...counts, undecided: 1, kept: 1 });
+    expect(banner()).toBeNull();
+
+    store.filters.update(filters => ({ ...filters, path_prefix: '/other/' }));
+    const read = store.loadReviewProgress();
+    http.match(request => request.url === '/api/photos/review_progress').forEach(request => request.flush(counts));
+    await read;
+    fixture.detectChanges();
+    expect(banner()).not.toBeNull();
+  });
+
   it('hides a previous scope immediately and refuses its queued late count response', async () => {
     const previous = banner();
     const oldRead = store.loadReviewProgress();

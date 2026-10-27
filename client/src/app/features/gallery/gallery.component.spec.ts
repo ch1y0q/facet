@@ -1432,8 +1432,10 @@ describe('GalleryComponent', () => {
     const button = (html: HTMLElement, label: string) =>
       Array.from(html.querySelectorAll('button')).find(b => b.textContent?.includes(label));
 
-    const closeButtons = (html: HTMLElement) =>
-      Array.from(stack(html)!.querySelectorAll<HTMLButtonElement>(`button[aria-label="${I18N.ui.buttons.dismiss}"]`));
+    /** The close button of the one card whose text contains `text`, never a positional pick. */
+    const closeFor = (html: HTMLElement, text: string) =>
+      Array.from(stack(html)!.children).find(card => card.textContent?.includes(text))!
+        .querySelector<HTMLButtonElement>(`button[aria-label="${I18N.ui.buttons.dismiss}"]`)!;
 
     beforeEach(() => {
       sessionStorage.removeItem(NOTICE_DISMISSALS_KEY);
@@ -1474,7 +1476,7 @@ describe('GalleryComponent', () => {
       expect(cards).toHaveLength(2);
       expect(cards[0].textContent).toContain(I18N.gallery.hidden_banner.message);
       expect(cards[1].textContent).toContain(I18N.gallery.render_migration.message);
-      closeButtons(html)[1].click();
+      closeFor(html, I18N.gallery.render_migration.message).click();
       fixture.detectChanges();
       const left = Array.from(stack(html)!.querySelectorAll('[role="status"]'));
       expect(left).toHaveLength(1);
@@ -1486,7 +1488,7 @@ describe('GalleryComponent', () => {
       fixture.detectChanges();
       const html = fixture.nativeElement as HTMLElement;
       const before = mockStore.filters();
-      closeButtons(html)[0].click();
+      closeFor(html, I18N.gallery.hidden_banner.message).click();
       fixture.detectChanges();
       expect(stack(html)).toBeNull();
       expect(mockStore.filters()).toBe(before);
@@ -1495,6 +1497,48 @@ describe('GalleryComponent', () => {
       mockStore.hiddenSummary.set({ total: 9, blinks: 0, bursts: 7, duplicates: 0, brackets: 2, panoramas: 0 });
       fixture.detectChanges();
       expect(stack(html)?.textContent).toContain(I18N.gallery.hidden_banner.message);
+    });
+
+    it('closes the resume bookmark without resuming, and reopens it for another remembered queue', () => {
+      mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
+      mockStore.reviewBookmark.set({ path: '/p1.jpg', filters: { tag: 'a' } });
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
+      closeFor(html, I18N.gallery.review_progress.browser).click();
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+      expect(mockStore.continueReview).not.toHaveBeenCalled();
+
+      mockStore.reviewBookmark.set({ path: '/p1.jpg', filters: { tag: 'a' } });
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+      mockStore.reviewBookmark.set({ path: '/p2.jpg', filters: { tag: 'b' } });
+      fixture.detectChanges();
+      expect(stack(html)?.textContent).toContain(I18N.gallery.review_progress.browser);
+    });
+
+    it('closes the restore twin without restoring, and reopens it when the stashed toggles change', () => {
+      mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
+      mockStore.hiddenFiltersStash.set({
+        hide_blinks: true, hide_bursts: true, hide_duplicates: true, hide_brackets: true, hide_panoramas: true,
+      });
+      mockStore.filters.set({ ...DEFAULT_FILTERS, hide_blinks: false, hide_bursts: false, hide_duplicates: false, hide_brackets: false, hide_panoramas: false });
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
+      const before = mockStore.filters();
+      closeFor(html, I18N.gallery.hidden_banner.showing_all).click();
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+      expect(mockStore.restoreHidden).not.toHaveBeenCalled();
+      expect(mockStore.filters()).toBe(before);
+
+      mockStore.hiddenFiltersStash.set({
+        hide_blinks: false, hide_bursts: true, hide_duplicates: true, hide_brackets: true, hide_panoramas: true,
+      });
+      fixture.detectChanges();
+      expect(stack(html)?.textContent).toContain(I18N.gallery.hidden_banner.showing_all);
     });
 
     it('anchors the stack bottom-right, clear of an open end drawer and the content scrollbar', () => {

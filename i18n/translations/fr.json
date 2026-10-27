@@ -2898,7 +2898,7 @@
     "summary_earlier": "{amount} plus tôt",
     "summary_later": "{amount} plus tard",
     "exact_label": "Date et heure correctes de la photo de référence",
-    "reference": "Photo de référence"
+    "reference": "Photo de référence :"
   },
   "organization_history": {
     "title": "Historique des modifications",

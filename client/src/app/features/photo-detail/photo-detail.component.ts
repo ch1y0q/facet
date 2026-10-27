@@ -238,10 +238,10 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
               </div>
             }
             <div class="flex items-center gap-2 mt-1">
-              @if (p.category) {
+              @if (p.category || auth.isEdition()) {
                 <span class="inline-flex items-center gap-0.5 px-2 py-0.5 bg-[var(--mat-sys-primary-container)] text-[var(--mat-sys-on-primary-container)] rounded-full text-xs font-medium">
-                  {{ p.category | categoryLabel }}
-                  <!-- Category explainer toggle: "why isn't this photo classified as X?" -->
+                  @if (p.category) { {{ p.category | categoryLabel }} }
+                  <!-- Category explainer toggle: "why isn't this photo classified as X?" — kept for an uncategorized photo too. -->
                   @if (auth.isEdition()) {
                     <button type="button" class="-mr-1 inline-flex items-center justify-center rounded-full cursor-pointer hover:bg-black/15"
                             data-explainer-toggle
@@ -854,6 +854,15 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       if (this.locationMap) { this.locationMap.remove(); this.locationMap = null; }
     });
     this.assistantChanges.batch$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(batch => void this.refreshAfterAssistant(batch));
+    this.store.organizationRestored$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => void this.refreshAfterRestore());
+  }
+
+  /** An Organization history restore may have rewritten this photo; a newer local edit wins over the reply. */
+  private async refreshAfterRestore(): Promise<void> {
+    const previous = this.photo();
+    if (!previous) return;
+    const fresh = await this.fetchPhoto(previous.path).catch(() => undefined);
+    if (fresh && this.photo() === previous) this.photo.set(fresh);
   }
 
   /** An assistant write touched this page's photo (or an unenumerable scope): refetch the full detail row. */

@@ -285,6 +285,9 @@ export class GalleryStore {
   private readonly destroyRef = inject(DestroyRef);
   private readonly pageReadCancelled = new Subject<void>();
   private readonly progressReadCancelled = new Subject<void>();
+  private readonly organizationRestoredSubject = new Subject<void>();
+  /** An Organization history restore landed; a view holding its own photo copy refetches it. */
+  readonly organizationRestored$ = this.organizationRestoredSubject.asObservable();
   private readOwner = this.auth.identity();
   private listingReadsActive = true;
   private listingViewParked = false;
@@ -1208,6 +1211,8 @@ export class GalleryStore {
     await this.loadPhotos();
     return this.pinnedMissing();
   }
+
+  notifyOrganizationRestored(): void { this.organizationRestoredSubject.next(); }
 
   /**
    * Bring the rows an assistant write changed up to date WITHOUT reloading the grid: the pin,

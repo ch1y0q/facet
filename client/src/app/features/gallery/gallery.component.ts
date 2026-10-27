@@ -583,11 +583,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                     <button mat-button class="!min-w-0 self-start -ml-3" (click)="store.startReviewQueue()">{{ I18N.gallery.review_progress.start | translate }}</button>
                   }
                 </div>
-                <button mat-icon-button class="!w-7 !h-7 !min-w-0 !p-0 -mr-1 shrink-0 self-start" (click)="dismissNotice('review_progress')"
-                        [matTooltip]="I18N.ui.buttons.dismiss | translate"
-                        [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
-                  <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
-                </button>
+                <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'review_progress', alignTop: true }" />
               </section>
             }
           }
@@ -596,11 +592,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
               <mat-icon class="opacity-70 !text-base !w-5 !h-5">bookmark</mat-icon>
               <span class="flex-1 opacity-80">{{ I18N.gallery.review_progress.browser | translate }}</span>
               <button mat-button class="!min-w-0" [disabled]="store.loading()" (click)="continueReview()">{{ I18N.gallery.review_progress.resume | translate }}</button>
-              <button mat-icon-button class="!w-7 !h-7 !min-w-0 !p-0 -mr-1 shrink-0" (click)="dismissNotice('review_bookmark')"
-                      [matTooltip]="I18N.ui.buttons.dismiss | translate"
-                      [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
-                <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
-              </button>
+              <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'review_bookmark' }" />
             </div>
           }
           @if (hiddenNoticeShown()) {
@@ -612,11 +604,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
               <button mat-button class="!min-w-0" (click)="store.showAllHidden()">
                 {{ I18N.gallery.hidden_banner.show_all | translate }}
               </button>
-              <button mat-icon-button class="!w-7 !h-7 !min-w-0 !p-0 -mr-1 shrink-0" (click)="dismissNotice('hidden')"
-                      [matTooltip]="I18N.ui.buttons.dismiss | translate"
-                      [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
-                <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
-              </button>
+              <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'hidden' }" />
             </div>
           } @else if (restoreNoticeShown()) {
             <div role="status" [class]="NOTICE_CARD_CLASS">
@@ -627,11 +615,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
               <button mat-button class="!min-w-0" (click)="store.restoreHidden()">
                 {{ I18N.gallery.hidden_banner.restore | translate }}
               </button>
-              <button mat-icon-button class="!w-7 !h-7 !min-w-0 !p-0 -mr-1 shrink-0" (click)="dismissNotice('restore_hidden')"
-                      [matTooltip]="I18N.ui.buttons.dismiss | translate"
-                      [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
-                <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
-              </button>
+              <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'restore_hidden' }" />
             </div>
           }
           @if (showRenderMigrationBanner()) {
@@ -641,11 +625,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                 {{ I18N.gallery.render_migration.message | translate:{ n: renderMigrationPending() } }}
                 {{ I18N.gallery.render_migration.command_hint | translate:{ command: REFRESH_THUMBNAILS_COMMAND } }}
               </span>
-              <button mat-icon-button class="!w-7 !h-7 !min-w-0 !p-0 -mr-1 shrink-0" (click)="dismissNotice('render_migration')"
-                      [matTooltip]="I18N.ui.buttons.dismiss | translate"
-                      [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
-                <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
-              </button>
+              <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'render_migration' }" />
             </div>
           }
         </div>
@@ -777,6 +757,13 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
         (click)="scrollToTop()"
       >
         <mat-icon>arrow_upward</mat-icon>
+      </button>
+    </ng-template>
+    <ng-template #noticeClose let-kind let-alignTop="alignTop">
+      <button mat-icon-button class="!w-7 !h-7 !min-w-0 !p-0 -mr-1 shrink-0" [class.self-start]="alignTop" (click)="dismissNotice(kind)"
+              [matTooltip]="I18N.ui.buttons.dismiss | translate"
+              [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
+        <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
       </button>
     </ng-template>
     @if (showScrollTop() && !selectionCount() && !noticeStackVisible()) {
