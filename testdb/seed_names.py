@@ -122,9 +122,9 @@ def score(conn, key):
         print(f"  {expected} (face {fid}, {photo}) is under {name!r}")
     twice = conn.execute(
         "SELECT f.photo_path, p.name, COUNT(*) FROM faces f JOIN persons p ON p.id = f.person_id "
-        "WHERE p.name IS NOT NULL AND p.name != '' GROUP BY f.photo_path, f.person_id HAVING COUNT(*) > 1 "
-        "ORDER BY f.photo_path").fetchall()
-    print(f"photos with one name on two or more faces (always wrong): {len(twice)}")
+        "WHERE f.is_manual = 0 AND p.name IS NOT NULL AND p.name != '' "
+        "GROUP BY f.photo_path, f.person_id HAVING COUNT(*) > 1 ORDER BY f.photo_path").fetchall()
+    print(f"photos with one name on two or more faces (always wrong): {len({t[0] for t in twice})}")
     for path, name, n in twice:
         print(f"  {photo_parts(path)[1]}: {name!r} x{n}")
 

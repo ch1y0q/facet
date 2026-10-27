@@ -27,17 +27,18 @@ personal library is never touched, and screenshots of it can be shared.
 ## Gate for face-feature changes
 
 Run both scores below on the change and compare with the baseline. **Pass = no line worse.**
-Baseline: an 8 GB-profile GPU scan of this library followed by `--cluster-faces-incremental`;
-grouping can differ slightly on other hardware, so record your own baseline first.
+Baseline: an 8 GB-profile GPU scan of this library followed by `--cluster-faces-incremental`,
+re-recorded on an RTX 4070 Ti SUPER (native Windows, CUDA). Grouping can differ slightly on other
+hardware, so record your own baseline first.
 
 | Measure | GPU 8gb | CPU (CI, legacy profile) | Better is |
 |---|---|---|---|
 | Photos in the library | 200 | 200 | must stay |
 | Faces detected | 221 | 221 | must not drop |
 | Photos with no face found (accepted detector failures, see Known failures) | 3 | 3 | lower (bonus) |
-| `seed_names.py --score`: primary faces right / wrong | 194 / 0 of 197 | 197 / 0 of 197 | more / must stay 0 |
-| `seed_names.py --score`: bystanders wrongly given a person's name | 10 of 24 | 3 of 24 | lower |
-| `seed_names.py --score`: photos with one name on 2+ faces | 5 | 2 | 0 |
+| `seed_names.py --score`: primary faces right / wrong | 197 / 0 of 197 | 197 / 0 of 197 | more / must stay 0 |
+| `seed_names.py --score`: bystanders wrongly given a person's name | 3 of 24 | 3 of 24 | lower |
+| `seed_names.py --score`: photos with one name on 2+ faces | 2 | 2 | 0 |
 | `open_set_eval.py`, 3 references, T = 0.35: primary right / wrong | 196 / 0 of 196 | 196 / 0 of 196 | must stay |
 | `open_set_eval.py`, 3 references, T = 0.35: bystanders named | 0 of 24 | 0 of 24 | must stay 0 |
 
@@ -163,11 +164,11 @@ an improvement.
 ## Known failures
 
 - **One name on two faces in the same photo.** A person cannot appear twice in one photo, yet
-  grouping puts bystanders in the main person's group: 5 photos (Abdullah_Gul_0008 x3,
-  Abdullah_Gul_0009, Adrien_Brody_0002, Ariel_Sharon_0004, Carlos_Menem_0003). `--score`
-  counts them; a good result is 0.
-- **A bystander given another known person's name**, e.g. Ariel_Sharon_0009: the face on the
-  right is grouped with Ari Fleischer. Counted under "bystanders wrongly given a name".
+  grouping puts bystanders in the main person's group: 2 photos (Abdullah_Gul_0008 x3,
+  Abdullah_Gul_0009 x2). `--score` counts them; a good result is 0.
+- **A bystander given a known person's name.** All 3 in the baseline are the bystanders of
+  Abdullah_Gul_0008 and _0009, grouped as Abdullah Gul. Counted under "bystanders wrongly given
+  a name".
 - **Accepted detector failures:** no face is found in Andre_Agassi_0008, Anna_Kournikova_0001
   and Arnold_Schwarzenegger_0001 under the shipped detector and settings (InsightFace
   buffalo_l, `face_detection.min_confidence_percent` 65, `min_face_size` 20 px). Counted as
