@@ -2019,7 +2019,6 @@ export const I18N = {
     similarity_threshold: "culling.similarity_threshold",
     burst_help: "culling.burst_help",
     similar_help: "culling.similar_help",
-    help: "culling.help",
     help_text: "culling.help_text",
     type_burst: "culling.type_burst",
     type_similar: "culling.type_similar",
