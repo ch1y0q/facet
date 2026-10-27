@@ -34,10 +34,10 @@ export class MetricRankComponent {
     const top = topPercentOf(this.range(), this.value());
     const { min, max } = this.range();
     const bound = (v: number) => this.percent() ? `${Math.round(v * 100)}%` : formatBound(v);
-    const range = this.i18n.t('photo_detail.distribution.range', { min: bound(min), max: bound(max) });
+    const bounds = { min: bound(min), max: bound(max) };
     return top === null
-      ? range.charAt(0).toUpperCase() + range.slice(1)
-      : `${this.i18n.t('photo_detail.distribution.top', { pct: top })} · ${range}`;
+      ? this.i18n.t('photo_detail.distribution.range', bounds)
+      : this.i18n.t('photo_detail.distribution.top_in_range', { pct: top, ...bounds });
   });
 }
 

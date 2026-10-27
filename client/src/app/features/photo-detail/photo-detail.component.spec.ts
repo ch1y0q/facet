@@ -9,7 +9,6 @@ import { BehaviorSubject, finalize, Observable, of, Subject, throwError } from '
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { Component, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
-import { PhotoMetricsTabsComponent } from '../../shared/components/photo-metrics-tabs/photo-metrics-tabs.component';
 import { MatTooltip } from '@angular/material/tooltip';
 import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatSelect, MatSelectModule } from '@angular/material/select';
@@ -257,21 +256,16 @@ describe('PhotoDetailComponent', () => {
     expect(ranks[0].nativeElement.querySelector('[tabindex="0"]')).not.toBeNull();
   });
 
-  it('reopens the last metric tab by name, so a photo without EXIF keeps it', () => {
-    localStorage.setItem('facet_photo_detail_tab', 'technical');
+  it('places the aggregate in its library distribution in the header', () => {
     const view = renderDetail();
-    view.componentInstance.photo.set(makePhoto({ camera_model: 'X100V' }));
+    TestBed.inject(GalleryStore).metricRanges.set({
+      min_score: { column: 'aggregate', min: 0, max: 10, buckets: [1, 1] },
+    });
+    view.componentInstance.photo.set(makePhoto({ aggregate: 6.4 }));
     view.detectChanges();
-    const tabs = view.debugElement.query(By.directive(PhotoMetricsTabsComponent)).componentInstance as unknown as {
-      metricsTabIndex: () => number;
-      selectMetricsTab: (index: number) => void;
-    };
-    expect(tabs.metricsTabIndex()).toBe(3);
-    view.componentInstance.photo.set(makePhoto({ camera_model: null, lens_model: null, focal_length: null, f_stop: null, shutter_speed: null, iso: null }));
-    view.detectChanges();
-    expect(tabs.metricsTabIndex()).toBe(2);
-    tabs.selectMetricsTab(0);
-    expect(localStorage.getItem('facet_photo_detail_tab')).toBe('quality');
+    const header = view.debugElement.queryAll(By.css('app-metric-rank.w-28'));
+    expect(header).toHaveLength(1);
+    expect(header[0].componentInstance.value()).toBe(6.4);
   });
 
   it('loads the library distributions on a deep-linked open', async () => {

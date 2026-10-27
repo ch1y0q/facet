@@ -1,51 +1,20 @@
-import { ChangeDetectionStrategy, Component, Injectable, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Photo } from '../../models/photo.model';
+import { Photo, hasExifFields } from '../../models/photo.model';
 import { FixedPipe } from '../../pipes/fixed.pipe';
 import { IsLensNamePipe } from '../../pipes/is-lens-name.pipe';
 import { ShutterSpeedPipe } from '../../pipes/shutter-speed.pipe';
 import { ThumbnailUrlPipe } from '../../pipes/thumbnail-url.pipe';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { HistogramSurface } from '../../../core/services/histogram-preferences.service';
+import { METRICS_TABS, MetricsTab, MetricsTabState } from '../../../core/services/metrics-tab-state.service';
 import { HistogramMode } from '../../utils/histogram';
 import { MetricDistribution } from '../../utils/metric-distribution';
 import { ExtendedQualityComponent } from '../extended-quality/extended-quality.component';
 import { HistogramComponent } from '../histogram/histogram.component';
 import { MetricScoreRowComponent } from '../metric-score-row/metric-score-row.component';
-
-const METRICS_TAB_KEY = 'facet_photo_detail_tab';
-const METRICS_TABS = ['exif', 'quality', 'composition', 'technical', 'histogram'] as const;
-type MetricsTab = typeof METRICS_TABS[number];
-
-function storedMetricsTab(): MetricsTab {
-  try {
-    const stored = localStorage.getItem(METRICS_TAB_KEY);
-    return METRICS_TABS.find(tab => tab === stored) ?? 'exif';
-  } catch {
-    return 'exif';
-  }
-}
-
-/**
- * The open metric tab, one per app rather than per component: the gallery is
- * kept alive behind photo detail, so a tab chosen there must reach the
- * gallery's panel on Back, not only the next component created.
- */
-@Injectable({ providedIn: 'root' })
-export class MetricsTabState {
-  readonly tab = signal<MetricsTab>(storedMetricsTab());
-
-  select(tab: MetricsTab): void {
-    this.tab.set(tab);
-    try {
-      localStorage.setItem(METRICS_TAB_KEY, tab);
-    } catch {
-      // Storage blocked: the tab still switches, it is just not remembered.
-    }
-  }
-}
 
 /**
  * A photo's metrics in icon tabs (EXIF, Quality, Composition, Technical,
@@ -67,6 +36,9 @@ export class MetricsTabState {
   host: { class: 'block' },
   template: `
     @let p = photo();
+    <!-- One group per tab set: when the EXIF tab comes or goes under an unchanged
+         index, a kept group reselects whichever tab was active instead of the remembered one. -->
+    @for (withExif of [hasExif()]; track withExif) {
       <mat-tab-group class="min-w-0 [&_.mdc-tab]:!min-w-0 [&_.mdc-tab]:!px-2 [&_.mdc-tab--active_mat-icon]:!text-[var(--mat-sys-primary)]" mat-stretch-tabs="true"
                      animationDuration="0ms" [selectedIndex]="metricsTabIndex()" (selectedIndexChange)="selectMetricsTab($event)">
       <!-- EXIF section -->
@@ -253,6 +225,7 @@ export class MetricsTabState {
         </div>
       </mat-tab>
       </mat-tab-group>
+    }
   `,
 })
 export class PhotoMetricsTabsComponent {
@@ -268,10 +241,7 @@ export class PhotoMetricsTabsComponent {
   readonly histogramDefaultMode = input<HistogramMode>('luma');
   readonly indicatorPercent = input(1);
 
-  private readonly hasExif = computed(() => {
-    const p = this.photo();
-    return !!(p.camera_model || p.lens_model || p.focal_length || p.f_stop || p.shutter_speed || p.iso);
-  });
+  protected readonly hasExif = computed(() => hasExifFields(this.photo()));
 
   /**
    * The open tab, by name rather than index: a photo without EXIF has one tab
@@ -283,7 +253,11 @@ export class PhotoMetricsTabsComponent {
   protected readonly metricsTabIndex = computed(() => Math.max(0, this.metricsTabs().indexOf(this.tabState.tab())));
 
   protected selectMetricsTab(index: number): void {
-    const tab = this.metricsTabs()[index];
+    const tabs = this.metricsTabs();
+    // The group echoes back the index a missing remembered tab (EXIF, on a photo
+    // without any) was clamped to; that is not the user's choice, so keep it.
+    if (!tabs.includes(this.tabState.tab()) && index === this.metricsTabIndex()) return;
+    const tab = tabs[index];
     if (tab) this.tabState.select(tab);
   }
 }

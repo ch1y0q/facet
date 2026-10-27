@@ -3,7 +3,7 @@ import { NgTemplateOutlet, TitleCasePipe } from '@angular/common';
 import { Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { catchError, of } from 'rxjs';
-import { Photo, PhotoSet } from '../../shared/models/photo.model';
+import { Photo, PhotoSet, hasExifFields } from '../../shared/models/photo.model';
 import { ApiService } from '../../core/services/api.service';
 import { FixedPipe } from '../../shared/pipes/fixed.pipe';
 import { ShutterSpeedPipe } from '../../shared/pipes/shutter-speed.pipe';
@@ -192,81 +192,57 @@ export class CategoryLabelPipe implements PipeTransform {
              where they join the column beside it so nothing spans under a tall
              image. -->
         <ng-template #details>
-        <!-- Zone B: the docked rail's metric tabs and set strip; the floating
+        <!-- Zone B: the docked rail's metric tabs, then the set strip; the floating
              bubble keeps only the set, its scores having been reduced above. -->
         @if (docked()) {
-          <!-- Docked: photo detail's metric tabs (sharing its remembered tab), then
-               the set on one line. Sibling thumbnails stay: the rail is parked. -->
+          <!-- Photo detail's metric tabs, sharing its remembered tab. -->
           <app-photo-metrics-tabs class="text-xs text-[var(--facet-tooltip-text)]" [photo]="p" [ranges]="store.metricRangesByColumn()"
                                   [populated]="store.config()?.populated_scores"
                                   [histogramSrcSize]="160" [histogramHeight]="HISTOGRAM_TOOLTIP_HEIGHT"
                                   [histogramSurface]="'tooltip'" [histogramDefaultMode]="histogramDefaultMode()"
                                   [indicatorPercent]="indicatorPercent()" />
-          @if (setKind(); as kind) {
-            <div class="mt-2 text-xs text-[var(--facet-tooltip-text)]">
-              <div class="flex items-center gap-1.5">
-                <mat-icon class="!text-sm !w-3.5 !h-3.5 !leading-[14px] opacity-70" aria-hidden="true">{{ kind | photoSetKindIcon }}</mat-icon>
-                <span class="text-[var(--mat-sys-primary)] font-medium">{{ kind | photoSetKindLabel | translate }}</span>
-                @if (photoSet(); as set) {
-                  <span class="text-[var(--facet-tooltip-text-secondary)]">{{ 'capsules.photos_count' | translate:{ count: set.count } }}</span>
-                  @if (set.ev_span !== null) {
-                    <span class="text-[var(--facet-tooltip-text-secondary)]">{{ set.ev_span | fixed:1 }} EV</span>
-                  }
-                }
-                @if (p.sequence_ev_offset !== null && p.sequence_ev_offset !== undefined) {
-                  <span class="ml-auto text-[var(--facet-tooltip-text-secondary)]">{{ p.sequence_ev_offset | evOffset }}</span>
-                }
-              </div>
+        }
+        <!-- Set (bracket/panorama/hdr_panorama/burst/duplicate). Kind and this
+             frame's own EV offset are already on the photo object and render
+             instantly; frame count and EV span come from a debounced, dwell-
+             delayed GET /api/photo/set (see the constructor) and fill in once
+             it resolves -- never blocking the rest of the bubble. Sibling
+             thumbnails only in the docked panel: reaching for one in the
+             floating hover bubble would dismiss it before the click could land. -->
+        @if (setKind(); as kind) {
+          <div class="mt-2 text-xs text-[var(--facet-tooltip-text)]" data-testid="tooltip-set">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <mat-icon class="!text-sm !w-3.5 !h-3.5 !leading-[14px] opacity-70" aria-hidden="true">{{ kind | photoSetKindIcon }}</mat-icon>
+              <span class="text-[var(--mat-sys-primary)] font-medium">{{ kind | photoSetKindLabel | translate }}</span>
               @if (photoSet(); as set) {
-                @if (set.members.length) {
-                  <div class="flex gap-2 flex-wrap mt-2">
-                    @for (member of set.members; track member.path) {
-                      <button type="button"
-                              class="relative rounded-lg overflow-hidden w-14 h-14 shrink-0 cursor-pointer hover:opacity-80 transition-opacity ring-[var(--mat-sys-primary)]"
-                              [class.ring-2]="member.path === p.path"
-                              [attr.aria-label]="('photo_detail.set.member_position' | translate:{ position: $index + 1, count: set.members.length }) + (member.ev_offset !== null ? ', ' + (member.ev_offset | evOffset) : '')"
-                              (click)="openSetMember(member.path)">
-                        <img [src]="member.path | thumbnailUrl:96" alt="" class="w-full h-full object-cover" />
-                        @if (member.ev_offset !== null) {
-                          <span class="absolute bottom-0 inset-x-0 text-center text-[0.625rem] leading-4 bg-black/60 text-white">{{ member.ev_offset | evOffset }}</span>
-                        }
-                      </button>
-                    }
-                  </div>
+                <span class="text-[var(--facet-tooltip-text-secondary)]">{{ 'capsules.photos_count' | translate:{ count: set.count } }}</span>
+                @if (set.ev_span !== null) {
+                  <span class="text-[var(--facet-tooltip-text-secondary)]">{{ set.ev_span | fixed:1 }} EV</span>
                 }
               }
+              @if (p.sequence_ev_offset !== null && p.sequence_ev_offset !== undefined) {
+                <span class="ml-auto text-[var(--facet-tooltip-text-secondary)]">{{ p.sequence_ev_offset | evOffset }}</span>
+              }
             </div>
-          }
-        } @else {
-        <div class="text-xs leading-relaxed text-[var(--facet-tooltip-text)]">
-          <!-- Set (bracket/panorama/hdr_panorama/burst/duplicate). Kind and this
-               frame's own EV offset are already on the photo object and render
-               instantly; frame count and EV span come from a debounced, dwell-
-               delayed GET /api/photo/set (see the constructor) and fill in once
-               it resolves -- never blocking the rest of the bubble. No sibling
-               thumbnails here (the docked set above has them): reaching for one
-               in the floating hover bubble would dismiss it before the click
-               could land. -->
-          @if (setKind(); as kind) {
-            <div class="mt-2" data-testid="tooltip-set">
-              <div class="flex items-center gap-1 flex-wrap">
-                <mat-icon class="!text-sm !w-3.5 !h-3.5 !leading-[14px] opacity-70">{{ kind | photoSetKindIcon }}</mat-icon>
-                <span class="text-[var(--mat-sys-primary)] font-medium">{{ kind | photoSetKindLabel | translate }}</span>
-                @if (p.sequence_ev_offset !== null && p.sequence_ev_offset !== undefined) {
-                  <span class="text-[var(--facet-tooltip-text-secondary)]">{{ p.sequence_ev_offset | evOffset }}</span>
-                }
-              </div>
-              @if (photoSet(); as set) {
-                <div class="flex justify-between gap-2 text-[var(--facet-tooltip-text-secondary)]">
-                  <span>{{ 'capsules.photos_count' | translate:{ count: set.count } }}</span>
-                  @if (set.ev_span !== null) {
-                    <span>{{ set.ev_span | fixed:1 }} EV</span>
+            @if (photoSet(); as set) {
+              @if (docked() && set.members.length) {
+                <div class="flex gap-2 flex-wrap mt-2">
+                  @for (member of set.members; track member.path) {
+                    <button type="button"
+                            class="relative rounded-lg overflow-hidden w-14 h-14 shrink-0 cursor-pointer hover:opacity-80 transition-opacity ring-[var(--mat-sys-primary)]"
+                            [class.ring-2]="member.path === p.path"
+                            [attr.aria-label]="('photo_detail.set.member_position' | translate:{ position: $index + 1, count: set.members.length }) + (member.ev_offset !== null ? ', ' + (member.ev_offset | evOffset) : '')"
+                            (click)="openSetMember(member.path)">
+                      <img [src]="member.path | thumbnailUrl:96" alt="" class="w-full h-full object-cover" />
+                      @if (member.ev_offset !== null) {
+                        <span class="absolute bottom-0 inset-x-0 text-center text-[0.625rem] leading-4 bg-black/60 text-white">{{ member.ev_offset | evOffset }}</span>
+                      }
+                    </button>
                   }
                 </div>
               }
-            </div>
-          }
-        </div>
+            }
+          </div>
         }
 
         <!-- Zone C: Tags (full width) -->
@@ -365,7 +341,7 @@ export class PhotoTooltipComponent {
   readonly hasExif = computed(() => {
     const p = this.photo();
     if (!p) return false;
-    return !!(p.camera_model || p.lens_model || p.focal_length || p.f_stop || p.shutter_speed || p.iso);
+    return hasExifFields(p);
   });
 
   /** The set this frame resolves into, mirroring `GET /api/photo/set`'s own
@@ -389,7 +365,7 @@ export class PhotoTooltipComponent {
    *  click-pinned floating bubble does not dismiss on mouse-leave either (see
    *  onMouseLeave/hoverDriven() in photo-card.component.ts) -- only a plain
    *  hover bubble does, which is why it is excluded here. Gates the
-   *  histogram's mode-toggle buttons and the person-avatar filter buttons. */
+   *  bubble's pointer-events and the person-avatar filter buttons. */
   protected readonly showInteractiveControls = computed(() => this.docked() || this.pinned());
 
   private readonly api = inject(ApiService);
@@ -447,8 +423,6 @@ export class PhotoTooltipComponent {
       observer.observe(el);
       onCleanup(() => observer.disconnect());
     });
-    // The header's distribution: the tooltip can show before the filter sidebar loaded the ranges.
-    void this.store.ensureMetricRanges();
     effect(onCleanup => {
       const p = this.photo();
       const token = ++this.setGeneration;

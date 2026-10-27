@@ -13,6 +13,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
 import { UserActivityJournal, UserActivityKind, activityName } from '../../core/agent/user-activity-journal.service';
 import { Photo, KeeperHint, normalisePhotoFlagsAll } from '../../shared/models/photo.model';
+import type { MetricDistribution } from '../../shared/utils/metric-distribution';
 import type { CardSetKind } from '../../shared/components/photo-card/card-actions';
 import { I18N } from '../../core/i18n/keys';
 import { reviewQueueClearVersion } from '../../core/services/review-queue.storage';
@@ -142,14 +143,6 @@ export interface TypeCount {
 export interface FilterOption {
   value: string;
   count: number;
-}
-
-export interface MetricRange {
-  /** The photo field the range describes; absent on a row cached before the server named it. */
-  column?: string;
-  min: number;
-  max: number;
-  buckets: number[];
 }
 
 export interface PersonOption {
@@ -817,10 +810,10 @@ export class GalleryStore {
   readonly patterns = signal<FilterOption[]>([]);
   readonly colorTemps = signal<FilterOption[]>([]);
   readonly hueBuckets = signal<FilterOption[]>([]);
-  readonly metricRanges = signal<Record<string, MetricRange>>({});
+  readonly metricRanges = signal<Record<string, MetricDistribution>>({});
   /** The same ranges keyed by the photo field they describe, for placing one photo's value. */
   readonly metricRangesByColumn = computed(() => {
-    const out: Record<string, MetricRange> = {};
+    const out: Record<string, MetricDistribution> = {};
     for (const range of Object.values(this.metricRanges())) {
       // star_rating's range is the global column, while a photo shows the viewer's own rating.
       if (range.column && range.column !== 'star_rating') out[range.column] = range;
@@ -1813,7 +1806,7 @@ export class GalleryStore {
 
   /** Load all filter dropdown options in parallel */
   async loadFilterOptions(): Promise<void> {
-    const [camerasRes, lensesRes, tagsRes, personsRes, patternsRes, colorsRes, rangesRes] = await Promise.all([
+    const [camerasRes, lensesRes, tagsRes, personsRes, patternsRes, colorsRes] = await Promise.all([
       this.fetchFilterOption<{cameras: [string, number][]}>('/filter_options/cameras').catch(() => ({cameras: []})),
       this.fetchFilterOption<{lenses: [string, number][]}>('/filter_options/lenses').catch(() => ({lenses: []})),
       this.fetchFilterOption<{tags: [string, number][]}>('/filter_options/tags').catch(() => ({tags: []})),
@@ -1822,7 +1815,7 @@ export class GalleryStore {
       this.fetchFilterOption<{patterns: [string, number][]}>('/filter_options/patterns').catch(() => ({patterns: []})),
       this.fetchFilterOption<{temps: [string, number][]; hue_buckets: [string, number][]}>('/filter_options/colors')
         .catch(() => ({temps: [], hue_buckets: []})),
-      this.fetchMetricRanges(),
+      this.loadMetricRanges(),
     ]);
     this.cameras.set((camerasRes.cameras ?? []).map(([value, count]: [string, number]) => ({value, count})));
     this.lenses.set((lensesRes.lenses ?? []).map(([value, count]: [string, number]) => ({value, count})));
@@ -1834,21 +1827,20 @@ export class GalleryStore {
     this.patterns.set((patternsRes.patterns ?? []).map(([value, count]: [string, number]) => ({value, count})));
     this.colorTemps.set((colorsRes.temps ?? []).map(([value, count]: [string, number]) => ({value, count})));
     this.hueBuckets.set((colorsRes.hue_buckets ?? []).map(([value, count]: [string, number]) => ({value, count})));
-    this.metricRanges.set(rangesRes.ranges ?? {});
   }
 
   /** Load the metric ranges unless they already are: a deep-linked photo page never ran the gallery's load. */
   async ensureMetricRanges(): Promise<void> {
     if (Object.keys(this.metricRanges()).length) return;
-    this.metricRangesLoad ??= this.fetchMetricRanges()
-      .then(res => this.metricRanges.set(res.ranges ?? {}))
-      .finally(() => { this.metricRangesLoad = null; });
-    await this.metricRangesLoad;
+    await this.loadMetricRanges();
   }
 
-  private fetchMetricRanges(): Promise<{ranges: Record<string, MetricRange>}> {
-    return this.fetchFilterOption<{ranges: Record<string, MetricRange>}>('/filter_options/metric_ranges')
-      .catch(() => ({ranges: {}}));
+  /** One request at a time, shared by both loaders; a failed one keeps the ranges already shown. */
+  private loadMetricRanges(): Promise<void> {
+    this.metricRangesLoad ??= this.fetchFilterOption<{ranges: Record<string, MetricDistribution>}>('/filter_options/metric_ranges')
+      .then(res => this.metricRanges.set(res.ranges ?? {}), () => undefined)
+      .finally(() => { this.metricRangesLoad = null; });
+    return this.metricRangesLoad;
   }
 
   /** Reload person dropdown without filter restriction */

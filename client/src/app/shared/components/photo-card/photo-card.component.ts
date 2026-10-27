@@ -12,7 +12,7 @@ import { PhotoSetKindIconPipe, PhotoSetKindBestLabelPipe } from '../../pipes/pho
 import { CARD_ACTION_META, CardActionId, CardActionsConfig, CardSetKind, DEFAULT_CARD_ACTIONS } from './card-actions';
 import { FixedPipe } from '../../pipes/fixed.pipe';
 import { ShutterSpeedPipe } from '../../pipes/shutter-speed.pipe';
-import { ScoreClassPipe, SortScorePipe } from '../../pipes/score.pipes';
+import { ScoreClassPipe, SortScorePipe, sortScoreColumn } from '../../pipes/score.pipes';
 import { SortPersonsPipe } from '../../pipes/sort-persons.pipe';
 import { closeOverlayDirectives } from '../../utils/overlays';
 import { MetricDistribution, topPercentOf } from '../../utils/metric-distribution';
@@ -610,14 +610,12 @@ export class PhotoCardComponent {
   /** Capped at the stored edge: larger sizes make the server decode the original. */
   readonly thumbSize = input(240, { transform: (size: number) => Math.min(size, STORED_THUMBNAIL_EDGE) });
 
-  /** Where the badge's score sits in the library, for the column the badge shows (as `sortScore` picks it). */
+  /** Where the badge's score sits in the library, for the column the badge shows. */
   protected readonly badgeTopPercent = computed(() => {
     const photo = this.photo();
-    const sort = this.currentSort();
-    const raw = (photo as unknown as Record<string, unknown>)[sort];
-    const [column, value] = typeof raw === 'number' ? [sort, raw] : ['aggregate', photo.aggregate];
+    const column = sortScoreColumn(photo, this.currentSort());
     const range = this.metricRanges()[column];
-    return range ? topPercentOf(range, value) : null;
+    return range ? topPercentOf(range, (photo as unknown as Record<string, number | null>)[column]) : null;
   });
 
   /** Every card except the current one, and only once there is a current one.

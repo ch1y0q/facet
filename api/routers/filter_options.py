@@ -672,9 +672,12 @@ def _load_or_compute_metric_ranges():
             if (row is not None and row[0] is not None
                     and (time.time() - row[1]) < _METRIC_RANGES_TTL_SECONDS):
                 try:
-                    return json.loads(row[0]), False
+                    cached = json.loads(row[0])
                 except (json.JSONDecodeError, TypeError):
-                    pass
+                    cached = None
+                # A row cached before each range named its column cannot place a photo: a miss.
+                if isinstance(cached, dict) and all('column' in r for r in cached.values()):
+                    return cached, False
             ranges = compute_metric_ranges(conn)
         finally:
             conn.rollback()

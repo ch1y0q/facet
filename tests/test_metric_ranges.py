@@ -232,3 +232,21 @@ def test_endpoint_names_the_photo_column_of_each_range(tmp_path):
         ranges = filter_options.metric_ranges(user=None)["ranges"]
     assert ranges["min_score"]["column"] == "aggregate"
     assert all(r["column"] for r in ranges.values())
+
+
+def test_fresh_row_cached_before_columns_were_named_is_recomputed(tmp_path):
+    """A row persisted by an older server lacks ``column``; serving it would hide every rank for a TTL."""
+    db_path = str(tmp_path / "legacy.db")
+    init_database(db_path)
+    _seed(db_path, range(1, 11))
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT OR REPLACE INTO stats_cache (key, value, updated_at) VALUES (?, ?, ?)",
+        (METRIC_RANGES_KEY, json.dumps({"min_score": {"min": -1.0, "max": -1.0, "buckets": []}}), time.time()),
+    )
+    conn.commit()
+    conn.close()
+
+    with mock.patch.object(filter_options, "get_db", _db_factory(db_path)):
+        ranges = filter_options._compute_metric_ranges()
+    assert ranges["min_score"] == {**ranges["min_score"], "column": "aggregate", "min": 1.0}

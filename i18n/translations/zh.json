@@ -2518,7 +2518,8 @@
     },
     "distribution": {
       "top": "位列图库前 {pct}%",
-      "range": "图库范围 {min}–{max}"
+      "range": "图库范围 {min}–{max}",
+      "top_in_range": "位列图库前 {pct}% · 图库范围 {min}–{max}"
     }
   },
   "manual_tags": {

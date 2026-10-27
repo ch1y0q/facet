@@ -2518,7 +2518,8 @@
     },
     "distribution": {
       "top": "Top {pct}% della libreria",
-      "range": "intervallo della libreria {min}–{max}"
+      "range": "Intervallo della libreria {min}–{max}",
+      "top_in_range": "Top {pct}% della libreria · intervallo della libreria {min}–{max}"
     }
   },
   "manual_tags": {

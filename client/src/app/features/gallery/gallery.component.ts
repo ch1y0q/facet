@@ -218,7 +218,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
         @if (detailsRailVisible()) {
           <!-- Deselect stays put above the scrolling details; the tooltip
                background covers the whole rail instead of a rounded card. -->
-          <div class="flex flex-col h-full" style="background: var(--facet-tooltip-bg)" data-details-rail tabindex="-1" (keydown.escape)="onRailEscape($event)"
+          <div class="flex flex-col h-full bg-[var(--facet-tooltip-bg)]" data-details-rail tabindex="-1" (keydown.escape)="onRailEscape($event)"
                (focusout)="onGridFocusOut($event)">
             @if (hasActivePhoto()) {
               <button mat-button class="!min-w-0 shrink-0 self-start mx-2 mt-2" (click)="releasePanel()">

@@ -2518,7 +2518,8 @@
     },
     "distribution": {
       "top": "Top {pct} % de la biblioteca",
-      "range": "rango de la biblioteca {min}–{max}"
+      "range": "Rango de la biblioteca {min}–{max}",
+      "top_in_range": "Top {pct} % de la biblioteca · rango de la biblioteca {min}–{max}"
     }
   },
   "manual_tags": {

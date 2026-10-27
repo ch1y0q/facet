@@ -218,7 +218,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
         <!-- Info panel -->
         <div class="lg:w-[380px] lg:shrink-0 lg:overflow-y-auto p-4 space-y-4 text-sm text-[var(--mat-sys-on-surface)]">
           <!-- Filename + Date + Category + Aggregate -->
-          <div class="!mb-2">
+          <div class="mb-2">
             <div class="font-semibold text-lg">{{ p.filename }}</div>
             @if (p.date_taken || auth.isEdition()) {
               <div class="flex items-center gap-1 text-[var(--mat-sys-on-surface-variant)] text-xs">
@@ -285,7 +285,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
 
           <!-- Rating controls (edition only) -->
           @if (auth.isEdition()) {
-            <div class="flex items-center border-t border-[var(--mat-sys-outline-variant)] pt-1 !mb-1">
+            <div class="flex items-center border-t border-[var(--mat-sys-outline-variant)] pt-1 mb-1">
               <!-- Star rating -->
               @for (star of stars; track star) {
                 <button class="w-8 h-8 rounded-full inline-flex items-center justify-center hover:bg-[var(--mat-sys-surface-container-high)] transition-colors cursor-pointer" (click)="setRating(p.path, star)">
@@ -361,7 +361,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
 
           <!-- Location -->
           @if (p.gps_latitude !== null && p.gps_longitude !== null) {
-            <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3 !mb-2">
+            <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3 mb-2">
               <div class="flex items-center justify-between mb-2">
                 <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)]">{{ I18N.photo_detail.location | translate }}</div>
                 @if (auth.isEdition()) {
@@ -377,7 +377,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
               <div #locationMapContainer class="w-full h-40 rounded-lg overflow-hidden"></div>
             </div>
           } @else if (auth.isEdition()) {
-            <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3 !mb-2">
+            <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3 mb-2">
               <div class="flex items-center justify-between">
                 <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)]">{{ I18N.photo_detail.location | translate }}</div>
                 <button mat-icon-button class="!w-7 !h-7 !p-0" (click)="editGps(p)" [matTooltip]="I18N.photo_detail.add_location | translate" [attr.aria-label]="I18N.photo_detail.add_location | translate">

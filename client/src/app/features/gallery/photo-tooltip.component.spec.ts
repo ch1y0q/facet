@@ -8,7 +8,7 @@ import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 import type { Photo, PhotoSet } from '../../shared/models/photo.model';
 import { GalleryStore } from './gallery.store';
-import { MetricsTabState } from '../../shared/components/photo-metrics-tabs/photo-metrics-tabs.component';
+import { MetricsTabState } from '../../core/services/metrics-tab-state.service';
 import { makePhoto, makePhotoFull } from '../../../testing/photo.fixture';
 
 /* eslint-disable @angular-eslint/component-selector */
@@ -38,7 +38,6 @@ describe('PhotoTooltipComponent', () => {
   const mockStore = {
     config: signal<{ populated_scores?: string[] } | null>(null),
     metricRangesByColumn: signal({}),
-    ensureMetricRanges: vi.fn(() => Promise.resolve()),
   };
   const mockRouter = { navigate: vi.fn(() => Promise.resolve(true)) };
 

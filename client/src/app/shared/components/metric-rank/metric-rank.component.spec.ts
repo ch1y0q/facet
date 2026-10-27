@@ -29,7 +29,7 @@ describe('MetricRankComponent', () => {
 
   it('names the rank and the library range of a focusable distribution', () => {
     // 0.6 sits 0.4 into the third bucket: 1 + 2 + 1.6 of 10 photos below, so top 54%.
-    expect(label(0.6)).toBe('photo_detail.distribution.top pct=54 · photo_detail.distribution.range min=0 max=1');
+    expect(label(0.6)).toBe('photo_detail.distribution.top_in_range pct=54 min=0 max=1');
     expect(fixture.nativeElement.querySelector('app-metric-sparkline')).not.toBeNull();
   });
 
@@ -38,6 +38,6 @@ describe('MetricRankComponent', () => {
   });
 
   it('names only the range for a value it cannot place', () => {
-    expect(label(null)).toBe('Photo_detail.distribution.range min=0 max=1');
+    expect(label(null)).toBe('photo_detail.distribution.range min=0 max=1');
   });
 });

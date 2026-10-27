@@ -2518,7 +2518,8 @@
     },
     "distribution": {
       "top": "Top {pct} % de la photothèque",
-      "range": "plage de la photothèque {min}–{max}"
+      "range": "Plage de la photothèque {min}–{max}",
+      "top_in_range": "Top {pct} % de la photothèque · plage de la photothèque {min}–{max}"
     }
   },
   "manual_tags": {

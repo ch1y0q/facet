@@ -1755,6 +1755,27 @@ describe('gallery session query (nav-icon return)', () => {
       await store.ensureMetricRanges();
       expect(apiGet).not.toHaveBeenCalledWith('/filter_options/metric_ranges');
     });
+
+    it('leaves star_rating out: a photo shows the viewer\'s own rating, not the global column', () => {
+      store.metricRanges.set({ min_aesthetic: range, min_rating: { column: 'star_rating', min: 0, max: 5, buckets: [1] } });
+      expect(store.metricRangesByColumn()).toEqual({ aesthetic: range });
+    });
+
+    it('stays empty after a failed fetch and retries on the next call', async () => {
+      apiGet.mockReturnValueOnce(throwError(() => new Error('down')));
+      await store.ensureMetricRanges();
+      expect(store.metricRanges()).toEqual({});
+      apiGet.mockReturnValueOnce(of({ ranges: { min_aesthetic: range } }));
+      await store.ensureMetricRanges();
+      expect(store.metricRangesByColumn()).toEqual({ aesthetic: range });
+    });
+
+    it('keeps loaded ranges when a later request fails', async () => {
+      store.metricRanges.set({ min_aesthetic: range });
+      apiGet.mockImplementation((path: string) => path === '/filter_options/metric_ranges' ? throwError(() => new Error('down')) : of({}));
+      await store.loadFilterOptions();
+      expect(store.metricRanges()).toEqual({ min_aesthetic: range });
+    });
   });
 
   describe('pinned list (showPaths)', () => {

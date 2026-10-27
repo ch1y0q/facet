@@ -2533,6 +2533,7 @@ export const I18N = {
     distribution: {
       top: "photo_detail.distribution.top",
       range: "photo_detail.distribution.range",
+      top_in_range: "photo_detail.distribution.top_in_range",
     },
   },
   manual_tags: {
