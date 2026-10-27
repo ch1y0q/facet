@@ -215,10 +215,16 @@ La galería solo responde en este equipo. `Start-Facet.ps1 -Lan` la abre a otros
 dispositivos y se niega a arrancar hasta que `viewer.password` esté definido en la
 configuración.
 
-**Desinstalar** (Configuración, Aplicaciones) quita el programa y los accesos directos, y
-conserva `data` y `config`. Solo quita el entorno Python de la carpeta predeterminada
-`%LOCALAPPDATA%\Facet\venv`. La caché de descargas de uv (`%LOCALAPPDATA%\uv\cache`) y los
-modelos descargados se quedan (`.cache`, `.insightface` en tu carpeta de usuario).
+**Una sola forma de escribir cada carpeta.** Facet guarda cada foto con la ruta con la que se
+escaneó: `\\NAS\Photos` y la misma carpeta compartida conectada como `Z:\` son para él dos
+carpetas distintas, y escanear las dos añade cada foto dos veces. Elige una y mantenla.
+
+**Desinstalar** (Configuración, Aplicaciones) detiene Facet y quita el programa, los accesos
+directos, el entorno Python y ExifTool (también bajo un `FACET_HOME` propio), y conserva `data` y
+`config`. Lo que no pueda borrar queda anotado en `data\logs\uninstall.log`. La caché de
+descargas de uv (`%LOCALAPPDATA%\uv\cache`) y los modelos descargados se quedan (`.cache`,
+`.insightface` en tu carpeta de usuario). Una actualización conserva una carpeta de instalación
+propia y solo vuelve a preparar el entorno si cambiaron las dependencias de Facet.
 
 **Traer una biblioteca desde Docker.** La base de datos guarda la ruta completa de cada foto,
 y la instalación de Windows ve las mismas fotos con otra (`\\NAS\Photos\...` en lugar de

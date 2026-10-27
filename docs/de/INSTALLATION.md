@@ -215,10 +215,17 @@ cd "$env:LOCALAPPDATA\Facet\app\installer"
 Die Galerie antwortet nur auf diesem Rechner. `Start-Facet.ps1 -Lan` öffnet sie für andere
 Geräte und startet erst, wenn `viewer.password` in der Konfiguration gesetzt ist.
 
-**Die Deinstallation** (Einstellungen, Apps) entfernt das Programm und die Verknüpfungen und
-behält `data` und `config`. Die Python-Umgebung entfernt sie nur im Standardordner
-`%LOCALAPPDATA%\Facet\venv`. Der Download-Cache von uv (`%LOCALAPPDATA%\uv\cache`) und die
-heruntergeladenen Modelle bleiben (`.cache`, `.insightface` in Ihrem Benutzerordner).
+**Eine Schreibweise pro Ordner.** Facet speichert jedes Foto unter dem Pfad, über den es gescannt
+wurde; `\\NAS\Photos` und dieselbe Freigabe als Laufwerk `Z:\` sind für Facet zwei verschiedene
+Ordner: Wer beide scannt, hat jedes Foto doppelt. Wählen Sie eine Schreibweise und bleiben Sie dabei.
+
+**Die Deinstallation** (Einstellungen, Apps) beendet Facet und entfernt das Programm, die
+Verknüpfungen, die Python-Umgebung und ExifTool (auch unter einem eigenen `FACET_HOME`) und
+behält `data` und `config`. Was sie nicht löschen kann, steht in `data\logs\uninstall.log`. Der
+Download-Cache von uv (`%LOCALAPPDATA%\uv\cache`) und die heruntergeladenen Modelle bleiben
+(`.cache`, `.insightface` in Ihrem Benutzerordner). Ein Update behält einen eigenen
+Installationsordner und richtet die Umgebung nur neu ein, wenn sich die Abhängigkeiten von Facet
+geändert haben.
 
 **Eine Bibliothek aus Docker übernehmen.** Die Datenbank speichert den vollständigen Pfad
 jedes Fotos, und die Windows-Installation sieht dieselben Fotos unter einem anderen

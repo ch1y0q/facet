@@ -207,10 +207,16 @@ cd "$env:LOCALAPPDATA\Facet\app\installer"
 The gallery answers on this computer only. `Start-Facet.ps1 -Lan` opens it to other
 devices, and refuses to start until `viewer.password` is set in the config.
 
-**Uninstalling** (Settings, Apps) removes the program and its shortcuts, and keeps `data` and
-`config`. It removes the Python environment only in the default `%LOCALAPPDATA%\Facet\venv`.
-uv's download cache (`%LOCALAPPDATA%\uv\cache`) and the downloaded models stay (`.cache`,
-`.insightface` in your user folder).
+**One spelling per folder.** Facet stores each photo under the path it was scanned by, so
+`\\NAS\Photos` and the same share mapped as `Z:\` are two different folders to it: scanning
+both adds every photo twice. Pick one and keep it.
+
+**Uninstalling** (Settings, Apps) stops Facet and removes the program, its shortcuts, the Python
+environment and ExifTool (under a custom `FACET_HOME` too), and keeps `data` and `config`.
+Anything it cannot delete is listed in `data\logs\uninstall.log`. uv's download cache
+(`%LOCALAPPDATA%\uv\cache`) and the downloaded models stay (`.cache`, `.insightface` in your
+user folder). An upgrade keeps a custom install folder, and sets the environment up again only
+when Facet's dependencies changed.
 
 **Moving a library from Docker.** The database stores each photo's full path, and the
 Windows install sees the same photos under another one (`\\NAS\Photos\...` rather than

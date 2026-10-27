@@ -129,6 +129,9 @@ jobs:
           }
           $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Facet'
           if ((Get-ChildItem $menu -Filter *.lnk).Count -ne 3) { throw 'expected 3 Start-menu shortcuts' }
+          # Remembered so an upgrade keeps a custom INSTALLDIR.
+          $remembered = (Get-ItemProperty 'HKCU:\Software\Facet' -Name InstallDir).InstallDir.TrimEnd('\')
+          if ($remembered -ne $app) { throw "install folder not remembered: '$remembered'" }
           "FACET_APP=$app" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
       - name: Setup (CPU path, no NVIDIA driver), then a second setup that does nothing
         run: |
@@ -237,6 +240,10 @@ jobs:
           if (Test-Path (Join-Path $env:FACET_APP 'viewer.py')) { throw 'program files left after uninstall' }
           if (Test-Path (Join-Path $env:LOCALAPPDATA 'Facet\venv')) { throw 'Python environment left after uninstall' }
           if (-not (Test-Path (Join-Path $env:LOCALAPPDATA 'Facet\data\photo_scores_pro.db'))) { throw 'uninstall removed the database' }
+          $log = Join-Path $env:LOCALAPPDATA 'Facet\data\logs\uninstall.log'
+          if (-not (Test-Path $log)) { throw 'uninstall did not run Remove-Environment.ps1 (no uninstall.log)' }
+          Get-Content $log
+          if (Select-String -Path $log -Pattern 'LEFT BEHIND' -Quiet) { throw 'uninstall left files behind' }
       - name: Collect logs
         if: always()
         run: |

@@ -217,10 +217,17 @@ La galerie ne répond que sur cet ordinateur. `Start-Facet.ps1 -Lan` l'ouvre aux
 appareils et refuse de démarrer tant que `viewer.password` n'est pas défini dans la
 configuration.
 
-**La désinstallation** (Paramètres, Applications) supprime le programme et les raccourcis, et
-conserve `data` et `config`. Elle ne supprime l'environnement Python que dans le dossier par
-défaut `%LOCALAPPDATA%\Facet\venv`. Le cache de téléchargement d'uv (`%LOCALAPPDATA%\uv\cache`)
-et les modèles téléchargés restent (`.cache`, `.insightface` dans votre dossier utilisateur).
+**Une seule écriture par dossier.** Facet enregistre chaque photo sous le chemin par lequel elle a
+été scannée : `\\NAS\Photos` et le même partage monté en `Z:\` sont pour lui deux dossiers
+différents, et scanner les deux ajoute chaque photo deux fois. Choisissez-en un et gardez-le.
+
+**La désinstallation** (Paramètres, Applications) arrête Facet et supprime le programme, les
+raccourcis, l'environnement Python et ExifTool (y compris sous un `FACET_HOME` personnalisé),
+et conserve `data` et `config`. Ce qu'elle ne peut pas supprimer est listé dans
+`data\logs\uninstall.log`. Le cache de téléchargement d'uv (`%LOCALAPPDATA%\uv\cache`) et les
+modèles téléchargés restent (`.cache`, `.insightface` dans votre dossier utilisateur). Une mise à
+jour garde un dossier d'installation personnalisé et ne recrée l'environnement que si les
+dépendances de Facet ont changé.
 
 **Déplacer une bibliothèque depuis Docker.** La base enregistre le chemin complet de chaque
 photo, et l'installation Windows voit les mêmes photos sous un autre chemin

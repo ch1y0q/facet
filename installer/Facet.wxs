@@ -13,6 +13,13 @@
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
     <Property Id="ARPNOMODIFY" Value="1" />
 
+    <!-- An upgrade keeps a custom INSTALLDIR: the folder is remembered in the registry and
+         restored unless a new one is given on the command line. -->
+    <Property Id="REMEMBERED_INSTALLDIR">
+      <RegistrySearch Id="RememberedInstallDir" Root="HKCU" Key="Software\Facet" Name="InstallDir" Type="raw" />
+    </Property>
+    <SetDirectory Id="INSTALLDIR" Value="[REMEMBERED_INSTALLDIR]" Sequence="both">REMEMBERED_INSTALLDIR AND NOT INSTALLDIR</SetDirectory>
+
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="LocalAppDataFolder">
         <Directory Id="FacetRootDir" Name="Facet">
@@ -42,20 +49,26 @@
         <RemoveFolder Id="RemoveFacetRootDir" Directory="FacetRootDir" On="uninstall" />
         <RemoveFolder Id="RemoveInstallDir" Directory="INSTALLDIR" On="uninstall" />
         <RegistryValue Root="HKCU" Key="Software\Facet" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\Facet" Name="InstallDir" Type="string" Value="[INSTALLDIR]" />
       </Component>
     </DirectoryRef>
 
-    <!-- Fresh install only: open a console that builds the Python environment. -->
+    <!-- Fresh install only, not an upgrade (each build has a new product code, so "NOT
+         Installed" alone is true on upgrades too): open a console that builds the Python
+         environment. After an upgrade the Start shortcut sets up again only if the
+         dependencies changed (Test-FacetReady). -->
     <CustomAction Id="RunSetup" Directory="INSTALLDIR" Return="asyncNoWait" Impersonate="yes" Execute="immediate"
                   ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -NoExit -File &quot;[INSTALLDIR]installer\Setup-Facet.ps1&quot;" />
-    <!-- A real uninstall (not the removal step of an upgrade) also deletes what setup built:
-         the Python environment and ExifTool. The database and settings in data\ and config\
-         stay, as do downloaded models in the user's cache folders. -->
-    <CustomAction Id="RemoveEnvironment" Directory="LocalAppDataFolder" Return="ignore" Impersonate="yes" Execute="immediate"
-                  ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;Remove-Item -Recurse -Force -LiteralPath '[LocalAppDataFolder]Facet\venv', '[LocalAppDataFolder]Facet\exiftool' -ErrorAction SilentlyContinue&quot;" />
+    <!-- A real uninstall (not the removal step of an upgrade) also deletes what setup built,
+         through the install's own script while it still exists: it stops Facet, resolves the
+         environment like the launchers do (FACET_HOME included) and logs anything left behind
+         to data\logs\uninstall.log. The database and settings in data\ and config\ stay, as do
+         downloaded models in the user's cache folders. -->
+    <CustomAction Id="RemoveEnvironment" Directory="INSTALLDIR" Return="ignore" Impersonate="yes" Execute="deferred"
+                  ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File &quot;[INSTALLDIR]installer\Remove-Environment.ps1&quot;" />
     <InstallExecuteSequence>
-      <Custom Action="RunSetup" After="InstallFinalize">NOT Installed AND NOT REMOVE AND NOT FACET_SKIP_SETUP</Custom>
-      <Custom Action="RemoveEnvironment" After="InstallFinalize">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
+      <Custom Action="RunSetup" After="InstallFinalize">NOT Installed AND NOT REMOVE AND NOT WIX_UPGRADE_DETECTED AND NOT FACET_SKIP_SETUP</Custom>
+      <Custom Action="RemoveEnvironment" Before="RemoveFiles">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
     </InstallExecuteSequence>
 
     <Feature Id="Main" Title="Facet" Level="1">

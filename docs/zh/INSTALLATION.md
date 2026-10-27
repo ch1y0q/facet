@@ -203,9 +203,14 @@ cd "$env:LOCALAPPDATA\Facet\app\installer"
 图库只在本机上响应。`Start-Facet.ps1 -Lan` 会向其他设备开放，在配置中设置 `viewer.password`
 之前它会拒绝启动。
 
-**卸载**（设置 → 应用）会移除程序和快捷方式，保留 `data` 和 `config`。
-只有默认位置 `%LOCALAPPDATA%\Facet\venv` 中的 Python 环境会被移除。
-uv 的下载缓存（`%LOCALAPPDATA%\uv\cache`）和已下载的模型会保留（用户文件夹中的 `.cache`、`.insightface`）。
+**每个文件夹只用一种写法。** Facet 按扫描时使用的路径保存每张照片，所以 `\\NAS\Photos` 和映射为
+`Z:\` 的同一个共享对它来说是两个不同的文件夹：两个都扫描会让每张照片出现两次。请选定一种写法并一直使用。
+
+**卸载**（设置 → 应用）会停止 Facet，移除程序、快捷方式、Python 环境和 ExifTool（自定义的
+`FACET_HOME` 下同样会移除），保留 `data` 和 `config`。无法删除的内容会记录在
+`data\logs\uninstall.log` 中。uv 的下载缓存（`%LOCALAPPDATA%\uv\cache`）和已下载的模型会保留
+（用户文件夹中的 `.cache`、`.insightface`）。升级会保留自定义的安装文件夹，只有在 Facet 的依赖
+发生变化时才会重新建立环境。
 
 **从 Docker 迁移图库。** 数据库保存每张照片的完整路径，而 Windows 安装看到的是另一个路径下的
 同一批照片（`\\NAS\Photos\...` 而不是 `/data/photos/...`）。把数据库复制到 `data`，停止 Facet，
