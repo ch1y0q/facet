@@ -12,8 +12,7 @@ imagecodecs = pytest.importorskip("imagecodecs")
 
 @pytest.mark.parametrize("container", [False, True])
 @pytest.mark.parametrize("dtype,depth,exponent", [
-    (np.uint8, 8, 0), (np.uint16, 10, 0), (np.uint16, 12, 0),
-    (np.uint16, 16, 0), (np.float16, 16, 5), (np.float32, 32, 8),
+    (np.uint8, 8, 0), (np.uint16, 16, 0), (np.float16, 16, 5), (np.float32, 32, 8),
 ])
 @pytest.mark.parametrize("shape", [(24, 40), (24, 40, 2), (24, 40, 4)])
 def test_real_codestream_depths(tmp_path, dtype, depth, exponent, container, shape):
@@ -29,6 +28,19 @@ def test_real_codestream_depths(tmp_path, dtype, depth, exponent, container, sha
     assert (info.bits_per_sample, info.exponent_bits_per_sample) == (depth, exponent)
     assert info.orientation == 1
     assert not info.have_animation
+
+
+
+@pytest.mark.parametrize("depth,payload", [
+    (10, "ff0a00101450b408080001002c004b188b15c259c11e80fe03"),
+    (12, "ff0a00101850b408080001002c004b188b15c269411f80fe0f"),
+])
+def test_non_byte_depths_independent_of_encoder_version(depth, payload):
+    # Self-generated 1x1 white RGB fixtures. Older imagecodecs encoders store
+    # 16-bit codestreams even when their input bitspersample is 10 or 12.
+    info = jpegxl_basic_info(BytesIO(bytes.fromhex(payload)))
+    assert (info.width, info.height, info.bits_per_sample) == (1, 1, depth)
+    assert info.exponent_bits_per_sample == 0
 
 
 def _encoded(fields):
@@ -68,7 +80,7 @@ def test_intrinsic_preview_and_animation_fields_are_skipped():
 
 
 def test_header_read_is_bounded_and_handles_fragments():
-    data = imagecodecs.jpegxl_encode(np.zeros((24, 40, 3), np.uint16), bitspersample=12, lossless=True, numthreads=1)
+    data = bytes.fromhex("ff0a00101850b408080001002c004b188b15c269411f80fe0f")
     def box(kind, payload):
         return struct.pack(">I4s", len(payload) + 8, kind) + payload
     signature = b"\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a"
