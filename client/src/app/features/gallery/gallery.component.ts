@@ -1646,6 +1646,11 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   /** Save/restore sidebar scroll position on drawer open/close */
   onFilterDrawerChange(open: boolean): void {
+    // openedChange fires when an animation ends, so a close() followed quickly by
+    // open() reports the stale close after the drawer is open again. Recording it
+    // would make the sync effect close the drawer, whose pending open would then
+    // reopen it -- an endless open/close loop.
+    if (open !== this.filterDrawer()?.opened) return;
     // The details rail holds this drawer open by itself, so an `open` it caused
     // must not be recorded as "the user asked for filters" — otherwise closing
     // the filters would immediately re-open them and the toggle would be stuck.

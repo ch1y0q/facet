@@ -1318,6 +1318,21 @@ describe('GalleryComponent', () => {
       mockStore.filterDrawerOpen.set(false);
     });
 
+    it('ignores a stale drawer animation event that no longer matches the drawer, so a quick close and reopen cannot ping-pong', async () => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockStore.filterDrawerOpen.set(true);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const drawer = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as MatSidenav;
+      expect(drawer.opened).toBe(true);
+      mockStore.setFilterDrawerOpen.mockClear();
+      // The close animation of an earlier close() finishes after the reopen.
+      drawer.openedChange.emit(false);
+      await new Promise(resolve => setTimeout(resolve));
+      expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+      mockStore.filterDrawerOpen.set(false);
+    });
+
     it('the load-error Retry button reloads without dropping the pin', () => {
       mockStore.pinnedPaths.set(['/a.jpg']);
       mockStore.loadError.set(true);
