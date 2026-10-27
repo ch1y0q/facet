@@ -104,7 +104,7 @@ destructive endpoint's guard removed.
 
 ## Dependencies
 
-Python packages: `torch`, `torchvision`, `open-clip-torch`, `opencv-python`, `pillow`, `pillow-heif`, `imagehash`, `rawpy`, `fastapi`, `uvicorn`, `pyjwt`, `numpy`, `tqdm`, `exifread`, `insightface`, `scipy`, `scikit-learn`, `hdbscan`, `pyiqa`, `psutil`, `transformers>=5.3.0,<5.16`, `accelerate>=0.25.0`, `reverse_geocoder`, `tifffile`, `imagecodecs` (JPEG XL previews of Lightroom Classic 13+ merged DNGs)
+Python packages: `torch`, `torchvision`, `open-clip-torch`, `opencv-python`, `pillow`, `pillow-heif`, `imagehash`, `rawpy`, `fastapi`, `uvicorn`, `pyjwt`, `numpy`, `tqdm`, `exifread`, `insightface`, `scipy`, `scikit-learn`, `hdbscan`, `pyiqa`, `psutil`, `transformers>=5.3.0,<5.16`, `accelerate>=0.25.0`, `reverse_geocoder`, `tifffile`, `imagecodecs` (JPEG XL photos and previews of Lightroom Classic 13+ merged DNGs)
 
 For GPU face clustering (optional): `cuml`, `cupy` (requires conda + CUDA)
 
@@ -113,6 +113,8 @@ For vector search (optional): `sqlite-vec>=0.1.6` (enables KNN search in SQLite,
 For the extended IQA tier (optional, `scoring_config.json` `iqa_extended`): `qrealign` loads natively via `transformers` in both modes (no `pyiqa` needed) and defaults to `"auto"` (on for the `8gb`/`16gb`/`24gb` profiles, off for `legacy`/CPU — the first extended-tier scorer usable from the 8gb profile up). `aesthetic-predictor-v2-5` (for `aesthetic_v25`, **deprecated**: AGPL-3.0-licensed, unmaintained upstream since 2024-12-18, prefer `qrealign`) is the tier's only remaining optional package, installed via `pip install -e .[iqa-extended]`. DeQA-Score loads via `transformers`.
 
 For appearance-based per-face eyes/smile (optional, `scoring_config.json` `face_detection.blendshapes`, ON when installed): `mediapipe==0.10.35`. MUST be installed as `pip install mediapipe==0.10.35 --no-deps` then `pip install absl-py flatbuffers` — NEVER a plain `pip install mediapipe`, whose bundled `opencv-contrib-python` would double-install the `cv2` namespace against Facet's `opencv-python`. Degrades silently to the landmark-geometry scores when absent. Model bundle `face_landmarker.task` (~3.6 MiB) auto-downloads to `pretrained_models/`. See [docs/FACE_RECOGNITION.md](docs/FACE_RECOGNITION.md).
+
+JPEG XL stills use the existing core `imagecodecs` dependency, including in Docker; no extra package is needed. `utils/jpegxl.py` registers a Pillow opener when `imagecodecs.JPEGXL.available`, checking dimensions before decoding. If that codec is unavailable, `.jxl` drops out of `SCANNABLE_IMAGE_EXTENSIONS` but stays in `WATCHABLE_IMAGE_EXTENSIONS`. Native JXL array decoding does not expose embedded ICC profiles or color encoding; only reconstructed JPEGs currently retain ICC color management for generated previews.
 
 External tool: `exiftool` >= 13.28 (command-line, optional — `exifread` fallback handles all RAW formats; 13.23–13.27 corrupt darktable XMP sidecars so Facet refuses to write with them; the Docker image pins 13.55)
 

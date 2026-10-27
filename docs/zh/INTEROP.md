@@ -14,7 +14,7 @@ ExifTool 导出需要 Facet 随附的标签定义。如果这些定义不可用�
 
 ## RAW 附属文件命名陷阱
 
-Facet 在 `IMG_1234.CR2` 旁导出 `IMG_1234.CR2.xmp`，继续使用 darktable 的完整文件名约定。Lightroom Classic 和 Capture One 通常为专有 RAW 使用 `IMG_1234.xmp`。下面的导入策略不会改变导出文件名。JPEG/HEIC/TIFF/PNG/DNG 可通过 `--embed-originals` 使用文件内嵌通道；GIF/WebP/BMP/AVIF 和专有 RAW 仍需匹配的附属文件命名。
+Facet 在 `IMG_1234.CR2` 旁导出 `IMG_1234.CR2.xmp`，继续使用 darktable 的完整文件名约定。Lightroom Classic 和 Capture One 通常为专有 RAW 使用 `IMG_1234.xmp`。下面的导入策略不会改变导出文件名。JPEG/HEIC/TIFF/PNG/DNG 可通过 `--embed-originals` 使用文件内嵌通道；GIF/WebP/BMP/AVIF/JPEG XL 和专有 RAW 仍需匹配的附属文件命名。
 
 使用 `--import-sidecars --sidecar-naming full|basename|auto` 明确选择发现策略：
 

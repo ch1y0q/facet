@@ -73,7 +73,7 @@ dependencies = [
     # and Pillow cannot decode JPEG XL, so utils.image_loading reads the
     # preview through tifffile, which decodes JPEG XL tiles via imagecodecs.
     "tifffile>=2024.1.1",
-    "imagecodecs>=2024.1.1",
+    "imagecodecs>=2024.1.1",  # also backs the standalone JPEG XL Pillow opener
     "numpy>=1.24.0",
     "scipy>=1.10.0",
     "hdbscan>=0.8.40",

@@ -39,6 +39,14 @@ try:
 except ImportError:
     logger.warning("pillow-heif not installed — HEIF/HEIC files will be skipped")
 
+# JPEG XL uses the imagecodecs dependency already needed for DNG previews.
+_jxl_available = False
+try:
+    from utils.jpegxl import register_bounded_jpegxl_opener
+    _jxl_available = register_bounded_jpegxl_opener()
+except ImportError:
+    logger.debug("imagecodecs JPEG XL codec unavailable — JPEG XL files will be skipped")
+
 # AVIF codec availability (soft dependency, native in Pillow >= 11.3). Checked
 # eagerly, at import time, for the same reason pillow-heif is registered
 # eagerly above rather than through utils/_lazy.py's lazy PIL loader:
@@ -82,13 +90,16 @@ _SIXTEEN_BIT_MODES = frozenset({'I;16', 'I;16B', 'I;16L'})
 KNOWN_AVIF_EXTENSIONS = frozenset({'.avif'})
 AVIF_EXTENSIONS = KNOWN_AVIF_EXTENSIONS if _avif_available else frozenset()
 
+KNOWN_JXL_EXTENSIONS = frozenset({'.jxl'})
+JXL_EXTENSIONS = KNOWN_JXL_EXTENSIONS if _jxl_available else frozenset()
+
 # Every still-image extension the scan collector (facet.py) accepts. HEIF/AVIF
 # drop out when their decoder is missing, because a scan would have nothing to
 # decode them with.
 SCANNABLE_IMAGE_EXTENSIONS = (
     JPEG_EXTENSIONS | HEIF_EXTENSIONS | RAW_EXTENSIONS
     | PNG_EXTENSIONS | GIF_EXTENSIONS | WEBP_EXTENSIONS | BMP_EXTENSIONS
-    | TIFF_EXTENSIONS | AVIF_EXTENSIONS
+    | TIFF_EXTENSIONS | AVIF_EXTENSIONS | JXL_EXTENSIONS
 )
 
 # What watch mode observes. Deliberately the KNOWN sets rather than the decodable
@@ -98,7 +109,7 @@ SCANNABLE_IMAGE_EXTENSIONS = (
 WATCHABLE_IMAGE_EXTENSIONS = (
     JPEG_EXTENSIONS | KNOWN_HEIF_EXTENSIONS | RAW_EXTENSIONS
     | PNG_EXTENSIONS | GIF_EXTENSIONS | WEBP_EXTENSIONS | BMP_EXTENSIONS
-    | TIFF_EXTENSIONS | KNOWN_AVIF_EXTENSIONS
+    | TIFF_EXTENSIONS | KNOWN_AVIF_EXTENSIONS | KNOWN_JXL_EXTENSIONS
 )
 
 
@@ -828,6 +839,20 @@ def open_nonraw_image(photo, draft_edge=None):
         # convert('RGB') clip is left untouched.
         pil_img = pil_img.convert('I').point(lambda i: i * (1 / 256)).convert('L')
 
+    # JXL previews and model inputs share an explicit sRGB render. Without
+    # this transform, saving a JPEG drops the profile and changes P3 colours.
+    if Path(photo).suffix.lower() in KNOWN_JXL_EXTENSIONS and pil_img.info.get('icc_profile'):
+        from PIL import ImageCms
+        profile = ImageCms.ImageCmsProfile(BytesIO(pil_img.info['icc_profile']))
+        input_mode = 'L' if profile.profile.xcolor_space.strip() == 'GRAY' else 'RGB'
+        normalized_exif = pil_img.getexif().tobytes() if pil_img.getexif() else None
+        pil_img = ImageCms.profileToProfile(
+            pil_img.convert(input_mode), profile,
+            ImageCms.createProfile('sRGB'), outputMode='RGB',
+        )
+        if normalized_exif:
+            pil_img.info['exif'] = normalized_exif
+
     if pil_img.mode != 'RGB':
         pil_img = pil_img.convert('RGB')
 
@@ -843,6 +868,8 @@ def open_nonraw_image(photo, draft_edge=None):
         # difference from doing it earlier.
         background = Image.new('RGB', pil_img.size, (255, 255, 255))
         background.paste(pil_img, mask=alpha_channel)
+        if Path(photo).suffix.lower() in KNOWN_JXL_EXTENSIONS:
+            background.info.update(pil_img.info)
         pil_img = background
 
     return pil_img

@@ -393,6 +393,7 @@ def test_scannable_extensions_include_hif():
         | image_loading.BMP_EXTENSIONS
         | image_loading.TIFF_EXTENSIONS
         | image_loading.AVIF_EXTENSIONS
+        | image_loading.JXL_EXTENSIONS
     )
 
 
@@ -1015,3 +1016,19 @@ def test_exif_with_neutral_orientation_rewrites_only_the_orientation():
 def test_exif_with_neutral_orientation_survives_a_malformed_blob():
     garbage = b'\x00\x01\x02not an exif blob'
     assert image_loading._exif_with_neutral_orientation(garbage) == garbage
+
+
+def test_unavailable_imagecodecs_jxl_skips_scan_but_watch_knows_extension():
+    import subprocess
+    import sys
+    code = """
+import sys
+import imagecodecs
+from types import SimpleNamespace
+imagecodecs.JPEGXL = SimpleNamespace(available=False)
+from utils.image_loading import JXL_EXTENSIONS, SCANNABLE_IMAGE_EXTENSIONS, WATCHABLE_IMAGE_EXTENSIONS
+assert not JXL_EXTENSIONS
+assert '.jxl' not in SCANNABLE_IMAGE_EXTENSIONS
+assert '.jxl' in WATCHABLE_IMAGE_EXTENSIONS
+"""
+    subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True)

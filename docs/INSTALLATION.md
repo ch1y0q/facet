@@ -753,7 +753,7 @@ manually and place it at `pretrained_models/samp_net.pth`.
 | `psutil` | Batch-processing auto-tuning (system monitoring) |
 | `aiosqlite` | Async SQLite for FastAPI read endpoints |
 | `sqlite-vec` | On-disk KNN for semantic search (falls back to in-memory NumPy cache if missing, or if this Python's SQLite cannot load extensions; similar-photo search does not use it, it scans exactly); `pip install -e .[vec]` |
-| `tifffile`, `imagecodecs` | Lightroom Classic 13+ merged DNGs (HDR/Panorama/Enhance), whose previews are JPEG XL |
+| `tifffile`, `imagecodecs` | JPEG XL photos and Lightroom Classic 13+ merged DNG previews (HDR/Panorama/Enhance) |
 
 All of these are in `requirements.txt`; no profile needs extra base packages.
 

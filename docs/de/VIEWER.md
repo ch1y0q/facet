@@ -4,6 +4,16 @@
 
 FastAPI + Angular Single-Page-Application zum Durchsuchen, Filtern und Verwalten von Fotos.
 
+JPEG XL (`.jxl`) wird beim Scannen und im Überwachungsmodus über die vorhandene Kernabhängigkeit `imagecodecs` gelesen, die in Standardinstallation und Docker enthalten ist. Kein Zusatzpaket ist nötig. Nur wenn dieser Codec fehlt, überspringt der Scan JPEG XL. Originale und Originaldownloads bleiben `.jxl`; Facet-Bewertungen verwenden Sidecars statt eingebetteter Metadatenänderungen.
+
+Bei der Vollbildanzeige erhalten Browser, die `image/jxl` ausdrücklich im HTTP-Accept-Header angeben, die unveränderten Originalbytes. Andere Browser erhalten eine JPEG-Konvertierung. Beide Varianten berücksichtigen Accept im Cache; Galerievorschaubilder bleiben kleine JPEGs.
+
+Vor der Pixeldekodierung gilt das vorhandene Pillow-Pixellimit; die Header-Prüfung ist auf 4.096 Container-Boxen begrenzt. Vorschaupuffer verwenden 8-Bit-RGB mit Transparenz auf Weiß, ohne zusätzliches HDR-Tonemapping für JPEG XL. Bei animierten Dateien wird nur das erste Bild verwendet. Rekonstruiert eine JXL-Datei ein ursprüngliches JPEG, bleibt dessen ICC-Profil erhalten und Vorschauen werden nach sRGB konvertiert. Bei nativen JXL-Codestreams stellt `imagecodecs` weder das eingebettete ICC-Profil noch die Farbkodierung bereit: Bewertung und Vorschauen verwenden die dekodierten Array-Werte, ohne garantiertes Farbmanagement für Wide-Gamut- oder HDR-Inhalte. Die native Originalausgabe erhält Bittiefe und Profil des Originals.
+
+JPEG-XL-Kompatibilitätskonvertierungen teilen das Zugriffslimit der scharfen Vorschau, bündeln identische laufende Anfragen und speichern höchstens fünf Konvertierungen im Cache. Das bisherige Verhalten der HEIF/TIFF-Vollbildkonvertierung bleibt unverändert. Die Codestream-Ausrichtung wird beachtet; gültiges EXIF einschließlich Brotli-Kompression und TIFF-Offsets ungleich null wird ohne Änderung der Quelle gelesen. Kodiertes und entpacktes EXIF sind jeweils auf 16 MiB begrenzt; ungültiges oder zu großes EXIF wird verworfen, das Bild bleibt lesbar.
+
+Der Anzeigeadapter lehnt nicht unterstützte Zusatzkanäle, einschließlich vormultipliziertem, verkleinertem oder anders tiefem Alpha, vor der Pixeldekodierung ab.
+
 ## Inhalt
 
 - [Galerie starten](#galerie-starten) · [Authentifizierung](#authentifizierung) · [Filteroptionen](#filteroptionen) · [Sortierung](#sortierung) · [Galeriefunktionen](#galeriefunktionen)
@@ -1284,7 +1294,7 @@ Die TypeScript-Typen des Clients werden mit `cd client && npm run gen:api` aus d
 | `GET /thumbnail` | Foto-Vorschaubild. Ein `size` über 640 wird aus dem Original mit bis zu 1920 px gerendert (nie hochskaliert), egal welcher größere Wert angefragt wurde; ist das Original nicht verfügbar, kann das Rendering nicht binnen 5 s starten (eine Anfrage, die ein bereits laufendes Rendering mitnutzt, wartet dieselben 5 s auf das gesamte Rendering, nicht nur auf dessen Start) oder enthält das Rendering kein Signal (ein komplett schwarzes Dekodierergebnis, z. B. bei einem abgeschnittenen RAW), wird das gespeicherte Vorschaubild mit einem `max-age` von 60 Sekunden geliefert |
 | `GET /face_thumbnail/{id}` | Gesichts-Ausschnitt-Vorschaubild |
 | `GET /person_thumbnail/{id}` | Repräsentatives Personen-Vorschaubild |
-| `GET /image` | Bild in voller Auflösung. Native JPEG-, PNG-, GIF-, WebP-, BMP- und AVIF-Dateien behalten ihre Originalbytes und verwenden einheitliche Bildmedientypen unabhängig vom MIME-Verzeichnis des Systems. |
+| `GET /image` | Bild in voller Auflösung. Native JPEG-, PNG-, GIF-, WebP-, BMP- und AVIF-Dateien behalten ihre Originalbytes und verwenden einheitliche Bildmedientypen unabhängig vom MIME-Verzeichnis des Systems. JPEG XL wird nur an einen Browser, dessen Accept-Header `image/jxl` nennt, als Original-`.jxl` gesendet, sonst als JPEG-Konvertierung (`Vary: Accept`). |
 
 ### Filteroptionen
 

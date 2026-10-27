@@ -4,6 +4,16 @@
 
 Aplicação de página única em FastAPI + Angular para navegar, filtrar e gerenciar fotos.
 
+A análise e a deteção JPEG XL (`.jxl`) no modo de monitorização usam a dependência principal existente `imagecodecs`, incluída nas instalações padrão e no Docker. Não é preciso outro pacote. Estes ficheiros só são ignorados se o codec não estiver disponível. Os originais e os seus downloads continuam em `.jxl`; as decisões do Facet usam sidecars em vez de escrever metadados incorporados.
+
+Na visualização em tamanho completo, os navegadores que anunciam explicitamente `image/jxl` no cabeçalho HTTP Accept recebem os bytes originais sem alterações. Os outros recebem uma conversão JPEG. Ambas as representações distinguem Accept na cache; as miniaturas da galeria continuam a ser pequenos JPEG.
+
+O limite de píxeis do Pillow é verificado antes da descodificação; a inspeção de cabeçalhos limita-se a 4.096 caixas. Os buffers de pré-visualização usam RGB de 8 bits, com transparência sobre branco e sem mapeamento de tons HDR JPEG XL adicional. Das animações é usado apenas o primeiro quadro. Quando o JXL reconstrói um JPEG original, o perfil ICC é preservado e as pré-visualizações são convertidas para sRGB. Para fluxos JXL nativos, o `imagecodecs` não disponibiliza o perfil ICC incorporado nem a codificação de cor: a pontuação e as pré-visualizações usam os valores do array descodificado, sem garantia de gestão de cor para conteúdo de gama ampla ou HDR. A entrega nativa do original preserva a profundidade e o perfil.
+
+As conversões de compatibilidade JPEG XL partilham o limite de concorrência das pré-visualizações nítidas, agrupam pedidos idênticos em curso e guardam no máximo cinco conversões em cache. O comportamento anterior das conversões HEIF/TIFF de tamanho completo não muda. É respeitada a orientação do fluxo e é lido EXIF válido, incluindo Brotli e offsets TIFF não nulos, sem alterar a origem. EXIF codificado e descomprimido limitam-se cada um a 16 MiB; metadados inválidos ou excessivos são ignorados e a imagem continua legível.
+
+O adaptador de visualização recusa canais auxiliares não suportados, incluindo alfa pré-multiplicado, subamostrado ou de profundidade diferente, antes de descodificar os píxeis.
+
 ## Conteúdo
 
 - [Iniciando o Visualizador](#iniciando-o-visualizador) · [Autenticação](#autenticação) · [Opções de Filtragem](#opções-de-filtragem) · [Ordenação](#ordenação) · [Recursos da Galeria](#recursos-da-galeria)
@@ -1283,7 +1293,7 @@ Os tipos TypeScript do cliente são gerados a partir desse esquema em `client/sr
 | `GET /thumbnail` | Miniatura da foto. Um `size` maior que 640 é gerado a partir do original em até 1920 px (nunca ampliado), seja qual for o valor maior pedido; se o original estiver indisponível, o render não puder começar em 5 s (uma requisição que se junta a um render já em andamento espera esses mesmos 5 s pelo render inteiro, não só pelo início) ou o render não tiver sinal (uma decodificação totalmente preta, p. ex. um RAW truncado), a miniatura armazenada é servida com um `max-age` de 60 segundos |
 | `GET /face_thumbnail/{id}` | Miniatura de recorte de rosto |
 | `GET /person_thumbnail/{id}` | Miniatura representativa da pessoa |
-| `GET /image` | Imagem em resolução total. Os ficheiros nativos JPEG, PNG, GIF, WebP, BMP e AVIF mantêm os bytes originais e usam tipos de imagem consistentes, independentemente do registo MIME do sistema. |
+| `GET /image` | Imagem em resolução total. Os ficheiros nativos JPEG, PNG, GIF, WebP, BMP e AVIF mantêm os bytes originais e usam tipos de imagem consistentes, independentemente do registo MIME do sistema. O JPEG XL é enviado como `.jxl` original apenas a um navegador cujo cabeçalho Accept inclui `image/jxl`, e como conversão JPEG caso contrário (`Vary: Accept`). |
 
 ### Opções de Filtro
 
