@@ -91,6 +91,21 @@ def _reset_index_build_status():
     schema_startup._set_status(state=schema_startup.STATE_READY, done=0, total=0)
 
 
+def reset_place_search():
+    """The provider cache, throttle and in-flight flag are process-wide."""
+    from api import place_search
+    with place_search._lock:
+        place_search._cache.clear()
+        place_search._next_request = 0
+        place_search._inflight = False
+
+
+@pytest.fixture(autouse=True)
+def _reset_place_search():
+    reset_place_search()
+    yield
+
+
 @pytest.fixture(autouse=True)
 def _reset_culling_groups_cache():
     """The culling-groups memo is process-global with a 45 s TTL: a result one test
@@ -325,7 +340,8 @@ def seed_photos_prefix():
     keyed by column name — rows may have different column sets from each
     other, since each is inserted with its own column list (a full contract
     row and a bare-bones sequence-set frame both fit through the same call).
-    Every ``prefix`` a test passes is deleted in teardown, so callers with
+    Every ``prefix`` a test passes is deleted in teardown, along with the ``user_preferences``,
+    ``rating_provenance`` and ``comparisons`` rows under it, so callers with
     different row shapes can share one connection and one cleanup pass
     instead of each hand-rolling "seed under a prefix, delete the prefix".
     """
@@ -349,6 +365,10 @@ def seed_photos_prefix():
     finally:
         for prefix in prefixes:
             conn.execute("DELETE FROM photos WHERE path LIKE ?", (prefix + "%",))
+            conn.execute("DELETE FROM user_preferences WHERE photo_path LIKE ?", (prefix + "%",))
+            conn.execute("DELETE FROM rating_provenance WHERE photo_path LIKE ?", (prefix + "%",))
+            conn.execute("DELETE FROM comparisons WHERE photo_a_path LIKE ? OR photo_b_path LIKE ?",
+                         (prefix + "%", prefix + "%"))
         conn.commit()
         conn.close()
 
@@ -774,6 +794,31 @@ def fake_tab(monkeypatch):
     yield make
     for tab in tabs:
         tab.stop()
+
+
+@pytest.fixture()
+def off_event_loop():
+    """Wrap a sync callable so it fails the test when run on the event loop.
+
+    ``asyncio.get_running_loop()`` returns the loop from a coroutine and raises
+    ``RuntimeError`` from a worker thread, so a wrapped function reached through
+    ``asyncio.to_thread`` passes and one called directly from async code fails.
+    Returns ``guard(function, message)``.
+    """
+    import asyncio
+    import functools
+
+    def guard(function, message):
+        @functools.wraps(function)
+        def guarded(*args, **kwargs):
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return function(*args, **kwargs)
+            pytest.fail(message)
+        return guarded
+
+    return guard
 
 
 LITERAL_KEYWORD_NAMES = ['true', 'false', 'null', '1.50', '1e3', '2024']

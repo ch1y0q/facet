@@ -39,11 +39,11 @@ import { ComparisonCategoryExplainerComponent } from '../comparison/comparison-c
 import { DownloadOption } from '../../core/api/types';
 import { downloadAll } from '../../shared/utils/download';
 import { GalleryStore } from '../gallery/gallery.store';
-import { GalleryFilters } from '../gallery/gallery-filters.util';
+import { setScopePatch } from '../gallery/gallery-filters.util';
 import * as L from 'leaflet';
 import { createLeafletMap } from '../../shared/leaflet';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
-import { isTypingContext } from '../../shared/utils/keyboard';
+import { isPageShortcutBlocked, isTypingContext } from '../../shared/utils/keyboard';
 import type { CategoryOverrideResult } from './category-override-dialog.component';
 
 const SOCIAL_SOURCE_KEYS: Record<string, string> = {
@@ -932,24 +932,9 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     const set = this.photoSet();
     if (!set?.kind || set.group_id == null) return;
     const groupId = String(set.group_id);
-    const updates: Partial<GalleryFilters> = {
-      sequence_group_id: '', sequence_kind: '', burst_group_id: '', duplicate_group_id: '',
-    };
-    if (set.kind === 'burst') {
-      updates.burst_group_id = groupId;
-      updates.hide_bursts = false;
-    } else if (set.kind === 'duplicate') {
-      updates.duplicate_group_id = groupId;
-      updates.hide_duplicates = false;
-    } else if (set.kind === 'bracket') {
-      updates.sequence_kind = set.kind;
-      updates.sequence_group_id = groupId;
-      updates.hide_brackets = false;
-    } else {
-      updates.sequence_kind = set.kind;
-      updates.sequence_group_id = groupId;
-      updates.hide_panoramas = false;
-    }
+    const updates = setScopePatch(
+      set.kind === 'burst' || set.kind === 'duplicate' ? set.kind : 'sequence', groupId, set.kind,
+    );
     // Carried via router navigation state, never the URL or a post-navigate
     // updateFilters() call: the gallery route re-initialises its filters from
     // config + localStorage + URL on activation, which either overwrites a
@@ -985,9 +970,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
    *  with the filters it came from. */
   @HostListener('document:keydown', ['$event'])
   protected onRatingShortcut(event: KeyboardEvent): void {
-    if (isTypingContext(event)) return;
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
-    if (document.querySelector('mat-dialog-container, mat-bottom-sheet-container')) return;
+    if (isPageShortcutBlocked(event)) return;
     if (!this.auth.isEdition() || !this.store.config()?.features?.show_rating_controls) return;
     const p = this.photo();
     if (!p) return;
@@ -1347,7 +1330,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
         if (!res) return;
         // `removed_missing` counts as deleted for this surface: the row is
         // gone either way, which is all the photo page can observe.
-        const gone = res.deleted.includes(p.path) || (res.removed_missing ?? []).includes(p.path);
+        const gone = res.deleted.includes(p.path) || res.removed_missing.includes(p.path);
         if (gone) {
           this.store.removePhotos([p.path]);
           this.snackBar.open(this.i18n.t(I18N.photo_detail.delete.success), '', { duration: 2000 });

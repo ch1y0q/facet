@@ -21,9 +21,6 @@ def feature(coords=None, **props):
 
 @pytest.fixture(autouse=True)
 def reset_search():
-    place_search._cache.clear()
-    place_search._next_request = 0
-    place_search._inflight = False
     with patch.dict('api.place_search.VIEWER_CONFIG', {'place_search_url': 'https://example.org/api'}):
         yield
 
@@ -318,7 +315,7 @@ def test_total_deadline_interrupts_trickled_headers_and_chunk_framing(prefix):
                 accepted.set()
                 try:
                     peer.sendall(prefix)
-                    for _ in range(24):
+                    for _ in range(60):
                         if stop.wait(0.05):
                             break
                         peer.sendall(b'x')
@@ -328,11 +325,11 @@ def test_total_deadline_interrupts_trickled_headers_and_chunk_framing(prefix):
         server.start()
         started = time.monotonic()
         try:
-            with patch('api.place_search._TIMEOUT_SECONDS', 0.3):
+            with patch('api.place_search._TIMEOUT_SECONDS', 0.2):
                 with pytest.raises(TimeoutError):
                     place_search._fetch(f'http://127.0.0.1:{listener.getsockname()[1]}/api', 'Berlin')
             assert accepted.is_set()
-            assert time.monotonic() - started < 0.9
+            assert time.monotonic() - started < 2
         finally:
             stop.set()
             server.join(1)
@@ -476,3 +473,19 @@ def test_unicode_result_label_counts_characters_not_utf16_units(edition_client):
     assert response.status_code == 200, response.text
     assert response.json() == {'results': [{'label': label, 'latitude': 52.5, 'longitude': 13.4}]}
     fetch.assert_called_once()
+
+
+@pytest.mark.parametrize('query', ['   ', 'ab\nc', 'a' * 201, ' ' * 201 + 'abc'])
+def test_route_and_service_share_one_query_boundary(edition_client, query):
+    with pytest.raises(ValueError):
+        place_search.normalize_query(query)
+    with pytest.raises(HTTPException) as error:
+        place_search.search(query, _SCOPE)
+    assert error.value.status_code == 422
+    with patch('api.place_search._fetch') as fetch:
+        assert edition_client.get('/api/places/search', params={'q': query}).status_code == 422
+    fetch.assert_not_called()
+
+
+def test_query_boundary_trims_surrounding_whitespace():
+    assert place_search.normalize_query('\t Berlin \n') == 'Berlin'

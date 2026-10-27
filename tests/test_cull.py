@@ -449,6 +449,88 @@ class TestCullApplyFilterScope:
         assert not os.path.exists(str(tmp_path / "k"))
 
 
+class TestCullApplyOnlyFilters:
+    """A whole-view cull of ``blinks_only`` / ``duplicates_only`` / ``show_rejected``
+    must resolve the rows ``GET /api/photos`` shows for the same filters: the
+    default-on hide toggles would otherwise drop members of the set the filter
+    names, on an endpoint that moves and trashes files. Every case asserts both
+    the explicit expected set and equality with the grid's own path set. The seed
+    mirrors ``tests/test_gallery.py::TestOnlyFilters._seed`` (plus a rejected
+    burst member), which pins the grid side.
+
+    Rows go into the shared session database through ``seed_photos_prefix``
+    under a per-test ``tmp_path`` prefix, so the real files the cull needs
+    on disk and the rows live under one prefix and are cleaned up together.
+    """
+
+    @staticmethod
+    def _seed(tmp_path, seed_photos_prefix):
+        extras = {
+            "plain": {},
+            "blink": {"is_blink": 1},
+            "dup_lead": {"duplicate_group_id": 7, "is_duplicate_lead": 1},
+            "dup_copy": {"duplicate_group_id": 7, "is_duplicate_lead": 0},
+            "dup_burst": {"duplicate_group_id": 7, "is_duplicate_lead": 0,
+                          "burst_group_id": 3, "is_burst_lead": 0},
+            "rejected": {"is_rejected": 1},
+            "burst_reject": {"is_rejected": 1, "burst_group_id": 4, "is_burst_lead": 0},
+            # the burst lead, so burst_reject is a hidden non-lead member
+            "lead": {"burst_group_id": 4, "is_burst_lead": 1},
+        }
+        paths = {n: _make_file(tmp_path, n + ".jpg") for n in extras}
+        seed_photos_prefix(os.path.join(str(tmp_path), ""), [
+            {"path": paths[n], "filename": n + ".jpg", **extra} for n, extra in extras.items()
+        ])
+        return paths
+
+    def _check(self, client, tmp_path, action, filters, expected):
+        prefix = os.path.join(str(tmp_path), "")
+        filters = {"hide_blinks": "1", **filters}
+        with mock.patch(f"{_EXPORT_MODULE}._allowed_export_roots", return_value=[str(tmp_path)]):
+            resp = client.post("/api/cull/apply", json={
+                "filters": filters, "action": action,
+                "target_dir": str(tmp_path / "k"), "dry_run": True,
+            })
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        culled = set(body["would_copy"] if action == "copy_keeps" else body["would_move"])
+        grid = client.get("/api/photos", params={**filters, "per_page": 100})
+        assert grid.status_code == 200, grid.text
+        shown = {p["path"] for p in grid.json()["photos"] if p["path"].startswith(prefix)}
+        assert culled == expected
+        assert shown == expected, "the grid disagrees with the cull scope"
+
+    def test_blinks_only_resolves_the_blink_rows(self, client, tmp_path, seed_photos_prefix):
+        p = self._seed(tmp_path, seed_photos_prefix)
+        self._check(client, tmp_path, "copy_keeps", {"blinks_only": "1"}, {p["blink"]})
+
+    def test_blinks_only_accepts_the_boolean_spelling(self, client, tmp_path, seed_photos_prefix):
+        p = self._seed(tmp_path, seed_photos_prefix)
+        self._check(client, tmp_path, "copy_keeps", {"blinks_only": "true"}, {p["blink"]})
+
+    def test_duplicates_only_overrides_the_hide_toggles(self, client, tmp_path, seed_photos_prefix):
+        p = self._seed(tmp_path, seed_photos_prefix)
+        want = {p["dup_lead"], p["dup_copy"], p["dup_burst"]}
+        self._check(client, tmp_path, "copy_keeps", {"duplicates_only": "1"}, want)
+        self._check(client, tmp_path, "copy_keeps",
+                    {"duplicates_only": "1", "hide_bursts": "1", "hide_duplicates": "1"}, want)
+
+    def test_show_rejected_reaches_a_hidden_burst_member(self, client, tmp_path, seed_photos_prefix):
+        p = self._seed(tmp_path, seed_photos_prefix)
+        self._check(client, tmp_path, "move_rejects",
+                    {"show_rejected": "true", "hide_bursts": "1"},
+                    {p["rejected"], p["burst_reject"]})
+
+    def test_only_filters_combine_with_other_filters(self, client, tmp_path, seed_photos_prefix):
+        p = self._seed(tmp_path, seed_photos_prefix)
+        conn = sqlite3.connect(os.environ["DB_PATH"])
+        conn.execute("UPDATE photos SET category = 'street' WHERE path = ?", (p["dup_copy"],))
+        conn.commit()
+        conn.close()
+        self._check(client, tmp_path, "copy_keeps",
+                    {"duplicates_only": "1", "category": "street"}, {p["dup_copy"]})
+
+
 class TestCullApplyFilterScopeIsBounded:
     """The ``filters`` branch must be bounded, like the sidecar export branch.
 
@@ -1541,6 +1623,22 @@ class TestPhotoDelete:
             conn.close()
         assert rows.get("auto_retrain_pending:global") == "47"  # survives
         assert "similarity_groups_x" not in rows  # ordinary aggregate still wiped
+
+
+class TestPhotoDeleteResponseContract:
+    def test_removed_missing_is_required_so_no_producer_can_omit_it(self):
+        """The route serialises with ``response_model_exclude_unset``: a default
+        would let a producer drop the field and the client (which indexes it
+        unguarded) would crash on the response."""
+        from pydantic import ValidationError
+        from api.models.scan import PhotoDeleteResponse
+        fields = dict(
+            dry_run=True, deleted=[], not_found=[], not_visible=[], refused_bracket_lead=[],
+            sequence_siblings=[], skipped=[], trashed=0, errors={},
+        )
+        with pytest.raises(ValidationError):
+            PhotoDeleteResponse(**fields)
+        assert PhotoDeleteResponse(removed_missing=[], **fields).removed_missing == []
 
 
 class TestPhotoDeleteBracketLead:

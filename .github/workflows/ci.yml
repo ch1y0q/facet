@@ -31,7 +31,7 @@ jobs:
         # schema tests in tests/test_config_schema.py skip silently, and without
         # pytest-timeout the `timeout` marker is an inert unknown mark. The
         # versions are the ones verified against the suite.
-        run: pip install pytest pytest-asyncio pytest-cov fastapi[standard] httpx pyjwt mcp==2.3.0 websockets pillow pillow-heif pillow-jxl-plugin==1.3.8 numpy scipy scikit-learn opencv-python-headless tqdm aiosqlite sqlite-vec imagehash psutil watchdog send2trash tifffile imagecodecs lupa jsonschema==4.26.0 pytest-timeout==2.4.0 pytest-xdist==3.8.0
+        run: pip install pytest pytest-asyncio pytest-cov fastapi[standard] httpx pyjwt mcp==2.3.0 websockets pillow pillow-heif numpy scipy scikit-learn opencv-python-headless tqdm aiosqlite sqlite-vec imagehash psutil watchdog send2trash tifffile imagecodecs lupa jsonschema==4.26.0 pytest-timeout==2.4.0 pytest-xdist==3.8.0
       - name: Run tests
         run: python -m pytest -n 4 --durations=30 --tb=short -q --cov=api --cov=processing --cov=analyzers --cov=config --cov=utils --cov-report=term-missing
       - uses: actions/setup-node@v7
@@ -82,7 +82,7 @@ jobs:
       - name: Install test dependencies
         # Same list as python-tests: the files below import tifffile, imagecodecs
         # and lupa, and jsonschema keeps tests/test_config_schema.py from skipping.
-        run: pip install pytest pytest-asyncio pytest-cov fastapi[standard] httpx pyjwt mcp==2.3.0 websockets pillow pillow-heif pillow-jxl-plugin==1.3.8 numpy scipy scikit-learn opencv-python-headless tqdm aiosqlite sqlite-vec imagehash psutil watchdog send2trash tifffile imagecodecs lupa jsonschema==4.26.0 pytest-timeout==2.4.0
+        run: pip install pytest pytest-asyncio pytest-cov fastapi[standard] httpx pyjwt mcp==2.3.0 websockets pillow pillow-heif numpy scipy scikit-learn opencv-python-headless tqdm aiosqlite sqlite-vec imagehash psutil watchdog send2trash tifffile imagecodecs lupa jsonschema==4.26.0 pytest-timeout==2.4.0
       - name: Run the Windows-green suites
         # Deliberately NOT the whole suite yet: the files listed here are the
         # ones kept green on Windows, and the rest of the suite is not run on
@@ -92,10 +92,7 @@ jobs:
         # tests/test_device.py (CUDA/MPS/CPU resolution) are the original
         # platform surface; the others cover path, permission, symlink and
         # subprocess handling that differs on Windows.
-        run: python -m pytest tests/test_scan.py tests/test_device.py tests/test_auto_cull_cli.py tests/test_config_merge.py tests/test_config_path_env.py tests/test_config_writes.py tests/test_manifest_builder.py tests/test_system_memory.py tests/test_weight_optimizer_sources.py tests/test_xmp_export.py tests/test_exiftool_process.py tests/test_xmp_keyword_ownership.py tests/test_xmp_face_ownership.py tests/test_visibility_fail_open.py tests/test_cull.py tests/test_raw_decode.py tests/test_config_schema.py tests/test_sidecar_job_receipts.py tests/test_jpegxl.py -q --tb=short
-
-      - name: Verify embedding revision tracking
-        run: python -m pytest tests/test_embedding_revision.py -q --tb=short
+        run: python -m pytest tests/test_scan.py tests/test_device.py tests/test_auto_cull_cli.py tests/test_config_merge.py tests/test_config_path_env.py tests/test_config_writes.py tests/test_manifest_builder.py tests/test_system_memory.py tests/test_weight_optimizer_sources.py tests/test_xmp_export.py tests/test_exiftool_process.py tests/test_xmp_keyword_ownership.py tests/test_xmp_face_ownership.py tests/test_visibility_fail_open.py tests/test_cull.py tests/test_raw_decode.py tests/test_config_schema.py tests/test_sidecar_job_receipts.py tests/test_embedding_revision.py tests/test_jpegxl.py tests/test_jpegxl_headers.py -q --tb=short
 
   lock-resolve:
     name: Dependency locks resolve (${{ matrix.lock }})

@@ -1,6 +1,6 @@
 import type { Mock } from 'vitest';
 import { ComponentFixture, DeferBlockState, TestBed } from '@angular/core/testing';
-import { ChangeDetectorRef, Component, computed, DebugElement, DestroyRef, inject, signal, TemplateRef, WritableSignal } from '@angular/core';
+import { ApplicationRef, ChangeDetectorRef, Component, computed, DebugElement, DestroyRef, inject, signal, TemplateRef, WritableSignal } from '@angular/core';
 import { Location, NgTemplateOutlet } from '@angular/common';
 import { provideLocationMocks } from '@angular/common/testing';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -955,6 +955,27 @@ describe('GalleryComponent', () => {
 
       expect(mockStore.readGallerySessionQuery).not.toHaveBeenCalled();
       expect(mockStore.applySessionQuery).not.toHaveBeenCalled();
+    });
+
+    it('records its own filters in the session query after loadConfig on a plain init', async () => {
+      routeMock.snapshot.queryParams = {};
+      const order: string[] = [];
+      mockStore.loadConfig.mockImplementation(async () => { order.push('loadConfig'); });
+      mockStore.saveSessionQuery.mockImplementation(() => { order.push('saveSessionQuery'); });
+
+      await component.ngOnInit();
+
+      expect(order).toEqual(['loadConfig', 'saveSessionQuery']);
+    });
+
+    it('does not write the session query on an album route', async () => {
+      routeMock.snapshot.paramMap.get = vi.fn((k: string) => (k === 'albumId' ? '7' : null));
+      routeMock.snapshot.queryParams = {};
+
+      await component.ngOnInit();
+
+      expect(mockStore.loadConfig).toHaveBeenCalled();
+      expect(mockStore.saveSessionQuery).not.toHaveBeenCalled();
     });
 
     it('does not consult the session query on an album route', async () => {
@@ -2254,6 +2275,7 @@ describe('GalleryComponent', () => {
         refused_bracket_lead: [],
         sequence_siblings: [],
         skipped: [],
+        removed_missing: [],
         trashed: 0,
         errors: {},
         ...overrides,
@@ -3673,7 +3695,7 @@ describe('GalleryComponent', () => {
       const confirmed = { includeCompanions: false, includeSequenceSiblings: false };
       const deleted = (paths: string[]) => of({
         dry_run: false, deleted: paths, not_found: [], not_visible: [], refused_bracket_lead: [],
-        sequence_siblings: [], skipped: [], trashed: paths.length, errors: {},
+        sequence_siblings: [], skipped: [], removed_missing: [], trashed: paths.length, errors: {},
       });
 
       it('opens the single-photo dialog under view scope, where the no-arg form refuses', async () => {
@@ -4582,6 +4604,62 @@ describe('GalleryComponent', () => {
     });
   });
 
+  describe('review-progress banner (rendered)', () => {
+    let fixture: ComponentFixture<GalleryComponent>;
+
+    function render(): HTMLElement {
+      mockI18n.t.mockImplementation((key: string, vars?: Record<string, unknown>) => (vars ? `${key} ${JSON.stringify(vars)}` : key));
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    function buttonLabelled(host: HTMLElement, key: string): HTMLButtonElement | undefined {
+      return Array.from(host.querySelectorAll('button')).find(b => b.textContent?.trim() === key);
+    }
+
+    afterEach(() => fixture.destroy());
+
+    it('renders nothing while there is no progress snapshot', () => {
+      const host = render();
+      expect(host.querySelector('section progress')).toBeNull();
+    });
+
+    it('renders the decision counts and completion for the scope', () => {
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      mockStore.reviewPercent.set(40);
+      const status = render().querySelector('[role="status"]') as HTMLElement;
+      expect(status.textContent).toContain(`${I18N.gallery.review_progress.counts} ${JSON.stringify({ undecided: 6, kept: 3, rejected: 1 })}`);
+      expect(status.textContent).toContain(`${I18N.gallery.review_progress.complete} ${JSON.stringify({ percent: 40, total: 10 })}`);
+    });
+
+    it('Start calls startReviewQueue', () => {
+      mockStore.startReviewQueue = vi.fn();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      const start = buttonLabelled(render(), I18N.gallery.review_progress.start);
+      expect(start).toBeDefined();
+      start!.click();
+      expect(mockStore.startReviewQueue).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers no Start when nothing is undecided or the undecided tab is already active', () => {
+      mockStore.reviewProgress.set({ total: 10, undecided: 0, kept: 9, rejected: 1 });
+      expect(buttonLabelled(render(), I18N.gallery.review_progress.start)).toBeUndefined();
+      fixture.destroy();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      mockStore.filters.set({ ...DEFAULT_FILTERS, review_status: 'undecided' });
+      expect(buttonLabelled(render(), I18N.gallery.review_progress.start)).toBeUndefined();
+    });
+
+    it('Continue calls continueReview on the store', () => {
+      mockStore.reviewBookmark.set({ path: '/p1.jpg' });
+      const resume = buttonLabelled(render(), I18N.gallery.review_progress.resume);
+      expect(resume).toBeDefined();
+      resume!.click();
+      expect(mockStore.continueReview).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('kept alive behind an open photo (rendered)', () => {
     const photos = Array.from({ length: 3 }, (_, n) => ({
       path: `/p${n}.jpg`, filename: `p${n}.jpg`, image_width: 4000, image_height: 3000,
@@ -4838,6 +4916,63 @@ describe('GalleryComponent', () => {
       expect(trigger.menuOpen).toBe(true);
       openPhoto(1);
       expect(trigger.menuOpen).toBe(false);
+    });
+
+    it('closes the toolbar type select when the gallery parks', () => {
+      const view = TestBed.inject(HeaderSlotService).template()!.createEmbeddedView({});
+      TestBed.inject(ApplicationRef).attachView(view);
+      try {
+        view.detectChanges();
+        fixture.detectChanges();
+        const type = (gallery as unknown as { selects(): MatSelect[] }).selects().at(0)!;
+        expect(type).toBeTruthy();
+        type.open();
+        fixture.detectChanges();
+        expect(type.panelOpen).toBe(true);
+        openPhoto(1);
+        expect(type.panelOpen).toBe(false);
+      } finally {
+        TestBed.inject(ApplicationRef).detachView(view);
+        view.destroy();
+      }
+    });
+
+    it('does not override a pointer press made before the anchor frame', () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 0, width: 1000, height: 800 } as DOMRect);
+      let top = 100;
+      vi.spyOn(host, 'getBoundingClientRect').mockImplementation(() => ({ top, height: 200 } as DOMRect));
+      openPhoto(1);
+      top = 180;
+      outletMock.attachEvents.next(gallery);
+      // Focus stays on the opened card; only the pointer veto can stop the re-anchor.
+      document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      scrollTo.mockClear();
+      for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+      expect(scrollTo).not.toHaveBeenCalled();
+    });
+
+    it('clamps a parked-resize anchor so the card stays inside a shorter viewport', () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      let height = 800;
+      let scroll = 640;
+      const absoluteTop = 740;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockImplementation(() => ({ top: 0, width: 1000, height } as DOMRect));
+      vi.spyOn(host, 'getBoundingClientRect').mockImplementation(() => ({ top: absoluteTop - scroll, height: 200 } as DOMRect));
+      vi.spyOn(content, 'measureScrollOffset').mockImplementation(() => scroll);
+      scrollTo.mockImplementation(({ top }: ScrollToOptions) => { scroll = top!; });
+      openPhoto(1);
+      height = 250;
+      outletMock.attachEvents.next(gallery);
+      for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+      // Anchor offset 100 would push the 200px card past a 250px viewport: clamped to 250 - 200.
+      expect(host.getBoundingClientRect().top).toBe(50);
     });
 
     it('returns to the photo last viewed when the arrows moved off the one opened', () => {
