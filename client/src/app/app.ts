@@ -1,4 +1,4 @@
-import { Component, inject, computed, signal, effect, untracked, OnInit, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, computed, signal, effect, untracked, OnInit, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd } from '@angular/router';
@@ -21,6 +21,7 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { ApiService } from './core/services/api.service';
+import { StalenessGuardFactory } from './core/services/staleness-guard.service';
 import { AuthService } from './core/services/auth.service';
 import { ScanService } from './core/services/scan.service';
 import { I18nService } from './core/services/i18n.service';
@@ -158,6 +159,8 @@ export class App implements OnInit {
   protected readonly I18N = i18nKeys();
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly staleness = inject(StalenessGuardFactory);
   protected readonly scan = inject(ScanService);
   private readonly api = inject(ApiService);
   protected readonly auth = inject(AuthService);
@@ -634,6 +637,19 @@ export class App implements OnInit {
     if (onEditionRoute) {
       this.router.navigate(['/']);
     }
+  }
+
+  protected loadOrganizationHistoryDialog() { return import('./features/photo-detail/organization-history-dialog.component'); }
+
+  /** The account's latest organization changes across the library, from any page. */
+  async openOrganizationHistory(): Promise<void> {
+    if (!this.auth.isEdition()) return;
+    const liveness = this.staleness.create(this.destroyRef);
+    try {
+      const { OrganizationHistoryDialogComponent } = await this.loadOrganizationHistoryDialog();
+      if (!liveness.current()) return;
+      this.dialog.open(OrganizationHistoryDialogComponent, { width: '95vw', maxWidth: '820px' });
+    } finally { liveness.dispose(); }
   }
 
   /** "On This Day" diaporama: fetch this date's photos from past years, shuffle

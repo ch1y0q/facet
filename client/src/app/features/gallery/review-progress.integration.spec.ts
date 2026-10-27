@@ -83,6 +83,10 @@ describe('rendered review progress with real store and HTTP', () => {
     localStorage.clear(); sessionStorage.clear();
   });
 
+  it('renders the banner as a card of the floating bottom-right notice stack', () => {
+    expect(banner()?.closest('[data-gallery-notices]')).not.toBeNull();
+  });
+
   it('keeps the banner mounted and requests counts only once after a successful rating rebuild', async () => {
     const previous = banner();
     const rating = store.setRating('/trip/a.jpg', 4);

@@ -17,7 +17,7 @@ import {
   ElementRef,
   ChangeDetectionStrategy
 } from '@angular/core';
-import { DOCUMENT } from '@angular/common';
+import { DOCUMENT, NgTemplateOutlet } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { MatSidenav, MatSidenavContainer, MatSidenavModule, MatSidenavContent } from '@angular/material/sidenav';
@@ -36,6 +36,7 @@ import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { filter, firstValueFrom } from 'rxjs';
 import { GalleryStore, BatchResult, REVIEW_RESUME_NAVIGATION } from './gallery.store';
+import { NoticeDismissals, NoticeKind, readNoticeDismissals, saveNoticeDismissals } from './notice-dismiss.util';
 import { Photo } from '../../shared/models/photo.model';
 import { isPageShortcutBlocked, isTypingContext } from '../../shared/utils/keyboard';
 import { closeOverlayDirectives } from '../../shared/utils/overlays';
@@ -89,8 +90,6 @@ function assertNever(action: never): never {
   throw new Error(`Unhandled photo menu action: ${JSON.stringify(action)}`);
 }
 
-const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
-
 /** Width from which the toolbar search is shown (its `min-[1360px]:` class). */
 const TOOLBAR_SEARCH_QUERY = '(min-width: 1360px)';
 
@@ -105,6 +104,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
 @Component({
   selector: 'app-gallery',
   imports: [
+    NgTemplateOutlet,
     MatSidenavModule,
     MatProgressSpinnerModule,
     MatIconModule,
@@ -172,18 +172,13 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
         </mat-form-field>
       }
 
-      @if (auth.isEdition()) {
-        <button mat-icon-button (click)="openOrganizationHistory()" [matTooltip]="I18N.organization_history.title | translate" [attr.aria-label]="I18N.organization_history.title | translate"><mat-icon>history</mat-icon></button>
-      }
-
       <!-- Keep top N%: server-rank the current view by the current sort and
            select the bottom (100-N)% for review/rejection via the selection bar. -->
       @if (auth.isEdition() && store.total() > 0 && store.canScopeSelectionToView()) {
-        <button mat-stroked-button class="!hidden lg:!inline-flex !min-w-0 !px-3" [matMenuTriggerFor]="keepTopMenu"
+        <button mat-icon-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="keepTopMenu"
                 [matTooltip]="I18N.gallery.keep_top.label | translate"
                 [attr.aria-label]="I18N.gallery.keep_top.label | translate">
-          <mat-icon class="!text-base !w-4 !h-4 !leading-4 mr-1">content_cut</mat-icon>
-          <span class="hidden 2xl:inline text-sm">{{ I18N.gallery.keep_top.label | translate }}</span>
+          <mat-icon>content_cut</mat-icon>
         </button>
         <mat-menu #keepTopMenu="matMenu" class="!max-w-none">
           <div class="p-4 w-80" tabindex="-1" (click)="$event.stopPropagation()" (keydown)="$event.stopPropagation()">
@@ -252,34 +247,6 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
       <!-- Main content. The drawer reserves its own strip, so the grid gets
            exactly the width it has whenever the filters are open. -->
       <mat-sidenav-content>
-        @if (store.reviewProgressVisible()) {
-          @if (store.reviewProgress(); as progress) {
-          <section class="mx-2 md:mx-4 mt-2 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] text-sm" [attr.aria-label]="I18N.gallery.review_progress.title | translate">
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span class="flex-1 inline-flex flex-wrap gap-x-4 gap-y-1" role="status" aria-live="polite" aria-atomic="true">
-                <span>{{ I18N.gallery.review_progress.counts | translate:{ undecided: progress.undecided, kept: progress.kept, rejected: progress.rejected } }}</span>
-                <span>{{ I18N.gallery.review_progress.complete | translate:{ percent: store.reviewPercent(), total: progress.total } }}</span>
-              </span>
-              @if (progress.undecided > 0 && store.filters().review_status !== 'undecided') {
-                <button mat-button (click)="store.startReviewQueue()">{{ I18N.gallery.review_progress.start | translate }}</button>
-              }
-              <button mat-icon-button class="!w-7 !h-7 !min-w-0 -mr-1" (click)="store.setReviewProgressVisible(false)"
-                      [matTooltip]="I18N.ui.buttons.dismiss | translate"
-                      [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
-                <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
-              </button>
-            </div>
-            <progress class="w-full h-1" max="100" [value]="store.reviewPercent()" [attr.aria-label]="I18N.gallery.review_progress.title | translate"></progress>
-          </section>
-          }
-        }
-        @if (store.reviewBookmark()) {
-          <div class="mx-2 md:mx-4 mt-2 flex flex-wrap items-center gap-x-3 text-sm">
-            <button mat-button [disabled]="store.loading()" (click)="continueReview()">{{ I18N.gallery.review_progress.resume | translate }}</button>
-            <span class="opacity-70">{{ I18N.gallery.review_progress.browser | translate }}</span>
-          </div>
-        }
-
         <!-- Set-scope chip: the photo-detail "open this set in the gallery" action.
              Never reflected in the URL (sequence_group_id is renumbered on every
              detection pass), so this is the only affordance out of it. -->
@@ -592,14 +559,51 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
            and the content's own scrollbar.
            The container is its own stacking context, so a notice outside it cannot sit under the
            mobile 'over' drawer; it steps aside while that drawer is open instead.
-           Lifted above the floating selection card, only when the two overlap horizontally. Order: hidden-photos
-           notice first, thumbnail-migration notice below it. The migration notice is the
-           only place the command that regenerates RAW thumbnails is surfaced: the grid
-           reads photos.thumbnail, so browsing never regenerates it. -->
-      @if (!overDrawerOpen() && (showHiddenBanner() || canRestoreHidden() || showRenderMigrationBanner())) {
+           Lifted above the floating selection card, only when the two overlap horizontally. Order: review
+           progress, the remembered review queue, the hidden-photos notice, then the thumbnail-migration
+           notice. The migration notice is the only place the command that regenerates RAW thumbnails is
+           surfaced: the grid reads photos.thumbnail, so browsing never regenerates it. -->
+      @if (noticeStackVisible()) {
         <div data-gallery-notices class="pointer-events-none absolute z-10 flex flex-col gap-2 w-[min(26rem,calc(100%-1rem))]"
              [style.bottom.px]="noticeBottomPx()" [style.right.px]="noticeRightPx()" [style.maxWidth]="noticeMaxWidth()">
-          @if (showHiddenBanner()) {
+          @if (showScrollTop() && !selectionCount()) {
+            <ng-container *ngTemplateOutlet="scrollTopFab; context: { $implicit: 'pointer-events-auto self-end' }" />
+          }
+          @if (reviewProgressShown()) {
+            @if (store.reviewProgress(); as progress) {
+              <section data-review-progress [class]="NOTICE_CARD_CLASS" [attr.aria-label]="I18N.gallery.review_progress.title | translate">
+                <mat-icon class="opacity-70 !text-base !w-5 !h-5 self-start">fact_check</mat-icon>
+                <div class="flex-1 min-w-0 flex flex-col gap-1">
+                  <span class="flex flex-wrap gap-x-3 gap-y-0.5" role="status" aria-live="polite" aria-atomic="true">
+                    <span>{{ I18N.gallery.review_progress.counts | translate:{ undecided: progress.undecided, kept: progress.kept, rejected: progress.rejected } }}</span>
+                    <span class="opacity-70">{{ I18N.gallery.review_progress.complete | translate:{ percent: store.reviewPercent(), total: progress.total } }}</span>
+                  </span>
+                  <progress class="w-full h-1" max="100" [value]="store.reviewPercent()" [attr.aria-label]="I18N.gallery.review_progress.title | translate"></progress>
+                  @if (progress.undecided > 0 && store.filters().review_status !== 'undecided') {
+                    <button mat-button class="!min-w-0 self-start -ml-3" (click)="store.startReviewQueue()">{{ I18N.gallery.review_progress.start | translate }}</button>
+                  }
+                </div>
+                <button mat-icon-button class="!w-7 !h-7 !min-w-0 !p-0 -mr-1 shrink-0 self-start" (click)="dismissNotice('review_progress')"
+                        [matTooltip]="I18N.ui.buttons.dismiss | translate"
+                        [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
+                  <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
+                </button>
+              </section>
+            }
+          }
+          @if (reviewBookmarkShown()) {
+            <div [class]="NOTICE_CARD_CLASS">
+              <mat-icon class="opacity-70 !text-base !w-5 !h-5">bookmark</mat-icon>
+              <span class="flex-1 opacity-80">{{ I18N.gallery.review_progress.browser | translate }}</span>
+              <button mat-button class="!min-w-0" [disabled]="store.loading()" (click)="continueReview()">{{ I18N.gallery.review_progress.resume | translate }}</button>
+              <button mat-icon-button class="!w-7 !h-7 !min-w-0 !p-0 -mr-1 shrink-0" (click)="dismissNotice('review_bookmark')"
+                      [matTooltip]="I18N.ui.buttons.dismiss | translate"
+                      [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
+                <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
+              </button>
+            </div>
+          }
+          @if (hiddenNoticeShown()) {
             <div role="status" [class]="NOTICE_CARD_CLASS">
               <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility_off</mat-icon>
               <span class="flex-1">
@@ -608,8 +612,13 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
               <button mat-button class="!min-w-0" (click)="store.showAllHidden()">
                 {{ I18N.gallery.hidden_banner.show_all | translate }}
               </button>
+              <button mat-icon-button class="!w-7 !h-7 !min-w-0 !p-0 -mr-1 shrink-0" (click)="dismissNotice('hidden')"
+                      [matTooltip]="I18N.ui.buttons.dismiss | translate"
+                      [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
+                <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
+              </button>
             </div>
-          } @else if (canRestoreHidden()) {
+          } @else if (restoreNoticeShown()) {
             <div role="status" [class]="NOTICE_CARD_CLASS">
               <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility</mat-icon>
               <span class="flex-1">
@@ -617,6 +626,11 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
               </span>
               <button mat-button class="!min-w-0" (click)="store.restoreHidden()">
                 {{ I18N.gallery.hidden_banner.restore | translate }}
+              </button>
+              <button mat-icon-button class="!w-7 !h-7 !min-w-0 !p-0 -mr-1 shrink-0" (click)="dismissNotice('restore_hidden')"
+                      [matTooltip]="I18N.ui.buttons.dismiss | translate"
+                      [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
+                <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
               </button>
             </div>
           }
@@ -627,8 +641,10 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                 {{ I18N.gallery.render_migration.message | translate:{ n: renderMigrationPending() } }}
                 {{ I18N.gallery.render_migration.command_hint | translate:{ command: REFRESH_THUMBNAILS_COMMAND } }}
               </span>
-              <button mat-button class="!min-w-0" (click)="dismissRenderMigration()">
-                {{ I18N.ui.buttons.dismiss | translate }}
+              <button mat-icon-button class="!w-7 !h-7 !min-w-0 !p-0 -mr-1 shrink-0" (click)="dismissNotice('render_migration')"
+                      [matTooltip]="I18N.ui.buttons.dismiss | translate"
+                      [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
+                <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
               </button>
             </div>
           }
@@ -751,17 +767,20 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
       }
     </div>
 
-    <!-- Scroll-to-top button -->
-    @if (showScrollTop() && !selectionCount()) {
+    <!-- Scroll-to-top button: rides on top of the notice stack while one is up, so the two never share the corner -->
+    <ng-template #scrollTopFab let-fabClass>
       <button
         mat-mini-fab
-        class="!fixed right-4 lg:right-6 bottom-[60px] lg:bottom-6 z-40"
+        [class]="fabClass"
         [matTooltip]="I18N.gallery.scroll_to_top | translate"
         [attr.aria-label]="I18N.gallery.scroll_to_top | translate"
         (click)="scrollToTop()"
       >
         <mat-icon>arrow_upward</mat-icon>
       </button>
+    </ng-template>
+    @if (showScrollTop() && !selectionCount() && !noticeStackVisible()) {
+      <ng-container *ngTemplateOutlet="scrollTopFab; context: { $implicit: '!fixed right-4 lg:right-6 bottom-[60px] lg:bottom-6 z-40' }" />
     }
 
     <!-- Slideshow overlay -->
@@ -1058,7 +1077,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // Re-measure when the drawer opens/closes (changes the card's right cap and wrap).
     this.noticeRightPx();
     // The notice stack renders after this effect runs; re-measure once it is in the DOM.
-    const noticesShown = this.showHiddenBanner() || this.canRestoreHidden() || this.showRenderMigrationBanner();
+    const noticesShown = this.noticesShown();
     if (!bar || !host || typeof ResizeObserver === 'undefined') {
       this.selectionBarOverlap.set(0);
       return;
@@ -1140,6 +1159,43 @@ export class GalleryComponent implements OnInit, OnDestroy {
       && !f.blinks_only && !f.duplicates_only && !f.show_rejected;
   });
 
+  /** Notices closed in this tab, with the signature each had when closed. */
+  private readonly noticeDismissals = signal<NoticeDismissals>(readNoticeDismissals());
+
+  /** What makes each notice "the same one": its scope or its count, never the live review counts. */
+  private readonly noticeSignatures = computed<Record<NoticeKind, string>>(() => ({
+    review_progress: this.store.reviewProgressKey(),
+    review_bookmark: JSON.stringify(this.store.reviewBookmark()?.filters ?? null),
+    hidden: String(this.store.hiddenSummary().total),
+    restore_hidden: JSON.stringify(this.store.hiddenFiltersStash()),
+    render_migration: String(this.renderMigrationPending()),
+  }));
+
+  private noticeClosed(kind: NoticeKind): boolean {
+    return this.noticeDismissals()[kind] === this.noticeSignatures()[kind];
+  }
+
+  /** Close one notice for this tab, for as long as it stays the same notice. Nothing else changes. */
+  protected dismissNotice(kind: NoticeKind): void {
+    const next = { ...this.noticeDismissals(), [kind]: this.noticeSignatures()[kind] };
+    this.noticeDismissals.set(next);
+    saveNoticeDismissals(next);
+  }
+
+  /** The review-progress card: on in the user menu, counts loaded, and not closed in this tab. */
+  protected readonly reviewProgressShown = computed(() =>
+    this.store.reviewProgressVisible() && !!this.store.reviewProgress() && !this.noticeClosed('review_progress'));
+  protected readonly reviewBookmarkShown = computed(() => !!this.store.reviewBookmark() && !this.noticeClosed('review_bookmark'));
+  protected readonly hiddenNoticeShown = computed(() => this.showHiddenBanner() && !this.noticeClosed('hidden'));
+  protected readonly restoreNoticeShown = computed(() => this.canRestoreHidden() && !this.noticeClosed('restore_hidden'));
+
+  /** Whether the floating notice stack has at least one card to show. */
+  protected readonly noticesShown = computed(() => this.reviewProgressShown() || this.reviewBookmarkShown()
+    || this.hiddenNoticeShown() || this.restoreNoticeShown() || this.showRenderMigrationBanner());
+
+  /** The stack steps aside while the mobile 'over' drawer is open (see the template comment). */
+  protected readonly noticeStackVisible = computed(() => !this.overDrawerOpen() && this.noticesShown());
+
   /** The active set-scope kind (from photo-detail's "open this set"), or null. */
   readonly setScopeKind = computed(() => {
     const f = this.store.filters();
@@ -1159,23 +1215,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
     () => this.store.config()?.render_migration?.pending ?? 0,
   );
 
-  /**
-   * Dismissal is remembered, like the culling swipe hint: the notice is advisory
-   * and the migration can take hours, so re-raising it on every visit would be
-   * nagging rather than informing.
-   */
-  private readonly renderMigrationDismissed = signal(
-    localStorage.getItem(RENDER_MIGRATION_DISMISSED_KEY) === 'true',
-  );
-
   readonly showRenderMigrationBanner = computed(
-    () => this.renderMigrationPending() > 0 && !this.renderMigrationDismissed(),
+    () => this.renderMigrationPending() > 0 && !this.noticeClosed('render_migration'),
   );
-
-  dismissRenderMigration(): void {
-    localStorage.setItem(RENDER_MIGRATION_DISMISSED_KEY, 'true');
-    this.renderMigrationDismissed.set(true);
-  }
 
   clearSetScope(): void {
     const kind = this.setScopeKind();
@@ -2193,26 +2235,17 @@ export class GalleryComponent implements OnInit, OnDestroy {
     });
   }
 
-  protected loadOrganizationHistoryDialog() { return import('../photo-detail/organization-history-dialog.component'); }
-
-  async openOrganizationHistory(): Promise<void> {
-    if (!this.auth.isEdition()) return;
-    const liveness = this.staleness.create(this.destroyRef);
-    try {
-      const { OrganizationHistoryDialogComponent } = await this.loadOrganizationHistoryDialog();
-      if (!liveness.current()) return;
-      this.dialog.open(OrganizationHistoryDialogComponent, { width: '95vw', maxWidth: '820px' });
-    } finally { liveness.dispose(); }
-  }
-
   async openCaptureDateDialog(): Promise<void> {
     if (!this.auth.isEdition()) return;
     const viewScoped = this.viewScoped();
+    const selected = this.selectedPaths();
+    const first = viewScoped ? undefined : this.store.photos().find(photo => selected.has(photo.path) && photo.date_taken);
     const data = {
-      paths: [...this.selectedPaths()],
+      paths: [...selected],
       filters: viewScoped ? structuredClone(this.store.filterPayload()) : null,
       exclude: viewScoped ? [...this.excludedPaths()] : [],
       count: this.selectionCount(),
+      reference: first?.date_taken ? { path: first.path, date: first.date_taken } : null,
     };
     if (!viewScoped && !data.paths.length) return;
     const liveness = this.staleness.create(this.destroyRef, { track: 'status' });

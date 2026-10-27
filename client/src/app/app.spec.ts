@@ -827,10 +827,27 @@ describe('App', () => {
 
     afterEach(() => document.querySelectorAll('.cdk-overlay-container').forEach(el => el.replaceChildren()));
 
-    it.each([[true], [false]])('draws the amber 2px underline exactly while edition is %s', (edition) => {
+    it.each([[true], [false]])('offers Organization history in the nav exactly while edition is %s', (edition) => {
       const { root } = render(edition);
-      const bar = root.querySelector('mat-toolbar')!;
-      expect(bar.classList.contains('border-amber-400')).toBe(edition);
+      const buttons = root.querySelectorAll(`nav button[aria-label="${I18N.organization_history.title}"]`);
+      expect(buttons.length).toBe(edition ? 2 : 0);
+    });
+
+    it.each([['kept', 1], ['lost', 0]])('opens the history dialog after the lazy load only while edition is %s', async (state, opens) => {
+      const { fixture } = render(true);
+      const app = fixture.componentInstance as unknown as { openOrganizationHistory: () => Promise<void> };
+      const dialog = TestBed.inject(MatDialog);
+      const auth = TestBed.inject(AuthService) as unknown as { isEdition: ReturnType<typeof signal<boolean>> };
+      const opening = app.openOrganizationHistory();
+      if (state === 'lost') auth.isEdition.set(false);
+      await opening;
+      expect(dialog.open).toHaveBeenCalledTimes(opens);
+    });
+
+    it.each([[true], [false]])('draws the theme-accent 2px underline exactly while edition is %s', (edition) => {
+      const { root } = render(edition);
+      const bar = root.querySelector<HTMLElement>('mat-toolbar')!;
+      expect(bar.style.borderBottomColor).toBe(edition ? 'var(--facet-accent)' : '');
       expect(bar.classList.contains('!border-b-2')).toBe(edition);
     });
 

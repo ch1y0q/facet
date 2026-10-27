@@ -456,6 +456,17 @@ describe('GalleryFilterSidebarComponent', () => {
       thumb = fixture.nativeElement.querySelector('mat-slider input');
     });
 
+    it('lists the advanced metric sections as top-level sections, with no wrapping panel', () => {
+      const advanced = fixture.componentInstance.advancedFilterGroups();
+      expect(advanced.length).toBeGreaterThan(0);
+      const panels = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-expansion-panel'));
+      for (const group of advanced) {
+        const panel = panels.find(el => el.querySelector('mat-panel-title')?.textContent?.includes(group.sectionKey));
+        expect(panel, group.sectionKey).toBeDefined();
+        expect(panel!.parentElement!.closest('mat-expansion-panel'), group.sectionKey).toBeNull();
+      }
+    });
+
     for (const [value, label] of [
       ['undecided', I18N.review.needs_review], ['kept', I18N.review.kept], ['rejected', I18N.review.rejected],
     ] as const) {

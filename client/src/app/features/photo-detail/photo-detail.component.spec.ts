@@ -1427,83 +1427,6 @@ describe('PhotoDetailComponent', () => {
       expect(stored().star_rating).toBe(4);
     });
 
-    it('history refreshes the current detail and discards a reply after a newer edit', async () => {
-      createComponent();
-      seedGrid();
-      const closed = new Subject<void>();
-      mockDialog.open.mockReturnValue({ componentInstance: { wasRestored: () => true, whenSettled: () => Promise.resolve() }, afterClosed: () => closed });
-      await component.openOrganizationHistory();
-      mockApi.get.mockReturnValue(of({ ...edited, gps_latitude: 12 }));
-      closed.next();
-      await new Promise<void>(resolve => setTimeout(resolve, 0));
-      expect(component.photo().gps_latitude).toBe(12);
-      const delayed = new Subject();
-      mockApi.get.mockReturnValue(delayed);
-      closed.next();
-      component.photo.update((photo: typeof edited) => ({ ...photo, star_rating: 5 }));
-      delayed.next({ ...edited, star_rating: 1 });
-      await new Promise<void>(resolve => setTimeout(resolve, 0));
-      expect(component.photo().star_rating).toBe(5);
-    });
-
-    for (const loss of ['revalidation', 'identity', 'edition', 'navigation']) {
-      it(`handles a dismissed pending history restore after ${loss}`, async () => {
-        const events = new Subject<NavigationStart>(); mockRouter.events = events;
-        createComponent(); seedGrid();
-        const listeners = events.observers.length;
-        const closed = new Subject<void>();
-        let finish!: () => void;
-        const settled = new Promise<void>(resolve => { finish = resolve; });
-        mockDialog.open.mockReturnValue({ componentInstance: { wasRestored: () => true, whenSettled: () => settled }, afterClosed: () => closed });
-        await component.openOrganizationHistory();
-        closed.next();
-        if (loss === 'revalidation') mockAuth.status.set({ user_id: 'test' });
-        if (loss === 'identity') mockAuth.status.set({ user_id: 'bob' });
-        if (loss === 'edition') mockAuth.isEdition.set(false);
-        if (loss === 'navigation') { events.next(new NavigationStart(1, '/other')); events.next(new NavigationStart(2, '/')); }
-        mockApi.get.mockClear(); mockApi.get.mockReturnValue(of({ ...edited, gps_latitude: 12 }));
-        finish(); await new Promise<void>(resolve => setTimeout(resolve, 0));
-        expect(component.photo().gps_latitude).toBe(loss === 'revalidation' ? 12 : undefined);
-        expect(events.observers).toHaveLength(listeners);
-      });
-      it(`guards lazy history detail launch after ${loss}`, async () => {
-        const events = new Subject<NavigationStart>(); mockRouter.events = events;
-        createComponent(); seedGrid();
-        const module = await import('./organization-history-dialog.component');
-        let finish!: (value: typeof module) => void;
-        vi.spyOn(component, 'loadOrganizationHistoryDialog').mockReturnValue(new Promise(resolve => { finish = resolve; }));
-        const opening = component.openOrganizationHistory();
-        if (loss === 'revalidation') mockAuth.status.set({ user_id: 'test' });
-        if (loss === 'identity') mockAuth.status.set({ user_id: 'bob' });
-        if (loss === 'edition') mockAuth.isEdition.set(false);
-        if (loss === 'navigation') { events.next(new NavigationStart(1, '/other')); events.next(new NavigationStart(2, '/')); }
-        mockDialog.open.mockReturnValue({ componentInstance: {}, afterClosed: () => new Subject() });
-        finish(module); await opening;
-        expect(mockDialog.open).toHaveBeenCalledTimes(loss === 'revalidation' ? 1 : 0);
-      });
-    }
-
-    for (const loss of ['identity', 'edition', 'navigation']) {
-      it(`discards a history detail refresh completing after ${loss}`, async () => {
-        const events = new Subject<NavigationStart>(); mockRouter.events = events;
-        createComponent(); seedGrid();
-        const listeners = events.observers.length;
-        const closed = new Subject<void>(); const response = new Subject();
-        mockDialog.open.mockReturnValue({ componentInstance: { wasRestored: () => true, whenSettled: () => Promise.resolve() }, afterClosed: () => closed });
-        await component.openOrganizationHistory();
-        mockApi.get.mockReturnValue(response); closed.next();
-        await new Promise<void>(resolve => setTimeout(resolve, 0));
-        const previous = component.photo();
-        if (loss === 'identity') mockAuth.status.set({ user_id: 'bob' });
-        if (loss === 'edition') mockAuth.isEdition.set(false);
-        if (loss === 'navigation') { events.next(new NavigationStart(1, '/other')); events.next(new NavigationStart(2, '/')); }
-        response.next({ ...edited, gps_latitude: 12 });
-        await new Promise<void>(resolve => setTimeout(resolve, 0));
-        expect(component.photo()).toBe(previous);
-        expect(events.observers).toHaveLength(listeners);
-      });
-    }
-
     it('capture date commits are available on immediate reopen and do not replace a newer photo', async () => {
       createComponent();
       seedGrid();
@@ -2023,6 +1946,45 @@ describe('PhotoDetailComponent', () => {
 
       expect(component.explainerOpen()).toBe(false);
       expect(mockApi.get).not.toHaveBeenCalledWith('/config/category_priorities');
+    });
+
+    it('renders a toggle inside the category chip that reveals the select below and shows its expanded state', () => {
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/config/category_priorities') return of({ categories: [{ name: 'portrait' }] });
+        return of(samplePhoto);
+      });
+      const view = renderDetail();
+      view.componentInstance.photo.set(makePhoto({ category: 'portrait' }));
+      view.detectChanges();
+      const el: HTMLElement = view.nativeElement;
+      const toggle = el.querySelector<HTMLButtonElement>('[data-explainer-toggle]')!;
+      expect(toggle.getAttribute('aria-label')).toBe('photo.category_override.explainer_toggle');
+      expect(toggle.closest('span')!.textContent).toContain('Portrait');
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      expect(toggle.textContent?.trim()).toBe('expand_more');
+      expect(el.querySelector('mat-select')).toBeNull();
+      toggle.click();
+      view.detectChanges();
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+      expect(toggle.textContent?.trim()).toBe('expand_less');
+      expect(el.querySelector('mat-select')).not.toBeNull();
+    });
+
+    it('renders download as a labelled icon-only button with a tooltip', () => {
+      const view = renderDetail();
+      view.componentInstance.photo.set(makePhoto({ category: 'portrait' }));
+      view.detectChanges();
+      const download = view.nativeElement.querySelector('button[aria-label="photo_detail.download"]') as HTMLButtonElement;
+      expect(download.hasAttribute('mat-icon-button')).toBe(true);
+      expect(download.textContent?.trim()).toBe('download');
+    });
+
+    it('hides the toggle outside edition mode', () => {
+      mockAuth.isEdition.set(false);
+      const view = renderDetail();
+      view.componentInstance.photo.set(makePhoto({ category: 'portrait' }));
+      view.detectChanges();
+      expect(view.nativeElement.querySelector('[data-explainer-toggle]')).toBeNull();
     });
   });
 

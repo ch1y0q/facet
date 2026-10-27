@@ -803,26 +803,10 @@ function saveSectionStates(states: Record<string, boolean>): void {
         <ng-container [ngTemplateOutlet]="metricPanel" [ngTemplateOutletContext]="{ $implicit: group }" />
       }
 
-      <!-- Advanced metrics (collapsed; nested sections) -->
-      <mat-expansion-panel class="!mb-1" [expanded]="sectionStates()['advanced'] === true"
-                           (opened)="onSectionToggle('advanced', true)"
-                           (closed)="onSectionToggle('advanced', false)"
-                           [style.background-color]="sectionStates()['advanced'] === true ? 'var(--mat-sys-surface-container)' : null">
-        <mat-expansion-panel-header>
-          <mat-panel-title class="flex items-center gap-2">
-            <mat-icon class="!text-base !w-5 !h-5 !leading-5 opacity-60">tune</mat-icon>
-            {{ I18N.gallery.sidebar.advanced_metrics | translate }}
-            @if (advancedActiveCount()) {
-              <span class="text-xs rounded-full min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center bg-[var(--mat-sys-primary)] text-[var(--mat-sys-on-primary)] leading-none">{{ advancedActiveCount() }}</span>
-            }
-          </mat-panel-title>
-        </mat-expansion-panel-header>
-        <div class="flex flex-col gap-1 pb-1">
-          @for (group of advancedFilterGroups(); track group.sectionKey) {
-            <ng-container [ngTemplateOutlet]="metricPanel" [ngTemplateOutletContext]="{ $implicit: group }" />
-          }
-        </div>
-      </mat-expansion-panel>
+      <!-- Advanced metric sections, listed as top-level sections like the common ones -->
+      @for (group of advancedFilterGroups(); track group.sectionKey) {
+        <ng-container [ngTemplateOutlet]="metricPanel" [ngTemplateOutletContext]="{ $implicit: group }" />
+      }
       }
 
       <ng-template #metricPanel let-group>
@@ -1092,11 +1076,6 @@ export class GalleryFilterSidebarComponent {
       out[key] = buckets.map(b => Math.round((b / max) * 100));
     }
     return out;
-  });
-
-  readonly advancedActiveCount = computed(() => {
-    const counts = this.sectionActiveCounts();
-    return ADVANCED_SECTION_ORDER.reduce((sum, key) => sum + (counts[key] || 0), 0);
   });
 
   readonly sectionActiveCounts = computed((): Record<string, number> => {

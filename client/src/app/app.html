@@ -4,10 +4,10 @@
   <!-- The edition-active underline: an unlocked edit session can write to the
        library, and the only prior signal was a small amber shield among ten
        icons. The bar is there from unlock until lock, sitting exactly on the
-       border the toolbar already draws. -->
+       border the toolbar already draws, in the selected theme's accent. -->
   <mat-toolbar class="shrink-0 !px-2 !bg-[var(--mat-sys-surface-container)] border-b border-[var(--mat-sys-outline-variant)]"
                [class.!border-b-2]="auth.isEdition()"
-               [class.border-amber-400]="auth.isEdition()">
+               [style.border-bottom-color]="auth.isEdition() ? 'var(--facet-accent)' : null">
     <div class="flex items-center gap-3 w-full">
       <!-- Nav links -->
       @if (auth.isAuthenticated()) {
@@ -73,6 +73,11 @@
               <mat-icon>auto_awesome</mat-icon>
             </button>
           }
+          @if (auth.isEdition()) {
+            <button mat-icon-button class="lg:!hidden" (click)="openOrganizationHistory()" [matTooltip]="I18N.organization_history.title | translate" [attr.aria-label]="I18N.organization_history.title | translate">
+              <mat-icon>history</mat-icon>
+            </button>
+          }
           <a mat-icon-button class="!hidden lg:!inline-flex" routerLink="/" routerLinkActive #rlGallery="routerLinkActive" [routerLinkActiveOptions]="{exact:true}" [style.color]="rlGallery.isActive ? 'var(--mat-sys-primary)' : ''" [matTooltip]="I18N.nav.gallery_tooltip | translate" [attr.aria-label]="I18N.nav.gallery_tooltip | translate" (dblclick)="resetAllFilters()">
             <mat-icon>diamond</mat-icon>
           </a>
@@ -125,6 +130,11 @@
           @if (store.config()?.features?.show_memories && hasMemories()) {
             <button mat-icon-button class="!hidden lg:!inline-flex" (click)="playMemories()" [matTooltip]="I18N.memories.tooltip | translate" [attr.aria-label]="I18N.nav.memories | translate">
               <mat-icon>auto_awesome</mat-icon>
+            </button>
+          }
+          @if (auth.isEdition()) {
+            <button mat-icon-button class="!hidden lg:!inline-flex" (click)="openOrganizationHistory()" [matTooltip]="I18N.organization_history.title | translate" [attr.aria-label]="I18N.organization_history.title | translate">
+              <mat-icon>history</mat-icon>
             </button>
           }
         </nav>
