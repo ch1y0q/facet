@@ -19,6 +19,8 @@ on:
       - "facet.py"
       - "analyzers/face*.py"
       - "faces/**"
+      - "utils/onnx_runtime.py"
+      - "cli_args.py"
       - "processing/**"
       - "models/**"
       - "db/**"
@@ -27,13 +29,15 @@ on:
       - "pyproject.toml"
       - "Dockerfile"
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - "testdb/**"
       - ".github/workflows/face-gate.yml"
       - "facet.py"
       - "analyzers/face*.py"
       - "faces/**"
+      - "utils/onnx_runtime.py"
+      - "cli_args.py"
       - "processing/**"
       - "models/**"
       - "db/**"

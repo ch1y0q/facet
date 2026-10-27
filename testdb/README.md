@@ -42,8 +42,9 @@ hardware, so record your own baseline first.
 | `open_set_eval.py`, 3 references, T = 0.35: primary right / wrong | 196 / 0 of 196 | 196 / 0 of 196 | must stay |
 | `open_set_eval.py`, 3 references, T = 0.35: bystanders named | 0 of 24 | 0 of 24 | must stay 0 |
 
-The GPU-CPU gap is grouping: the CPU scan forms 20 face groups and the GPU scan 22, and the
-remaining CPU errors are all in Abdullah_Gul_0008 and _0009. The open-set scores are identical.
+GPU and CPU give the same result: both form 20 face groups, and the remaining errors are all in
+Abdullah_Gul_0008 and _0009. An earlier GPU baseline (194 right, 10 of 24, 5 photos, 22 groups)
+did not reproduce on a fresh scan.
 
 CI runs it without a GPU (`.github/workflows/face-gate.yml`): one job builds the library, then
 Linux (direct install) and Docker (the CPU image) each scan it on the legacy profile, group,
@@ -58,7 +59,7 @@ When it runs, and how deep:
 
 | Trigger | Scan | Time per job |
 |---|---|---|
-| Pull requests and pushes to `main` that touch face code (`facet.py`, `analyzers/face*.py`, `faces/`, `processing/`, `models/`, `db/`, `config/`, the lock files, `pyproject.toml`, the `Dockerfile`, `testdb/`) | face pass only (`facet.py --pass faces`) | about 5 min |
+| Pull requests and pushes to `master` that touch face code (`facet.py`, `analyzers/face*.py`, `faces/`, `utils/onnx_runtime.py`, `cli_args.py`, `processing/`, `models/`, `db/`, `config/`, the lock files, `pyproject.toml`, the `Dockerfile`, `testdb/`) | face pass only (`facet.py --pass faces`) | about 5 min |
 | Weekly, or by hand (*Run workflow* with `full_scan`) | the whole scoring pipeline | about 1.5 h |
 
 The report depends only on the face pass (InsightFace): a face-pass-only scan of the
