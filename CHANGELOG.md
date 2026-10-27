@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **The CPU Docker image pins torch.** It installs torch 2.11.0 and torchvision 0.26.0 from the CPU wheel index, the release the default CUDA image ships, instead of whatever the index serves on the day of the build. `CPU_TORCH_VERSION` and `CPU_TORCHVISION_VERSION` override them.
+
 ### Fixed
 
 - **LIQE and CLIPIQA load again in the legacy CUDA image.** Its restricted lock pinned setuptools 84.1.0, which no longer ships `pkg_resources`, so PyPI `openai-clip` failed to import. It is held at 81.0.0 like the default image's lock, and the runtime cap is corrected to `<82` (setuptools 82 removed `pkg_resources`, not 81).
