@@ -52,7 +52,7 @@ try {
     }
     if (-not (Test-PortOpen $Port)) {
         $tail = Get-Content (Join-Path $FacetLogs 'viewer.log') -Tail 15 -ErrorAction SilentlyContinue
-        throw "Facet viewer did not answer on port $Port within 90 s. Log:`n$($tail -join "`n")"
+        throw "Facet viewer has not answered on port $Port after 90 s. It is still running and may finish starting: try $url in a minute, or run Stop-Facet. Log:`n$($tail -join "`n")"
     }
     if (-not $NoBrowser) { Start-Process $url }
 } catch {

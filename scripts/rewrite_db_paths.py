@@ -24,6 +24,11 @@ Safety:
 - Separators: trailing ones on either prefix are ignored, and the rest of each path takes
   the new prefix's separator (``\\`` for a drive letter or a UNC path, else ``/``;
   ``--sep`` overrides).
+- Prefixes where one lies inside the other (``/data/photos`` to ``/data/photos/new``) are refused
+  with exit 2: rows the triggers insert during the rewrite would be converted twice. Go
+  through an unrelated temporary prefix instead.
+- A rewrite that would add foreign-key violations is rolled back. After commit the tool
+  exits 1 if the integrity or foreign-key check fails.
 
 Undo history recorded before the rewrite (``organization_history``) cannot be applied
 afterwards: each entry is tied to its photos' revisions, which a path change advances on
