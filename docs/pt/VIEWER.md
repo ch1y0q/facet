@@ -225,6 +225,8 @@ A galeria mostra a contagem de fotos **por decidir**, **mantidas** e **rejeitada
 
 Escolha **Rever por decidir** para começar uma fila. **Continuar revisão** restaura neste navegador a última fila **Por rever** aberta e abre a primeira foto ainda por decidir. Mudar os filtros da galeria não substitui esse marcador, a menos que você abra outra fila **Por rever**. Fotos mantidas, rejeitadas e excluídas são puladas conforme o estado atual do banco de dados; retoma-se a fila, não uma posição exata. O marcador sobrevive a recarregamentos, é isolado por identidade conectada e limitado a 20 identidades por navegador. Ele não é sincronizado entre dispositivos. Filas de álbum usam os critérios salvos atuais do álbum, e revisar temporariamente não altera esses critérios. Uma edição posterior na barra lateral volta à edição normal dos filtros do álbum. Sair da página cancela uma ação Continuar em andamento. Grupos temporários de rajada e sequência não são guardados porque uma nova varredura pode reatribuir seus IDs. Se o armazenamento do navegador estiver desativado ou cheio, a revisão continua funcionando, mas o marcador pode não persistir. Um álbum indisponível deixa a visualização atual inalterada. Terminar a sessão apaga os marcadores de revisão de todas as identidades neste navegador, incluindo os filtros de pesquisa, pessoa, pasta e álbum.
 
+O banner de progresso da revisão tem um botão de fechar (×), e o menu do usuário inclui o item **Ocultar progresso da revisão** / **Mostrar progresso da revisão**. A escolha fica guardada neste navegador (localStorage), persiste após recarregar e vale para todas as contas que usam esse navegador. Enquanto o banner está oculto, o seu botão **Rever por decidir** também fica oculto: mostre-o de novo pelo menu do usuário para começar a fila (o filtro de estado de revisão da barra lateral continua a filtrar as fotos por decidir).
+
 O estado de revisão se aplica à galeria normal; escolher um estado encerra as buscas semânticas e de fotos semelhantes.
 
 
@@ -719,7 +721,7 @@ Para cada grupo, escolha a(s) foto(s) a manter; confirmar rejeita o resto. As co
 
 **Intervalo de datas.** O botão **intervalo de datas** da barra de ferramentas (ícone `date_range`) abre um menu de predefinições (**Últimos 7 dias**, **Últimos 30 dias**, **Este ano**, **Ano passado**), **Intervalo personalizado...** (um seletor de intervalo de datas) e **Todas as datas**; as datas são mostradas como dd/MM/aaaa. O intervalo soma-se ao escopo do álbum e limita o fluxo às fotos tiradas nessa janela (as fotos sem data de captura saem de um escopo com datas); escolher uma cena de álbum no menu de escopo define as suas próprias datas e substitui o intervalo. As predefinições são resolvidas no momento da escolha, pelo que um «Últimos 7 dias» guardado nos favoritos é uma janela fixa. O intervalo vive apenas no URL (`?from=2026-07-01&to=2026-07-31`, ao lado de `album` e `scene`), não no `localStorage`: uma visita nova começa com todas as datas e recarregar a página restaura-o. Alterar o intervalo no fluxo manual recarrega-o: uma confirmação cuja contagem decrescente ainda decorre é aplicada de imediato, enquanto os saltos e as seleções por confirmar são descartados. O nome acessível inclui o rótulo visível do botão seguido das datas selecionadas.
 
-**Chip Meu Gosto.** Cada confirmação registra linhas de comparação `source='culling'` que treinam o ranqueador pessoal, então o cabeçalho mostra um pequeno chip "Meu Gosto · N comparações" que se atualiza após cada decisão — a IA aprende seu olhar conforme você tria (`GET /api/ranker/status`).
+**Linha Meu Gosto.** Cada confirmação registra linhas de comparação `source='culling'` que treinam o ranqueador pessoal, então o diálogo de ajuda de `/culling` (menu do usuário → Ajuda) mostra uma linha "Meu Gosto · N comparações" que se atualiza após cada decisão — a IA aprende seu olhar conforme você tria (`GET /api/ranker/status`). Esse diálogo de ajuda também lista os atalhos de teclado da página de triagem e da câmara escura.
 
 ### Triagem automática
 
@@ -932,10 +934,10 @@ Os atalhos de uma só tecla da galeria e das fotos ficam inativos quando o foco 
 | `1`–`5` | Avaliar a foto em foco com 1–5 estrelas (modo edição; avança para a próxima) |
 | `F` | Favoritar / desfavoritar a foto em foco (modo edição) |
 | `X` ou `0` | Rejeitar / cancelar a rejeição da foto em foco (modo edição; avança) |
-| `/` | Focar a caixa de busca |
+| `/` | Foca a busca da barra de ferramentas (visível a partir de 1360 px de largura); abaixo disso, abre a barra lateral de filtros e foca o seu campo de busca |
 | `B` | Mostrar / ocultar a barra lateral de filtros |
 | `V` | Alternar entre grade e mosaico |
-| `?` | Mostra a referência de atalhos de teclado (funciona em todas as páginas) |
+| `?` | Mostra a referência de atalhos de teclado (funciona em todas as páginas; os atalhos da galeria também estão listados em menu do usuário → Ajuda) |
 
 A foto atual — aquela sobre a qual agem os atalhos de avaliação, favorito e rejeição — é marcada com um contorno de 4px em volta do seu cartão; todos os outros cartões passam a 50% de opacidade. Nada fica marcado até o cursor se mover de fato para uma foto dos resultados, por isso uma galeria que você ainda não percorreu permanece em intensidade total. Clicar numa foto move o marcador para ela, de modo que um atalho digitado logo após um clique se aplica à foto clicada, não àquela onde as setas o tinham deixado. Ao voltar de uma foto (Voltar ou Esc) o marcador permanece na última foto que você viu, de modo que os atalhos continuam a partir dali. A dica de atalhos no cartão focado só aparece no modo de edição com `viewer.features.show_rating_controls` ativado.
 

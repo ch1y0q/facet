@@ -54,6 +54,7 @@ describe('GalleryFilterSidebarComponent', () => {
         path_prefix: '',
       }),
       filterDrawerOpen: signal(true),
+      reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(),
       cameras: signal([]),
       lenses: signal([]),
       tags: signal([]),

@@ -129,7 +129,8 @@
       "inpage_hint": "Wenn aktiviert, kann ein in diesem Browser laufender Assistent suchen und, sofern Ihre Sitzung es erlaubt, Ihre Bibliothek über die Seite ändern. Standardmäßig aus; gilt nur für diesen Browser.",
       "inpage_changed": "Der Assistent hat {count} Foto geändert",
       "inpage_changed_plural": "Der Assistent hat {count} Fotos geändert"
-    }
+    },
+    "ok": "OK"
   },
   "pagination": {
     "scroll_for_more": "Scrollen für mehr",
@@ -1037,7 +1038,7 @@
     "user_menu": "Benutzermenü"
   },
   "gallery": {
-    "help": "Durchsuchen und filtern Sie Ihre Bibliothek. Sortieren Sie nach Bewertung, Datum oder Ihrem persönlichen Geschmack; nutzen Sie die Filter in der Seitenleiste (Personen, Schlagwörter, Kamera, Kategorie, Wertungsbereich, Momente) und die Suche, um Fotos zu finden. Tasten auf der fokussierten Karte: 1–5 bewerten, F favorisieren, X verwirft (Bearbeitungsmodus); / fokussiert die Suche, B blendet die Filterseitenleiste ein/aus, V wechselt Raster und Mosaik.",
+    "help": "Nach Bewertung, Datum oder deinem Geschmack sortieren\nMit der Seitenleiste filtern: Personen, Tags, Kamera, Kategorien\nSuche nach Dateiname oder Beschreibung",
     "hidden_banner": {
       "message": "{n} Fotos durch aktuelle Filter ausgeblendet",
       "some_hidden": "Einige Fotos werden durch Ihre Filter ausgeblendet",
@@ -1319,13 +1320,16 @@
       "complete": "{percent}% von {total} gesichtet",
       "start": "Unentschiedene sichten",
       "resume": "Sichtung fortsetzen",
-      "browser": "Gespeicherte Warteschlange in diesem Browser fortsetzen."
+      "browser": "Gespeicherte Warteschlange in diesem Browser fortsetzen.",
+      "hide_from_menu": "Bewertungsfortschritt ausblenden",
+      "show_from_menu": "Bewertungsfortschritt anzeigen"
     },
     "manual_faces_need_review": "Manuelle Gesichter prüfen",
     "manual_faces_review_hint": "Stand des letzten Scans oder der letzten Prüfung im Gesichtseditor, keine laufende Überwachung. Öffnen Sie den Gesichtseditor eines Fotos, um gespeicherte Markierungen zu prüfen.",
     "faces_need_names": "Gesichter ohne Namen",
     "faces_need_names_hint": "Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Mit + ein Gesicht zuweisen oder unter Personen eine Gruppe benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen.",
-    "faces_need_names_readonly_hint": "Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Personen mit Bearbeitungszugriff können Gesichter zuweisen oder Gruppen benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen."
+    "faces_need_names_readonly_hint": "Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Personen mit Bearbeitungszugriff können Gesichter zuweisen oder Gruppen benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen.",
+    "help_none": "Diese Seite hat noch keinen Hilfetext."
   },
   "composition_patterns": {
     "none": "Keines",

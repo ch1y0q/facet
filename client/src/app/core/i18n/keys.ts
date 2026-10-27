@@ -144,6 +144,7 @@ export const I18N = {
       inpage_changed: "dialog.connect_assistant.inpage_changed",
       inpage_changed_plural: "dialog.connect_assistant.inpage_changed_plural",
     },
+    ok: "dialog.ok",
   },
   pagination: {
     scroll_for_more: "pagination.scroll_for_more",
@@ -1334,12 +1335,15 @@ export const I18N = {
       start: "gallery.review_progress.start",
       resume: "gallery.review_progress.resume",
       browser: "gallery.review_progress.browser",
+      hide_from_menu: "gallery.review_progress.hide_from_menu",
+      show_from_menu: "gallery.review_progress.show_from_menu",
     },
     manual_faces_need_review: "gallery.manual_faces_need_review",
     manual_faces_review_hint: "gallery.manual_faces_review_hint",
     faces_need_names: "gallery.faces_need_names",
     faces_need_names_hint: "gallery.faces_need_names_hint",
     faces_need_names_readonly_hint: "gallery.faces_need_names_readonly_hint",
+    help_none: "gallery.help_none",
   },
   composition_patterns: {
     none: "composition_patterns.none",

@@ -129,7 +129,8 @@
       "inpage_hint": "Se attivo, un assistente in esecuzione in questo browser può cercare e, se la sessione lo consente, modificare la libreria tramite la pagina. Disattivato per impostazione predefinita; vale solo per questo browser.",
       "inpage_changed": "L’assistente ha modificato {count} foto",
       "inpage_changed_plural": "L’assistente ha modificato {count} foto"
-    }
+    },
+    "ok": "OK"
   },
   "pagination": {
     "scroll_for_more": "Scorri per vedere altro",
@@ -1037,7 +1038,7 @@
     "user_menu": "Menu utente"
   },
   "gallery": {
-    "help": "Sfoglia e filtra la tua libreria. Ordina per punteggio, data o per i tuoi gusti personali; usa i filtri della barra laterale (persone, tag, fotocamera, categoria, intervallo di punteggio, momenti) e la ricerca per trovare le foto. Tasti sulla scheda a fuoco: 1–5 valuta, F aggiunge ai preferiti, X scarta (modalità modifica); / attiva la ricerca, B mostra o nasconde la barra laterale dei filtri, V alterna griglia e mosaico.",
+    "help": "Ordina per punteggio, data o il tuo gusto personale\nFiltra con la barra laterale: persone, tag, fotocamera, categorie\nCerca per nome file o descrizione",
     "hidden_banner": {
       "message": "{n} foto nascoste dai filtri attivi",
       "some_hidden": "Alcune foto sono nascoste dai tuoi filtri",
@@ -1319,13 +1320,16 @@
       "complete": "{percent}% di {total} revisionate",
       "start": "Rivedi le indecise",
       "resume": "Continua revisione",
-      "browser": "Riprendi la coda memorizzata in questo browser."
+      "browser": "Riprendi la coda memorizzata in questo browser.",
+      "hide_from_menu": "Nascondi avanzamento revisione",
+      "show_from_menu": "Mostra avanzamento revisione"
     },
     "manual_faces_need_review": "Volti manuali da verificare",
     "manual_faces_review_hint": "In base all’ultima scansione o verifica nell’editor dei volti, senza monitoraggio continuo. Apri l’editor dei volti di una foto per verificare i riquadri salvati.",
     "faces_need_names": "Volti senza nome",
     "faces_need_names_hint": "Include volti non assegnati e gruppi di persone senza nome. Usa + per assegnare un volto o dai un nome a un gruppo in Persone. Le foto senza volti rilevati sono escluse.",
-    "faces_need_names_readonly_hint": "Include volti non assegnati e gruppi senza nome. Chi dispone dell’accesso in modifica può assegnare i volti o nominare i gruppi. Le foto senza volti rilevati sono escluse."
+    "faces_need_names_readonly_hint": "Include volti non assegnati e gruppi senza nome. Chi dispone dell’accesso in modifica può assegnare i volti o nominare i gruppi. Le foto senza volti rilevati sono escluse.",
+    "help_none": "Questa pagina non ha ancora un testo di aiuto."
   },
   "composition_patterns": {
     "none": "Nessuno",

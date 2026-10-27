@@ -45,6 +45,7 @@ import { UserActivityJournal } from '../../core/agent/user-activity-journal.serv
 import { PageContextService } from '../../core/agent/page-context.service';
 import { AssistantCullPlanService, type CullPlanPin } from '../../core/agent/assistant-cull-plan.service';
 import { firstValueFrom } from 'rxjs';
+import { DARKROOM_SHORTCUTS } from './culling-shortcuts';
 import {
   CullingStore, RunGeneration, GroupBy, GROUP_BY_VALUES,
   CULL_GROUP_BY_KEY, CULL_SORT_KEY, CULL_SORT_DIR_KEY, updateMapSignal,
@@ -126,11 +127,6 @@ interface SceneSummary {
   end: string | null;
   count: number;
   moment?: string | null;
-}
-
-interface ShortcutRow {
-  keys: string[];
-  labelKey: string;
 }
 
 @Component({
@@ -473,38 +469,6 @@ interface ShortcutRow {
         </div>
       </ng-template>
 
-      @if (pageHelp.open()) {
-        <div class="shrink-0 p-3 mb-3 rounded-lg bg-[var(--mat-sys-surface-container)] space-y-3">
-          <p class="text-sm opacity-80">{{ I18N.culling.help_text | translate }}</p>
-          @if (cull.rankerComparisons() !== null) {
-            <span class="text-xs opacity-70 flex items-center gap-1"
-                  [matTooltip]="I18N.culling.my_taste_tooltip | translate">
-              <mat-icon class="!text-sm !w-4 !h-4 !leading-4 text-[var(--mat-sys-primary)]">auto_awesome</mat-icon>
-              {{ (cull.rankerTrained() ? I18N.culling.my_taste_trained : I18N.culling.my_taste_learning)
-                 | translate:{ count: (cull.rankerComparisons() ?? 0) } }}
-            </span>
-          }
-          <div class="flex flex-wrap gap-x-10 gap-y-3">
-            @for (section of shortcutSections; track section.titleKey) {
-              <div>
-                <div class="text-xs font-semibold uppercase opacity-50 mb-1.5">{{ section.titleKey | translate }}</div>
-                <div class="space-y-1">
-                  @for (row of section.rows; track row.labelKey) {
-                    <div class="flex items-center gap-2 text-xs">
-                      <span class="flex gap-1">
-                        @for (k of row.keys; track k) {
-                          <kbd class="px-1.5 py-0.5 rounded border border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface-container-high)] text-xs font-mono">{{ k }}</kbd>
-                        }
-                      </span>
-                      <span class="opacity-80">{{ row.labelKey | translate }}</span>
-                    </div>
-                  }
-                </div>
-              </div>
-            }
-          </div>
-        </div>
-      }
 
       <!-- Corrections change nothing until the detector runs again, and that run
            is a whole-library batch pass -- far too expensive to fire once per
@@ -1492,7 +1456,7 @@ export class BurstCullingComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly snackBar = inject(MatSnackBar);
   private readonly i18n = inject(I18nService);
-  protected readonly pageHelp = inject(PageHelpService);
+  private readonly pageHelp = inject(PageHelpService);
   private readonly headerSlot = inject(HeaderSlotService);
   private readonly albumService = inject(AlbumService);
   private readonly compareFilters = inject(CompareFiltersService);
@@ -2083,34 +2047,16 @@ export class BurstCullingComponent implements OnDestroy {
     return [...set].sort();
   });
 
-  protected readonly darkroomShortcuts: ShortcutRow[] = [
-    { keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' },
-    { keys: ['↑'], labelKey: 'culling.shortcuts.keep' },
-    { keys: ['↓'], labelKey: 'culling.shortcuts.reject' },
-    { keys: ['Z'], labelKey: 'culling.shortcuts.zoom' },
-    { keys: ['P'], labelKey: 'culling.shortcuts.peaking' },
-    { keys: ['G'], labelKey: 'culling.shortcuts.grid' },
-    { keys: ['F'], labelKey: 'slideshow.fullscreen' },
-    { keys: ['Space'], labelKey: 'culling.shortcuts.confirm_next' },
-    { keys: ['Esc'], labelKey: 'culling.shortcuts.close' },
-  ];
-
-  protected readonly shortcutSections: { titleKey: string; rows: ShortcutRow[] }[] = [
-    {
-      titleKey: 'culling.shortcuts.page_title',
-      rows: [
-        { keys: ['↑', '↓'], labelKey: 'culling.shortcuts.select' },
-        { keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' },
-        { keys: ['Space'], labelKey: 'culling.shortcuts.toggle' },
-        { keys: ['Shift+Space'], labelKey: 'culling.shortcuts.confirm_next' },
-        { keys: ['Enter'], labelKey: 'culling.shortcuts.open' },
-      ],
-    },
-    { titleKey: 'culling.shortcuts.darkroom_title', rows: this.darkroomShortcuts },
-  ];
+  protected readonly darkroomShortcuts = DARKROOM_SHORTCUTS;
 
   constructor() {
-    this.pageHelp.setDescription(null);
+    this.pageHelp.setDescription(this.I18N.culling.help_text);
+    // The help dialog's My Taste line: how many comparisons the ranker has.
+    effect(() => {
+      const count = this.cull.rankerComparisons();
+      const key = this.cull.rankerTrained() ? this.I18N.culling.my_taste_trained : this.I18N.culling.my_taste_learning;
+      this.pageHelp.note.set(count === null ? null : { key, params: { count } });
+    });
     this.cull.notice$.pipe(takeUntilDestroyed()).subscribe(notice => {
       const text = notice.params ? this.i18n.t(notice.key, notice.params) : this.i18n.t(notice.key);
       this.snackBar.open(text, '', { duration: notice.duration, horizontalPosition: 'right', verticalPosition: 'bottom' });

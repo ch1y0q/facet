@@ -129,7 +129,8 @@
       "inpage_hint": "Quando ativado, um assistente executado neste navegador pode pesquisar e, se a sua sessão permitir, alterar a sua biblioteca através da página. Desativado por predefinição; aplica-se apenas a este navegador.",
       "inpage_changed": "O assistente alterou {count} foto",
       "inpage_changed_plural": "O assistente alterou {count} fotos"
-    }
+    },
+    "ok": "OK"
   },
   "pagination": {
     "scroll_for_more": "Role para ver mais",
@@ -1037,7 +1038,7 @@
     "user_menu": "Menu do usuário"
   },
   "gallery": {
-    "help": "Navegue e filtre a sua biblioteca. Ordene por pontuação, data ou pelo seu gosto pessoal; use os filtros da barra lateral (pessoas, tags, câmera, categoria, faixa de pontuação, momentos) e a busca para encontrar fotos. Teclas no cartão em foco: 1–5 avalia, F favorita, X rejeita (modo edição); / foca a busca, B mostra ou oculta a barra lateral de filtros, V alterna grade e mosaico.",
+    "help": "Ordene por pontuação, data ou seu gosto pessoal\nFiltre com a barra lateral: pessoas, tags, câmera, categorias\nBusque por nome de arquivo ou descrição",
     "hidden_banner": {
       "message": "{n} fotos ocultadas pelos filtros atuais",
       "some_hidden": "Algumas fotos estão ocultadas pelos seus filtros",
@@ -1319,13 +1320,16 @@
       "complete": "{percent}% de {total} revistas",
       "start": "Rever por decidir",
       "resume": "Continuar revisão",
-      "browser": "Retomar a fila guardada neste navegador."
+      "browser": "Retomar a fila guardada neste navegador.",
+      "hide_from_menu": "Ocultar progresso da revisão",
+      "show_from_menu": "Mostrar progresso da revisão"
     },
     "manual_faces_need_review": "Rostos manuais a rever",
     "manual_faces_review_hint": "Com base na última análise ou verificação no editor de rostos, sem monitorização contínua. Abra o editor de rostos de uma fotografia para rever as marcações guardadas.",
     "faces_need_names": "Rostos sem nome",
     "faces_need_names_hint": "Inclui rostos não atribuídos e grupos de pessoas sem nome. Use + para atribuir um rosto ou dê um nome a um grupo em Pessoas. Fotos sem rostos detetados são excluídas.",
-    "faces_need_names_readonly_hint": "Inclui rostos não atribuídos e grupos sem nome. Quem tem acesso de edição pode atribuir rostos ou dar nomes aos grupos. Fotos sem rostos detetados são excluídas."
+    "faces_need_names_readonly_hint": "Inclui rostos não atribuídos e grupos sem nome. Quem tem acesso de edição pode atribuir rostos ou dar nomes aos grupos. Fotos sem rostos detetados são excluídas.",
+    "help_none": "Esta página ainda não tem texto de ajuda."
   },
   "composition_patterns": {
     "none": "Nenhum",

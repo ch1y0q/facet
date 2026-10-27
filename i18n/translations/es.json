@@ -129,7 +129,8 @@
       "inpage_hint": "Si está activado, un asistente que se ejecute en este navegador puede buscar y, si su sesión lo permite, modificar su biblioteca a través de la página. Desactivado por defecto; solo afecta a este navegador.",
       "inpage_changed": "El asistente cambió {count} foto",
       "inpage_changed_plural": "El asistente cambió {count} fotos"
-    }
+    },
+    "ok": "Aceptar"
   },
   "pagination": {
     "scroll_for_more": "Desplaza para ver más",
@@ -1037,7 +1038,7 @@
     "user_menu": "Menú de usuario"
   },
   "gallery": {
-    "help": "Explora y filtra tu biblioteca. Ordena por puntuación, fecha o tu gusto personal; usa los filtros de la barra lateral (personas, etiquetas, cámara, categoría, rango de puntuación, momentos) y la búsqueda para encontrar fotos. Teclas sobre la tarjeta enfocada: 1–5 puntúa, F marca como favorita, X rechaza (modo edición); / enfoca la búsqueda, B muestra u oculta la barra lateral de filtros, V alterna cuadrícula y mosaico.",
+    "help": "Ordena por puntuación, fecha o tu gusto personal\nFiltra con la barra lateral: personas, etiquetas, cámara, categorías\nBusca por nombre de archivo o descripción",
     "hidden_banner": {
       "message": "{n} fotos ocultas por los filtros actuales",
       "some_hidden": "Algunas fotos están ocultas por tus filtros",
@@ -1319,13 +1320,16 @@
       "complete": "{percent}% de {total} revisadas",
       "start": "Revisar sin decidir",
       "resume": "Continuar revisión",
-      "browser": "Reanudar la cola recordada en este navegador."
+      "browser": "Reanudar la cola recordada en este navegador.",
+      "hide_from_menu": "Ocultar el progreso de revisión",
+      "show_from_menu": "Mostrar el progreso de revisión"
     },
     "manual_faces_need_review": "Rostros manuales por revisar",
     "manual_faces_review_hint": "Según el último escaneo o revisión en el editor de rostros, sin supervisión continua. Abra el editor de rostros de una foto para revisar las marcas guardadas.",
     "faces_need_names": "Caras sin nombre",
     "faces_need_names_hint": "Incluye caras sin asignar y grupos de personas sin nombre. Usa + para asignar una cara o nombra un grupo en Personas. No incluye fotos sin caras detectadas.",
-    "faces_need_names_readonly_hint": "Incluye caras sin asignar y grupos sin nombre. Quien tenga acceso de edición puede asignar caras o nombrar grupos. Se excluyen fotos sin caras detectadas."
+    "faces_need_names_readonly_hint": "Incluye caras sin asignar y grupos sin nombre. Quien tenga acceso de edición puede asignar caras o nombrar grupos. Se excluyen fotos sin caras detectadas.",
+    "help_none": "Esta página aún no tiene texto de ayuda."
   },
   "composition_patterns": {
     "none": "Ninguno",

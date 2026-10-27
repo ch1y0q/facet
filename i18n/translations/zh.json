@@ -129,7 +129,8 @@
       "inpage_hint": "开启后，在此浏览器中运行的助手可以搜索，并在您的会话允许时通过页面修改您的图库。默认关闭，仅对此浏览器生效。",
       "inpage_changed": "助手更改了 {count} 张照片",
       "inpage_changed_plural": "助手更改了 {count} 张照片"
-    }
+    },
+    "ok": "好的"
   },
   "pagination": {
     "scroll_for_more": "向下滚动查看更多",
@@ -1037,7 +1038,7 @@
     "user_menu": "用户菜单"
   },
   "gallery": {
-    "help": "浏览和筛选照片库。按评分、日期或个人偏好排序；通过侧栏筛选（人物、标签、相机、类别、评分范围、拍摄时刻）及搜索查找照片。 焦点卡片上的按键：1–5 打星、F 收藏、X 淘汰（编辑模式）；/ 聚焦搜索、B 开合筛选侧栏、V 切换网格与马赛克。",
+    "help": "按评分、日期或个人偏好排序\n用侧栏筛选：人物、标签、相机、类别等\n搜索框按文件名或描述查找",
     "hidden_banner": {
       "message": "当前筛选条件隐藏了 {n} 张照片",
       "some_hidden": "部分照片被筛选条件隐藏",
@@ -1319,13 +1320,16 @@
       "complete": "已审阅 {total} 张中的 {percent}%",
       "start": "审阅未决定照片",
       "resume": "继续审阅",
-      "browser": "在此浏览器中恢复记住的队列。"
+      "browser": "在此浏览器中恢复记住的队列。",
+      "hide_from_menu": "隐藏审阅进度",
+      "show_from_menu": "显示审阅进度"
     },
     "manual_faces_need_review": "手动人脸需要检查",
     "manual_faces_review_hint": "基于最近一次扫描或人脸编辑器检查，并非持续监控。打开照片的人脸编辑器，检查已保存的标记。",
     "faces_need_names": "未命名的人脸",
     "faces_need_names_hint": "包括未分配的人脸和未命名的人物组。点击 + 分配人脸，或在“人物”中为分组命名。不包括未检测到人脸的照片。",
-    "faces_need_names_readonly_hint": "包含未分配的人脸和尚未命名的人物组。拥有编辑权限的用户可以分配人脸或为组命名。不包含未检测到人脸的照片。"
+    "faces_need_names_readonly_hint": "包含未分配的人脸和尚未命名的人物组。拥有编辑权限的用户可以分配人脸或为组命名。不包含未检测到人脸的照片。",
+    "help_none": "此页面暂无帮助内容。"
   },
   "composition_patterns": {
     "none": "无",

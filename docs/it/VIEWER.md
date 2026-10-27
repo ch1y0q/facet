@@ -225,6 +225,8 @@ La galleria mostra il numero di foto **da decidere**, **conservate** e **rifiuta
 
 Scegli **Rivedi le indecise** per iniziare una coda. **Continua revisione** ripristina in questo browser l’ultima coda **Da esaminare** aperta e apre la sua prima foto ancora da decidere. Cambiare i filtri della galleria non sostituisce questo segnalibro, a meno che tu non apra un’altra coda **Da esaminare**. Le foto conservate, rifiutate ed eliminate vengono saltate in base allo stato attuale del database; riprende la coda, non una posizione esatta. Il segnalibro sopravvive ai ricaricamenti, è separato per identità connessa ed è limitato a 20 identità per browser. Non si sincronizza tra dispositivi. Le code di album usano i criteri attualmente salvati dell’album, e una revisione temporanea non modifica tali criteri. Una modifica successiva nella barra laterale torna alla normale modifica dei filtri dell’album. Uscire dalla pagina annulla una ripresa in corso. I gruppi temporanei di raffiche e sequenze non vengono memorizzati perché una nuova scansione può riassegnarne gli ID. Se la memoria del browser è disattivata o piena, la revisione continua a funzionare, ma il segnalibro potrebbe non essere conservato. Un album non disponibile lascia invariata la vista attuale. La disconnessione cancella i segnalibri di revisione di tutte le identità in questo browser, inclusi i filtri di ricerca, persona, cartella e album.
 
+Il banner di avanzamento della revisione ha un pulsante di chiusura (×), e il menu utente contiene la voce **Nascondi avanzamento revisione** / **Mostra avanzamento revisione**. La scelta è memorizzata in questo browser (localStorage), persiste dopo i ricaricamenti e vale per ogni account che usa quel browser. Finché il banner è nascosto, è nascosto anche il suo pulsante **Rivedi le indecise**: mostralo di nuovo dal menu utente per iniziare la coda (il filtro Stato di revisione della barra laterale continua a filtrare le foto da decidere).
+
 Lo stato di revisione si applica alla galleria normale; scegliere uno stato chiude le ricerche semantiche e di foto simili.
 
 
@@ -720,7 +722,7 @@ Per ogni gruppo, scegli quale/quali conservare; la conferma scarta il resto. Le 
 
 **Intervallo di date.** Il pulsante **intervallo di date** della barra degli strumenti (icona `date_range`) apre un menu di preset (**Ultimi 7 giorni**, **Ultimi 30 giorni**, **Quest'anno**, **Anno scorso**), **Intervallo personalizzato...** (un selettore di intervalli di date) e **Tutte le date**; le date sono mostrate come gg/MM/aaaa. L'intervallo si somma all'ambito dell'album e limita il flusso alle foto scattate in quella finestra (le foto senza data di scatto escono da un ambito datato); scegliere una scena di un album dal menu dell'ambito imposta le sue date e sostituisce l'intervallo. I preset si risolvono al momento della scelta, quindi un «Ultimi 7 giorni» salvato nei preferiti è una finestra fissa. L'intervallo vive solo nell'URL (`?from=2026-07-01&to=2026-07-31`, accanto ad `album` e `scene`), non in `localStorage`: una nuova visita parte da tutte le date e ricaricare la pagina lo ripristina. Cambiare l'intervallo nel flusso manuale lo ricarica: una conferma con conto alla rovescia ancora in corso viene registrata subito, mentre i salti e le selezioni non confermate vengono scartati. Il nome accessibile include l’etichetta visibile del pulsante seguita dalle date selezionate.
 
-**Chip I miei gusti.** Ogni conferma registra righe di confronto `source='culling'` che addestrano il ranker personale, così l'intestazione mostra un piccolo chip "I miei gusti · N confronti" che si aggiorna dopo ogni decisione — l'IA impara il tuo occhio mentre selezioni (`GET /api/ranker/status`).
+**Riga I miei gusti.** Ogni conferma registra righe di confronto `source='culling'` che addestrano il ranker personale, così la finestra di aiuto di `/culling` (menu utente → Aiuto) mostra una riga "I miei gusti · N confronti" che si aggiorna dopo ogni decisione — l'IA impara il tuo occhio mentre selezioni (`GET /api/ranker/status`). La stessa finestra di aiuto elenca anche le scorciatoie da tastiera della pagina di selezione e della camera oscura.
 
 ### Selezione automatica
 
@@ -933,10 +935,10 @@ Le scorciatoie a tasto singolo della galleria e delle foto restano inattive quan
 | `1`–`5` | Vota da 1 a 5 stelle la foto a fuoco (modalità modifica; passa alla successiva) |
 | `F` | Aggiungi / togli dai preferiti la foto a fuoco (modalità modifica) |
 | `X` o `0` | Scarta / annulla lo scarto della foto a fuoco (modalità modifica; passa alla successiva) |
-| `/` | Attiva la casella di ricerca |
+| `/` | Attiva la ricerca della barra degli strumenti (visibile da 1360 px di larghezza); sotto questa larghezza apre la barra laterale dei filtri e attiva il suo campo di ricerca |
 | `B` | Mostra / nascondi la barra laterale dei filtri |
 | `V` | Passa tra layout griglia e mosaico |
-| `?` | Mostra il riferimento delle scorciatoie da tastiera (funziona su ogni pagina) |
+| `?` | Mostra il riferimento delle scorciatoie da tastiera (funziona su ogni pagina; le scorciatoie della galleria sono elencate anche in menu utente → Aiuto) |
 
 La foto corrente — quella su cui agiscono le scorciatoie di valutazione, preferito e scarto — è contrassegnata da un contorno di 4px attorno alla sua scheda; tutte le altre schede si affievoliscono al 50% di opacità. Nulla è contrassegnato finché il cursore non si è effettivamente spostato su una foto tra i risultati, quindi una galleria che non hai ancora esplorato resta a piena intensità. Cliccare su una foto sposta il marcatore su di essa, così una scorciatoia digitata subito dopo un clic si applica alla foto cliccata, non a quella dove le frecce l'avevano lasciata. Tornando da una foto (Indietro o Esc) il marcatore resta sull'ultima foto che hai visto, così le scorciatoie proseguono da lì. Il suggerimento delle scorciatoie sulla scheda attiva appare solo in modalità modifica con `viewer.features.show_rating_controls` abilitato.
 
