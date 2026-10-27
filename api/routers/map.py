@@ -14,9 +14,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from api.auth import CurrentUser, get_optional_user, require_edition
-from api import organization_history
+from api import organization_capture
 from api.database import get_async_db, get_db
-from api.db_helpers import get_existing_columns, get_visibility_clause, to_exif_date
+from api.db_helpers import get_existing_columns, get_visibility_clause, select_in_chunks, to_exif_date
 from api.models.discovery import PhotoMapCountResponse, PhotoMapResponse
 from api.path_validation import resolve_photo_disk_path
 from api.routers.faces import BatchPhotoRequest, _batch_scope_sql
@@ -241,19 +241,26 @@ class BatchGpsResponse(BaseModel):
     preview_token: str
 
 
-def _gps_batch_scopes(conn: sqlite3.Connection, body: BatchGpsRequest, user: CurrentUser) -> Iterator[tuple[str, list]]:
+_GPS_BATCH_COLUMNS = "path, gps_latitude, gps_longitude, gps_manually_set"
+
+
+def _gps_batch_rows(conn: sqlite3.Connection, body: BatchGpsRequest, user: CurrentUser) -> Iterator[sqlite3.Row]:
     """Reuse gallery visibility/album checks; keep explicit SQL binds bounded."""
     if body.filters is not None:
         from_clause, where, params = _batch_scope_sql(conn, body, user)
-        yield f"SELECT DISTINCT photos.path FROM {from_clause}{where} LIMIT 1001", params
+        yield from conn.execute(
+            f"SELECT {_GPS_BATCH_COLUMNS} FROM photos WHERE path IN "
+            f"(SELECT DISTINCT photos.path FROM {from_clause}{where} LIMIT 1001) ORDER BY path LIMIT 1001",
+            params,
+        )
     else:
         excluded = set(body.exclude or ())
         paths = list(dict.fromkeys(p for p in body.photo_paths or () if p not in excluded))
         vis_sql, vis_params = get_visibility_clause(user.user_id if user else None)
-        for start in range(0, len(paths), 400):
-            chunk = paths[start:start + 400]
-            marks = ','.join('?' for _ in chunk)
-            yield f"SELECT path FROM photos WHERE path IN ({marks}) AND {vis_sql}", [*chunk, *vis_params]
+        yield from select_in_chunks(
+            conn, f"SELECT {_GPS_BATCH_COLUMNS} FROM photos WHERE path IN ({{placeholders}}) AND {vis_sql}",
+            paths, after=vis_params, chunk=400,
+        )
 
 
 @router.post("/api/photos/batch_gps", response_model=BatchGpsResponse)
@@ -277,11 +284,8 @@ def api_batch_gps(body: BatchGpsRequest, user: CurrentUser = Depends(require_edi
                 if (saved['latitude'], saved['longitude']) != (body.gps_latitude, body.gps_longitude):
                     raise places.PlaceError(409, 'Saved place coordinates changed')
             rows = []
-            for scope, params in _gps_batch_scopes(conn, body, user):
-                rows.extend(conn.execute(
-                    f"SELECT path, gps_latitude, gps_longitude, gps_manually_set FROM photos WHERE path IN ({scope}) ORDER BY path LIMIT 1001",
-                    params,
-                ).fetchall())
+            for row in _gps_batch_rows(conn, body, user):
+                rows.append(row)
                 if len(rows) > 1000:
                     raise HTTPException(status_code=412, detail="Select at most 1000 photos for location assignment")
             rows.sort(key=lambda row: row['path'])
@@ -296,7 +300,7 @@ def api_batch_gps(body: BatchGpsRequest, user: CurrentUser = Depends(require_edi
                              if (row['gps_latitude'], row['gps_longitude']) != tuple(coordinates)
                              and (not body.only_missing or row['gps_latitude'] is None or row['gps_longitude'] is None)]
             if not body.preview:
-                history_before = organization_history.begin(conn, user.user_id, 'gps', changed_paths)
+                history_before = organization_capture.begin(conn, user.user_id, 'gps', changed_paths)
                 for start in range(0, len(changed_paths), 400):
                     chunk = changed_paths[start:start + 400]
                     marks = ','.join('?' for _ in chunk)
@@ -304,7 +308,7 @@ def api_batch_gps(body: BatchGpsRequest, user: CurrentUser = Depends(require_edi
                         f"UPDATE photos SET gps_latitude=?, gps_longitude=?, gps_manually_set=1 WHERE path IN ({marks})",
                         [*coordinates, *chunk],
                     )
-                organization_history.finish(conn, user.user_id, 'gps', history_before)
+                organization_capture.finish(conn, user.user_id, 'gps', history_before)
                 if changed_paths:
                     # One user action, regardless of the size of the selection.
                     places.record_assignment(conn, owner, body.gps_latitude, body.gps_longitude, body.saved_place_id)
@@ -346,12 +350,12 @@ def api_update_gps(
                 saved = places.get_place(conn, owner, body.saved_place_id)
                 if (saved['latitude'], saved['longitude']) != (body.gps_latitude, body.gps_longitude):
                     raise places.PlaceError(409, 'Saved place coordinates changed')
-            history_before = organization_history.begin(conn, user.user_id, 'gps', [body.path])
+            history_before = organization_capture.begin(conn, user.user_id, 'gps', [body.path])
             conn.execute(
                 f"UPDATE photos SET gps_latitude = ?, gps_longitude = ?, gps_manually_set = 1 WHERE path = ? AND {vis_sql}",
                 [body.gps_latitude, body.gps_longitude, body.path] + vis_params,
             )
-            organization_history.finish(conn, user.user_id, 'gps', history_before)
+            organization_capture.finish(conn, user.user_id, 'gps', history_before)
             places.record_assignment(conn, owner, body.gps_latitude, body.gps_longitude, body.saved_place_id)
             result = dict(conn.execute(
                 'SELECT gps_latitude, gps_longitude FROM photos WHERE path=?', (body.path,)
@@ -410,14 +414,14 @@ def api_reset_gps(
             ).fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Photo not found")
-            history_before = organization_history.begin(conn, user.user_id, 'gps', [path])
+            history_before = organization_capture.begin(conn, user.user_id, 'gps', [path])
             cursor = conn.execute(
                 f"UPDATE photos SET gps_latitude = ?, gps_longitude = ?, gps_manually_set = 0 WHERE path = ? AND {vis_sql}",
                 [lat, lng, path] + vis_params,
             )
             if cursor.rowcount != 1:
                 raise HTTPException(status_code=404, detail="Photo not found")
-            organization_history.finish(conn, user.user_id, 'gps', history_before)
+            organization_capture.finish(conn, user.user_id, 'gps', history_before)
             conn.commit()
         except sqlite3.Error:
             logger.exception("Database error resetting GPS for photo %s", path)

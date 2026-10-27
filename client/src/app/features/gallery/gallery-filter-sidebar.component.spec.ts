@@ -54,6 +54,7 @@ describe('GalleryFilterSidebarComponent', () => {
         path_prefix: '',
       }),
       filterDrawerOpen: signal(true),
+      reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(),
       cameras: signal([]),
       lenses: signal([]),
       tags: signal([]),
@@ -221,6 +222,14 @@ describe('GalleryFilterSidebarComponent', () => {
       const mockStore = (component as any).store;
       mockStore.filters.set({ ...mockStore.filters(), favorites_only: true, is_monochrome: true, hide_rejected: true });
       expect(component.sectionActiveCounts()['refine']).toBe(3);
+    });
+
+    it('counts manual_faces_need_review once in the refine section', () => {
+      const mockStore = (component as any).store;
+      mockStore.filters.set({ ...mockStore.filters(), hide_rejected: false });
+      const before = component.sectionActiveCounts()['refine'];
+      mockStore.filters.set({ ...mockStore.filters(), manual_faces_need_review: true });
+      expect(component.sectionActiveCounts()['refine']).toBe(before + 1);
     });
 
     it('counts active metric filters by min/max key', () => {
@@ -447,6 +456,17 @@ describe('GalleryFilterSidebarComponent', () => {
       thumb = fixture.nativeElement.querySelector('mat-slider input');
     });
 
+    it('lists the advanced metric sections as top-level sections, with no wrapping panel', () => {
+      const advanced = fixture.componentInstance.advancedFilterGroups();
+      expect(advanced.length).toBeGreaterThan(0);
+      const panels = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-expansion-panel'));
+      for (const group of advanced) {
+        const panel = panels.find(el => el.querySelector('mat-panel-title')?.textContent?.includes(group.sectionKey));
+        expect(panel, group.sectionKey).toBeDefined();
+        expect(panel!.parentElement!.closest('mat-expansion-panel'), group.sectionKey).toBeNull();
+      }
+    });
+
     for (const [value, label] of [
       ['undecided', I18N.review.needs_review], ['kept', I18N.review.kept], ['rejected', I18N.review.rejected],
     ] as const) {
@@ -511,6 +531,19 @@ describe('GalleryFilterSidebarComponent', () => {
       expect(control.closest('mat-expansion-panel')?.textContent).toContain('gallery.sidebar.persons');
       (control.querySelector('input') as HTMLInputElement).click();
       expect(mockStore['updateFilter']).toHaveBeenCalledWith('faces_need_names', true);
+    });
+
+    it.each([false, true])('renders the manual-face review checkbox only for edition (edition=%s)', edition => {
+      const auth = TestBed.inject(AuthService);
+      vi.mocked(auth.isEdition).mockReturnValue(edition);
+      fixture.detectChanges();
+      const controls = Array.from(fixture.nativeElement.querySelectorAll('mat-checkbox')) as HTMLElement[];
+      const control = controls.find(el => el.textContent?.includes('gallery.manual_faces_need_review'));
+      expect(!!control).toBe(edition);
+      if (control) {
+        (control.querySelector('input') as HTMLInputElement).click();
+        expect(mockStore['updateFilter']).toHaveBeenCalledWith('manual_faces_need_review', true);
+      }
     });
 
     it.each([false, true])('describes face naming using actions available in edition=%s', edition => {

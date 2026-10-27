@@ -3,6 +3,7 @@
 import argparse
 
 from db import DEFAULT_DB_PATH
+from processing.xmp_import import SIDECAR_FIELDS
 
 # Refreshing thumbnails is bound by storage round-trips, not by CPU: each file
 # is a small read at the far end of whatever mount the library lives on. The
@@ -376,7 +377,8 @@ Configuration:
                              'both-present naming families. Shared or other-image sidecars are refused')
 
     export_group.add_argument('--sidecar-fields', type=str, metavar='FIELDS',
-                        help='With --import-sidecars (apply or preview): comma-separated review,gps,keywords (default: all)')
+                        help='With --import-sidecars (apply or preview): comma-separated '
+                             + ','.join(SIDECAR_FIELDS) + ' (default: all)')
     export_group.add_argument('--overwrite-sidecar-review', action='store_true',
                         help='With --import-sidecars (apply or preview): explicitly allow an older packet to replace newer review edits')
     export_group.add_argument('--overwrite-manual-gps', action='store_true',

@@ -1688,6 +1688,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 | `default_category` | `""` | 默认的类别筛选 |
 | `edition_password` | `""` | 解锁编辑模式的密码（留空 = 所有编辑均被拒绝；安装为只读，启用 `trusted_local_editing` 时直接访问的本地浏览器或本地完全编辑助手除外） |
 | `trusted_local_editing` | `false` | 无需编辑密码，即授予同一台计算机上经 loopback 直接访问查看器的浏览器编辑权限。仅当单用户安装的 `password` 与 `edition_password` 均为空时生效；涵盖所有需要编辑权限的路由（包括扫描触发），并允许“连接助手”对话框为来自同一台机器的 `/mcp` 请求创建完全编辑的助手令牌。**切勿在同一主机的反向代理之后启用。** 参见[受信任的本地编辑](#受信任的本地编辑) |
+| `place_search_url` | `"https://photon.komoot.io/api"` | 画廊中明确发起的 **在线搜索** 所用的 Photon 端点；`""` 表示关闭。参见 [在线地点搜索](#在线地点搜索)。 |
 | **comparison_mode** | | |
 | `min_comparisons_for_optimization` | `50` | 建议权重之前，该类别所需的最少决定性比较次数（一方获胜；平局不计） |
 | `pair_selection_strategy` | `"learning"` | 配对策略：`learning`（冷启动阶段按嵌入多样性，训练完成后按排序分歧）、`uncertainty`、`boundary`、`active`、`random` |
@@ -1970,6 +1971,12 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 **助手。** 同一选项让“连接助手”对话框可在开放安装上创建**完全编辑**令牌（仍需 `viewer.mcp.enabled` 和令牌）。该令牌仅对通过上述边界的 `/mcp` 请求为 `edition`，因此可从 `:5000` 上的 `http://localhost:<port>` 或 `127.0.0.1` 以及 `ng serve` 开发代理 `:4200` 使用；来自局域网客户端、主机名或 `0.0.0.0` 的 URL 或 Docker 部署时则降为 `readonly`。任何密码都会把它降为 `readonly`，清除密码后恢复。删除类工具仍需要 `viewer.mcp.allow_destructive`。`ng serve --host 0.0.0.0` 或同一主机上任何未加标记的代理，会让发送 `Host: localhost` 的局域网客户端通过，此时只剩令牌保护 `/mcp`。参见 [AI 智能体（MCP）](AGENTS.md)。无论 `trusted_local_editing` 取何值，同一道边界都管控开放安装上的助手令牌管理：创建、列出和吊销令牌只对通过该边界的请求有效（设置了 `viewer.edition_password` 时，也可在编辑会话中进行）。反向代理必须发送 `X-Forwarded-For` 或 `Forwarded`，否则会被当作本机。
 
 > **警告：** loopback 对端是唯一真正的边界。`Host`、`Origin`、`Referer` 和 `Sec-Fetch-Site` 由客户端设置，只能用来拒绝请求；同一主机上不添加上述任何头的反向代理、隧道或端口转发与你的浏览器无法区分。切勿在同一主机的任何反向代理之后启用此选项。启用期间，本机的任何本地进程和任何账户都可以编辑。
+
+### 在线地点搜索
+
+`viewer.place_search_url` 默认为 `https://photon.komoot.io/api`。设为空字符串可关闭地址／商家查询，也可使用不含凭据、查询参数或片段的自托管 Photon HTTP(S) 端点。浏览器只会收到 `place_search_enabled`，绝不会收到所配置的 URL。搜索需要编辑权限和一次明确的 **在线搜索** 点击。隐私、缓存与 worker 限制参见 [在线地点搜索](VIEWER.md#在线地点搜索)。[Photon 演示服务政策](https://github.com/komoot/photon#demo-server) 允许合理使用该项目，但不保证可用性；[Photon API 文档](https://github.com/komoot/photon/blob/master/docs/api-v1.md) 定义了其 GeoJSON 格式。不会重试，也不会跟随重定向。
+
+五秒传输看门狗会关闭活动套接字，包括 TCP/TLS 建立阶段，以及被阻塞的 HTTP 头、正文和分块帧读取。原生同步 DNS 解析仍遵循操作系统解析器的耗时，在套接字存在之前可能超过五秒。DNS 挂起期间，查询仍限制为同一时间一个请求；若 DNS 在截止时间之后才返回，则不会再打开连接。不存在分离的请求或 DNS 工作线程。
 
 ### 查看器性能
 

@@ -71,6 +71,13 @@ describe('GalleryActionsSheetComponent', () => {
     expect(dismiss).toHaveBeenCalledWith({ kind: 'capture-date' });
   });
 
+  it('offers batch location assignment and emits the gps action', () => {
+    const button = Array.from(render().querySelectorAll('button')).find(b => b.textContent?.includes(I18N.photo_detail.gps.batch_title));
+    expect(button).toBeDefined();
+    button!.click();
+    expect(dismiss).toHaveBeenCalledWith({ kind: 'gps' });
+  });
+
   it('closes without an action from the header close button', () => {
     const close = render().querySelector<HTMLButtonElement>('[data-sheet-close]');
     expect(close?.getAttribute('aria-label')).toBe(I18N.dialog.close);

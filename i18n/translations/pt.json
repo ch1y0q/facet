@@ -129,7 +129,8 @@
       "inpage_hint": "Quando ativado, um assistente executado neste navegador pode pesquisar e, se a sua sessão permitir, alterar a sua biblioteca através da página. Desativado por predefinição; aplica-se apenas a este navegador.",
       "inpage_changed": "O assistente alterou {count} foto",
       "inpage_changed_plural": "O assistente alterou {count} fotos"
-    }
+    },
+    "ok": "OK"
   },
   "pagination": {
     "scroll_for_more": "Role para ver mais",
@@ -209,7 +210,7 @@
     "burst_set": "Abrir grupo de rajada",
     "sequence_set": "Abrir bracket/panorama",
     "open_detail": "Abrir página da foto",
-    "key_hint": "1-5 avaliar · F favorita · X rejeitar · Space selecionar · Enter abrir"
+    "key_hint": "1-5 avaliar · F favorita · X rejeitar · Espaço selecionar · Enter abrir"
   },
   "notifications": {
     "copied": "Copiado!",
@@ -1023,7 +1024,8 @@
     "folders": "Pastas",
     "map": "Mapa",
     "capsules": "Cápsulas",
-    "junk_sweep": "Limpeza"
+    "junk_sweep": "Limpeza",
+    "help": "Ajuda"
   },
   "auth": {
     "logout": "Sair",
@@ -1036,7 +1038,7 @@
     "user_menu": "Menu do usuário"
   },
   "gallery": {
-    "help": "Navegue e filtre a sua biblioteca. Ordene por pontuação, data ou pelo seu gosto pessoal; use os filtros da barra lateral (pessoas, tags, câmera, categoria, faixa de pontuação, momentos) e a busca para encontrar fotos. Teclas no cartão em foco: 1–5 avalia, F favorita, X rejeita (modo edição); / foca a busca, B mostra ou oculta a barra lateral de filtros, V alterna grade e mosaico.",
+    "help": "Ordene por pontuação, data ou seu gosto pessoal\nFiltre com a barra lateral: pessoas, tags, câmera, categorias\nBusque por nome de arquivo ou descrição",
     "hidden_banner": {
       "message": "{n} fotos ocultadas pelos filtros atuais",
       "some_hidden": "Algumas fotos estão ocultadas pelos seus filtros",
@@ -1209,7 +1211,6 @@
       "find_filter": "Encontrar um filtro…",
       "clear_find_filter": "Limpar pesquisa de filtro",
       "no_filters_match": "Nenhum filtro corresponde",
-      "advanced_metrics": "Métricas avançadas",
       "refine": "Refinar",
       "view": "Exibir",
       "color_quality": "Cor e qualidade",
@@ -1318,13 +1319,16 @@
       "complete": "{percent}% de {total} revistas",
       "start": "Rever por decidir",
       "resume": "Continuar revisão",
-      "browser": "Retomar a fila guardada neste navegador."
+      "browser": "Retomar a fila guardada neste navegador.",
+      "hide_from_menu": "Ocultar progresso da revisão",
+      "show_from_menu": "Mostrar progresso da revisão"
     },
     "manual_faces_need_review": "Rostos manuais a rever",
     "manual_faces_review_hint": "Com base na última análise ou verificação no editor de rostos, sem monitorização contínua. Abra o editor de rostos de uma fotografia para rever as marcações guardadas.",
     "faces_need_names": "Rostos sem nome",
     "faces_need_names_hint": "Inclui rostos não atribuídos e grupos de pessoas sem nome. Use + para atribuir um rosto ou dê um nome a um grupo em Pessoas. Fotos sem rostos detetados são excluídas.",
-    "faces_need_names_readonly_hint": "Inclui rostos não atribuídos e grupos sem nome. Quem tem acesso de edição pode atribuir rostos ou dar nomes aos grupos. Fotos sem rostos detetados são excluídas."
+    "faces_need_names_readonly_hint": "Inclui rostos não atribuídos e grupos sem nome. Quem tem acesso de edição pode atribuir rostos ou dar nomes aos grupos. Fotos sem rostos detetados são excluídas.",
+    "help_none": "Esta página ainda não tem texto de ajuda."
   },
   "composition_patterns": {
     "none": "Nenhum",
@@ -1624,7 +1628,10 @@
       "sequences": "A detetar bracketings",
       "tagging": "Etiquetagem",
       "vec": "Indexação",
-      "done": "Concluído"
+      "done": "Concluído",
+      "moments": "A detetar momentos",
+      "junk": "A detetar fotografias indesejadas",
+      "recompute": "A recalcular pontuações"
     },
     "title": "Escanear Fotos",
     "start_button": "Iniciar Escaneamento",
@@ -1714,7 +1721,7 @@
     "no_faces": "Nenhum rosto encontrado para esta pessoa",
     "split_done": "Pessoa dividida",
     "split_error": "Falha ao dividir a pessoa",
-    "empty_hint": "As pessoas vêm dos rostos que você atribui na página da foto (modo edição). Abra qualquer foto com rostos e escolha Atribuir a uma pessoa para criar a primeira."
+    "empty_hint": "As pessoas vêm dos rostos que você atribui na página da foto (modo edição). Abra qualquer foto com rostos e escolha Atribuir rosto à pessoa para criar a primeira."
   },
   "person_selector": {
     "create_new": "Criar nova pessoa",
@@ -1997,7 +2004,6 @@
     "similarity_threshold": "Limite de semelhança",
     "burst_help": "Fotos tiradas em sucessão rápida são agrupadas. Clique nas fotos para mantê-las (borda verde); as fotos não selecionadas (borda vermelha) serão ocultadas. A melhor foto é selecionada automaticamente com base na nitidez e na qualidade.",
     "similar_help": "Fotos visualmente semelhantes em toda a sua biblioteca são agrupadas usando embeddings de AI. Revise cada grupo, mantenha as melhores fotos e descarte as quase duplicadas. Ajuste o controle deslizante do limite para definir o quão semelhantes as fotos precisam ser para formar um grupo.",
-    "help": "Ajuda",
     "help_text": "Faça a triagem rápida de fotos quase idênticas. Escolha uma granularidade — Rajadas, Semelhantes, Cenas ou Tudo combinado — e uma ordenação; o Rigor define com que agressividade a seleção automática mantém apenas o melhor quadro, e no modo Semelhantes o controle de Semelhança ajusta o quanto as fotos precisam se parecer para agrupar. Clique em uma foto para mantê-la ou desfazer, clique duas vezes para manter apenas aquela, ou ative a Lupa (Z) para examinar os pixels. Abra a Câmara Escura (Enter) para a revisão em tela cheia com Comparar 2 ou 4. Use Cima/Baixo para escolher um grupo e Espaço para confirmá-lo e seguir; Pular e Confirmar iniciam um intervalo de 7 segundos que você pode Cancelar antes de o grupo fechar, e ao confirmar as fotos rejeitadas são ocultadas da galeria. Limite o feed a um álbum ou cena, ative Excluir rejeitadas e note que cada decisão de triagem treina sua classificação pessoal “Meu Gosto”. Consulte os atalhos abaixo para todas as teclas.",
     "type_burst": "Rajada",
     "type_similar": "Semelhante",
@@ -2479,6 +2485,8 @@
     "gps": {
       "online_query": "Endereço ou estabelecimento",
       "online_notice": "A pesquisa online envia esta consulta ao fornecedor Photon configurado. Os locais guardados e as coordenadas funcionam offline. Selecionar um resultado mostra uma prévia; Guardar aplica-o.",
+      "osm_attribution": "© Colaboradores do OpenStreetMap",
+      "opens_new_tab": "(abre em uma nova guia)",
       "online_search": "Pesquisar online",
       "online_disabled": "A pesquisa online está desativada.",
       "online_loading": "A pesquisar online…",
@@ -2507,8 +2515,10 @@
       "batch_title": "Definir localização",
       "only_missing": "Apenas fotos sem localização",
       "preview_batch": "Pré-visualizar alterações",
-      "batch_preview": "{changed} fotos serão alteradas; {skipped} ignoradas.",
-      "batch_applied": "{changed} fotos atualizadas; {skipped} ignoradas.",
+      "batch_preview": "{changed} foto será alterada; {skipped} ignoradas.",
+      "batch_preview_plural": "{changed} fotos serão alteradas; {skipped} ignoradas.",
+      "batch_applied": "{changed} foto atualizada; {skipped} ignoradas.",
+      "batch_applied_plural": "{changed} fotos atualizadas; {skipped} ignoradas.",
       "batch_error": "Não foi possível aplicar a localização. Selecione no máximo 1000 fotos e repita a prévia; a seleção ou o local salvo pode ter mudado.",
       "batch_limit": "Selecione no máximo 1000 fotos. Sem proteção, as localizações existentes são substituídas. Os arquivos originais não são alterados.",
       "batch_hint": "Escolha uma localização e confira as alterações antes de salvar a seleção."
@@ -2588,7 +2598,13 @@
       "refresh": "Atualizar estado",
       "recent": "Exportações recentes de sidecars",
       "none": "Nenhuma exportação recente de sidecars.",
-      "read_failed": "Não foi possível ler o progresso. Atualize o estado para verificar novamente."
+      "read_failed": "Não foi possível ler o progresso. Atualize o estado para verificar novamente.",
+      "errors": {
+        "metadata_repair": "Os metadados existentes precisam ser reparados antes de exportar.",
+        "write_failed": "Não foi possível gravar os metadados. Verifique os logs do servidor.",
+        "exiftool_upgrade": "O ExifTool 13.23 a 13.27 corrompe arquivos XMP. Atualize o ExifTool para a 13.28 ou mais recente.",
+        "stopped": "A exportação parou inesperadamente. Verifique os logs do servidor e tente novamente as fotos restantes."
+      }
     }
   },
   "undo": {
@@ -2853,8 +2869,7 @@
   },
   "capture_date": {
     "title": "Corrigir data de captura",
-    "offset": "Deslocamento em segundos (+ depois, − antes)",
-    "invalid": "Use um número inteiro diferente de zero dentro de ±366 dias; selecione no máximo 1000 fotos.",
+    "invalid": "Escolha um deslocamento diferente de zero de no máximo 366 dias; selecione no máximo 1000 fotos.",
     "counts": "{changed} alteradas · {skipped} ignoradas",
     "samples": "Primeiras 20 alterações. Datas desconhecidas, incompletas, incompatíveis ou fora dos limites são ignoradas.",
     "photo": "Foto",
@@ -2864,8 +2879,27 @@
     "reset_hint": "O botão «Usar data do ficheiro» remove a correção manual. Se o ficheiro não tiver data, a data de captura fica desconhecida.",
     "use_file": "Usar data do ficheiro",
     "preview": "Pré-visualizar",
-    "apply": "Aplicar correção",
-    "hint": "Desloca a hora local da câmara sem deduzir fuso horário ou horário de verão. Os originais só mudam com a exportação explícita dos metadados."
+    "apply": "Aplicar correção ({count})",
+    "hint": "Desloca a hora local da câmara sem deduzir fuso horário ou horário de verão. Os originais só mudam com a exportação explícita dos metadados.",
+    "mode_shift": "Deslocar",
+    "mode_exact": "Hora exata",
+    "mode": "Modo de correção",
+    "direction": "Direção",
+    "earlier": "Mais cedo",
+    "later": "Mais tarde",
+    "days": "Dias",
+    "hours": "Horas",
+    "minutes": "Minutos",
+    "seconds": "Segundos",
+    "unit_d": "d",
+    "unit_h": "h",
+    "unit_min": "min",
+    "unit_s": "s",
+    "quick": "Ajuste rápido",
+    "summary_earlier": "{amount} mais cedo",
+    "summary_later": "{amount} mais tarde",
+    "exact_label": "Data e hora corretas da foto de referência",
+    "reference": "Foto de referência:"
   },
   "organization_history": {
     "title": "Histórico de organização",

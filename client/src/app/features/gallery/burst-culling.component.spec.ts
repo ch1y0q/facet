@@ -4229,6 +4229,12 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
     expect(component['sharpPath']()).toBeNull();
     expect(component['failedRenderPaths']().size).toBe(0);
     expect(renderPeaking).not.toHaveBeenCalled();
+    // Positive control: the new attempt's own success does restore readiness and peaking.
+    pane().sharpLoaded.emit(render('/p0.jpg'));
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(component['sharpPath']()).toBe('/p0.jpg');
+    expect(renderPeaking).toHaveBeenCalled();
   });
 
   it('uses the visible stored thumbnail for peaking when the current render fails', async () => {
@@ -4401,6 +4407,28 @@ describe('BurstCullingComponent date range', () => {
     component['onDateRange'](null, null);
     await settle();
     expect(dateButton()!.getAttribute('aria-label')).toBe(dateButton()!.querySelector('span.text-sm')!.textContent!.trim());
+  });
+
+  it('shows the live window as the visible date label, and the plain label once cleared', async () => {
+    mount({ from: '2026-07-01', to: '2026-07-31' });
+    const visible = (): string => dateButton()!.querySelector('span.text-sm')!.textContent!.trim();
+    expect(visible()).toBe('01/07/2026 - 31/07/2026');
+    component['onDateRange'](null, null);
+    await settle();
+    expect(visible()).toBe('culling.date_range.label');
+  });
+
+  it('shows the live grouping as the visible group-by label', async () => {
+    mount();
+    const groupButton = (): HTMLElement => fixture.nativeElement.querySelector('button[data-testid="cull-group-by"]');
+    const visible = (): string => groupButton().querySelector('span.text-sm')!.textContent!.trim();
+    cull.groupBy.set('all');
+    await settle();
+    expect(visible()).toBe('culling.group_by.all');
+    cull.groupBy.set('burst');
+    await settle();
+    expect(visible()).toBe('culling.group_by.bursts');
+    expect(groupButton().getAttribute('aria-label')).toBe('culling.group_by.label: culling.group_by.bursts');
   });
 
   it('a preset reloads the feed over the window and mirrors the whole scope into the URL, keeping group_by', async () => {

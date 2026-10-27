@@ -9,6 +9,8 @@ import os
 import threading
 import time
 from io import BytesIO
+from contextlib import contextmanager
+from collections.abc import Callable
 from functools import lru_cache
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
@@ -23,7 +25,7 @@ from api.config import VIEWER_CONFIG
 from api.database import get_db, get_db_connection
 from api.db_helpers import get_visibility_clause
 from api.path_validation import resolve_photo_disk_path
-from utils.image_loading import RAW_EXTENSIONS, HEIF_EXTENSIONS, TIFF_EXTENSIONS, JPEG_EXTENSIONS
+from utils.image_loading import RAW_EXTENSIONS, HEIF_EXTENSIONS, TIFF_EXTENSIONS, JPEG_EXTENSIONS, KNOWN_JXL_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +39,10 @@ _STORED_THUMBNAIL_SIZE = 640
 _RENDERED_SIZE = 1920
 _RENDERED_JPEG_QUALITY = 85
 # Renders decode originals on the shared threadpool, so cap them.
-_render_slots = threading.BoundedSemaphore(4)
-# Keep one of the four slots available to JPEGs while slower formats decode.
-_nonjpeg_render_slots = threading.BoundedSemaphore(3)
+_RENDER_SLOTS = 4
+_render_slots = threading.BoundedSemaphore(_RENDER_SLOTS)
+# Keep one slot available to JPEGs while slower formats decode.
+_nonjpeg_render_slots = threading.BoundedSemaphore(_RENDER_SLOTS - 1)
 _RENDER_WAIT_SECONDS = 5
 # Short, so the sharp render shows up once the original is back.
 _FALLBACK_MAX_AGE = 60
@@ -50,6 +53,25 @@ _BROWSER_IMAGE_MEDIA_TYPES = {
     '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp',
     '.bmp': 'image/bmp', '.avif': 'image/avif',
 }
+
+
+def _accepts_jpegxl(accept: str) -> bool:
+    """Require explicit decoder support; image/* alone cannot establish it."""
+    for item in accept.split(','):
+        parts = [part.strip().lower() for part in item.split(';')]
+        if parts[0] != 'image/jxl':
+            continue
+        quality = 1.0
+        for parameter in parts[1:]:
+            key, separator, value = parameter.partition('=')
+            if separator and key.strip() == 'q':
+                try:
+                    quality = float(value.strip())
+                except ValueError:
+                    quality = 0.0
+        if 0 < quality <= 1:
+            return True
+    return False
 
 
 def _cached_image_response(image_bytes: bytes, request: Request,
@@ -82,7 +104,10 @@ def _get_image_jpeg_quality() -> int:
     return VIEWER_CONFIG['display'].get('image_jpeg_quality', 96)
 
 
-@lru_cache(maxsize=5)
+_FULL_IMAGE_CACHE_SIZE = 5
+
+
+@lru_cache(maxsize=_FULL_IMAGE_CACHE_SIZE)
 def _convert_raw_cached(file_path: str, mtime: float, quality: int = 96,
                         sequence_kind: Optional[str] = None) -> bytes:
     """Convert a RAW file to JPEG bytes, cached by path+mtime+quality+sequence kind.
@@ -96,23 +121,44 @@ def _convert_raw_cached(file_path: str, mtime: float, quality: int = 96,
     return convert_raw_to_jpeg(file_path, quality, sequence_kind)
 
 
-@lru_cache(maxsize=32)
-def _convert_nonraw_cached(file_path: str, mtime: float, quality: int = 96) -> bytes:
-    """Convert a non-RAW, non-browser-renderable file to JPEG bytes, cached by path+mtime+quality.
+@contextmanager
+def _image_render_budget(file_path: str):
+    """Share the decode/encode budget between sharp and full-size renders."""
+    nonjpeg = Path(file_path).suffix.lower() not in JPEG_EXTENSIONS
+    deadline = time.monotonic() + _RENDER_WAIT_SECONDS
+    if nonjpeg and not _nonjpeg_render_slots.acquire(timeout=_RENDER_WAIT_SECONDS):
+        raise RuntimeError("every non-JPEG render slot is busy")
+    try:
+        if not _render_slots.acquire(timeout=max(0, deadline - time.monotonic())):
+            raise RuntimeError("every render slot is busy")
+        try:
+            yield
+        finally:
+            _render_slots.release()
+    finally:
+        if nonjpeg:
+            _nonjpeg_render_slots.release()
 
-    Used for both HEIF/HEIC and TIFF: open_nonraw_image is format-agnostic for
-    every non-RAW extension (RGBA/16-bit/AVIF-PQ handling all live there), so
-    one cached conversion serves both branches below rather than pasting a
-    second near-identical function. Goes through the same loader as the
-    scanner so EXIF orientation and HDR PQ -> sRGB tone mapping (Canon .HIF)
-    are applied here too — otherwise the browser image would be dark/rotated
-    relative to what was actually scored.
-    """
+
+def _encode_nonraw_jpeg(file_path: str, quality: int) -> bytes:
     from utils.image_loading import open_nonraw_image
 
     buf = BytesIO()
     open_nonraw_image(file_path).save(buf, format="JPEG", quality=quality)
     return buf.getvalue()
+
+
+@lru_cache(maxsize=32)
+def _convert_nonraw_cached(file_path: str, mtime: float, quality: int = 96) -> bytes:
+    """Keep the existing HEIF/TIFF full-image cache and admission behavior."""
+    return _encode_nonraw_jpeg(file_path, quality)
+
+
+@lru_cache(maxsize=_FULL_IMAGE_CACHE_SIZE)
+def _convert_jpegxl_cached(file_path: str, mtime: float, quality: int) -> bytes:
+    """Only new JXL full conversions join the sharp-preview resource budget."""
+    with _image_render_budget(file_path):
+        return _encode_nonraw_jpeg(file_path, quality)
 
 
 def _do_resize(thumbnail_bytes: bytes, size: int) -> bytes:
@@ -154,25 +200,12 @@ def _render_from_original_cached(file_path: str, mtime: float,
     from api.raw_processing import load_viewer_image
     from utils import image_transforms
 
-    nonjpeg = Path(file_path).suffix.lower() not in JPEG_EXTENSIONS
-    deadline = time.monotonic() + _RENDER_WAIT_SECONDS
-    if nonjpeg and not _nonjpeg_render_slots.acquire(timeout=_RENDER_WAIT_SECONDS):
-        raise RuntimeError("every non-JPEG render slot is busy")
-    try:
-        if not _render_slots.acquire(timeout=max(0, deadline - time.monotonic())):
-            raise RuntimeError("every render slot is busy")
-        try:
-            img = load_viewer_image(file_path, sequence_kind, max_edge=_RENDERED_SIZE)
-            # The slot covers the resize and encode too: the decoded frame is
-            # the large allocation the cap exists to bound.
-            blob = image_transforms.generate_photo_thumbnail(
-                img, _RENDERED_SIZE, _RENDERED_JPEG_QUALITY)
-            del img
-        finally:
-            _render_slots.release()
-    finally:
-        if nonjpeg:
-            _nonjpeg_render_slots.release()
+    with _image_render_budget(file_path):
+        img = load_viewer_image(file_path, sequence_kind, max_edge=_RENDERED_SIZE)
+        # Keep the slot through encoding while the full pixel plane is alive.
+        blob = image_transforms.generate_photo_thumbnail(
+            img, _RENDERED_SIZE, _RENDERED_JPEG_QUALITY)
+        del img
     if not image_transforms.thumbnail_has_signal(blob):
         # A truncated RW2 decodes to an all-zero frame without raising.
         raise _NoSignalError("render carries no signal")
@@ -183,12 +216,31 @@ class _NoSignalError(RuntimeError):
     """The original decoded, but to a frame with no image signal."""
 
 
+# Renders that came out with no signal, keyed like the render cache. An
+# exception is not memoised by lru_cache, so without this every revalidation
+# would decode the same broken original again.
+_NO_SIGNAL_CACHE_SIZE = 32
+_no_signal_renders: dict[tuple, bool] = {}
+_no_signal_lock = threading.Lock()
+
+
+def _known_no_signal(key: tuple[str, float, Optional[str]]) -> bool:
+    return key in _no_signal_renders
+
+
+def _remember_no_signal(key: tuple[str, float, Optional[str]]) -> None:
+    with _no_signal_lock:
+        if len(_no_signal_renders) >= _NO_SIGNAL_CACHE_SIZE:
+            _no_signal_renders.pop(next(iter(_no_signal_renders)), None)
+        _no_signal_renders[key] = True
+
+
 _render_inflight: dict[tuple, Future[Optional[bytes]]] = {}
 _render_inflight_lock = threading.Lock()
 
 
-def _coalesced_render(key):
-    """Share one cache miss; complete the LRU call before dropping its flight."""
+def _coalesced_image(key: tuple, render: Callable[[], Optional[bytes]]) -> Optional[bytes]:
+    """Publish cached work before dropping its flight; followers own no slot."""
     with _render_inflight_lock:
         future = _render_inflight.get(key)
         leader = future is None
@@ -199,18 +251,10 @@ def _coalesced_render(key):
     if not leader:
         return future.result(timeout=_RENDER_WAIT_SECONDS)
     try:
-        # Recheck after joining the flight: another completed render may have
-        # published a negative result since the caller's earlier lookup.
-        result = None if key in _no_signal_renders else _render_from_original_cached(*key)
+        result = render()
         future.set_result(result)
         return result
     except BaseException as ex:
-        if isinstance(ex, _NoSignalError):
-            # Publish the negative cache before dropping the flight too.
-            with _no_signal_lock:
-                if len(_no_signal_renders) >= _NO_SIGNAL_CACHE_SIZE:
-                    _no_signal_renders.pop(next(iter(_no_signal_renders)), None)
-                _no_signal_renders[key] = True
         future.set_exception(ex)
         raise
     finally:
@@ -218,12 +262,24 @@ def _coalesced_render(key):
             del _render_inflight[key]
 
 
-# Renders that came out with no signal, keyed like the render cache. An
-# exception is not memoised by lru_cache, so without this every revalidation
-# would decode the same broken original again.
-_NO_SIGNAL_CACHE_SIZE = 32
-_no_signal_renders: dict[tuple, bool] = {}
-_no_signal_lock = threading.Lock()
+def _coalesced_render(key: tuple[str, float, Optional[str]]) -> Optional[bytes]:
+    def render():
+        try:
+            return None if _known_no_signal(key) else _render_from_original_cached(*key)
+        except _NoSignalError:
+            _remember_no_signal(key)
+            raise
+    return _coalesced_image(key, render)
+
+
+def _coalesced_jpegxl_conversion(file_path: str, mtime: float, quality: int) -> bytes:
+    # Tag full-size keys so they can never join a 1920 px render of this file.
+    result = _coalesced_image(
+        ('jxl-full', file_path, mtime, quality),
+        lambda: _convert_jpegxl_cached(file_path, mtime, quality),
+    )
+    assert result is not None
+    return result
 
 
 def _render_from_original(path: str, sequence_kind: Optional[str]) -> Optional[bytes]:
@@ -234,16 +290,14 @@ def _render_from_original(path: str, sequence_kind: Optional[str]) -> Optional[b
         return None
     try:
         key = (disk, os.path.getmtime(disk), sequence_kind)
-        if key in _no_signal_renders:
+        if _known_no_signal(key):
             return None
         return _coalesced_render(key)
-    except _NoSignalError as e:
-        logger.warning("Could not render %s (%s), serving the stored thumbnail", disk, e)
-        return None
     except (OSError, ValueError, RuntimeError, FuturesTimeoutError) as e:
         # No traceback: this repeats on every revalidation. A joined render's
         # wait raises FuturesTimeoutError, which is not an OSError before 3.11.
-        logger.warning("Could not render %s (%s), serving the stored thumbnail", disk, e)
+        logger.warning("Could not render %s (%s), serving the stored thumbnail",
+                       disk, str(e) or type(e).__name__)
         return None
 
 
@@ -418,13 +472,17 @@ def person_thumbnail(
     return Response(content="Person thumbnail not found", status_code=404)
 
 
-def _stored_thumbnail_response(path, request):
+def _stored_thumbnail_response(path, request, vary_accept=False):
     """Serve the stored thumbnail as a stand-in for an unavailable original."""
     with get_db() as conn:
         row = conn.execute("SELECT thumbnail FROM photos WHERE path = ?", (path,)).fetchone()
     if row and row['thumbnail']:
-        return _cached_image_response(row['thumbnail'], request, max_age=_FALLBACK_MAX_AGE)
-    return Response(content="Not found", status_code=404)
+        response = _cached_image_response(row['thumbnail'], request, max_age=_FALLBACK_MAX_AGE)
+    else:
+        response = Response(content="Not found", status_code=404)
+    if vary_accept:
+        response.headers['Vary'] = 'Accept'
+    return response
 
 
 @router.get("/image")
@@ -455,12 +513,13 @@ def image(
         return Response(content="Not found", status_code=404)
 
     want_fallback = fallback == "thumbnail"
+    is_jxl = Path(row['path']).suffix.lower() in KNOWN_JXL_EXTENSIONS
 
     try:
         real_disk = resolve_photo_disk_path(row['path'])
     except HTTPException:
         if want_fallback:
-            return _stored_thumbnail_response(path, request)
+            return _stored_thumbnail_response(path, request, vary_accept=is_jxl)
         return Response(content="Not found", status_code=404)
 
     # Convert RAW files to JPEG for browser display (cached to avoid repeated conversion)
@@ -489,18 +548,38 @@ def image(
                 return _stored_thumbnail_response(path, request)
             return Response(content="Failed to convert HEIF file", status_code=500)
 
-    # Convert TIFF to JPEG. Native browser formats below keep their original
+    is_jxl = Path(real_disk).suffix.lower() in KNOWN_JXL_EXTENSIONS
+    if is_jxl and _accepts_jpegxl(request.headers.get('accept', '')):
+        # Native viewing preserves the lossless original, colour profile and
+        # progressive bitstream. Both representations vary on Accept.
+        try:
+            original = FileResponse(real_disk, media_type='image/jxl',
+                                    headers={'Vary': 'Accept'}, stat_result=os.stat(real_disk))
+        except OSError:
+            if want_fallback:
+                return _stored_thumbnail_response(path, request, vary_accept=True)
+            return Response(content="Not found", status_code=404, headers={'Vary': 'Accept'})
+        if request.headers.get('if-none-match') == original.headers['etag']:
+            return Response(status_code=304,
+                            headers={'ETag': original.headers['etag'], 'Vary': 'Accept'})
+        return original
+
+    # Convert TIFF and JPEG XL to JPEG. Native browser formats below keep their original
     # bytes and receive a known media type independent of the OS MIME registry.
-    if Path(real_disk).suffix.lower() in TIFF_EXTENSIONS:
+    if Path(real_disk).suffix.lower() in TIFF_EXTENSIONS | KNOWN_JXL_EXTENSIONS:
         try:
             mtime = os.path.getmtime(real_disk)
             quality = _get_image_jpeg_quality()
-            jpeg_bytes = _convert_nonraw_cached(real_disk, mtime, quality)
-            return _cached_image_response(jpeg_bytes, request)
+            jpeg_bytes = (_coalesced_jpegxl_conversion(real_disk, mtime, quality)
+                          if is_jxl else _convert_nonraw_cached(real_disk, mtime, quality))
+            response = _cached_image_response(jpeg_bytes, request)
+            if is_jxl:
+                response.headers['Vary'] = 'Accept'
+            return response
         except Exception:
-            logger.exception("Failed to convert TIFF file: %s", real_disk)
+            logger.exception("Failed to convert TIFF/JPEG XL file: %s", real_disk)
             if want_fallback:
-                return _stored_thumbnail_response(path, request)
-            return Response(content="Failed to convert TIFF file", status_code=500)
+                return _stored_thumbnail_response(path, request, vary_accept=is_jxl)
+            return Response(content="Failed to convert TIFF/JPEG XL file", status_code=500)
 
     return FileResponse(real_disk, media_type=_BROWSER_IMAGE_MEDIA_TYPES.get(Path(real_disk).suffix.lower()))

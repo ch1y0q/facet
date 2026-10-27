@@ -19,7 +19,7 @@ copiar y pegar.
 | [Interoperabilidad](INTEROP.md) | Intercambiar valoraciones/tags con Lightroom, Capture One, digiKam, darktable |
 | [Immich](IMMICH.md) | Sincronizar valoraciones y favoritos con Immich, más el webhook entrante |
 | [Despliegue](DEPLOYMENT.md) | NAS, servidores remotos, HTTPS, copias de seguridad, multiusuario |
-| [RELINK](RELINK.md) | Volver a vincular fotos movidas |
+| [Volver a vincular](RELINK.md) | Volver a vincular fotos movidas |
 
 ## Tipos de archivo admitidos
 
@@ -28,6 +28,7 @@ copiar y pegar.
 - **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — se omiten si existe un JPEG/HEIC equivalente
 - **PNG, GIF, WebP, BMP, TIFF** (.png, .gif, .webp, .bmp, .tif, .tiff) — la escala de grises de 16 bits se escala a 8 bits, un canal alfa se compone sobre blanco, y los GIF/WebP animados se puntúan según el primer fotograma; el TIFF se convierte a JPEG para el navegador. PNG, WebP y TIFF contienen EXIF cuando el programa que los escribió lo guardó; GIF y BMP no pueden, así que para esos dos `date_taken` y la cámara/objetivo quedan vacíos
 - **AVIF** (.avif) — necesita un Pillow compilado con soporte AVIF (nativo a partir de `pillow>=11.3`); las imágenes AVIF HDR PQ se convierten (tone mapping) a sRGB SDR, igual que los `.HIF` Canon; el EXIF se lee cuando está presente
+- **JPEG XL** (.jxl) — se decodifica mediante la dependencia existente `imagecodecs` en instalaciones estándar y Docker; no requiere paquetes adicionales. Las vistas previas usan RGB de 8 bits sin mapeo de tonos HDR; las animaciones solo usan el primer fotograma y se lee EXIF válido. Los JPEG reconstruidos conservan la gestión ICC; `imagecodecs` no expone los perfiles de las vistas previas JXL nativas
 
 ## Preguntas frecuentes
 

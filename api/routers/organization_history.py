@@ -8,7 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 
 from api.auth import CurrentUser, require_edition
 from api.database import get_db
-from api.db_helpers import get_visibility_clause, is_locked_error, retry_on_locked
+from api.db_helpers import (
+    after_commit, get_visibility_clause, is_locked_error, record_label_origin, retry_on_locked,
+)
 from api.models.organization_history import OrganizationHistory, OrganizationRevert
 from db.organization_history import FIELDS, record, snapshot
 
@@ -71,15 +73,16 @@ def _revert(entry_id: int, user: CurrentUser) -> dict[str, int]:
             if kind == 'review' and scope:
                 columns = ','.join(fields)
                 updates = ','.join(f'{field}=excluded.{field}' for field in fields)
-                conn.execute(f'INSERT INTO user_preferences(user_id,photo_path,{columns}) VALUES (?,?,?,?,?,?) ON CONFLICT(user_id,photo_path) DO UPDATE SET {updates}', [scope, change['path'], *change['before']])
+                marks = ','.join('?' for _ in range(2 + len(fields)))
+                conn.execute(f'INSERT INTO user_preferences(user_id,photo_path,{columns}) VALUES ({marks}) ON CONFLICT(user_id,photo_path) DO UPDATE SET {updates}',
+                             [scope, change['path'], *change['before']])
             else:
-                conn.execute(f"UPDATE photos SET {','.join(f'{field}=?' for field in fields)} WHERE path=?", [*change['before'], change['path']])
+                conn.execute(f"UPDATE photos SET {','.join(f'{field}=?' for field in fields)} WHERE path=?",
+                             [*change['before'], change['path']])
         record(conn, user.user_id or '', kind, scope, current)
         conn.execute('UPDATE organization_history SET reverted=1 WHERE id=?', (entry_id,))
         if kind == 'review':
-            from api.db_helpers import record_label_origin
             record_label_origin(conn, user.is_agent_request, user.user_id, list(current))
         conn.execute('DELETE FROM stats_cache')
-    from api.routers.capture_dates import _after_commit
-    _after_commit()
+    after_commit()
     return {'changed': len(changes)}

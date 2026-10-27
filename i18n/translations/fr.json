@@ -129,7 +129,8 @@
       "inpage_hint": "Activé, un assistant exécuté dans ce navigateur peut rechercher et, si votre session le permet, modifier votre bibliothèque via la page. Désactivé par défaut ; ne concerne que ce navigateur.",
       "inpage_changed": "L’assistant a modifié {count} photo",
       "inpage_changed_plural": "L’assistant a modifié {count} photos"
-    }
+    },
+    "ok": "OK"
   },
   "pagination": {
     "scroll_for_more": "Défiler pour plus",
@@ -209,7 +210,7 @@
     "burst_set": "Ouvrir le groupe de rafale",
     "sequence_set": "Ouvrir bracket/panorama",
     "open_detail": "Ouvrir la page photo",
-    "key_hint": "1-5 noter · F favori · X rejeter · Space sélectionner · Entrée ouvrir"
+    "key_hint": "1-5 noter · F favori · X rejeter · Espace sélectionner · Entrée ouvrir"
   },
   "notifications": {
     "copied": "Copie !",
@@ -1023,7 +1024,8 @@
     "folders": "Dossiers",
     "map": "Carte",
     "capsules": "Capsules",
-    "junk_sweep": "Nettoyage"
+    "junk_sweep": "Nettoyage",
+    "help": "Aide"
   },
   "auth": {
     "logout": "Se déconnecter",
@@ -1036,7 +1038,7 @@
     "user_menu": "Menu utilisateur"
   },
   "gallery": {
-    "help": "Parcourez et filtrez votre bibliothèque. Triez par score, date ou par vos goûts personnels ; utilisez les filtres de la barre latérale (personnes, mots-clés, appareil, catégorie, plage de score, moments) et la recherche pour trouver des photos. Touches sur la carte ciblée : 1–5 note, F met en favori, X rejette (mode édition) ; / cible la recherche, B affiche ou masque la barre latérale des filtres, V bascule grille et mosaïque.",
+    "help": "Triez par score, date ou votre goût personnel\nFiltrez avec la barre latérale : personnes, tags, appareil, catégories\nRecherchez par nom de fichier ou description",
     "hidden_banner": {
       "message": "{n} photos masquées par les filtres actuels",
       "some_hidden": "Certaines photos sont masquées par vos filtres",
@@ -1209,7 +1211,6 @@
       "find_filter": "Rechercher un filtre…",
       "clear_find_filter": "Effacer la recherche de filtre",
       "no_filters_match": "Aucun filtre ne correspond",
-      "advanced_metrics": "Métriques avancées",
       "refine": "Affiner",
       "view": "Affichage",
       "color_quality": "Couleur et qualité",
@@ -1318,13 +1319,16 @@
       "complete": "{percent}% sur {total} triées",
       "start": "Trier les indécises",
       "resume": "Continuer le tri",
-      "browser": "Reprendre la file mémorisée dans ce navigateur."
+      "browser": "Reprendre la file mémorisée dans ce navigateur.",
+      "hide_from_menu": "Masquer la progression de revue",
+      "show_from_menu": "Afficher la progression de revue"
     },
     "manual_faces_need_review": "Visages manuels à vérifier",
     "manual_faces_review_hint": "Selon le dernier scan ou contrôle dans l’éditeur de visages, sans surveillance continue. Ouvrez l’éditeur de visages d’une photo pour vérifier les repères enregistrés.",
     "faces_need_names": "Visages sans nom",
     "faces_need_names_hint": "Inclut les visages non attribués et les groupes sans nom. Utilisez + pour attribuer un visage ou nommez un groupe dans Personnes. Les photos sans visage détecté sont exclues.",
-    "faces_need_names_readonly_hint": "Inclut les visages non attribués et les groupes sans nom. Une personne ayant accès à la modification peut attribuer les visages ou nommer les groupes. Les photos sans visage détecté sont exclues."
+    "faces_need_names_readonly_hint": "Inclut les visages non attribués et les groupes sans nom. Une personne ayant accès à la modification peut attribuer les visages ou nommer les groupes. Les photos sans visage détecté sont exclues.",
+    "help_none": "Cette page n'a pas encore de texte d'aide."
   },
   "composition_patterns": {
     "none": "Aucun",
@@ -1624,7 +1628,10 @@
       "sequences": "Détection des bracketings",
       "tagging": "Étiquetage",
       "vec": "Indexation",
-      "done": "Terminé"
+      "done": "Terminé",
+      "moments": "Détection des moments",
+      "junk": "Détection des photos indésirables",
+      "recompute": "Recalcul des scores"
     },
     "title": "Scanner les photos",
     "start_button": "Lancer le scan",
@@ -1714,7 +1721,7 @@
     "no_faces": "Aucun visage trouvé pour cette personne",
     "split_done": "Personne séparée",
     "split_error": "Échec de la séparation de la personne",
-    "empty_hint": "Les personnes viennent des visages que vous attribuez sur la page d'une photo (mode édition). Ouvrez une photo avec des visages et choisissez Attribuer à une personne pour créer la première."
+    "empty_hint": "Les personnes viennent des visages que vous attribuez sur la page d'une photo (mode édition). Ouvrez une photo avec des visages et choisissez Assigner un visage à une personne pour créer la première."
   },
   "person_selector": {
     "create_new": "Créer une nouvelle personne",
@@ -1997,7 +2004,6 @@
     "similarity_threshold": "Seuil de similarité",
     "burst_help": "Les photos prises en rafale sont regroupées ensemble. Cliquez sur les photos à conserver (bordure verte), les photos non sélectionnées (bordure rouge) seront masquées. La meilleure photo est automatiquement sélectionnée en fonction de la netteté et de la qualité.",
     "similar_help": "Les photos visuellement similaires de votre bibliothèque sont regroupées grâce aux embeddings IA. Examinez chaque groupe, conservez les meilleurs clichés et écartez les quasi-doublons. Ajustez le curseur de seuil pour contrôler le degré de similarité nécessaire pour former un groupe.",
-    "help": "Aide",
     "help_text": "Triez rapidement les prises quasi identiques. Choisissez une granularité — Rafales, Similaires, Scènes ou Tout fusionné — et un ordre de tri ; la Rigueur règle l’agressivité de la sélection automatique pour ne garder que la meilleure image, et en mode Similaires le curseur Similarité ajuste le degré de ressemblance requis pour regrouper. Cliquez sur une photo pour la garder ou la retirer, double-cliquez pour ne garder qu’elle, ou activez la Loupe (Z) pour scruter les pixels. Ouvrez la Chambre noire (Entrée) pour une revue plein écran avec Comparer 2 ou 4. Utilisez Haut/Bas pour choisir un groupe et Espace pour le confirmer et passer au suivant ; Passer et Confirmer lancent un compte à rebours de 7 secondes que vous pouvez Annuler avant la fermeture du groupe, et la confirmation masque les photos rejetées de la galerie. Limitez le flux à un album ou une scène, activez Exclure les rejetées, et notez que chaque décision de tri entraîne votre classement personnel « Mes goûts ». Consultez les raccourcis ci-dessous pour toutes les touches.",
     "type_burst": "Rafale",
     "type_similar": "Similaire",
@@ -2479,6 +2485,8 @@
     "gps": {
       "online_query": "Adresse ou établissement",
       "online_notice": "La recherche en ligne envoie cette requête au fournisseur Photon configuré. Les lieux enregistrés et les coordonnées fonctionnent hors ligne. Un résultat sélectionné est prévisualisé ; Enregistrer l’applique.",
+      "osm_attribution": "© contributeurs d’OpenStreetMap",
+      "opens_new_tab": "(s’ouvre dans un nouvel onglet)",
       "online_search": "Rechercher en ligne",
       "online_disabled": "La recherche en ligne est désactivée.",
       "online_loading": "Recherche en ligne…",
@@ -2507,8 +2515,10 @@
       "batch_title": "Définir le lieu",
       "only_missing": "Uniquement les photos sans lieu",
       "preview_batch": "Aperçu des changements de lieu",
-      "batch_preview": "{changed} photos seront modifiées ; {skipped} ignorées.",
-      "batch_applied": "{changed} photos modifiées ; {skipped} ignorées.",
+      "batch_preview": "{changed} photo sera modifiée ; {skipped} ignorées.",
+      "batch_preview_plural": "{changed} photos seront modifiées ; {skipped} ignorées.",
+      "batch_applied": "{changed} photo modifiée ; {skipped} ignorées.",
+      "batch_applied_plural": "{changed} photos modifiées ; {skipped} ignorées.",
       "batch_error": "Impossible d’appliquer le lieu. Sélectionnez au plus 1000 photos et recommencez l’aperçu ; la sélection ou le lieu enregistré a pu changer.",
       "batch_limit": "Sélectionnez au plus 1000 photos. Les lieux existants sont remplacés sans la protection. Les fichiers originaux restent inchangés.",
       "batch_hint": "Choisissez un lieu, puis prévisualisez les changements avant d’enregistrer la sélection."
@@ -2588,7 +2598,13 @@
       "refresh": "Actualiser l’état",
       "recent": "Exports récents de sidecars",
       "none": "Aucun export récent de sidecars.",
-      "read_failed": "Impossible de lire la progression. Actualisez l’état pour réessayer."
+      "read_failed": "Impossible de lire la progression. Actualisez l’état pour réessayer.",
+      "errors": {
+        "metadata_repair": "Les métadonnées existantes doivent être réparées avant l’export.",
+        "write_failed": "Impossible d’écrire les métadonnées. Consultez les journaux du serveur.",
+        "exiftool_upgrade": "ExifTool 13.23 à 13.27 corrompt les fichiers XMP. Mettez ExifTool à jour en 13.28 ou plus récent.",
+        "stopped": "L’export s’est arrêté de façon inattendue. Consultez les journaux du serveur et relancez les photos restantes."
+      }
     }
   },
   "undo": {
@@ -2853,8 +2869,7 @@
   },
   "capture_date": {
     "title": "Corriger la date de prise de vue",
-    "offset": "Décalage en secondes (+ plus tard, − plus tôt)",
-    "invalid": "Saisissez un nombre entier non nul de secondes, limité à ±366 jours, pour 1000 photos maximum.",
+    "invalid": "Choisissez un décalage non nul d’au plus 366 jours ; sélectionnez au plus 1000 photos.",
     "counts": "{changed} modifiées · {skipped} ignorées",
     "samples": "20 premières modifications. Les dates inconnues, incomplètes, non prises en charge ou hors limites sont ignorées.",
     "photo": "Photo",
@@ -2864,8 +2879,27 @@
     "reset_hint": "Le bouton « Utiliser la date du fichier » supprime la correction manuelle. Si le fichier ne contient aucune date, la date devient inconnue.",
     "use_file": "Utiliser la date du fichier",
     "preview": "Aperçu",
-    "apply": "Appliquer la correction",
-    "hint": "Décale l’heure locale de l’appareil, sans déduire le fuseau ni l’heure d’été. Les originaux ne changent que lors d’un export explicite des métadonnées."
+    "apply": "Appliquer la correction ({count})",
+    "hint": "Décale l’heure locale de l’appareil, sans déduire le fuseau ni l’heure d’été. Les originaux ne changent que lors d’un export explicite des métadonnées.",
+    "mode_shift": "Décaler de",
+    "mode_exact": "Heure exacte",
+    "mode": "Mode de correction",
+    "direction": "Sens",
+    "earlier": "Plus tôt",
+    "later": "Plus tard",
+    "days": "Jours",
+    "hours": "Heures",
+    "minutes": "Minutes",
+    "seconds": "Secondes",
+    "unit_d": "j",
+    "unit_h": "h",
+    "unit_min": "min",
+    "unit_s": "s",
+    "quick": "Ajustement rapide",
+    "summary_earlier": "{amount} plus tôt",
+    "summary_later": "{amount} plus tard",
+    "exact_label": "Date et heure correctes de la photo de référence",
+    "reference": "Photo de référence :"
   },
   "organization_history": {
     "title": "Historique des modifications",

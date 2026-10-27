@@ -129,7 +129,8 @@
       "inpage_hint": "Wenn aktiviert, kann ein in diesem Browser laufender Assistent suchen und, sofern Ihre Sitzung es erlaubt, Ihre Bibliothek über die Seite ändern. Standardmäßig aus; gilt nur für diesen Browser.",
       "inpage_changed": "Der Assistent hat {count} Foto geändert",
       "inpage_changed_plural": "Der Assistent hat {count} Fotos geändert"
-    }
+    },
+    "ok": "OK"
   },
   "pagination": {
     "scroll_for_more": "Scrollen für mehr",
@@ -209,7 +210,7 @@
     "burst_set": "Seriengruppe öffnen",
     "sequence_set": "Belichtungsreihe/Panorama öffnen",
     "open_detail": "Fotoseite öffnen",
-    "key_hint": "1-5 bewerten · F fav · X verwerfen · Space auswählen · Enter öffnen"
+    "key_hint": "1-5 bewerten · F fav · X verwerfen · Leertaste auswählen · Eingabe öffnen"
   },
   "notifications": {
     "copied": "Kopiert!",
@@ -1023,7 +1024,8 @@
     "folders": "Ordner",
     "map": "Karte",
     "capsules": "Kapseln",
-    "junk_sweep": "Aufräumen"
+    "junk_sweep": "Aufräumen",
+    "help": "Hilfe"
   },
   "auth": {
     "logout": "Abmelden",
@@ -1036,7 +1038,7 @@
     "user_menu": "Benutzermenü"
   },
   "gallery": {
-    "help": "Durchsuchen und filtern Sie Ihre Bibliothek. Sortieren Sie nach Bewertung, Datum oder Ihrem persönlichen Geschmack; nutzen Sie die Filter in der Seitenleiste (Personen, Schlagwörter, Kamera, Kategorie, Wertungsbereich, Momente) und die Suche, um Fotos zu finden. Tasten auf der fokussierten Karte: 1–5 bewerten, F favorisieren, X verwirft (Bearbeitungsmodus); / fokussiert die Suche, B blendet die Filterseitenleiste ein/aus, V wechselt Raster und Mosaik.",
+    "help": "Nach Bewertung, Datum oder deinem Geschmack sortieren\nMit der Seitenleiste filtern: Personen, Tags, Kamera, Kategorien\nSuche nach Dateiname oder Beschreibung",
     "hidden_banner": {
       "message": "{n} Fotos durch aktuelle Filter ausgeblendet",
       "some_hidden": "Einige Fotos werden durch Ihre Filter ausgeblendet",
@@ -1209,7 +1211,6 @@
       "find_filter": "Filter suchen…",
       "clear_find_filter": "Filtersuche löschen",
       "no_filters_match": "Keine passenden Filter",
-      "advanced_metrics": "Erweiterte Metriken",
       "refine": "Verfeinern",
       "view": "Ansicht",
       "color_quality": "Farbe & Qualität",
@@ -1318,13 +1319,16 @@
       "complete": "{percent}% von {total} gesichtet",
       "start": "Unentschiedene sichten",
       "resume": "Sichtung fortsetzen",
-      "browser": "Gespeicherte Warteschlange in diesem Browser fortsetzen."
+      "browser": "Gespeicherte Warteschlange in diesem Browser fortsetzen.",
+      "hide_from_menu": "Bewertungsfortschritt ausblenden",
+      "show_from_menu": "Bewertungsfortschritt anzeigen"
     },
     "manual_faces_need_review": "Manuelle Gesichter prüfen",
     "manual_faces_review_hint": "Stand des letzten Scans oder der letzten Prüfung im Gesichtseditor, keine laufende Überwachung. Öffnen Sie den Gesichtseditor eines Fotos, um gespeicherte Markierungen zu prüfen.",
     "faces_need_names": "Gesichter ohne Namen",
     "faces_need_names_hint": "Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Mit + ein Gesicht zuweisen oder unter Personen eine Gruppe benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen.",
-    "faces_need_names_readonly_hint": "Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Personen mit Bearbeitungszugriff können Gesichter zuweisen oder Gruppen benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen."
+    "faces_need_names_readonly_hint": "Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Personen mit Bearbeitungszugriff können Gesichter zuweisen oder Gruppen benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen.",
+    "help_none": "Diese Seite hat noch keinen Hilfetext."
   },
   "composition_patterns": {
     "none": "Keines",
@@ -1624,7 +1628,10 @@
       "sequences": "Belichtungsreihen werden erkannt",
       "tagging": "Verschlagwortung",
       "vec": "Indizierung",
-      "done": "Fertig"
+      "done": "Fertig",
+      "moments": "Momente erkennen",
+      "junk": "Unerwünschte Fotos erkennen",
+      "recompute": "Bewertungen neu berechnen"
     },
     "title": "Fotos scannen",
     "start_button": "Scan starten",
@@ -1714,7 +1721,7 @@
     "no_faces": "Keine Gesichter für diese Person gefunden",
     "split_done": "Person aufgeteilt",
     "split_error": "Person konnte nicht aufgeteilt werden",
-    "empty_hint": "Personen entstehen aus Gesichtern, die du auf einer Fotoseite zuweist (Bearbeitungsmodus). Öffne ein Foto mit Gesichtern und wähle „Person zuweisen“, um die erste anzulegen."
+    "empty_hint": "Personen entstehen aus Gesichtern, die du auf einer Fotoseite zuweist (Bearbeitungsmodus). Öffne ein Foto mit Gesichtern und wähle „Gesicht einer Person zuweisen“, um die erste anzulegen."
   },
   "person_selector": {
     "create_new": "Neue Person erstellen",
@@ -1997,7 +2004,6 @@
     "similarity_threshold": "Ähnlichkeitsschwelle",
     "burst_help": "Fotos, die in schneller Folge aufgenommen wurden, werden zusammengefasst. Klicken Sie auf Fotos, um sie zu behalten (grüner Rahmen). Nicht ausgewählte Fotos (roter Rahmen) werden ausgeblendet. Das beste Foto wird automatisch anhand von Schärfe und Qualität ausgewählt.",
     "similar_help": "Visuell ähnliche Fotos in Ihrer Bibliothek werden mithilfe von KI-Embeddings gruppiert. Überprüfen Sie jede Gruppe, behalten Sie die besten Aufnahmen und verwerfen Sie Fast-Duplikate. Passen Sie den Schwellenwert-Regler an, um zu steuern, wie ähnlich Fotos sein müssen, um eine Gruppe zu bilden.",
-    "help": "Hilfe",
     "help_text": "Sichten Sie nahezu identische Aufnahmen schnell. Wählen Sie eine Granularität — Serien, Ähnliche, Szenen oder alle zusammengeführt — und eine Sortierung; die Strenge legt fest, wie aggressiv die automatische Auswahl nur das beste Bild behält, und im Modus Ähnliche stellt der Regler Ähnlichkeit ein, wie ähnlich Fotos zum Gruppieren sein müssen. Klicken Sie auf ein Foto, um es zu behalten oder zu verwerfen, doppelklicken Sie, um nur dieses zu behalten, oder schalten Sie die Lupe (Z) ein, um Pixel zu prüfen. Öffnen Sie die Dunkelkammer (Eingabetaste) für die Vollbild-Durchsicht mit 2- oder 4-fach-Vergleich. Mit Hoch/Runter wählen Sie eine Gruppe, mit der Leertaste bestätigen Sie sie und springen weiter; Überspringen und Bestätigen starten einen 7-Sekunden-Countdown, den Sie vor dem Schließen der Gruppe abbrechen können, und das Bestätigen blendet die abgelehnten Fotos in der Galerie aus. Beschränken Sie den Feed auf ein Album oder eine Szene, schalten Sie Abgelehnte ausschließen um, und beachten Sie, dass jede Sichtungsentscheidung Ihr persönliches Ranking „Mein Geschmack“ trainiert. Alle Tasten finden Sie in der Kürzelliste unten.",
     "type_burst": "Serie",
     "type_similar": "Ähnlich",
@@ -2479,6 +2485,8 @@
     "gps": {
       "online_query": "Adresse oder Geschäft",
       "online_notice": "Die Onlinesuche sendet diese Anfrage an den konfigurierten Photon-Anbieter. Gespeicherte Orte und Koordinaten funktionieren offline. Die Auswahl zeigt eine Vorschau; Speichern übernimmt sie.",
+      "osm_attribution": "© OpenStreetMap-Mitwirkende",
+      "opens_new_tab": "(öffnet in neuem Tab)",
       "online_search": "Online suchen",
       "online_disabled": "Die Onlinesuche ist deaktiviert.",
       "online_loading": "Onlinesuche läuft…",
@@ -2507,8 +2515,10 @@
       "batch_title": "Ort festlegen",
       "only_missing": "Nur Fotos ohne Standort",
       "preview_batch": "Standortänderungen prüfen",
-      "batch_preview": "{changed} Fotos werden geändert; {skipped} übersprungen.",
-      "batch_applied": "{changed} Fotos geändert; {skipped} übersprungen.",
+      "batch_preview": "{changed} Foto wird geändert; {skipped} übersprungen.",
+      "batch_preview_plural": "{changed} Fotos werden geändert; {skipped} übersprungen.",
+      "batch_applied": "{changed} Foto geändert; {skipped} übersprungen.",
+      "batch_applied_plural": "{changed} Fotos geändert; {skipped} übersprungen.",
       "batch_error": "Standort konnte nicht angewendet werden. Wählen Sie höchstens 1000 Fotos und erstellen Sie eine neue Vorschau; Auswahl oder gespeicherter Ort könnte sich geändert haben.",
       "batch_limit": "Wählen Sie höchstens 1000 Fotos. Ohne Schutz werden vorhandene Standorte ersetzt. Originaldateien bleiben unverändert.",
       "batch_hint": "Wählen Sie einen Ort und prüfen Sie die Änderungen, bevor Sie die Auswahl speichern."
@@ -2588,7 +2598,13 @@
       "refresh": "Status aktualisieren",
       "recent": "Letzte Sidecar-Exporte",
       "none": "Keine letzten Sidecar-Exporte.",
-      "read_failed": "Exportfortschritt nicht lesbar. Aktualisieren Sie den Status erneut."
+      "read_failed": "Exportfortschritt nicht lesbar. Aktualisieren Sie den Status erneut.",
+      "errors": {
+        "metadata_repair": "Vorhandene Metadaten müssen vor dem Export repariert werden.",
+        "write_failed": "Metadaten konnten nicht geschrieben werden. Prüfen Sie die Serverprotokolle.",
+        "exiftool_upgrade": "ExifTool 13.23 bis 13.27 beschädigt XMP-Sidecar-Dateien. Aktualisieren Sie ExifTool auf 13.28 oder neuer.",
+        "stopped": "Der Export wurde unerwartet beendet. Prüfen Sie die Serverprotokolle und wiederholen Sie die übrigen Fotos."
+      }
     }
   },
   "undo": {
@@ -2853,8 +2869,7 @@
   },
   "capture_date": {
     "title": "Aufnahmedatum korrigieren",
-    "offset": "Versatz in Sekunden (+ später, − früher)",
-    "invalid": "Eine ganze Zahl ungleich null innerhalb von ±366 Tagen; höchstens 1000 Fotos auswählen.",
+    "invalid": "Wähle eine Verschiebung ungleich null von höchstens 366 Tagen; wähle höchstens 1000 Fotos aus.",
     "counts": "{changed} geändert · {skipped} übersprungen",
     "samples": "Die ersten 20 Änderungen. Unbekannte, unvollständige, nicht unterstützte oder überlaufende Datumswerte werden übersprungen.",
     "photo": "Foto",
@@ -2864,8 +2879,27 @@
     "reset_hint": "Die Schaltfläche „Dateidatum verwenden“ entfernt die manuelle Korrektur. Ohne Datum in der Datei wird das Aufnahmedatum unbekannt.",
     "use_file": "Dateidatum verwenden",
     "preview": "Vorschau",
-    "apply": "Korrektur anwenden",
-    "hint": "Verschiebt die gespeicherte Kamera-Uhrzeit ohne Ableitung von Zeitzone oder Sommerzeit. Originale ändern sich erst beim ausdrücklichen Metadatenexport."
+    "apply": "Korrektur anwenden ({count})",
+    "hint": "Verschiebt die gespeicherte Kamera-Uhrzeit ohne Ableitung von Zeitzone oder Sommerzeit. Originale ändern sich erst beim ausdrücklichen Metadatenexport.",
+    "mode_shift": "Verschieben um",
+    "mode_exact": "Genaue Zeit festlegen",
+    "mode": "Korrekturmodus",
+    "direction": "Richtung",
+    "earlier": "Früher",
+    "later": "Später",
+    "days": "Tage",
+    "hours": "Stunden",
+    "minutes": "Minuten",
+    "seconds": "Sekunden",
+    "unit_d": "T",
+    "unit_h": "h",
+    "unit_min": "min",
+    "unit_s": "s",
+    "quick": "Schnellanpassung",
+    "summary_earlier": "{amount} früher",
+    "summary_later": "{amount} später",
+    "exact_label": "Korrektes Datum und Uhrzeit des Referenzfotos",
+    "reference": "Referenzfoto:"
   },
   "organization_history": {
     "title": "Änderungsverlauf",

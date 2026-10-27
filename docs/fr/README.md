@@ -19,7 +19,7 @@ copier-coller.
 | [Interopérabilité](INTEROP.md) | Faire circuler notes/tags avec Lightroom, Capture One, digiKam, darktable |
 | [Immich](IMMICH.md) | Synchroniser notes et favoris avec Immich, plus le webhook entrant |
 | [Déploiement](DEPLOYMENT.md) | NAS, serveurs distants, HTTPS, sauvegardes, multi-utilisateur |
-| [RELINK](RELINK.md) | Relier une photo déplacée |
+| [Relier](RELINK.md) | Relier une photo déplacée |
 
 ## Types de fichiers pris en charge
 
@@ -28,6 +28,7 @@ copier-coller.
 - **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — ignoré lorsqu'un JPEG/HEIC correspondant existe
 - **PNG, GIF, WebP, BMP, TIFF** (.png, .gif, .webp, .bmp, .tif, .tiff) — les niveaux de gris 16 bits sont mis à l'échelle en 8 bits, un canal alpha est composé sur fond blanc, et les GIF/WebP animés sont évalués sur leur première image ; le TIFF est converti en JPEG pour le navigateur. Le PNG, le WebP et le TIFF contiennent l'EXIF quand le logiciel d'écriture l'a enregistré ; le GIF et le BMP ne le peuvent pas, donc pour ces deux-là `date_taken` et l'appareil/objectif restent vides
 - **AVIF** (.avif) — nécessite un Pillow compilé avec la prise en charge AVIF (native à partir de `pillow>=11.3`) ; les images AVIF HDR PQ sont tonemappées en sRGB SDR, comme les `.HIF` Canon ; l'EXIF est lu quand il est présent
+- **JPEG XL** (.jxl) — décodé via la dépendance existante `imagecodecs` dans les installations standard et Docker ; aucun paquet supplémentaire requis. Les aperçus utilisent RGB 8 bits sans mappage de tons HDR ; seule la première image des animations est utilisée et l’EXIF valide est lu. Les JPEG reconstruits conservent la gestion ICC ; `imagecodecs` n’expose pas les profils des aperçus JXL natifs
 
 ## Questions fréquentes
 

@@ -7,9 +7,10 @@
 # non-ASCII filenames — so this floor keeps the build path patched rather than
 # incidentally safe, in case an `exclude` is ever added.
 #
-# This is deliberately NOT the same pin as the RUNTIME one. `requirements.txt`
-# caps setuptools <82 because pyiqa's LIQE/CLIPIQA reach PyPI `openai-clip`,
-# whose `clip/clip.py` still does `from pkg_resources import packaging`, and
+# This is deliberately NOT the same pin as the RUNTIME one.
+# `requirements.restricted.txt` and the restricted lock files cap setuptools
+# <82 because pyiqa's LIQE/CLIPIQA reach PyPI `openai-clip`, whose
+# `clip/clip.py` still does `from pkg_resources import packaging`, and
 # setuptools 82 removed pkg_resources. PEP 517 build isolation resolves this
 # list separately from the installed environment, so the two do not conflict.
 requires = ["setuptools>=83.0.0", "wheel"]
@@ -17,7 +18,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "facet-photo"
-version = "1.24.0"
+version = "1.25.0"
 description = "AI-powered photo analysis and gallery — score, cull, organise, and explore your photo library with computer vision and face recognition"
 readme = "README.md"
 license = "MIT"
@@ -73,7 +74,7 @@ dependencies = [
     # and Pillow cannot decode JPEG XL, so utils.image_loading reads the
     # preview through tifffile, which decodes JPEG XL tiles via imagecodecs.
     "tifffile>=2024.1.1",
-    "imagecodecs>=2024.1.1",
+    "imagecodecs>=2024.1.1",  # also backs the standalone JPEG XL Pillow opener
     "numpy>=1.24.0",
     "scipy>=1.10.0",
     "hdbscan>=0.8.40",

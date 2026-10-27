@@ -82,6 +82,11 @@ def _classify_missing_path(path):
     return _PATH_DELETED
 
 
+def is_path_deleted(path):
+    """True only when ``path`` is genuinely gone: its entry is absent and its parent is readable."""
+    return _classify_missing_path(path) == _PATH_DELETED
+
+
 def vacuum_database(db_path='photo_scores_pro.db', verbose=True):
     """Run VACUUM to reclaim space and defragment the database.
 
@@ -1043,7 +1048,8 @@ def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnai
 
     # A copied database may contain an older active row alongside a deletion
     # learned from another deployment. UUID deletion wins in full copies too.
-    if dst_conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='manual_face_deletions'").fetchone():
+    from db.schema import table_exists
+    if table_exists(dst_conn, 'manual_face_deletions'):
         from db.manual_faces import prune_deleted_manual_faces
         from db.person_carry_over import refresh_person_counts
         refresh_person_counts(dst_conn, prune_deleted_manual_faces(dst_conn))
@@ -1063,16 +1069,19 @@ def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnai
                      "raw_sharpness_variance = NULL, caption_embedding = NULL")
     dst_conn.commit()
 
-    # The agent side tables never ship in a viewer export: the provenance table holds user paths and
-    # paths, and the token table holds bearer-secret hashes. The viewer's own init_database
-    # re-creates both empty. (The incremental path copies neither.)
+    # Three side tables never ship in a viewer export: the provenance table holds user paths, the
+    # token table holds bearer-secret hashes, and organization_history holds per-owner before/after
+    # snapshots of edited photos. The viewer's own init_database re-creates all three empty. (The
+    # incremental path copies none of them.) organization_revisions and organization_clock stay: they
+    # are trigger-maintained derived counters (photo paths and integers only) that the
+    # destination's own triggers keep advancing.
     for table in VIEWER_EXPORT_EXCLUDED_TABLES:
         dst_conn.execute(f"DROP TABLE IF EXISTS {table}")
     dst_conn.commit()
 
     # Receipt authority and private source paths belong to this database only.
     # Keep its schema/triggers usable, but start a fresh viewer with no records.
-    if dst_conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='photo_metadata_edits'").fetchone():
+    if table_exists(dst_conn, 'photo_metadata_edits'):
         dst_conn.execute('DELETE FROM photo_metadata_edits')
         dst_conn.commit()
 

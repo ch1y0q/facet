@@ -129,7 +129,8 @@
       "inpage_hint": "Se attivo, un assistente in esecuzione in questo browser può cercare e, se la sessione lo consente, modificare la libreria tramite la pagina. Disattivato per impostazione predefinita; vale solo per questo browser.",
       "inpage_changed": "L’assistente ha modificato {count} foto",
       "inpage_changed_plural": "L’assistente ha modificato {count} foto"
-    }
+    },
+    "ok": "OK"
   },
   "pagination": {
     "scroll_for_more": "Scorri per vedere altro",
@@ -209,7 +210,7 @@
     "burst_set": "Apri gruppo di raffica",
     "sequence_set": "Apri bracket/panorama",
     "open_detail": "Apri pagina foto",
-    "key_hint": "1-5 valuta · F preferita · X scarta · Space seleziona · Invio apri"
+    "key_hint": "1-5 valuta · F preferita · X scarta · Spazio seleziona · Invio apri"
   },
   "notifications": {
     "copied": "Copiato!",
@@ -1023,7 +1024,8 @@
     "folders": "Cartelle",
     "map": "Mappa",
     "capsules": "Capsule",
-    "junk_sweep": "Pulizia"
+    "junk_sweep": "Pulizia",
+    "help": "Aiuto"
   },
   "auth": {
     "logout": "Esci",
@@ -1036,7 +1038,7 @@
     "user_menu": "Menu utente"
   },
   "gallery": {
-    "help": "Sfoglia e filtra la tua libreria. Ordina per punteggio, data o per i tuoi gusti personali; usa i filtri della barra laterale (persone, tag, fotocamera, categoria, intervallo di punteggio, momenti) e la ricerca per trovare le foto. Tasti sulla scheda a fuoco: 1–5 valuta, F aggiunge ai preferiti, X scarta (modalità modifica); / attiva la ricerca, B mostra o nasconde la barra laterale dei filtri, V alterna griglia e mosaico.",
+    "help": "Ordina per punteggio, data o il tuo gusto personale\nFiltra con la barra laterale: persone, tag, fotocamera, categorie\nCerca per nome file o descrizione",
     "hidden_banner": {
       "message": "{n} foto nascoste dai filtri attivi",
       "some_hidden": "Alcune foto sono nascoste dai tuoi filtri",
@@ -1209,7 +1211,6 @@
       "find_filter": "Cerca un filtro…",
       "clear_find_filter": "Cancella ricerca filtro",
       "no_filters_match": "Nessun filtro corrisponde",
-      "advanced_metrics": "Metriche avanzate",
       "refine": "Affina",
       "view": "Visualizzazione",
       "color_quality": "Colore e qualità",
@@ -1318,13 +1319,16 @@
       "complete": "{percent}% di {total} revisionate",
       "start": "Rivedi le indecise",
       "resume": "Continua revisione",
-      "browser": "Riprendi la coda memorizzata in questo browser."
+      "browser": "Riprendi la coda memorizzata in questo browser.",
+      "hide_from_menu": "Nascondi avanzamento revisione",
+      "show_from_menu": "Mostra avanzamento revisione"
     },
     "manual_faces_need_review": "Volti manuali da verificare",
     "manual_faces_review_hint": "In base all’ultima scansione o verifica nell’editor dei volti, senza monitoraggio continuo. Apri l’editor dei volti di una foto per verificare i riquadri salvati.",
     "faces_need_names": "Volti senza nome",
     "faces_need_names_hint": "Include volti non assegnati e gruppi di persone senza nome. Usa + per assegnare un volto o dai un nome a un gruppo in Persone. Le foto senza volti rilevati sono escluse.",
-    "faces_need_names_readonly_hint": "Include volti non assegnati e gruppi senza nome. Chi dispone dell’accesso in modifica può assegnare i volti o nominare i gruppi. Le foto senza volti rilevati sono escluse."
+    "faces_need_names_readonly_hint": "Include volti non assegnati e gruppi senza nome. Chi dispone dell’accesso in modifica può assegnare i volti o nominare i gruppi. Le foto senza volti rilevati sono escluse.",
+    "help_none": "Questa pagina non ha ancora un testo di aiuto."
   },
   "composition_patterns": {
     "none": "Nessuno",
@@ -1624,7 +1628,10 @@
       "sequences": "Rilevamento dei bracketing",
       "tagging": "Etichettatura",
       "vec": "Indicizzazione",
-      "done": "Completato"
+      "done": "Completato",
+      "moments": "Rilevamento dei momenti",
+      "junk": "Rilevamento delle foto indesiderate",
+      "recompute": "Ricalcolo dei punteggi"
     },
     "title": "Scansiona foto",
     "start_button": "Avvia scansione",
@@ -1714,7 +1721,7 @@
     "no_faces": "Nessun volto trovato per questa persona",
     "split_done": "Persona divisa",
     "split_error": "Impossibile dividere la persona",
-    "empty_hint": "Le persone provengono dai volti che assegni nella pagina della foto (modalità modifica). Apri una foto con volti e scegli Assegna a una persona per creare la prima."
+    "empty_hint": "Le persone provengono dai volti che assegni nella pagina della foto (modalità modifica). Apri una foto con volti e scegli Assegna volto alla persona per creare la prima."
   },
   "person_selector": {
     "create_new": "Crea nuova persona",
@@ -1997,7 +2004,6 @@
     "similarity_threshold": "Soglia di similarità",
     "burst_help": "Le foto scattate in rapida successione vengono raggruppate insieme. Clicca sulle foto da tenere (bordo verde), le foto non selezionate (bordo rosso) verranno nascoste. La foto migliore viene selezionata automaticamente in base a nitidezza e qualità.",
     "similar_help": "Le foto visivamente simili nella tua libreria vengono raggruppate utilizzando embedding IA. Esamina ogni gruppo, tieni gli scatti migliori e scarta i quasi-duplicati. Regola il cursore della soglia per controllare quanto simili devono essere le foto per formare un gruppo.",
-    "help": "Aiuto",
     "help_text": "Scarta in fretta gli scatti quasi identici. Scegli una granularità — Raffiche, Simili, Scene o Tutto unito — e un ordinamento; il Rigore regola con quanta aggressività la selezione automatica tiene solo il fotogramma migliore, e in modalità Simili il cursore Similarità regola quanto devono assomigliarsi le foto per raggrupparsi. Clicca una foto per tenerla o scartarla, fai doppio clic per tenere solo quella, oppure attiva la Lente (Z) per esaminare i pixel. Apri la Camera oscura (Invio) per la revisione a schermo intero con Confronta 2 o 4. Usa Su/Giù per scegliere un gruppo e Spazio per confermarlo e proseguire; Salta e Conferma avviano un conto alla rovescia di 7 secondi che puoi Annullare prima che il gruppo si chiuda, e la conferma nasconde le foto scartate dalla galleria. Limita il flusso a un album o una scena, attiva Escludi rifiutate e ricorda che ogni decisione di scarto allena la tua classifica personale «I miei gusti». Consulta le scorciatoie qui sotto per tutti i tasti.",
     "type_burst": "Raffica",
     "type_similar": "Simile",
@@ -2479,6 +2485,8 @@
     "gps": {
       "online_query": "Indirizzo o attività",
       "online_notice": "La ricerca online invia questa richiesta al fornitore Photon configurato. I luoghi salvati e le coordinate funzionano offline. La selezione mostra un’anteprima; Salva la applica.",
+      "osm_attribution": "© Collaboratori di OpenStreetMap",
+      "opens_new_tab": "(si apre in una nuova scheda)",
       "online_search": "Cerca online",
       "online_disabled": "La ricerca online è disattivata.",
       "online_loading": "Ricerca online…",
@@ -2507,8 +2515,10 @@
       "batch_title": "Imposta posizione",
       "only_missing": "Solo foto senza posizione",
       "preview_batch": "Anteprima delle modifiche",
-      "batch_preview": "{changed} foto saranno modificate; {skipped} ignorate.",
-      "batch_applied": "{changed} foto aggiornate; {skipped} ignorate.",
+      "batch_preview": "{changed} foto sarà modificata; {skipped} ignorate.",
+      "batch_preview_plural": "{changed} foto saranno modificate; {skipped} ignorate.",
+      "batch_applied": "{changed} foto aggiornata; {skipped} ignorate.",
+      "batch_applied_plural": "{changed} foto aggiornate; {skipped} ignorate.",
       "batch_error": "Impossibile applicare la posizione. Seleziona al massimo 1000 foto e ripeti l’anteprima; la selezione o il luogo salvato potrebbe essere cambiato.",
       "batch_limit": "Seleziona al massimo 1000 foto. Senza protezione le posizioni esistenti vengono sostituite. I file originali restano invariati.",
       "batch_hint": "Scegli una posizione e visualizza le modifiche prima di salvare la selezione."
@@ -2588,7 +2598,13 @@
       "refresh": "Aggiorna stato",
       "recent": "Esportazioni sidecar recenti",
       "none": "Nessuna esportazione sidecar recente.",
-      "read_failed": "Impossibile leggere il progresso. Aggiorna lo stato per riprovare."
+      "read_failed": "Impossibile leggere il progresso. Aggiorna lo stato per riprovare.",
+      "errors": {
+        "metadata_repair": "I metadati esistenti devono essere riparati prima dell’esportazione.",
+        "write_failed": "Impossibile scrivere i metadati. Controlla i log del server.",
+        "exiftool_upgrade": "ExifTool dalla 13.23 alla 13.27 danneggia i file XMP. Aggiorna ExifTool alla 13.28 o successiva.",
+        "stopped": "L’esportazione si è interrotta in modo imprevisto. Controlla i log del server e riprova con le foto rimanenti."
+      }
     }
   },
   "undo": {
@@ -2853,8 +2869,7 @@
   },
   "capture_date": {
     "title": "Correggi data di scatto",
-    "offset": "Scostamento in secondi (+ dopo, − prima)",
-    "invalid": "Usa un numero intero diverso da zero entro ±366 giorni; seleziona al massimo 1000 foto.",
+    "invalid": "Scegli uno spostamento diverso da zero di al massimo 366 giorni; seleziona al massimo 1000 foto.",
     "counts": "{changed} modificate · {skipped} ignorate",
     "samples": "Prime 20 modifiche. Le date sconosciute, incomplete, non supportate o fuori intervallo vengono ignorate.",
     "photo": "Foto",
@@ -2864,8 +2879,27 @@
     "reset_hint": "Il pulsante «Usa data del file» rimuove la correzione manuale. Se il file non ha una data, la data di scatto diventa sconosciuta.",
     "use_file": "Usa data del file",
     "preview": "Anteprima",
-    "apply": "Applica correzione",
-    "hint": "Sposta l’ora locale della fotocamera senza dedurre fuso orario o ora legale. Gli originali cambiano solo con l’esportazione esplicita dei metadati."
+    "apply": "Applica correzione ({count})",
+    "hint": "Sposta l’ora locale della fotocamera senza dedurre fuso orario o ora legale. Gli originali cambiano solo con l’esportazione esplicita dei metadati.",
+    "mode_shift": "Sposta di",
+    "mode_exact": "Imposta ora esatta",
+    "mode": "Modalità di correzione",
+    "direction": "Direzione",
+    "earlier": "Prima",
+    "later": "Dopo",
+    "days": "Giorni",
+    "hours": "Ore",
+    "minutes": "Minuti",
+    "seconds": "Secondi",
+    "unit_d": "g",
+    "unit_h": "h",
+    "unit_min": "min",
+    "unit_s": "s",
+    "quick": "Regolazione rapida",
+    "summary_earlier": "{amount} prima",
+    "summary_later": "{amount} dopo",
+    "exact_label": "Data e ora corrette della foto di riferimento",
+    "reference": "Foto di riferimento:"
   },
   "organization_history": {
     "title": "Cronologia delle modifiche",

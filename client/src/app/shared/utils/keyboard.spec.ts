@@ -1,4 +1,4 @@
-import { isTypingContext } from './keyboard';
+import { isPageShortcutBlocked, isTypingContext } from './keyboard';
 
 function eventFrom(el: Partial<HTMLElement> | null): Event {
   return { target: el } as unknown as Event;
@@ -29,5 +29,33 @@ describe('isTypingContext', () => {
 
   it('is false when there is no target', () => {
     expect(isTypingContext(eventFrom(null))).toBe(false);
+  });
+});
+
+describe('isPageShortcutBlocked', () => {
+  function key(init: KeyboardEventInit = {}, target: Element = document.body): KeyboardEvent {
+    const event = new KeyboardEvent('keydown', { key: 'b', bubbles: true, ...init });
+    target.dispatchEvent(event);
+    return event;
+  }
+  afterEach(() => document.body.replaceChildren());
+
+  it('is false for a plain key on the page', () => {
+    expect(isPageShortcutBlocked(key())).toBe(false);
+  });
+
+  it('is true in a typing context', () => {
+    const input = document.createElement('input');
+    document.body.append(input);
+    expect(isPageShortcutBlocked(key({}, input))).toBe(true);
+  });
+
+  it.each([{ ctrlKey: true }, { metaKey: true }, { altKey: true }])('is true with a modifier held (%o)', init => {
+    expect(isPageShortcutBlocked(key(init))).toBe(true);
+  });
+
+  it.each(['mat-dialog-container', 'mat-bottom-sheet-container'])('is true while a %s is open', tag => {
+    document.body.append(document.createElement(tag));
+    expect(isPageShortcutBlocked(key())).toBe(true);
   });
 });

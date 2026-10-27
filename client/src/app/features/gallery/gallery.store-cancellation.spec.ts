@@ -961,9 +961,12 @@ describe('GalleryStore read cancellation with HttpClient', () => {
     }
     if (refills.length) {
       expect(refills).toHaveLength(1);
-      for (let page = 1; page <= 2; page++) {
+      // The direct refill keeps the rows before the last loaded page and reads only that page;
+      // a retry owed after a failure or a cancellation refetches every loaded page.
+      const fromPage = outcome === 'success' ? 2 : 1;
+      for (let page = fromPage; page <= 2; page++) {
         let refill = refills[0];
-        if (page === 2) await vi.waitFor(() => { refill = request('/photos'); });
+        if (page > fromPage) await vi.waitFor(() => { refill = request('/photos'); });
         expect(refill.request.params.get('page')).toBe(String(page));
         refill.flush({ ...EMPTY_PAGE, photos: remaining.slice((page - 1) * 2, page * 2), total: 5, has_more: true });
         if (page === 2 && outcome.startsWith('active-queued')) {

@@ -5,6 +5,8 @@ all SQL writers; local means the writer is unknown, never a guessed actor.
 """
 from contextlib import contextmanager
 
+from db.schema import table_exists
+
 REVIEW_FIELDS = ('star_rating', 'is_favorite', 'is_rejected', 'is_kept')
 
 
@@ -36,7 +38,7 @@ def create_review_edit_triggers(conn):
 
 
 def review_edit_state(conn, path, user_id):
-    if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='photo_metadata_edits'").fetchone():
+    if not table_exists(conn, 'photo_metadata_edits'):
         return {}
     return {row['field']: dict(row) for row in conn.execute(
         'SELECT * FROM photo_metadata_edits WHERE photo_path=? AND user_id=?', (path, user_id or ''))}

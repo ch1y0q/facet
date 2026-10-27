@@ -6,20 +6,8 @@ import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { I18N } from '../../core/i18n/keys';
-import { CardActionId, CardActionsConfig, DEFAULT_CARD_ACTIONS } from '../../shared/components/photo-card/card-actions';
+import { CARD_ACTION_META, CardActionId, CardActionsConfig, DEFAULT_CARD_ACTIONS } from '../../shared/components/photo-card/card-actions';
 import { CardActionsService } from './card-actions.service';
-
-/** Which action id each button row is labelled and iconned with. */
-export const CARD_ACTION_META: Record<CardActionId, { icon: string; labelKey: string }> = {
-  similar: { icon: 'image_search', labelKey: 'similar.find_similar' },
-  critique: { icon: 'analytics', labelKey: 'critique.title' },
-  embed: { icon: 'save', labelKey: 'photoCard.embed_to_file' },
-  assign_face: { icon: 'person_add', labelKey: 'manage_persons.assign_face' },
-  duplicate_set: { icon: 'photo_library', labelKey: 'photoCard.duplicate_set' },
-  burst_set: { icon: 'burst_mode', labelKey: 'photoCard.burst_set' },
-  sequence_set: { icon: 'auto_awesome_motion', labelKey: 'photoCard.sequence_set' },
-  open_detail: { icon: 'open_in_full', labelKey: 'photoCard.open_detail' },
-};
 
 /** Reorder and show/hide the photo card's hover buttons. Arrows rather than a
  *  drag list: the dialog has at most eight rows and keyboard-operable arrows
@@ -36,7 +24,7 @@ export const CARD_ACTION_META: Record<CardActionId, { icon: string; labelKey: st
       <div class="flex flex-col gap-1">
         @for (id of order(); track id; let i = $index) {
           <div class="flex items-center gap-2 px-2 py-1 rounded hover:bg-[var(--mat-sys-surface-container-high)]">
-            <mat-checkbox [checked]="!isHidden(id)" (change)="toggle(id, $event.checked)">
+            <mat-checkbox [checked]="!hidden().has(id)" (change)="toggle(id, $event.checked)">
               <span class="flex items-center gap-2">
                 <mat-icon class="!text-base !w-4 !h-4 !leading-4 opacity-70">{{ CARD_ACTION_META[id].icon }}</mat-icon>
                 {{ CARD_ACTION_META[id].labelKey | translate }}
@@ -76,10 +64,6 @@ export class CardActionsDialogComponent {
   private readonly initial = this.service.config();
   protected readonly order = signal<CardActionId[]>([...this.initial.order]);
   protected readonly hidden = signal<Set<CardActionId>>(new Set(this.initial.hidden));
-
-  protected isHidden(id: CardActionId): boolean {
-    return this.hidden().has(id);
-  }
 
   protected toggle(id: CardActionId, visible: boolean): void {
     this.hidden.update(current => {
