@@ -32,6 +32,8 @@ grouping can differ slightly on other hardware, so record your own baseline firs
 
 | Measure | GPU 8gb | CPU (CI, legacy profile) | Better is |
 |---|---|---|---|
+| Photos in the library | 200 | 200 | must stay |
+| Faces detected | 221 | 221 | must not drop |
 | Photos with no face found (accepted detector failures, see Known failures) | 3 | 3 | lower (bonus) |
 | `seed_names.py --score`: primary faces right / wrong | 194 / 0 of 197 | 197 / 0 of 197 | more / must stay 0 |
 | `seed_names.py --score`: bystanders wrongly given a person's name | 10 of 24 | 3 of 24 | lower |
@@ -44,10 +46,25 @@ remaining CPU errors are all in Abdullah_Gul_0008 and _0009. The open-set scores
 
 CI runs it without a GPU (`.github/workflows/face-gate.yml`): one job builds the library, then
 Linux (direct install) and Docker (the CPU image) each scan it on the legacy profile, group,
-name and report with `ci_report.py`; `ci_compare.py` fails the run if the reports differ or a
-must-stay line above is broken. CPU and GPU grouping can differ slightly, so the GPU baseline
-above is still recorded by hand. A
-quality claim ("better on real photos") needs a separate, private, hand-checked sample.
+name and report with `ci_report.py`. `ci_compare.py` fails the run if the reports differ, or
+if the report is worse than the **CPU column above on any line**: it reads the column from
+this table, so the documented baseline and the check cannot drift. Right answers and
+detected faces must not drop and errors must not rise, so a pipeline that finds or names
+nothing fails too. A change that improves a line updates the CPU column in the same pull
+request. CPU and GPU grouping can differ slightly, so the GPU baseline is recorded by hand.
+
+When it runs, and how deep:
+
+| Trigger | Scan | Time per job |
+|---|---|---|
+| Pull requests and pushes to `main` that touch face code (`facet.py`, `analyzers/face*.py`, `faces/`, `processing/`, `models/`, `db/`, `config/`, the lock files, `pyproject.toml`, the `Dockerfile`, `testdb/`) | face pass only (`facet.py --pass faces`) | about 5 min |
+| Weekly, or by hand (*Run workflow* with `full_scan`) | the whole scoring pipeline | about 1.5 h |
+
+The report depends only on the face pass (InsightFace): a face-pass-only scan of the
+library gives the same report as a full scan, measured on CPU. The weekly full scan proves
+that stays true. A new push cancels the run it replaces.
+
+A quality claim ("better on real photos") needs a separate, private, hand-checked sample.
 
 ## Build the library (once)
 

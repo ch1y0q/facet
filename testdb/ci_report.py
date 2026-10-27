@@ -1,6 +1,6 @@
 """Print the test library's scores in a form that compares across machines.
 
-CI scans the library on each machine (Linux, Docker, Windows), groups the faces, names the
+CI scans the library on each machine (Linux, Docker), groups the faces, names the
 reference groups with ``seed_names.py --apply``, then runs this. Every machine scans the same
 photos with the same pinned face models, so the reports must be identical; the comparison job
 diffs them.

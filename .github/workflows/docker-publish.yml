@@ -31,10 +31,11 @@ jobs:
             strip_torch: "0"
             install_cuml: "0"
             requirements_lock: requirements.lock.txt
-            # Smoke-test expectations. torch here is installed UNPINNED from the
-            # CPU wheel index, so its version floats and only its CUDA-lessness
-            # is asserted; expect_arch is empty because a CPU build has no cubins.
-            expect_torch: ""
+            # Smoke-test expectations. torch here is installed from the CPU wheel
+            # index at the Dockerfile's CPU_TORCH_VERSION (the cuda entry's torch),
+            # so the two images run the same release; expect_arch is empty because
+            # a CPU build has no cubins.
+            expect_torch: "2.11.0+cpu"
             expect_cuda: ""
             expect_arch: ""
             # ONNX Runtime (issue #229): "1" = onnxruntime-gpu alone, "0" = onnxruntime
