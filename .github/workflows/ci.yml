@@ -25,13 +25,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          fetch-depth: 2
       - id: filter
+        # A pull_request checkout is the merge of the PR into the CURRENT base,
+        # so HEAD^1 is that base: diffing against it gives exactly the PR's own
+        # changes. pull_request.base.sha is not: it can lag behind a base that
+        # moved since the last push, and the diff then sweeps in the base's own
+        # .py changes.
         env:
           EVENT: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [ "$EVENT" != "pull_request" ] || git diff --name-only "$BASE_SHA" HEAD | grep -qE '\.py$'; then
+          if [ "$EVENT" != "pull_request" ] || git diff --name-only HEAD^1 HEAD | grep -qE '\.py$'; then
             echo "scope=full" >> "$GITHUB_OUTPUT"
           else
             echo "No .py file changed: running only the cross-file Python checks."
