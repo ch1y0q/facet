@@ -1029,7 +1029,7 @@ def _sidecar_job_request(response):
     response.headers["Cache-Control"] = "no-store"
     try:
         yield DEFAULT_DB_PATH
-    except LookupError as ex:
+    except sidecar_jobs.JobNotFound as ex:
         raise HTTPException(404, "Export job not found", headers={"Cache-Control": "no-store"}) from ex
     except OSError as ex:
         logger.exception('Sidecar export job storage is unavailable')

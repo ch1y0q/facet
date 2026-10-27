@@ -27,6 +27,10 @@ _ERROR_CODES = {METADATA_REPAIR_MESSAGE: 'metadata_repair', WRITE_FAILURE_MESSAG
                 EXIFTOOL_UPGRADE_MESSAGE: 'exiftool_upgrade', _STOPPED_MESSAGE: 'stopped'}
 
 
+class JobNotFound(LookupError):
+    """No export job or plan with this ID belongs to the caller."""
+
+
 def _directory(db_path):
     from facet import _library_lock_path
     directory = Path(_library_lock_path(db_path)).parent / 'sidecar-jobs'
@@ -39,7 +43,7 @@ def _path(db_path, job_id):
         if str(UUID(job_id)) != job_id:
             raise ValueError('invalid job ID')
     except (ValueError, TypeError, AttributeError) as ex:
-        raise LookupError('Export job not found') from ex
+        raise JobNotFound('Export job not found') from ex
     return _directory(db_path) / (job_id + '.json')
 
 
@@ -135,7 +139,7 @@ def _read(path):
             raise ValueError('invalid job record')
         return state
     except (OSError, ValueError) as ex:
-        raise LookupError('Export job not found') from ex
+        raise JobNotFound('Export job not found') from ex
 
 
 def _record(path):
@@ -146,14 +150,14 @@ def _record(path):
             raise ValueError('Receipt ID does not match its filename')
         return state
     except ValueError as ex:
-        raise LookupError('Export job not found') from ex
+        raise JobNotFound('Export job not found') from ex
 
 
 def _owned(db_path, job_id, owner):
     path = _path(db_path, job_id)
     state = _record(path)
     if state['owner'] != owner:
-        raise LookupError('Export job not found')
+        raise JobNotFound('Export job not found')
     return path, state
 
 
@@ -310,9 +314,9 @@ def remaining(db_path, job_id, owner):
     try:
         plan = SidecarJobPlan.model_validate(_read(path.with_suffix('.plan')))
     except ValueError as ex:
-        raise LookupError('Export plan not found') from ex
+        raise JobNotFound('Export plan not found') from ex
     if plan.owner != owner or len(plan.paths) != state['total']:
-        raise LookupError('Export plan not found')
+        raise JobNotFound('Export plan not found')
     paths = plan.paths
     indices = sorted(set(state['retry']) | set(range(state['processed'], len(paths))))
     return [paths[index] for index in indices], plan.overwrite
