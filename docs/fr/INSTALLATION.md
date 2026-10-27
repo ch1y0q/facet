@@ -793,7 +793,7 @@ manuellement et placez-le à `pretrained_models/samp_net.pth`.
 | `psutil` | Auto-réglage du traitement par lots (surveillance système) |
 | `aiosqlite` | SQLite asynchrone pour les points d'accès en lecture de FastAPI |
 | `sqlite-vec` | KNN sur disque pour la recherche sémantique (repli sur le cache d'embeddings NumPy en mémoire s'il est absent ou si le SQLite de ce Python ne peut pas charger d'extensions ; la recherche de photos similaires ne l'utilise pas, elle parcourt la bibliothèque de façon exacte) ; `pip install -e .[vec]` |
-| `tifffile`, `imagecodecs` | DNG fusionnés par Lightroom Classic 13+ (HDR/Panorama/Améliorer), dont les aperçus sont en JPEG XL |
+| `tifffile`, `imagecodecs` | Photos JPEG XL et aperçus des DNG fusionnés de Lightroom Classic 13+ (HDR/Panorama/Amélioration) |
 
 Tous ces paquets figurent dans `requirements.txt` ; aucun profil ne nécessite de
 paquets de base supplémentaires.
@@ -807,7 +807,6 @@ solution de repli est utilisée.
 |---------|-------------------|-----------|
 | `watchdog` | Mode surveillance (le démon `--watch` re-scanne les nouveaux fichiers) — **absent de `requirements.txt`** ; uniquement installé via `pip install .[watch]`, donc les utilisateurs de `requirements.txt` direct n'ont pas `--watch` | `--watch` indisponible |
 | `pillow-heif` | Décodage HEIF/HEIC | Les fichiers HEIF/HEIC sont ignorés |
-| `pillow-jxl-plugin` | Décodage JPEG XL (`pip install "facet-photo[jpegxl]"` ; GPL-3.0-or-later, absent de l'image Docker) | Les fichiers JPEG XL sont ignorés |
 | `rawpy` | Décodage RAW (CR2/CR3/NEF/ARW/…) | Les fichiers RAW sont ignorés (déjà dans le `requirements.txt` de base) |
 | `cuml`, `cupy` | Clustering de visages accéléré sur GPU (conda + CUDA) | Le clustering s'exécute sur CPU via `hdbscan` (par défaut) |
 | `onnxruntime-gpu` | Détection de visages accélérée sur GPU — s'installe **à la place de** `onnxruntime`, jamais à côté ; voir [ONNX Runtime pour la détection de visages](#onnx-runtime-pour-la-détection-de-visages) | `onnxruntime` sur CPU (plus lent) |

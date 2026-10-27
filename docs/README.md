@@ -27,7 +27,7 @@ photo library, then serves a gallery to browse it. Start with
 - **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — skipped when a matching JPEG/HEIC exists
 - **PNG, GIF, WebP, BMP, TIFF** (.png, .gif, .webp, .bmp, .tif, .tiff) — 16-bit greyscale is scaled to 8-bit, an alpha channel is composited over white, and animated GIF/WebP score the first frame; TIFF is converted to JPEG for the browser. PNG, WebP and TIFF carry EXIF when the writer stored it; GIF and BMP cannot, so `date_taken` and camera/lens stay empty for those two
 - **AVIF** (.avif) — requires a Pillow built with AVIF support (native from `pillow>=11.3`); HDR PQ AVIF stills are tone-mapped to SDR sRGB, the same treatment Canon `.HIF` gets; EXIF is read when present
-- **JPEG XL** (.jxl) — requires the optional `pillow-jxl-plugin` (`pip install "facet-photo[jpegxl]"`, GPL-3.0-or-later, not in the default install or Docker image); skipped without it. Rendered to 8-bit SDR sRGB for scoring and previews (no HDR tone mapping); only the first frame of an animated file is used; EXIF is read when present
+- **JPEG XL** (.jxl) — decoded through the existing `imagecodecs` dependency in standard installs and Docker; no extra package is needed. Scoring and previews use 8-bit SDR sRGB (no HDR tone mapping), animated files use only their first frame, and valid EXIF is read when present
 
 ## Common questions
 

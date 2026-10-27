@@ -659,7 +659,7 @@ SAMP-Net 权重来自本项目的
 | `psutil` | 批处理自动调优（系统监控） |
 | `aiosqlite` | 供 FastAPI 读取端点使用的异步 SQLite |
 | `sqlite-vec` | 用于语义搜索的磁盘 KNN（缺失时、或当前 Python 的 SQLite 无法加载扩展时，回退到内存中的 NumPy 缓存；相似照片搜索不使用它，而是进行精确扫描）；`pip install -e .[vec]` |
-| `tifffile`、`imagecodecs` | Lightroom Classic 13+ 合并生成的 DNG（HDR/全景/增强），其预览为 JPEG XL |
+| `tifffile`、`imagecodecs` | JPEG XL 照片及 Lightroom Classic 13+ 合并 DNG（HDR/全景/增强）的预览 |
 
 以上全部都在 `requirements.txt` 里；没有哪个配置档需要额外的基础软件包。
 
@@ -671,7 +671,6 @@ SAMP-Net 权重来自本项目的
 |---------|-------------------|-----------|
 | `watchdog` | 监视模式（`--watch` 守护进程会重新扫描新文件）—— **不在 `requirements.txt` 中**；只能通过 `pip install .[watch]` 引入，所以直接使用 `requirements.txt` 的用户没有 `--watch` | `--watch` 不可用 |
 | `pillow-heif` | HEIF/HEIC 解码 | 跳过 HEIF/HEIC 文件 |
-| `pillow-jxl-plugin` | JPEG XL 解码（`pip install "facet-photo[jpegxl]"`；GPL-3.0-or-later，Docker 镜像不包含） | 跳过 JPEG XL 文件 |
 | `rawpy` | RAW 解码（CR2/CR3/NEF/ARW/……） | 跳过 RAW 文件（已包含在基础的 `requirements.txt` 中） |
 | `cuml`、`cupy` | GPU 加速的人脸聚类（conda + CUDA） | 聚类通过 `hdbscan` 在 CPU 上运行（默认） |
 | `onnxruntime-gpu` | GPU 加速的人脸检测——**替换** `onnxruntime` 安装，不与之并存；参见[用于人脸检测的 ONNX Runtime](#用于人脸检测的-onnx-runtime) | 使用 CPU 版 `onnxruntime`（较慢） |

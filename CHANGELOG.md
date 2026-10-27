@@ -6,7 +6,7 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
-- **Optional JPEG XL import and display.** Install `facet-photo[jpegxl]` to scan `.jxl` images. Full-size viewing sends the unchanged original to browsers explicitly accepting `image/jxl`, with sRGB JPEG fallback for other clients and small gallery previews. Decoding enforces pixel limits before allocation, preserves bounded compressed EXIF, respects native codestream orientation and refuses unsupported grayscale pixel types. Compatibility conversions share render limits and coalesce duplicate requests.
+- **JPEG XL import and display.** Standard installs and Docker decode `.jxl` through the existing `imagecodecs` dependency. Full-size viewing sends the unchanged original to browsers explicitly accepting `image/jxl`, with sRGB JPEG fallback for other clients and small gallery previews. Decoding checks pixel limits before allocation, respects native codestream orientation and reads bounded compressed EXIF; malformed or oversized EXIF is ignored without losing the image. JPEG XL compatibility conversions share render limits and coalesce duplicate requests.
 
 ### Fixed
 

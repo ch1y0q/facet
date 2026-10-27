@@ -753,7 +753,7 @@ manually and place it at `pretrained_models/samp_net.pth`.
 | `psutil` | Batch-processing auto-tuning (system monitoring) |
 | `aiosqlite` | Async SQLite for FastAPI read endpoints |
 | `sqlite-vec` | On-disk KNN for semantic search (falls back to in-memory NumPy cache if missing, or if this Python's SQLite cannot load extensions; similar-photo search does not use it, it scans exactly); `pip install -e .[vec]` |
-| `tifffile`, `imagecodecs` | Lightroom Classic 13+ merged DNGs (HDR/Panorama/Enhance), whose previews are JPEG XL |
+| `tifffile`, `imagecodecs` | JPEG XL photos and Lightroom Classic 13+ merged DNG previews (HDR/Panorama/Enhance) |
 
 All of these are in `requirements.txt`; no profile needs extra base packages.
 
@@ -765,7 +765,6 @@ Each unlocks a feature; without it the feature is skipped or a fallback is used.
 |---------|-------------------|-----------|
 | `watchdog` | Watch mode (`--watch` daemon re-scans new files) — **not in `requirements.txt`**; only pulled via `pip install .[watch]`, so direct `requirements.txt` users don't get `--watch` | `--watch` unavailable |
 | `pillow-heif` | HEIF/HEIC decode | HEIF/HEIC files skipped |
-| `pillow-jxl-plugin` | JPEG XL decode (`pip install "facet-photo[jpegxl]"`; GPL-3.0-or-later, not in the Docker image) | JPEG XL files skipped |
 | `rawpy` | RAW decode (CR2/CR3/NEF/ARW/…) | RAW files skipped (already in base `requirements.txt`) |
 | `cuml`, `cupy` | GPU-accelerated face clustering (conda + CUDA) | Clustering runs on CPU via `hdbscan` (default) |
 | `onnxruntime-gpu` | GPU-accelerated face detection — installed **instead of** `onnxruntime`, never beside it; see [ONNX Runtime for face detection](#onnx-runtime-for-face-detection) | CPU `onnxruntime` (slower) |

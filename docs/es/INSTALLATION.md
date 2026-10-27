@@ -791,7 +791,7 @@ manualmente y colócalo en `pretrained_models/samp_net.pth`.
 | `psutil` | Autoajuste del procesamiento por lotes (supervisión del sistema) |
 | `aiosqlite` | SQLite asíncrono para los endpoints de lectura de FastAPI |
 | `sqlite-vec` | KNN en disco para la búsqueda semántica (recurre a la caché en memoria con NumPy si falta o si el SQLite de este Python no puede cargar extensiones; la búsqueda de fotos similares no lo usa, hace un recorrido exacto); `pip install -e .[vec]` |
-| `tifffile`, `imagecodecs` | DNG combinados por Lightroom Classic 13+ (HDR/Panorama/Mejorar), cuyas vistas previas son JPEG XL |
+| `tifffile`, `imagecodecs` | Fotos JPEG XL y vistas previas de DNG combinados por Lightroom Classic 13+ (HDR/Panorama/Mejorar) |
 
 Todos estos están en `requirements.txt`; ningún perfil necesita paquetes base
 adicionales.
@@ -805,7 +805,6 @@ alternativa.
 |---------|-------------------|-----------|
 | `watchdog` | Modo de vigilancia (el demonio `--watch` reescanea archivos nuevos) — **no está en `requirements.txt`**; solo se instala mediante `pip install .[watch]`, por lo que quienes usen directamente `requirements.txt` no obtienen `--watch` | `--watch` no disponible |
 | `pillow-heif` | Decodificación HEIF/HEIC | Los archivos HEIF/HEIC se omiten |
-| `pillow-jxl-plugin` | Decodificación JPEG XL (`pip install "facet-photo[jpegxl]"`; GPL-3.0-or-later, ausente de la imagen Docker) | Los archivos JPEG XL se omiten |
 | `rawpy` | Decodificación RAW (CR2/CR3/NEF/ARW/…) | Los archivos RAW se omiten (ya incluido en `requirements.txt` base) |
 | `cuml`, `cupy` | Agrupación de rostros acelerada por GPU (conda + CUDA) | La agrupación se ejecuta en CPU mediante `hdbscan` (predeterminado) |
 | `onnxruntime-gpu` | Detección de rostros acelerada por GPU — se instala **en lugar de** `onnxruntime`, nunca junto a él; consulta [ONNX Runtime para la detección de rostros](#onnx-runtime-para-la-detección-de-rostros) | `onnxruntime` en CPU (más lento) |

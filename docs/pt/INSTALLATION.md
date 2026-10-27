@@ -783,7 +783,7 @@ manualmente e coloque-o em `pretrained_models/samp_net.pth`.
 | `psutil` | Auto-ajuste do processamento em lote (monitoramento do sistema) |
 | `aiosqlite` | SQLite assíncrono para os endpoints de leitura do FastAPI |
 | `sqlite-vec` | KNN em disco para a busca semântica (recorre ao cache NumPy em memória se ausente ou se o SQLite deste Python não conseguir carregar extensões; a busca de fotos semelhantes não o usa e faz uma varredura exata); `pip install -e .[vec]` |
-| `tifffile`, `imagecodecs` | DNGs mesclados pelo Lightroom Classic 13+ (HDR/Panorama/Aprimorar), cujas prévias são JPEG XL |
+| `tifffile`, `imagecodecs` | Fotos JPEG XL e prévias de DNGs mesclados pelo Lightroom Classic 13+ (HDR/Panorama/Aprimorar) |
 
 Todos esses estão em `requirements.txt`; nenhum perfil precisa de pacotes base adicionais.
 
@@ -795,7 +795,6 @@ Cada um desbloqueia um recurso; sem ele, o recurso é pulado ou um fallback é u
 |---------|-------------------|-----------|
 | `watchdog` | Modo de observação (daemon `--watch` reescaneia novos arquivos) — **não está em `requirements.txt`**; só é puxado via `pip install .[watch]`, então usuários diretos de `requirements.txt` não obtêm o `--watch` | `--watch` indisponível |
 | `pillow-heif` | Decodificação HEIF/HEIC | Arquivos HEIF/HEIC pulados |
-| `pillow-jxl-plugin` | Decodificação JPEG XL (`pip install "facet-photo[jpegxl]"`; GPL-3.0-or-later, ausente da imagem Docker) | Arquivos JPEG XL pulados |
 | `rawpy` | Decodificação RAW (CR2/CR3/NEF/ARW/…) | Arquivos RAW pulados (já está no `requirements.txt` base) |
 | `cuml`, `cupy` | Agrupamento de faces acelerado por GPU (conda + CUDA) | O agrupamento roda em CPU via `hdbscan` (padrão) |
 | `onnxruntime-gpu` | Detecção de faces acelerada por GPU — instalado **no lugar do** `onnxruntime`, nunca ao lado dele; veja [ONNX Runtime para detecção de faces](#onnx-runtime-para-detecção-de-faces) | `onnxruntime` em CPU (mais lento) |
