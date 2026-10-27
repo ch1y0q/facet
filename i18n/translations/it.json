@@ -2464,7 +2464,6 @@
     "location": "Posizione",
     "social_crop": "Ritaglio social",
     "set": {
-      "title": "Gruppo",
       "ev_span": "Intervallo EV",
       "kind_duplicate": "Duplicato",
       "open_in_gallery": "Apri questo gruppo nella galleria",
@@ -2522,6 +2521,10 @@
       "batch_error": "Impossibile applicare la posizione. Seleziona al massimo 1000 foto e ripeti l’anteprima; la selezione o il luogo salvato potrebbe essere cambiato.",
       "batch_limit": "Seleziona al massimo 1000 foto. Senza protezione le posizioni esistenti vengono sostituite. I file originali restano invariati.",
       "batch_hint": "Scegli una posizione e visualizza le modifiche prima di salvare la selezione."
+    },
+    "distribution": {
+      "top": "Top {pct}% della libreria",
+      "range": "intervallo della libreria {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2546,7 +2549,8 @@
       "success": "Categoria impostata su {category}.",
       "cleared": "Sovrascrittura rimossa. Ricalcola per applicare la categoria basata sui filtri.",
       "explainer_toggle": "Perché non è una categoria diversa?",
-      "target_category_label": "Confronta con"
+      "target_category_label": "Confronta con",
+      "target_category_hint": "Scegli una categoria per vedere quali filtri escludono questa foto e cosa le permetterebbe di rientrarvi."
     }
   },
   "download": {

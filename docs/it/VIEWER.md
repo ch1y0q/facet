@@ -244,11 +244,13 @@ Lo stato di revisione si applica alla galleria normale; scegliere uno stato chiu
 
 ### Schede foto
 
-- Miniatura con badge del punteggio
+- Miniatura con badge del punteggio — passaci sopra per vedere dove si colloca il punteggio nella tua libreria («Top 18% della libreria»)
 - Tag cliccabili per un filtraggio rapido
 - Avatar delle persone per i volti riconosciuti
 - Badge della categoria
 - Il clic destro (o Maiusc+F10) apre il [menu contestuale](#selezione-multipla-e-azioni-di-gruppo)
+
+Nel dettaglio foto, le metriche sono divise in schede con icona (passa sopra un'icona per il suo nome): dati EXIF (se la foto ne ha), Qualità, Composizione (con la salienza del soggetto), Tecnica e Istogramma; l'ultima scheda aperta viene ricordata. Ogni punteggio mostra il nome e, sotto, il valore accanto alla distribuzione del proprio cursore della barra dei filtri sulla libreria, con evidenziata la barra in cui cade la foto; passa sopra le barre o mettile a fuoco per la posizione della foto («Top 18% della libreria») e l'intervallo della libreria; un campo senza un estremo migliore, come la luminosità o l'ISO, mostra solo l'intervallo. Il posizionamento è calcolato sull'intera libreria, non sui filtri attivi, ed è approssimato a una delle 20 barre.
 
 ### Selezione multipla e azioni di gruppo
 

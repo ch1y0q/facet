@@ -21,6 +21,7 @@ import { makePhoto } from '../../../../testing/photo.fixture';
                              [burstFramesVisible]="burstFramesVisible()"
                              [collapsedSetKinds]="collapsedSetKinds()"
                              [isEditionMode]="isEditionMode()"
+                             [metricRanges]="metricRanges()"
                              (selectionChange)="selected.push($event.photo.path)"
                              (doubleClicked)="opened.push($event.path)" />`,
 })
@@ -30,6 +31,7 @@ class TestHostComponent {
   burstFramesVisible = signal(false);
   collapsedSetKinds = signal<readonly string[]>([]);
   isEditionMode = signal(false);
+  metricRanges = signal<Record<string, { min: number; max: number; buckets: number[] }>>({});
   selected: string[] = [];
   opened: string[] = [];
 }
@@ -50,6 +52,26 @@ describe('PhotoCardComponent', () => {
   function getCard(): PhotoCardComponent {
     return fixture.debugElement.children[0].componentInstance as PhotoCardComponent;
   }
+
+  describe('score badge library placement', () => {
+    const badgeTooltips = () => fixture.debugElement.queryAll(By.directive(MatTooltip))
+      .map(el => el.injector.get(MatTooltip).message)
+      .filter(message => message.startsWith('gallery.aggregate_score'));
+
+    it('keeps the plain tooltip when no distribution was loaded', () => {
+      fixture.componentInstance.photo.set(makePhoto({ aggregate: 7.5 }));
+      fixture.detectChanges();
+      expect(badgeTooltips()).toEqual(['gallery.aggregate_score']);
+    });
+
+    it('says where the score sits in the library when its distribution is known', () => {
+      fixture.componentInstance.photo.set(makePhoto({ aggregate: 7.5 }));
+      fixture.componentInstance.metricRanges.set({ aggregate: { min: 0, max: 10, buckets: [1, 1] } });
+      fixture.detectChanges();
+      expect(badgeTooltips()).toEqual(['gallery.aggregate_score · photo_detail.distribution.top']);
+      expect(mockI18n.t).toHaveBeenCalledWith('photo_detail.distribution.top', { pct: 25 });
+    });
+  });
 
   it('should create with required photo input', () => {
     const card = getCard();

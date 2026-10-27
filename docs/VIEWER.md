@@ -245,11 +245,13 @@ Review status applies to the regular gallery; choosing a status exits semantic a
 
 ### Photo Cards
 
-- Thumbnail with score badge
+- Thumbnail with score badge — hover it to see where the score sits in your library ("Top 18% of the library")
 - Clickable tags for quick filtering
 - Person avatars for recognized faces
 - Category badge
 - Right-click (or Shift+F10) opens the [context menu](#multi-select--bulk-actions)
+
+In photo detail, the metrics sit in icon tabs (hover an icon for its name): EXIF data (when the photo has any), Quality, Composition (with subject saliency), Technical and Histogram; the last tab you opened is remembered. Each score shows its name, then its value beside its filter-sidebar slider's library distribution with the bar the photo falls in highlighted; hover or focus the bars for the photo's rank ("Top 18% of the library") and the library's range; a field with no better end, such as brightness or ISO, shows the range only. The placement is computed over the whole library, not the current filters, and is approximate to one of the 20 bars.
 
 ### Multi-Select & Bulk Actions
 

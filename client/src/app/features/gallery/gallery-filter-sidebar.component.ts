@@ -33,6 +33,7 @@ import { folderDisplayName } from '../folders/folders.util';
 import { i18nKeys } from '../../core/i18n/keys';
 import { isUnavailableKey, unavailableSet } from '../../shared/utils/unavailable-metrics';
 import { closeOverlayDirectives } from '../../shared/utils/overlays';
+import { MetricSparklineComponent } from '../../shared/components/metric-sparkline/metric-sparkline.component';
 
 export const ADDITIONAL_FILTERS: AdditionalFilterDef[] = [
   // Quality
@@ -152,6 +153,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
   host: { class: 'flex flex-col h-full' },
   imports: [
     DecimalPipe,
+    MetricSparklineComponent,
     NgTemplateOutlet,
     FormsModule,
     MatSelectModule,
@@ -830,12 +832,8 @@ function saveSectionStates(states: Record<string, boolean>): void {
           <span class="text-xs opacity-60 px-1">{{ def.labelKey | translate }}</span>
           <div class="flex items-center gap-1">
             <div class="flex-1 flex flex-col">
-              @if (metricHistograms()[def.minKey]; as bars) {
-                <div class="flex items-end gap-px h-3 px-2" aria-hidden="true">
-                  @for (h of bars; track $index) {
-                    <span class="flex-1 rounded-sm bg-[var(--mat-sys-primary)] opacity-25" [style.height.%]="h"></span>
-                  }
-                </div>
+              @if (store.metricRanges()[def.minKey]; as range) {
+                <app-metric-sparkline [range]="range" />
               }
               <mat-slider [min]="def.sliderMin" [max]="def.sliderMax" [step]="def.step" class="w-full">
                 <input matSliderStartThumb
@@ -1060,17 +1058,6 @@ export class GalleryFilterSidebarComponent {
   readonly advancedFilterGroups = computed(() => this.matchGroups(ADVANCED_SECTION_ORDER));
   readonly metricFilterGroups = computed(() => [...this.commonFilterGroups(), ...this.advancedFilterGroups()]);
   readonly noFilterMatches = computed(() => !!this.filterQuery().trim() && this.metricFilterGroups().length === 0);
-
-  readonly metricHistograms = computed(() => {
-    const ranges = this.store.metricRanges();
-    const out: Record<string, number[]> = {};
-    for (const key of Object.keys(ranges)) {
-      const buckets = ranges[key].buckets;
-      const max = Math.max(1, ...buckets);
-      out[key] = buckets.map(b => Math.round((b / max) * 100));
-    }
-    return out;
-  });
 
   readonly sectionActiveCounts = computed((): Record<string, number> => {
     const f = this.store.filters();

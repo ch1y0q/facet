@@ -2478,7 +2478,6 @@ export const I18N = {
     location: "photo_detail.location",
     social_crop: "photo_detail.social_crop",
     set: {
-      title: "photo_detail.set.title",
       ev_span: "photo_detail.set.ev_span",
       kind_duplicate: "photo_detail.set.kind_duplicate",
       open_in_gallery: "photo_detail.set.open_in_gallery",
@@ -2537,6 +2536,10 @@ export const I18N = {
       batch_limit: "photo_detail.gps.batch_limit",
       batch_hint: "photo_detail.gps.batch_hint",
     },
+    distribution: {
+      top: "photo_detail.distribution.top",
+      range: "photo_detail.distribution.range",
+    },
   },
   manual_tags: {
     title: "manual_tags.title",
@@ -2561,6 +2564,7 @@ export const I18N = {
       cleared: "photo.category_override.cleared",
       explainer_toggle: "photo.category_override.explainer_toggle",
       target_category_label: "photo.category_override.target_category_label",
+      target_category_hint: "photo.category_override.target_category_hint",
     },
   },
   download: {

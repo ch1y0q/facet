@@ -244,11 +244,13 @@ La décision de tri s’applique à la galerie normale ; choisir une décision q
 
 ### Cartes de photo
 
-- Vignette avec badge de score
+- Vignette avec badge de score — survolez-le pour voir où se situe le score dans votre photothèque (« Top 18 % de la photothèque »)
 - Tags cliquables pour un filtrage rapide
 - Avatars de personnes pour les visages reconnus
 - Badge de catégorie
 - Un clic droit (ou Maj+F10) ouvre le [menu contextuel](#sélection-multiple--actions-groupées)
+
+Dans le détail d'une photo, les métriques sont réparties en onglets à icône (survolez une icône pour voir son nom) : données EXIF (si la photo en a), Qualité, Composition (avec la saillance du sujet), Technique et Histogramme ; le dernier onglet ouvert est mémorisé. Chaque score affiche son nom, puis sa valeur à côté de la distribution de son curseur du panneau de filtres sur la photothèque, la barre où tombe la photo étant mise en évidence ; survolez les barres ou donnez-leur le focus pour connaître le rang de la photo (« Top 18 % de la photothèque ») et la plage de la photothèque ; un champ sans meilleure extrémité, comme la luminosité ou l'ISO, n'affiche que la plage. Le positionnement est calculé sur toute la photothèque, pas sur les filtres en cours, et reste approximatif à l'une des 20 barres près.
 
 ### Sélection multiple & actions groupées
 

@@ -1740,6 +1740,23 @@ describe('gallery session query (nav-icon return)', () => {
     });
   });
 
+  describe('ensureMetricRanges', () => {
+    const range = { column: 'aesthetic', min: 1, max: 9, buckets: [1, 2, 3] };
+
+    it('fetches once when empty and keys the ranges by photo column', async () => {
+      apiGet.mockReturnValue(of({ ranges: { min_aesthetic: range, min_legacy: { min: 0, max: 1, buckets: [1] } } }));
+      await Promise.all([store.ensureMetricRanges(), store.ensureMetricRanges()]);
+      expect(apiGet.mock.calls.filter(c => c[0] === '/filter_options/metric_ranges')).toHaveLength(1);
+      expect(store.metricRangesByColumn()).toEqual({ aesthetic: range });
+    });
+
+    it('does not refetch ranges the gallery already loaded', async () => {
+      store.metricRanges.set({ min_aesthetic: range });
+      await store.ensureMetricRanges();
+      expect(apiGet).not.toHaveBeenCalledWith('/filter_options/metric_ranges');
+    });
+  });
+
   describe('pinned list (showPaths)', () => {
     const paths = ['/b.jpg', '/a.jpg'];
     const byPaths = () => of({ photos: [makePhoto({ path: '/b.jpg' }), makePhoto({ path: '/a.jpg' })], total: 2, missing: ['/gone.jpg'] });

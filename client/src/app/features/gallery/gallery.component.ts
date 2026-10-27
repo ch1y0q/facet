@@ -331,6 +331,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                     [isActive]="row.startIndex + i === activeIndex()"
                     [gridHasActiveCard]="hasActivePhoto()"
                     [currentSort]="store.filters().sort"
+                    [metricRanges]="store.metricRangesByColumn()"
                     [thumbSize]="thumbSize()"
                     [isEditionMode]="auth.isEdition()"
                     [personFilterId]="store.filters().person_id"
@@ -387,6 +388,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                   [gridHasActiveCard]="hasActivePhoto()"
                   [hideDetails]="effectiveHideDetails()"
                   [currentSort]="store.filters().sort"
+                  [metricRanges]="store.metricRangesByColumn()"
                   [thumbSize]="thumbSize()"
                   [isEditionMode]="auth.isEdition()"
                   [personFilterId]="store.filters().person_id"
@@ -452,6 +454,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                       [isActive]="row.startIndex + i === activeIndex()"
                       [gridHasActiveCard]="hasActivePhoto()"
                       [currentSort]="store.filters().sort"
+                      [metricRanges]="store.metricRangesByColumn()"
                       [thumbSize]="thumbSize()"
                       [isEditionMode]="auth.isEdition()"
                       [personFilterId]="store.filters().person_id"
@@ -2845,6 +2848,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'Home': next = 0; break;
       case 'End': next = photos.length - 1; break;
       case 'Escape':
+        // A click-opened tooltip is the innermost layer: close it before touching the selection.
+        if (this.tooltipMode() === 'click' && this.tooltipPhoto()) {
+          event.preventDefault();
+          this.hideTooltip();
+          return;
+        }
         if (this.selectionCount() || (this.panelMode() && this.hasActivePhoto())) {
           event.preventDefault();
           this.escapeSelection();

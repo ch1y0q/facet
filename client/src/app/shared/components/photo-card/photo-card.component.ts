@@ -15,6 +15,7 @@ import { ShutterSpeedPipe } from '../../pipes/shutter-speed.pipe';
 import { ScoreClassPipe, SortScorePipe } from '../../pipes/score.pipes';
 import { SortPersonsPipe } from '../../pipes/sort-persons.pipe';
 import { closeOverlayDirectives } from '../../utils/overlays';
+import { MetricDistribution, topPercentOf } from '../../utils/metric-distribution';
 
 interface AppConfig {
   quality_thresholds?: { excellent: number; great: number; good: number };
@@ -394,7 +395,8 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
               <span
                 class="px-1 py-0.5 rounded text-xs font-bold"
                 [class]="(photo() | sortScore:currentSort()) | scoreClass:config()"
-                [matTooltip]="(currentSort() === 'aggregate' ? ('gallery.aggregate_score' | translate) : ('gallery.sort_score' | translate) + ' (' + currentSort() + ')')"
+                [matTooltip]="(currentSort() === 'aggregate' ? ('gallery.aggregate_score' | translate) : ('gallery.sort_score' | translate) + ' (' + currentSort() + ')')
+                  + (badgeTopPercent() === null ? '' : ' · ' + ('photo_detail.distribution.top' | translate:{ pct: badgeTopPercent()! }))"
               >{{ (photo() | sortScore:currentSort()) | fixed:1 }}</span>
             </span>
           </div>
@@ -603,8 +605,20 @@ export class PhotoCardComponent {
   readonly hideDetails = input(false);
   readonly mosaicMode = input(false);
   readonly currentSort = input('aggregate');
+  /** Library distributions keyed by photo column; empty where none were loaded (a shared view). */
+  readonly metricRanges = input<Record<string, MetricDistribution>>({});
   /** Capped at the stored edge: larger sizes make the server decode the original. */
   readonly thumbSize = input(240, { transform: (size: number) => Math.min(size, STORED_THUMBNAIL_EDGE) });
+
+  /** Where the badge's score sits in the library, for the column the badge shows (as `sortScore` picks it). */
+  protected readonly badgeTopPercent = computed(() => {
+    const photo = this.photo();
+    const sort = this.currentSort();
+    const raw = (photo as unknown as Record<string, unknown>)[sort];
+    const [column, value] = typeof raw === 'number' ? [sort, raw] : ['aggregate', photo.aggregate];
+    const range = this.metricRanges()[column];
+    return range ? topPercentOf(range, value) : null;
+  });
 
   /** Every card except the current one, and only once there is a current one.
    *

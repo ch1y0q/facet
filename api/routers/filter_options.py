@@ -624,6 +624,8 @@ def compute_metric_ranges(conn):
             continue
         v_min, v_max = bounds
         result[min_key] = {
+            # The photo field this range describes, so a client can place one photo's value in it.
+            'column': column,
             'min': v_min,
             'max': v_max,
             'buckets': _metric_buckets(conn, column, v_min, v_max),

@@ -221,3 +221,14 @@ def test_refresh_stats_cache_precomputes_ranges(tmp_path):
     ).fetchone()
     conn.close()
     assert json.loads(row[0])["min_score"]["max"] == 10.0
+
+
+def test_endpoint_names_the_photo_column_of_each_range(tmp_path):
+    """The client matches a photo field to its distribution through ``column``."""
+    db_path = str(tmp_path / "ranges.db")
+    init_database(db_path)
+    _seed(db_path, range(1, 11))
+    with mock.patch.object(filter_options, "get_db", _db_factory(db_path)):
+        ranges = filter_options.metric_ranges(user=None)["ranges"]
+    assert ranges["min_score"]["column"] == "aggregate"
+    assert all(r["column"] for r in ranges.values())

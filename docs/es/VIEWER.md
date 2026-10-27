@@ -244,11 +244,13 @@ El estado de revisión se aplica a la galería normal; elegir un estado cierra l
 
 ### Tarjetas de foto
 
-- Miniatura con insignia de puntuación
+- Miniatura con insignia de puntuación — pasa el cursor para ver dónde se sitúa la puntuación en tu biblioteca («Top 18 % de la biblioteca»)
 - Etiquetas en las que se puede hacer clic para filtrar rápidamente
 - Avatares de personas para las caras reconocidas
 - Insignia de categoría
 - El clic derecho (o Shift+F10) abre el [menú contextual](#selección-múltiple-y-acciones-masivas)
+
+En el detalle de la foto, las métricas se reparten en pestañas con icono (pasa el cursor por un icono para ver su nombre): datos EXIF (si la foto los tiene), Calidad, Composición (con la prominencia del sujeto), Técnica e Histograma; se recuerda la última pestaña abierta. Cada puntuación muestra su nombre y, debajo, su valor junto a la distribución de su control deslizante de la barra de filtros en la biblioteca, con la barra en la que cae la foto resaltada; pasa el cursor por las barras o enfócalas para ver la posición de la foto («Top 18 % de la biblioteca») y el rango de la biblioteca; un campo sin un extremo mejor, como el brillo o el ISO, muestra solo el rango. La posición se calcula sobre toda la biblioteca, no sobre los filtros actuales, y es aproximada a una de las 20 barras.
 
 ### Selección múltiple y acciones masivas
 

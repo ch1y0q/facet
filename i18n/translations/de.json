@@ -2464,7 +2464,6 @@
     "gps_clear": "Standort entfernen",
     "social_crop": "Social-Zuschnitt",
     "set": {
-      "title": "Gruppe",
       "ev_span": "EV-Spanne",
       "kind_duplicate": "Duplikat",
       "open_in_gallery": "Diese Gruppe in der Galerie öffnen",
@@ -2522,6 +2521,10 @@
       "batch_error": "Standort konnte nicht angewendet werden. Wählen Sie höchstens 1000 Fotos und erstellen Sie eine neue Vorschau; Auswahl oder gespeicherter Ort könnte sich geändert haben.",
       "batch_limit": "Wählen Sie höchstens 1000 Fotos. Ohne Schutz werden vorhandene Standorte ersetzt. Originaldateien bleiben unverändert.",
       "batch_hint": "Wählen Sie einen Ort und prüfen Sie die Änderungen, bevor Sie die Auswahl speichern."
+    },
+    "distribution": {
+      "top": "Top {pct} % der Bibliothek",
+      "range": "Bereich der Bibliothek {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2546,7 +2549,8 @@
       "success": "Kategorie auf {category} gesetzt.",
       "cleared": "Überschreibung entfernt. Neu berechnen, um die filterbasierte Kategorie anzuwenden.",
       "explainer_toggle": "Warum ist dies keine andere Kategorie?",
-      "target_category_label": "Vergleichen mit"
+      "target_category_label": "Vergleichen mit",
+      "target_category_hint": "Wählen Sie eine Kategorie, um zu sehen, welche ihrer Filter dieses Foto ausschließen und was es aufnehmen würde."
     }
   },
   "download": {

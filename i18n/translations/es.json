@@ -2464,7 +2464,6 @@
     "gps_clear": "Borrar ubicación",
     "social_crop": "Recorte social",
     "set": {
-      "title": "Grupo",
       "ev_span": "Rango EV",
       "kind_duplicate": "Duplicado",
       "open_in_gallery": "Abrir este grupo en la galería",
@@ -2522,6 +2521,10 @@
       "batch_error": "No se pudo aplicar la ubicación. Selecciona como máximo 1000 fotos y repite la vista previa; la selección o el lugar guardado puede haber cambiado.",
       "batch_limit": "Selecciona como máximo 1000 fotos. Sin protección se reemplazan las ubicaciones existentes. Los archivos originales no cambian.",
       "batch_hint": "Elige una ubicación y revisa los cambios antes de guardar la selección."
+    },
+    "distribution": {
+      "top": "Top {pct} % de la biblioteca",
+      "range": "rango de la biblioteca {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2546,7 +2549,8 @@
       "success": "Categoría establecida en {category}.",
       "cleared": "Anulación eliminada. Recalcula para aplicar la categoría basada en filtros.",
       "explainer_toggle": "¿Por qué no es una categoría diferente?",
-      "target_category_label": "Comparar con"
+      "target_category_label": "Comparar con",
+      "target_category_hint": "Elige una categoría para ver qué filtros dejan fuera esta foto y qué le permitiría entrar."
     }
   },
   "download": {

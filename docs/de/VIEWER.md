@@ -244,11 +244,13 @@ Der Auswahlstatus gilt für die normale Galerie; die Auswahl beendet eine semant
 
 ### Fotokarten
 
-- Vorschaubild mit Wertungsabzeichen
+- Vorschaubild mit Wertungsabzeichen — fahren Sie darüber, um zu sehen, wo der Wert in Ihrer Bibliothek liegt („Top 18 % der Bibliothek“)
 - Anklickbare Tags zum schnellen Filtern
 - Personen-Avatare für erkannte Gesichter
 - Kategorieabzeichen
 - Rechtsklick (oder Shift+F10) öffnet das [Kontextmenü](#mehrfachauswahl--sammelaktionen)
+
+In der Fotodetailansicht liegen die Messwerte in Symbol-Tabs (fahren Sie über ein Symbol für seinen Namen): EXIF-Daten (sofern vorhanden), Qualität, Komposition (mit Motiv-Salienz), Technik und Histogramm; der zuletzt geöffnete Tab wird gespeichert. Jeder Wert zeigt seinen Namen und darunter die Zahl neben der Verteilung seines Schiebereglers aus der Filterleiste über die Bibliothek mit hervorgehobenem Balken des Fotos; fahren Sie über die Balken oder fokussieren Sie sie für den Rang des Fotos („Top 18 % der Bibliothek“) und den Bereich der Bibliothek; ein Feld ohne besseres Ende, etwa Helligkeit oder ISO, zeigt nur den Bereich. Die Einordnung wird über die gesamte Bibliothek berechnet, nicht über die aktuellen Filter, und ist auf einen der 20 Balken genau.
 
 ### Mehrfachauswahl & Sammelaktionen
 

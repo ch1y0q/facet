@@ -145,6 +145,8 @@ export interface FilterOption {
 }
 
 export interface MetricRange {
+  /** The photo field the range describes; absent on a row cached before the server named it. */
+  column?: string;
   min: number;
   max: number;
   buckets: number[];
@@ -816,6 +818,15 @@ export class GalleryStore {
   readonly colorTemps = signal<FilterOption[]>([]);
   readonly hueBuckets = signal<FilterOption[]>([]);
   readonly metricRanges = signal<Record<string, MetricRange>>({});
+  /** The same ranges keyed by the photo field they describe, for placing one photo's value. */
+  readonly metricRangesByColumn = computed(() => {
+    const out: Record<string, MetricRange> = {};
+    for (const range of Object.values(this.metricRanges())) {
+      // star_rating's range is the global column, while a photo shows the viewer's own rating.
+      if (range.column && range.column !== 'star_rating') out[range.column] = range;
+    }
+    return out;
+  });
 
   /** Reverse-geocoded place name for the active GPS filter. */
   readonly gpsLocationName = signal('');
@@ -1782,6 +1793,8 @@ export class GalleryStore {
     try { localStorage.setItem('facet_virtual_scroll', enabled ? 'on' : 'off'); } catch { /* ignore */ }
   }
 
+  private metricRangesLoad: Promise<void> | null = null;
+
   /** Fetch a filter-option endpoint, giving up after FILTER_OPTIONS_TIMEOUT_MS. */
   private fetchFilterOption<T>(path: string, params?: Record<string, string | number | boolean>): Promise<T> {
     const request = params ? this.api.get<T>(path, params) : this.api.get<T>(path);
@@ -1809,7 +1822,7 @@ export class GalleryStore {
       this.fetchFilterOption<{patterns: [string, number][]}>('/filter_options/patterns').catch(() => ({patterns: []})),
       this.fetchFilterOption<{temps: [string, number][]; hue_buckets: [string, number][]}>('/filter_options/colors')
         .catch(() => ({temps: [], hue_buckets: []})),
-      this.fetchFilterOption<{ranges: Record<string, MetricRange>}>('/filter_options/metric_ranges').catch(() => ({ranges: {}})),
+      this.fetchMetricRanges(),
     ]);
     this.cameras.set((camerasRes.cameras ?? []).map(([value, count]: [string, number]) => ({value, count})));
     this.lenses.set((lensesRes.lenses ?? []).map(([value, count]: [string, number]) => ({value, count})));
@@ -1822,6 +1835,20 @@ export class GalleryStore {
     this.colorTemps.set((colorsRes.temps ?? []).map(([value, count]: [string, number]) => ({value, count})));
     this.hueBuckets.set((colorsRes.hue_buckets ?? []).map(([value, count]: [string, number]) => ({value, count})));
     this.metricRanges.set(rangesRes.ranges ?? {});
+  }
+
+  /** Load the metric ranges unless they already are: a deep-linked photo page never ran the gallery's load. */
+  async ensureMetricRanges(): Promise<void> {
+    if (Object.keys(this.metricRanges()).length) return;
+    this.metricRangesLoad ??= this.fetchMetricRanges()
+      .then(res => this.metricRanges.set(res.ranges ?? {}))
+      .finally(() => { this.metricRangesLoad = null; });
+    await this.metricRangesLoad;
+  }
+
+  private fetchMetricRanges(): Promise<{ranges: Record<string, MetricRange>}> {
+    return this.fetchFilterOption<{ranges: Record<string, MetricRange>}>('/filter_options/metric_ranges')
+      .catch(() => ({ranges: {}}));
   }
 
   /** Reload person dropdown without filter restriction */

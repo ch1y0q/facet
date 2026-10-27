@@ -2464,7 +2464,6 @@
     "location": "Location",
     "social_crop": "Social crop",
     "set": {
-      "title": "Set",
       "ev_span": "EV span",
       "kind_duplicate": "Duplicate",
       "open_in_gallery": "Open this set in the gallery",
@@ -2522,6 +2521,10 @@
       "batch_error": "Could not apply location. Select at most 1000 photos and preview again; the selection or saved place may have changed.",
       "batch_limit": "Select at most 1000 photos. Existing locations are replaced when protection is off. Original files are unchanged.",
       "batch_hint": "Choose a location, then preview the changes before saving the selection."
+    },
+    "distribution": {
+      "top": "Top {pct}% of the library",
+      "range": "library range {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2546,7 +2549,8 @@
       "success": "Category set to {category}.",
       "cleared": "Override cleared. Recompute to apply the filter-based category.",
       "explainer_toggle": "Why isn't this a different category?",
-      "target_category_label": "Compare against"
+      "target_category_label": "Compare against",
+      "target_category_hint": "Pick a category to see which of its filters keep this photo out, and what would let it in."
     }
   },
   "download": {

@@ -240,6 +240,43 @@ describe('PhotoDetailComponent', () => {
     return view;
   }
 
+  it('ranks each score that has a library distribution, and only those', () => {
+    localStorage.setItem('facet_photo_detail_tab', 'quality');
+    const view = renderDetail();
+    localStorage.removeItem('facet_photo_detail_tab');
+    TestBed.inject(GalleryStore).metricRanges.set({
+      min_aesthetic: { column: 'aesthetic', min: 0, max: 10, buckets: [1, 1] },
+    });
+    view.componentInstance.photo.set(makePhoto({ aesthetic: 7.2 }));
+    view.detectChanges();
+    const ranks = view.debugElement.queryAll(By.css('app-metric-rank'));
+    expect(ranks).toHaveLength(1);
+    expect(ranks[0].nativeElement.querySelector('[tabindex="0"]')).not.toBeNull();
+  });
+
+  it('reopens the last metric tab by name, so a photo without EXIF keeps it', () => {
+    localStorage.setItem('facet_photo_detail_tab', 'technical');
+    const view = renderDetail();
+    const detail = view.componentInstance as unknown as {
+      metricsTabIndex: () => number;
+      selectMetricsTab: (index: number) => void;
+    };
+    view.componentInstance.photo.set(makePhoto({ camera_model: 'X100V' }));
+    expect(detail.metricsTabIndex()).toBe(3);
+    view.componentInstance.photo.set(makePhoto({ camera_model: null, lens_model: null, focal_length: null, f_stop: null, shutter_speed: null, iso: null }));
+    expect(detail.metricsTabIndex()).toBe(2);
+    detail.selectMetricsTab(0);
+    expect(localStorage.getItem('facet_photo_detail_tab')).toBe('quality');
+    localStorage.removeItem('facet_photo_detail_tab');
+  });
+
+  it('loads the library distributions on a deep-linked open', async () => {
+    createComponent();
+    const ensure = vi.spyOn(TestBed.inject(GalleryStore), 'ensureMetricRanges').mockResolvedValue();
+    await component.ngOnInit();
+    expect(ensure).toHaveBeenCalled();
+  });
+
   it.each([
     { kept: true, decision: 'undecided', icon: 'check_circle' },
     { kept: false, decision: 'kept', icon: 'check_circle_outline' },
@@ -454,7 +491,8 @@ describe('PhotoDetailComponent', () => {
       await component.ngOnInit();
 
       expect(component.photo()).toEqual(samplePhoto);
-      expect(mockApi.get).not.toHaveBeenCalled();
+      // The photo is not refetched; the only read is the library distributions.
+      expect(mockApi.get.mock.calls.map(call => call[0])).toEqual(['/filter_options/metric_ranges']);
     });
 
     it('should load photo from API when no history state', async () => {

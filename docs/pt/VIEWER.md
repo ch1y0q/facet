@@ -244,11 +244,13 @@ O estado de revisão se aplica à galeria normal; escolher um estado encerra as 
 
 ### Cartões de Foto
 
-- Miniatura com selo de pontuação
+- Miniatura com selo de pontuação — passe o cursor para ver onde a pontuação se situa na sua biblioteca («Top 18% da biblioteca»)
 - Tags clicáveis para filtragem rápida
 - Avatares de pessoas para rostos reconhecidos
 - Selo de categoria
 - O clique direito (ou Shift+F10) abre o [menu de contexto](#seleção-múltipla-e-ações-em-lote)
+
+No detalhe da foto, as métricas ficam em abas com ícone (passe o cursor sobre um ícone para ver o nome): dados EXIF (se a foto os tiver), Qualidade, Composição (com a saliência do assunto), Técnica e Histograma; a última aba aberta é lembrada. Cada pontuação mostra o nome e, abaixo, o valor ao lado da distribuição do seu controle deslizante da barra de filtros na biblioteca, com a barra em que a foto cai destacada; passe o cursor sobre as barras ou dê-lhes foco para ver a posição da foto («Top 18% da biblioteca») e o intervalo da biblioteca; um campo sem um extremo melhor, como o brilho ou o ISO, mostra apenas o intervalo. A posição é calculada sobre toda a biblioteca, não sobre os filtros atuais, e é aproximada a uma das 20 barras.
 
 ### Seleção Múltipla e Ações em Lote
 

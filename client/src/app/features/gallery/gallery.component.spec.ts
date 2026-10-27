@@ -163,6 +163,7 @@ describe('GalleryComponent', () => {
       colorTemps: signal([]),
       hueBuckets: signal([]),
       metricRanges: signal({}),
+      metricRangesByColumn: signal({}),
       gpsLocationName: signal(''),
       viewFilterParams: signal({}),
     };
@@ -1952,6 +1953,25 @@ describe('GalleryComponent', () => {
       TestBed.flushEffects();
 
       expect(component['tooltipPhoto']()).toBeNull();
+      card.remove();
+    });
+
+    it('Escape closes a click-opened tooltip first and leaves the selection for the next Escape', () => {
+      mockStore.filters.set({ ...DEFAULT_FILTERS, tooltip_mode: 'click' });
+      TestBed.flushEffects();
+      mockStore.photos.set([{ path: '/a.jpg' }]);
+      mockStore.selectionCount.set(1);
+      mockStore.clearSelection.mockClear();
+      const card = makeCard();
+      component.showTooltip({ currentTarget: card } as unknown as MouseEvent, photo);
+
+      press('Escape');
+      expect(component['tooltipPhoto']()).toBeNull();
+      expect(mockStore.clearSelection).not.toHaveBeenCalled();
+
+      press('Escape');
+      expect(mockStore.clearSelection).toHaveBeenCalled();
+      mockStore.selectionCount.set(0);
       card.remove();
     });
 

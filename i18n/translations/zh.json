@@ -2464,7 +2464,6 @@
     "location": "位置",
     "social_crop": "社交平台裁切",
     "set": {
-      "title": "组",
       "ev_span": "曝光跨度（EV）",
       "kind_duplicate": "重复照片",
       "open_in_gallery": "在照片库中打开此照片组",
@@ -2522,6 +2521,10 @@
       "batch_error": "无法应用位置。请选择最多 1000 张照片并重新预览；所选照片或已保存地点可能已更改。",
       "batch_limit": "请选择最多 1000 张照片。关闭保护后将替换现有位置。原始文件保持不变。",
       "batch_hint": "选择一个位置，然后预览更改，再保存所选照片。"
+    },
+    "distribution": {
+      "top": "位列图库前 {pct}%",
+      "range": "图库范围 {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2546,7 +2549,8 @@
       "success": "类别已设为{category}。",
       "cleared": "已清除手动指定。请重新计算，以应用根据筛选条件确定的类别。",
       "explainer_toggle": "为什么没有归入其他类别？",
-      "target_category_label": "对比类别"
+      "target_category_label": "对比类别",
+      "target_category_hint": "选择一个类别，查看哪些筛选条件将此照片排除在外，以及怎样才能归入该类别。"
     }
   },
   "download": {
