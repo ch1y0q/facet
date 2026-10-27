@@ -18,6 +18,9 @@ import { aspectOf } from './gallery-rows.util';
 import { GalleryStore } from './gallery.store';
 import { HistogramComponent, HISTOGRAM_TOOLTIP_HEIGHT } from '../../shared/components/histogram/histogram.component';
 import { HistogramMode } from '../../shared/utils/histogram';
+import { MetricRankComponent } from '../../shared/components/metric-rank/metric-rank.component';
+import { PhotoMetricsTabsComponent } from '../../shared/components/photo-metrics-tabs/photo-metrics-tabs.component';
+import { TruncatedTooltipDirective } from '../../shared/directives/truncated-tooltip.directive';
 
 /** How long the pointer must rest on a photo before the tooltip fetches the
  *  frame count + EV span for its set. Kind and this frame's own EV offset are
@@ -47,7 +50,7 @@ export class CategoryLabelPipe implements PipeTransform {
     ExtendedQualityComponent,
     MatIconModule, FixedPipe, ShutterSpeedPipe, TranslatePipe, ThumbnailUrlPipe, PersonThumbnailUrlPipe,
     CategoryLabelPipe, IsLensNamePipe, PhotoSetKindIconPipe, PhotoSetKindLabelPipe, EvOffsetPipe,
-    MomentLabelPipe, HistogramComponent,
+    MomentLabelPipe, HistogramComponent, MetricRankComponent, PhotoMetricsTabsComponent, TruncatedTooltipDirective,
   ],
   changeDetection: ChangeDetectionStrategy.Eager,
   template: `
@@ -58,12 +61,15 @@ export class CategoryLabelPipe implements PipeTransform {
            that way). Docking overrides it through style bindings instead. -->
       <div #root
         class="fixed z-[1000] pointer-events-none flex flex-col backdrop-blur-sm p-2.5 rounded-xl shadow-2xl"
-        style="background: var(--facet-tooltip-bg); border: 1px solid var(--facet-tooltip-border)"
         [class.max-h-[calc(100vh-2rem)]]="!docked()"
         [class.overflow-y-auto]="!docked()"
         [style.position]="docked() ? 'static' : null"
         [style.pointer-events]="showInteractiveControls() ? 'auto' : null"
         [style.width]="docked() ? '100%' : null"
+        [style.background]="docked() ? 'transparent' : 'var(--facet-tooltip-bg)'"
+        [style.border]="docked() ? 'none' : '1px solid var(--facet-tooltip-border)'"
+        [style.border-radius]="docked() ? '0' : null"
+        [style.box-shadow]="docked() ? 'none' : null"
         [style.left.px]="docked() ? null : left()"
         [style.top.px]="docked() ? null : top()"
       >
@@ -75,15 +81,17 @@ export class CategoryLabelPipe implements PipeTransform {
           [class.flex-col]="isLandscape() || docked()"
           [class.flex-row-reverse]="!isLandscape() && !docked() && flipped()"
         >
-          <!-- Image preview -->
+          <!-- Image preview. Sized by its own aspect (max-w-full + w-auto) rather
+               than stretched and letterboxed, so the box is the picture and the
+               rounded corners show on every orientation. -->
           <img
             [src]="p.path | thumbnailUrl:640"
             [alt]="p.filename"
-            class="rounded-md object-contain shrink-0"
+            class="rounded-md shrink-0 max-w-full w-auto h-auto"
+            [class.self-center]="docked()"
             [class.max-h-[40vh]]="!isLandscape() && !docked()"
-            [class.w-full]="isLandscape() || docked()"
             [class.max-h-[28vh]]="isLandscape() && !docked()"
-            [class.max-h-[45vh]]="docked()"
+            [class.max-h-[75vh]]="docked()"
           />
 
           <!-- Scoring panel -->
@@ -107,17 +115,28 @@ export class CategoryLabelPipe implements PipeTransform {
               }
             </div>
 
-            <!-- Category + aggregate + star rating -->
-            <div class="flex items-baseline justify-between mb-1.5">
-              <span class="text-[var(--mat-sys-primary)] font-semibold">[{{ p.category | categoryLabel }}] {{ 'tooltip.aggregate' | translate }}: {{ p.aggregate | fixed:1 }}</span>
-              @if (p.star_rating) {
-                <span class="text-yellow-400 font-semibold shrink-0 ml-2">★{{ p.star_rating }}</span>
-              }
+            <!-- Category + aggregate placed in the library like photo detail's,
+               with the stars on their own line. -->
+            <div class="flex items-center gap-2 mt-1 mb-1.5">
+              <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-[var(--mat-sys-primary-container)] text-[var(--mat-sys-on-primary-container)] truncate">{{ p.category | categoryLabel }}</span>
+              <span class="ml-auto flex items-center gap-2 shrink-0">
+                @if (store.metricRangesByColumn()['aggregate']; as range) {<app-metric-rank class="w-24" [range]="range" [value]="p.aggregate" />}
+                <span class="text-lg font-semibold leading-tight tabular-nums text-[var(--mat-sys-primary)]"><span class="sr-only">{{ 'gallery.aggregate_score' | translate }} </span>{{ p.aggregate | fixed:1 }}</span>
+              </span>
             </div>
+            @if (p.star_rating) {
+              <div class="flex items-center gap-0.5 mb-1.5 text-yellow-400" role="img"
+                   [attr.aria-label]="'rating.stars_out_of_five' | translate:{ stars: p.star_rating }">
+                @for (star of stars; track star) {
+                  <mat-icon class="!text-base !w-4 !h-4 !leading-4" aria-hidden="true">{{ star <= p.star_rating ? 'star' : 'star_border' }}</mat-icon>
+                }
+              </div>
+            }
 
             <!-- Caption (after score) -->
             @if (p.caption_translated || p.caption) {
-              <div class="text-xs italic text-[var(--facet-tooltip-text-muted)] mb-1.5 line-clamp-2 max-w-[300px]">{{ p.caption_translated || p.caption }}</div>
+              <div class="text-xs italic text-[var(--facet-tooltip-text-muted)] mb-1.5 line-clamp-2 max-w-[300px]"
+                   [appTruncatedTooltip]="p.caption_translated || p.caption">{{ p.caption_translated || p.caption }}</div>
             }
 
             <!-- Narrative moment (with confidence) -->
@@ -130,7 +149,9 @@ export class CategoryLabelPipe implements PipeTransform {
               </div>
             }
 
-            <!-- Scoring sections: 2-col grid for landscape, stacked for portrait -->
+            <!-- Scoring sections: 2-col grid for landscape, stacked for portrait.
+                 The docked rail shows the metric tabs below instead. -->
+            @if (!docked()) {
             <div [class.grid]="isLandscape()" [class.grid-cols-2]="isLandscape()" [class.gap-3]="isLandscape()">
               <!-- Left column (landscape) / first section (portrait): Quality -->
               <div>
@@ -241,6 +262,7 @@ export class CategoryLabelPipe implements PipeTransform {
                 }
               </div>
             </div>
+            }
           </div>
         </div>
 
@@ -253,6 +275,50 @@ export class CategoryLabelPipe implements PipeTransform {
              (never by the debounced GET /api/photo/set fetch), the layout is
              correct from the very first render and never reflows once the fetch
              resolves. -->
+        @if (docked()) {
+          <!-- Docked: photo detail's metric tabs (sharing its remembered tab), then
+               the set on one line. Sibling thumbnails stay: the rail is parked. -->
+          <app-photo-metrics-tabs class="text-xs text-[var(--facet-tooltip-text)]" [photo]="p" [ranges]="store.metricRangesByColumn()"
+                                  [populated]="store.config()?.populated_scores"
+                                  [histogramSrcSize]="160" [histogramHeight]="HISTOGRAM_TOOLTIP_HEIGHT"
+                                  [histogramSurface]="'tooltip'" [histogramDefaultMode]="histogramDefaultMode()"
+                                  [indicatorPercent]="indicatorPercent()" />
+          @if (setKind(); as kind) {
+            <div class="mt-2 text-xs text-[var(--facet-tooltip-text)]">
+              <div class="flex items-center gap-1.5">
+                <mat-icon class="!text-sm !w-3.5 !h-3.5 !leading-[14px] opacity-70" aria-hidden="true">{{ kind | photoSetKindIcon }}</mat-icon>
+                <span class="text-[var(--mat-sys-primary)] font-medium">{{ kind | photoSetKindLabel | translate }}</span>
+                @if (photoSet(); as set) {
+                  <span class="text-[var(--facet-tooltip-text-secondary)]">{{ 'capsules.photos_count' | translate:{ count: set.count } }}</span>
+                  @if (set.ev_span !== null) {
+                    <span class="text-[var(--facet-tooltip-text-secondary)]">{{ set.ev_span | fixed:1 }} EV</span>
+                  }
+                }
+                @if (p.sequence_ev_offset !== null && p.sequence_ev_offset !== undefined) {
+                  <span class="ml-auto text-[var(--facet-tooltip-text-secondary)]">{{ p.sequence_ev_offset | evOffset }}</span>
+                }
+              </div>
+              @if (photoSet(); as set) {
+                @if (set.members.length) {
+                  <div class="flex gap-2 flex-wrap mt-2">
+                    @for (member of set.members; track member.path) {
+                      <button type="button"
+                              class="relative rounded-lg overflow-hidden w-14 h-14 shrink-0 cursor-pointer hover:opacity-80 transition-opacity ring-[var(--mat-sys-primary)]"
+                              [class.ring-2]="member.path === p.path"
+                              [attr.aria-label]="('photo_detail.set.member_position' | translate:{ position: $index + 1, count: set.members.length }) + (member.ev_offset !== null ? ', ' + (member.ev_offset | evOffset) : '')"
+                              (click)="openSetMember(member.path)">
+                        <img [src]="member.path | thumbnailUrl:96" alt="" class="w-full h-full object-cover" />
+                        @if (member.ev_offset !== null) {
+                          <span class="absolute bottom-0 inset-x-0 text-center text-[0.625rem] leading-4 bg-black/60 text-white">{{ member.ev_offset | evOffset }}</span>
+                        }
+                      </button>
+                    }
+                  </div>
+                }
+              }
+            </div>
+          }
+        } @else {
         <div class="border-t border-[var(--facet-tooltip-divider)] pt-1.5 mt-2 text-xs leading-relaxed text-[var(--facet-tooltip-text)]">
         <div class="grid gap-3"
           [class.grid-cols-2]="hasExif()"
@@ -317,11 +383,11 @@ export class CategoryLabelPipe implements PipeTransform {
                frame's own EV offset are already on the photo object and render
                instantly; frame count and EV span come from a debounced, dwell-
                delayed GET /api/photo/set (see the constructor) and fill in once
-               it resolves -- never blocking the rest of the bubble. Sibling
-               thumbnails are docked-only: the rail is parked and reachable,
-               while reaching for one in the floating hover bubble would dismiss
-               it before the click could land -- the same problem that keeps the
-               histogram's mode toggle hover-only-hidden too. -->
+               it resolves -- never blocking the rest of the bubble. No sibling
+               thumbnails here (the docked set above has them): reaching for one
+               in the floating hover bubble would dismiss it before the click
+               could land -- the same problem that keeps the histogram's mode
+               toggle hover-only-hidden too. -->
           @if (setKind(); as kind) {
             <div class="mt-2">
               <div class="text-[10px] text-[var(--facet-tooltip-text-muted)] uppercase tracking-wider mb-1">{{ 'tooltip.set_section' | translate }}</div>
@@ -339,22 +405,6 @@ export class CategoryLabelPipe implements PipeTransform {
                     <span>{{ set.ev_span | fixed:1 }} EV</span>
                   }
                 </div>
-                @if (docked() && set.members.length) {
-                  <div class="flex gap-2 flex-wrap mt-2">
-                    @for (member of set.members; track member.path) {
-                      <button type="button"
-                              class="relative rounded-lg overflow-hidden w-14 h-14 shrink-0 cursor-pointer hover:opacity-80 transition-opacity ring-[var(--mat-sys-primary)]"
-                              [class.ring-2]="member.path === p.path"
-                              [attr.aria-label]="('photo_detail.set.member_position' | translate:{ position: $index + 1, count: set.members.length }) + (member.ev_offset !== null ? ', ' + (member.ev_offset | evOffset) : '')"
-                              (click)="openSetMember(member.path)">
-                        <img [src]="member.path | thumbnailUrl:96" alt="" class="w-full h-full object-cover" />
-                        @if (member.ev_offset !== null) {
-                          <span class="absolute bottom-0 inset-x-0 text-center text-[0.625rem] leading-4 bg-black/60 text-white">{{ member.ev_offset | evOffset }}</span>
-                        }
-                      </button>
-                    }
-                  </div>
-                }
               }
             </div>
           }
@@ -374,10 +424,11 @@ export class CategoryLabelPipe implements PipeTransform {
                            [indicatorPercent]="indicatorPercent()" />
           </div>
         </div>
+        }
 
         <!-- Zone C: Tags (full width) -->
         @if (p.tags_list.length) {
-          <div class="flex gap-1 flex-wrap mt-2 pt-1.5 border-t border-[var(--facet-tooltip-divider)]">
+          <div class="flex gap-1 flex-wrap mt-2 pt-1.5 border-[var(--facet-tooltip-divider)]" [class.border-t]="!docked()">
             @for (tag of p.tags_list; track tag) {
               <span class="px-1.5 py-0.5 bg-[var(--facet-accent-badge)] text-[var(--facet-accent-text)] rounded text-[10px]">{{ tag }}</span>
             }
@@ -397,7 +448,7 @@ export class CategoryLabelPipe implements PipeTransform {
              surface where large avatars would cost width against the
              scoring grid, whether or not it happens to be click-pinned. -->
         @if (p.persons.length) {
-          <div class="flex items-center gap-1.5 flex-wrap mt-2 pt-1.5 border-t border-[var(--facet-tooltip-divider)]">
+          <div class="flex items-center gap-1.5 flex-wrap mt-2 pt-1.5 border-[var(--facet-tooltip-divider)]" [class.border-t]="!docked()">
             @for (person of p.persons; track person.id) {
               @if (personLinks() && showInteractiveControls()) {
                 <button type="button"
@@ -487,6 +538,7 @@ export class PhotoTooltipComponent {
   });
 
   protected readonly HISTOGRAM_TOOLTIP_HEIGHT = HISTOGRAM_TOOLTIP_HEIGHT;
+  protected readonly stars: readonly number[] = [1, 2, 3, 4, 5];
   /** Whether this bubble is safe to host click targets beyond the
    *  toggle-the-photo click itself: the docked rail is always parked, and a
    *  click-pinned floating bubble does not dismiss on mouse-leave either (see
@@ -550,6 +602,8 @@ export class PhotoTooltipComponent {
       observer.observe(el);
       onCleanup(() => observer.disconnect());
     });
+    // The header's distribution: the tooltip can show before the filter sidebar loaded the ranges.
+    void this.store.ensureMetricRanges();
     effect(onCleanup => {
       const p = this.photo();
       const token = ++this.setGeneration;

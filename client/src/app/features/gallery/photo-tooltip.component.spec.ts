@@ -29,9 +29,16 @@ class TestHostComponent {
 }
 
 describe('PhotoTooltipComponent', () => {
+  // The open metric tab is remembered across tests otherwise.
+  afterEach(() => localStorage.removeItem('facet_photo_detail_tab'));
+
   let fixture: ComponentFixture<TestHostComponent>;
   const mockI18n = { t: (key: string) => key, locale: vi.fn(() => 'en'), translations: vi.fn(() => ({})) };
-  const mockStore = { config: signal<{ populated_scores?: string[] } | null>(null) };
+  const mockStore = {
+    config: signal<{ populated_scores?: string[] } | null>(null),
+    metricRangesByColumn: signal({}),
+    ensureMetricRanges: vi.fn(() => Promise.resolve()),
+  };
   const mockRouter = { navigate: vi.fn(() => Promise.resolve(true)) };
 
   beforeEach(async () => {
@@ -529,14 +536,18 @@ describe('PhotoTooltipComponent', () => {
       TestBed.tick();
       fixture.detectChanges();
       expect(root().style.top).toBe('');
+      expect(observers.some(o => o.target === root())).toBe(false);
       fixture.componentInstance.docked.set(false);
       fixture.detectChanges();
       TestBed.tick();
-      expect(observers.some(o => !o.disconnected)).toBe(true);
+      // Only the box's own observer: the docked metric tabs' header keeps
+      // Material's shared, never-disconnected one.
+      const box = root();
+      expect(observers.some(o => o.target === box && !o.disconnected)).toBe(true);
       fixture.componentInstance.photo.set(null);
       fixture.detectChanges();
       TestBed.tick();
-      expect(observers.every(o => o.disconnected)).toBe(true);
+      expect(observers.filter(o => o.target === box).every(o => o.disconnected)).toBe(true);
     });
   });
 
@@ -683,11 +694,22 @@ describe('PhotoTooltipComponent', () => {
     });
 
     it('shows the histogram mode toggle when docked', () => {
+      localStorage.setItem('facet_photo_detail_tab', 'histogram');
       setFixture.componentInstance.docked.set(true);
       setFixture.componentInstance.photo.set(makePhoto({ sequence_kind: null }));
       setFixture.detectChanges();
 
-      expect(setFixture.nativeElement.querySelectorAll('button').length).toBeGreaterThan(0);
+      expect(setFixture.nativeElement.querySelectorAll('app-histogram button').length).toBeGreaterThan(0);
+    });
+
+    it('shows the metric tabs instead of the score sections when docked', () => {
+      setFixture.componentInstance.docked.set(true);
+      setFixture.componentInstance.photo.set(makePhoto({ sequence_kind: null }));
+      setFixture.detectChanges();
+      expect(setFixture.nativeElement.querySelector('app-photo-metrics-tabs')).not.toBeNull();
+      setFixture.componentInstance.docked.set(false);
+      setFixture.detectChanges();
+      expect(setFixture.nativeElement.querySelector('app-photo-metrics-tabs')).toBeNull();
     });
 
     // --- full-width histogram when the photo belongs to no set ---------------

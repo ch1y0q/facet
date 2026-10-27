@@ -1666,7 +1666,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
       "hide_brackets": true,
       "hide_panoramas": true,
       "hide_details": true,
-      "tooltip_mode": "hover",
+      "tooltip_mode": "panel",
       "hide_rejected": true,
       "sort": "aggregate",
       "sort_direction": "DESC",
@@ -1752,7 +1752,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 | `hide_brackets` | `true` | 默认只显示包围曝光组的基准曝光 |
 | `hide_panoramas` | `true` | 默认每组全景只显示一张代表帧 |
 | `hide_details` | `true` | 默认在卡片上隐藏照片详情 |
-| `tooltip_mode` | `"hover"` | 提示浮层的触发方式：`"hover"`、`"click"`、`"off"` 或 `"panel"`（停靠侧栏，而非浮动提示 — 见下文的 `panel_activation`）。取代了此前的 `hide_tooltip` 布尔值。 |
+| `tooltip_mode` | `"panel"` | 提示浮层的触发方式：`"hover"`、`"click"`、`"off"` 或 `"panel"`（停靠侧栏，而非浮动提示 — 见下文的 `panel_activation`）。取代了此前的 `hide_tooltip` 布尔值。 |
 | `panel_activation` | `"both"` | 当 `tooltip_mode` 为 `"panel"` 时，哪种手势会重新指定停靠侧栏所选的照片：`"hover"`、`"click"` 或 `"both"`。对其他提示模式无效。默认的 `"both"` 保持原有的面板行为 |
 | `hide_rejected` | `true` | 默认隐藏已淘汰照片 |
 | `gallery_mode` | `"mosaic"` | 默认的照片库布局（`"grid"` 或 `"mosaic"`） |

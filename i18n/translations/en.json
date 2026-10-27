@@ -139,7 +139,6 @@
   "tooltip": {
     "not_computed": "Not computed",
     "category": "Category",
-    "aggregate": "Aggregate",
     "quality_section": "Quality",
     "aesthetic": "Aesthetic",
     "quality_score": "Quality Score",
@@ -577,7 +576,8 @@
     "mark_rejected": "Mark as rejected",
     "unmark_rejected": "Remove rejected mark",
     "rejected_badge": "Rejected",
-    "rating_badge": "Rated {stars}"
+    "rating_badge": "Rated {stars}",
+    "stars_out_of_five": "Rated {stars} out of 5"
   },
   "similar": {
     "title": "Similar Photos",

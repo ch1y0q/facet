@@ -153,7 +153,6 @@ export const I18N = {
   tooltip: {
     not_computed: "tooltip.not_computed",
     category: "tooltip.category",
-    aggregate: "tooltip.aggregate",
     quality_section: "tooltip.quality_section",
     aesthetic: "tooltip.aesthetic",
     quality_score: "tooltip.quality_score",
@@ -592,6 +591,7 @@ export const I18N = {
     unmark_rejected: "rating.unmark_rejected",
     rejected_badge: "rating.rejected_badge",
     rating_badge: "rating.rating_badge",
+    stars_out_of_five: "rating.stars_out_of_five",
   },
   similar: {
     title: "similar.title",

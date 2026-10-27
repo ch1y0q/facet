@@ -3688,7 +3688,7 @@
       "hide_brackets": true,
       "hide_panoramas": true,
       "hide_details": true,
-      "tooltip_mode": "hover",
+      "tooltip_mode": "panel",
       "panel_activation": "both",
       "hide_rejected": true,
       "sort": "aggregate",

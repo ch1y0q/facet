@@ -9,6 +9,7 @@ import { BehaviorSubject, finalize, Observable, of, Subject, throwError } from '
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { Component, signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
+import { PhotoMetricsTabsComponent } from '../../shared/components/photo-metrics-tabs/photo-metrics-tabs.component';
 import { MatTooltip } from '@angular/material/tooltip';
 import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatSelect, MatSelectModule } from '@angular/material/select';
@@ -31,6 +32,9 @@ vi.doMock('leaflet', () => leafletMock);
 let PhotoDetailComponent: typeof import('./photo-detail.component').PhotoDetailComponent;
 
 describe('PhotoDetailComponent', () => {
+  // The open metric tab is remembered across tests otherwise.
+  afterEach(() => localStorage.removeItem('facet_photo_detail_tab'));
+
    
   let component: any;
   let changes$: Subject<AssistantChangeBatch>;
@@ -243,7 +247,6 @@ describe('PhotoDetailComponent', () => {
   it('ranks each score that has a library distribution, and only those', () => {
     localStorage.setItem('facet_photo_detail_tab', 'quality');
     const view = renderDetail();
-    localStorage.removeItem('facet_photo_detail_tab');
     TestBed.inject(GalleryStore).metricRanges.set({
       min_aesthetic: { column: 'aesthetic', min: 0, max: 10, buckets: [1, 1] },
     });
@@ -257,17 +260,18 @@ describe('PhotoDetailComponent', () => {
   it('reopens the last metric tab by name, so a photo without EXIF keeps it', () => {
     localStorage.setItem('facet_photo_detail_tab', 'technical');
     const view = renderDetail();
-    const detail = view.componentInstance as unknown as {
+    view.componentInstance.photo.set(makePhoto({ camera_model: 'X100V' }));
+    view.detectChanges();
+    const tabs = view.debugElement.query(By.directive(PhotoMetricsTabsComponent)).componentInstance as unknown as {
       metricsTabIndex: () => number;
       selectMetricsTab: (index: number) => void;
     };
-    view.componentInstance.photo.set(makePhoto({ camera_model: 'X100V' }));
-    expect(detail.metricsTabIndex()).toBe(3);
+    expect(tabs.metricsTabIndex()).toBe(3);
     view.componentInstance.photo.set(makePhoto({ camera_model: null, lens_model: null, focal_length: null, f_stop: null, shutter_speed: null, iso: null }));
-    expect(detail.metricsTabIndex()).toBe(2);
-    detail.selectMetricsTab(0);
+    view.detectChanges();
+    expect(tabs.metricsTabIndex()).toBe(2);
+    tabs.selectMetricsTab(0);
     expect(localStorage.getItem('facet_photo_detail_tab')).toBe('quality');
-    localStorage.removeItem('facet_photo_detail_tab');
   });
 
   it('loads the library distributions on a deep-linked open', async () => {
@@ -298,6 +302,7 @@ describe('PhotoDetailComponent', () => {
   });
 
   it('renders NULL and zero extended metrics in the actual detail template', () => {
+    localStorage.setItem('facet_photo_detail_tab', 'quality');
     const view = renderDetail();
     TestBed.inject(GalleryStore).config.set({ populated_scores: ['aesthetic_v25', 'qrealign_score', 'deqa_score'] } as never);
     view.componentInstance.photo.set(makePhoto({ aesthetic_v25: null, qrealign_score: 0, deqa_score: null }));

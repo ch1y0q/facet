@@ -139,7 +139,6 @@
   "tooltip": {
     "not_computed": "未计算",
     "category": "类别",
-    "aggregate": "综合评分",
     "quality_section": "画质",
     "aesthetic": "美观度",
     "quality_score": "画质评分",
@@ -577,7 +576,8 @@
     "mark_rejected": "标为淘汰",
     "unmark_rejected": "取消淘汰标记",
     "rejected_badge": "已淘汰",
-    "rating_badge": "已评为 {stars}"
+    "rating_badge": "已评为 {stars}",
+    "stars_out_of_five": "评分 {stars}/5"
   },
   "similar": {
     "title": "相似照片",

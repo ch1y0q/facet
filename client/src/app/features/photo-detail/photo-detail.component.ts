@@ -8,35 +8,31 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatSelectModule } from '@angular/material/select';
-import { MatTabsModule } from '@angular/material/tabs';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom, skip, finalize } from 'rxjs';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { AssistantChangeBatch, AssistantChangesService } from '../../core/agent/assistant-changes.service';
-import { ExtendedQualityComponent } from '../../shared/components/extended-quality/extended-quality.component';
 import { MetricRankComponent } from '../../shared/components/metric-rank/metric-rank.component';
-import { MetricScoreRowComponent } from '../../shared/components/metric-score-row/metric-score-row.component';
 import { Photo, KeeperHint, PhotoSet, normalisePhotoFlags } from '../../shared/models/photo.model';
 import { AuthService } from '../../core/services/auth.service';
 import { StalenessGuardFactory } from '../../core/services/staleness-guard.service';
 import { PhotoActionsService } from '../../core/services/photo-actions.service';
 import { PhotoDetailBase } from '../../shared/directives/photo-detail-base.directive';
 import { FixedPipe } from '../../shared/pipes/fixed.pipe';
-import { ShutterSpeedPipe } from '../../shared/pipes/shutter-speed.pipe';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { ThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
 import { PersonThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
 import { CategoryLabelPipe } from '../gallery/photo-tooltip.component';
-import { IsLensNamePipe } from '../../shared/pipes/is-lens-name.pipe';
 import { DownloadIconPipe } from '../../shared/pipes/download-icon.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindLabelPipe } from '../../shared/pipes/photo-set-kind.pipe';
 import { SEQUENCE_KINDS_KEPT_WHOLE } from '../../shared/pipes/sequence-kind.pipe';
 import { EvOffsetPipe } from '../gallery/burst-culling.pipes';
 import {
-  HISTOGRAM_PANEL_HEIGHT, HistogramComponent,
+  HISTOGRAM_PANEL_HEIGHT,
 } from '../../shared/components/histogram/histogram.component';
+import { PhotoMetricsTabsComponent } from '../../shared/components/photo-metrics-tabs/photo-metrics-tabs.component';
 import { HistogramMode, isHistogramMode } from '../../shared/utils/histogram';
 import { ComparisonCategoryExplainerComponent } from '../comparison/comparison-category-explainer.component';
 import { DownloadOption } from '../../core/api/types';
@@ -49,19 +45,6 @@ import { I18N, i18nKeys } from '../../core/i18n/keys';
 import { isPageShortcutBlocked, isTypingContext } from '../../shared/utils/keyboard';
 import type { CategoryOverrideResult } from './category-override-dialog.component';
 
-const METRICS_TAB_KEY = 'facet_photo_detail_tab';
-const METRICS_TABS = ['exif', 'quality', 'composition', 'technical', 'histogram'] as const;
-type MetricsTab = typeof METRICS_TABS[number];
-
-function storedMetricsTab(): MetricsTab {
-  try {
-    const stored = localStorage.getItem(METRICS_TAB_KEY);
-    return METRICS_TABS.find(tab => tab === stored) ?? 'exif';
-  } catch {
-    return 'exif';
-  }
-}
-
 const SOCIAL_SOURCE_KEYS: Record<string, string> = {
   saliency: I18N.social_export.source.saliency,
   faces: I18N.social_export.source.faces,
@@ -71,11 +54,9 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
 @Component({
   selector: 'app-photo-detail',
   imports: [
-    ExtendedQualityComponent,
     MetricRankComponent,
-    MetricScoreRowComponent,
+    PhotoMetricsTabsComponent,
     MatIconModule,
-    MatTabsModule,
     MatButtonModule,
     MatTooltipModule,
     MatMenuModule,
@@ -85,17 +66,14 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
     MatProgressSpinnerModule,
     MatSnackBarModule,
     FixedPipe,
-    ShutterSpeedPipe,
     TranslatePipe,
     ThumbnailUrlPipe,
     PersonThumbnailUrlPipe,
     CategoryLabelPipe,
-    IsLensNamePipe,
     DownloadIconPipe,
     PhotoSetKindIconPipe,
     PhotoSetKindLabelPipe,
     EvOffsetPipe,
-    HistogramComponent,
     ComparisonCategoryExplainerComponent,
   ],
   template: `
@@ -373,171 +351,12 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
             }
           </div>
 
-          <!-- Metric tabs: EXIF | Quality | Composition (with subject saliency) | Technical | Histogram -->
-          <mat-tab-group class="min-w-0 [&_.mdc-tab]:!min-w-0 [&_.mdc-tab]:!px-2 [&_.mdc-tab--active_mat-icon]:!text-[var(--mat-sys-primary)]" mat-stretch-tabs="true"
-                         animationDuration="0ms" [selectedIndex]="metricsTabIndex()" (selectedIndexChange)="selectMetricsTab($event)">
-          <!-- EXIF section -->
-          @if (hasExif()) {
-            <mat-tab [aria-label]="I18N.photo_detail.exif | translate">
-              <ng-template mat-tab-label><mat-icon aria-hidden="true" [matTooltip]="I18N.photo_detail.exif | translate">photo_camera</mat-icon></ng-template>
-            <div class="pt-3">
-              <div class="flex flex-col gap-0.5">
-                @if (p.camera_model) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.camera | translate }}</span><span class="val truncate">{{ p.camera_model }}</span></div>
-                }
-                @if (p.lens_model && (p.lens_model | isLensName)) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.lens | translate }}</span><span class="val truncate">{{ p.lens_model }}</span></div>
-                }
-                @if (p.focal_length) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.focal | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.focal_length }}mm</span></div>
-                }
-                @if (p.f_stop) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.aperture | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">f/{{ p.f_stop }}</span></div>
-                }
-                @if (p.shutter_speed) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.shutter | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.shutter_speed | shutterSpeed }}</span></div>
-                }
-                @if (p.iso) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.iso | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.iso }}</span></div>
-                }
-              </div>
-            </div>
-            </mat-tab>
-          }
-
-          <mat-tab [aria-label]="I18N.photo_detail.quality | translate">
-            <ng-template mat-tab-label><mat-icon aria-hidden="true" [matTooltip]="I18N.photo_detail.quality | translate">auto_awesome</mat-icon></ng-template>
-          <div class="pt-3">
-            <div class="flex flex-col gap-0.5">
-              <app-metric-score-row [label]="I18N.tooltip.aesthetic | translate" [range]="store.metricRangesByColumn()['aesthetic']" [value]="p.aesthetic">{{ p.aesthetic | fixed:1 }}</app-metric-score-row>
-              @if (p.quality_score !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.quality_score | translate" [range]="store.metricRangesByColumn()['quality_score']" [value]="p.quality_score">{{ p.quality_score | fixed:1 }}</app-metric-score-row>
-              }
-              @if (p.topiq_score !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.topiq_score | translate" [range]="store.metricRangesByColumn()['topiq_score']" [value]="p.topiq_score">{{ p.topiq_score | fixed:1 }}</app-metric-score-row>
-              }
-              @if (p.tech_sharpness !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.tech_sharpness | translate" [range]="store.metricRangesByColumn()['tech_sharpness']" [value]="p.tech_sharpness">{{ p.tech_sharpness | fixed:1 }}</app-metric-score-row>
-              }
-              @if (p.face_count > 0 && p.face_quality !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.face_quality | translate" [range]="store.metricRangesByColumn()['face_quality']" [value]="p.face_quality">{{ p.face_quality | fixed:1 }}</app-metric-score-row>
-                <app-metric-score-row [label]="I18N.tooltip.faces | translate" [range]="store.metricRangesByColumn()['face_count']" [value]="p.face_count">{{ p.face_count }}</app-metric-score-row>
-                @if (p.face_ratio) {
-                  <app-metric-score-row [label]="I18N.tooltip.face_ratio | translate" [range]="store.metricRangesByColumn()['face_ratio']" [value]="p.face_ratio" [percent]="true">{{ p.face_ratio * 100 | fixed:0 }}%</app-metric-score-row>
-                }
-                @if (p.face_sharpness !== null) {
-                  <app-metric-score-row [label]="I18N.tooltip.face_sharpness | translate" [range]="store.metricRangesByColumn()['face_sharpness']" [value]="p.face_sharpness">{{ p.face_sharpness | fixed:1 }}</app-metric-score-row>
-                }
-                @if (p.eye_sharpness !== null) {
-                  <app-metric-score-row [label]="I18N.tooltip.eye_sharpness | translate" [range]="store.metricRangesByColumn()['eye_sharpness']" [value]="p.eye_sharpness">{{ p.eye_sharpness | fixed:1 }}</app-metric-score-row>
-                }
-                @if (p.face_confidence !== null && p.face_confidence !== undefined) {
-                  <app-metric-score-row [label]="I18N.tooltip.face_confidence | translate" [range]="store.metricRangesByColumn()['face_confidence']" [value]="p.face_confidence" [percent]="true">{{ p.face_confidence * 100 | fixed:0 }}%</app-metric-score-row>
-                }
-              }
-              @if (p.aesthetic_iaa !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.aesthetic_iaa | translate" [range]="store.metricRangesByColumn()['aesthetic_iaa']" [value]="p.aesthetic_iaa">{{ p.aesthetic_iaa | fixed:1 }}</app-metric-score-row>
-              }
-              @if (p.face_quality_iqa !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.face_quality_iqa | translate" [range]="store.metricRangesByColumn()['face_quality_iqa']" [value]="p.face_quality_iqa">{{ p.face_quality_iqa | fixed:1 }}</app-metric-score-row>
-              }
-              @if (p.liqe_score !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.liqe_score | translate" [range]="store.metricRangesByColumn()['liqe_score']" [value]="p.liqe_score">{{ p.liqe_score | fixed:1 }}</app-metric-score-row>
-              }
-              <app-extended-quality [photo]="p" [populated]="store.config()?.populated_scores" />
-            </div>
-          </div>
-          </mat-tab>
-
-          <!-- Composition section -->
-          <mat-tab [aria-label]="I18N.photo_detail.composition | translate">
-            <ng-template mat-tab-label><mat-icon aria-hidden="true" [matTooltip]="I18N.photo_detail.composition | translate">grid_on</mat-icon></ng-template>
-          <div class="pt-3">
-            <div class="flex flex-col gap-0.5">
-              @if (p.composition_pattern) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.pattern | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ ('composition_patterns.' + p.composition_pattern) | translate }}</span></div>
-              }
-              @if (p.comp_score !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.composition | translate" [range]="store.metricRangesByColumn()['comp_score']" [value]="p.comp_score">{{ p.comp_score | fixed:1 }}</app-metric-score-row>
-              }
-              @if (p.power_point_score !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.power_points | translate" [range]="store.metricRangesByColumn()['power_point_score']" [value]="p.power_point_score">{{ p.power_point_score | fixed:1 }}</app-metric-score-row>
-              }
-              @if (p.leading_lines_score !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.leading_lines | translate" [range]="store.metricRangesByColumn()['leading_lines_score']" [value]="p.leading_lines_score">{{ p.leading_lines_score | fixed:1 }}</app-metric-score-row>
-              }
-              @if (p.isolation_bonus !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.isolation | translate" [range]="store.metricRangesByColumn()['isolation_bonus']" [value]="p.isolation_bonus">{{ p.isolation_bonus | fixed:1 }}</app-metric-score-row>
-              }
-            </div>
-          </div>
-
-          <!-- Subject Saliency section -->
-          @if (p.subject_sharpness !== null || p.subject_prominence !== null || p.subject_placement !== null || p.bg_separation !== null) {
-            <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3">
-              <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)] mb-2">{{ I18N.photo_detail.saliency | translate }}</div>
-              <div class="flex flex-col gap-0.5">
-                @if (p.subject_sharpness !== null) {
-                  <app-metric-score-row [label]="I18N.tooltip.subject_sharpness | translate" [range]="store.metricRangesByColumn()['subject_sharpness']" [value]="p.subject_sharpness">{{ p.subject_sharpness | fixed:1 }}</app-metric-score-row>
-                }
-                @if (p.subject_prominence !== null) {
-                  <app-metric-score-row [label]="I18N.tooltip.subject_prominence | translate" [range]="store.metricRangesByColumn()['subject_prominence']" [value]="p.subject_prominence">{{ p.subject_prominence | fixed:1 }}</app-metric-score-row>
-                }
-                @if (p.subject_placement !== null) {
-                  <app-metric-score-row [label]="I18N.tooltip.subject_placement | translate" [range]="store.metricRangesByColumn()['subject_placement']" [value]="p.subject_placement">{{ p.subject_placement | fixed:1 }}</app-metric-score-row>
-                }
-                @if (p.bg_separation !== null) {
-                  <app-metric-score-row [label]="I18N.tooltip.bg_separation | translate" [range]="store.metricRangesByColumn()['bg_separation']" [value]="p.bg_separation">{{ p.bg_separation | fixed:1 }}</app-metric-score-row>
-                }
-              </div>
-            </div>
-          }
-          </mat-tab>
-
-          <!-- Technical section -->
-          <mat-tab [aria-label]="I18N.photo_detail.technical | translate">
-            <ng-template mat-tab-label><mat-icon aria-hidden="true" [matTooltip]="I18N.photo_detail.technical | translate">tune</mat-icon></ng-template>
-          <div class="pt-3">
-            <div class="flex flex-col gap-0.5">
-              @if (p.exposure_score !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.exposure | translate" [range]="store.metricRangesByColumn()['exposure_score']" [value]="p.exposure_score">{{ p.exposure_score | fixed:1 }}</app-metric-score-row>
-              }
-              @if (p.color_score !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.color | translate" [range]="store.metricRangesByColumn()['color_score']" [value]="p.color_score">{{ p.color_score | fixed:1 }}</app-metric-score-row>
-              }
-              @if (p.contrast_score !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.contrast | translate" [range]="store.metricRangesByColumn()['contrast_score']" [value]="p.contrast_score">{{ p.contrast_score | fixed:1 }}</app-metric-score-row>
-              }
-              @if (p.dynamic_range_stops !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.dynamic_range | translate" [range]="store.metricRangesByColumn()['dynamic_range_stops']" [value]="p.dynamic_range_stops">{{ p.dynamic_range_stops | fixed:1 }}</app-metric-score-row>
-              }
-              @if (p.mean_saturation !== null && p.mean_saturation !== undefined) {
-                <app-metric-score-row [label]="I18N.tooltip.saturation | translate" [range]="store.metricRangesByColumn()['mean_saturation']" [value]="p.mean_saturation" [percent]="true">{{ (p.mean_saturation * 100) | fixed:0 }}%</app-metric-score-row>
-              }
-              @if (p.noise_sigma !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.noise | translate" [range]="store.metricRangesByColumn()['noise_sigma']" [value]="p.noise_sigma">{{ p.noise_sigma | fixed:1 }}</app-metric-score-row>
-              }
-              @if (p.mean_luminance !== null && p.mean_luminance !== undefined) {
-                <app-metric-score-row [label]="I18N.tooltip.luminance | translate" [range]="store.metricRangesByColumn()['mean_luminance']" [value]="p.mean_luminance" [percent]="true">{{ p.mean_luminance * 100 | fixed:0 }}%</app-metric-score-row>
-              }
-              @if (p.histogram_spread !== null) {
-                <app-metric-score-row [label]="I18N.tooltip.histogram_spread | translate" [range]="store.metricRangesByColumn()['histogram_spread']" [value]="p.histogram_spread">{{ p.histogram_spread | fixed:1 }}</app-metric-score-row>
-              }
-            </div>
-          </div>
-
-          </mat-tab>
-          <mat-tab [aria-label]="I18N.tooltip.histogram | translate">
-            <ng-template mat-tab-label><mat-icon aria-hidden="true" [matTooltip]="I18N.tooltip.histogram | translate">equalizer</mat-icon></ng-template>
-            <div class="pt-3">
-              <app-histogram [path]="p.path" [src]="p.path | thumbnailUrl:640" [monochrome]="!!p.is_monochrome"
-                             [height]="HISTOGRAM_PANEL_HEIGHT" [showModeToggle]="true"
-                             [surface]="'detail'"
-                             [defaultMode]="histogramDefaultMode()"
-                             [indicatorPercent]="clippingIndicatorPercent()" />
-            </div>
-          </mat-tab>
-          </mat-tab-group>
+          <!-- Metric tabs: EXIF | Quality | Composition | Technical | Histogram -->
+          <app-photo-metrics-tabs [photo]="p" [ranges]="store.metricRangesByColumn()"
+                                  [populated]="store.config()?.populated_scores"
+                                  [histogramHeight]="HISTOGRAM_PANEL_HEIGHT"
+                                  [histogramDefaultMode]="histogramDefaultMode()"
+                                  [indicatorPercent]="clippingIndicatorPercent()" />
 
 
           <!-- Location -->
@@ -716,26 +535,6 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
 
   // Category explainer ("why isn't this photo classified as X?")
   protected readonly explainerOpen = signal(false);
-  /**
-   * The open metric tab, by name rather than index: a photo without EXIF has one
-   * tab fewer, and the stored choice must still mean the same tab afterwards.
-   * Remembered in localStorage so every photo opens on the user's last tab.
-   */
-  protected readonly metricsTab = signal<MetricsTab>(storedMetricsTab());
-  protected readonly metricsTabs = computed<MetricsTab[]>(() =>
-    this.hasExif() ? [...METRICS_TABS] : METRICS_TABS.filter(tab => tab !== 'exif'));
-  protected readonly metricsTabIndex = computed(() => Math.max(0, this.metricsTabs().indexOf(this.metricsTab())));
-
-  protected selectMetricsTab(index: number): void {
-    const tab = this.metricsTabs()[index];
-    if (!tab) return;
-    this.metricsTab.set(tab);
-    try {
-      localStorage.setItem(METRICS_TAB_KEY, tab);
-    } catch {
-      // Storage blocked: the tab still switches, it is just not remembered.
-    }
-  }
   protected readonly explainerCategories = signal<string[]>([]);
   protected readonly explainerTargetCategory = signal<string | null>(null);
 

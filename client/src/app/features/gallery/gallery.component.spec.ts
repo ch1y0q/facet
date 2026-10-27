@@ -164,6 +164,7 @@ describe('GalleryComponent', () => {
       hueBuckets: signal([]),
       metricRanges: signal({}),
       metricRangesByColumn: signal({}),
+      ensureMetricRanges: vi.fn(() => Promise.resolve()),
       gpsLocationName: signal(''),
       viewFilterParams: signal({}),
     };
@@ -777,6 +778,9 @@ describe('GalleryComponent', () => {
     function render(mode: 'grid' | 'mosaic', virtual: boolean): HTMLElement[] {
       mockStore.photos.set(photos);
       mockStore.config.set({ features: { show_rating_controls: true } });
+      // The floating tooltip: the docked rail (the default at this width) would
+      // render a full details panel these path-only stand-in photos cannot fill.
+      mockStore.filters.set({ ...DEFAULT_FILTERS, tooltip_mode: 'hover' });
       mockStore.galleryMode.set(mode);
       mockStore.virtualScroll.set(virtual);
       fixture = TestBed.createComponent(GalleryComponent);
