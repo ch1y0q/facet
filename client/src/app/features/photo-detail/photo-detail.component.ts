@@ -150,9 +150,9 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
         }
 
         @if (downloadOptions().length > 1) {
-          <button mat-button [matMenuTriggerFor]="downloadMenu" [disabled]="downloading()" [matTooltip]="I18N.photo_detail.download | translate">
-            @if (downloading()) { <mat-spinner diameter="18" class="!inline-block !align-baseline" [attr.aria-label]="I18N.ui.labels.loading | translate" /> } @else { <mat-icon>download</mat-icon> }
-            {{ downloading() ? (I18N.photo_detail.downloading | translate) : (I18N.photo_detail.download | translate) }}
+          <button mat-icon-button [matMenuTriggerFor]="downloadMenu" [disabled]="downloading()" [matTooltip]="I18N.photo_detail.download | translate"
+            [attr.aria-label]="(downloading() ? I18N.photo_detail.downloading : I18N.photo_detail.download) | translate">
+            @if (downloading()) { <mat-spinner diameter="18" class="!inline-block" aria-hidden="true" /> } @else { <mat-icon>download</mat-icon> }
           </button>
           <mat-menu #downloadMenu="matMenu">
             @for (opt of downloadOptions(); track opt.type + (opt.profile ?? '')) {
@@ -167,17 +167,16 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
             }
           </mat-menu>
         } @else {
-          <button mat-button (click)="download(p.path)" [disabled]="downloading()" [matTooltip]="I18N.photo_detail.download | translate">
-            @if (downloading()) { <mat-spinner diameter="18" class="!inline-block !align-baseline" [attr.aria-label]="I18N.ui.labels.loading | translate" /> } @else { <mat-icon>download</mat-icon> }
-            {{ downloading() ? (I18N.photo_detail.downloading | translate) : (I18N.photo_detail.download | translate) }}
+          <button mat-icon-button (click)="download(p.path)" [disabled]="downloading()" [matTooltip]="I18N.photo_detail.download | translate"
+            [attr.aria-label]="(downloading() ? I18N.photo_detail.downloading : I18N.photo_detail.download) | translate">
+            @if (downloading()) { <mat-spinner diameter="18" class="!inline-block" aria-hidden="true" /> } @else { <mat-icon>download</mat-icon> }
           </button>
         }
 
         @if (socialExportEnabled()) {
-          <button mat-button class="!h-auto !min-h-9" [matMenuTriggerFor]="socialMenu" [disabled]="downloading()"
-            [matTooltip]="(socialCropTooltipKey() | translate)">
+          <button mat-icon-button [matMenuTriggerFor]="socialMenu" [disabled]="downloading()"
+            [matTooltip]="(socialCropTooltipKey() | translate)" [attr.aria-label]="I18N.photo_detail.social_crop | translate">
             <mat-icon>crop</mat-icon>
-            {{ I18N.photo_detail.social_crop | translate }}
           </button>
           <mat-menu #socialMenu="matMenu">
             @for (preset of socialPresets(); track preset.key) {
@@ -224,16 +223,36 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
           <!-- Filename + Date + Category + Aggregate -->
           <div>
             <div class="font-semibold text-lg">{{ p.filename }}</div>
-            @if (auth.isEdition()) {
-              <button mat-button (click)="openOrganizationHistory()">{{ I18N.organization_history.title | translate }}</button>
-              <button mat-button (click)="editCaptureDate(p)">{{ I18N.capture_date.title | translate }}</button>
-            }
-            @if (p.date_taken) {
-              <div class="text-[var(--mat-sys-on-surface-variant)] text-xs">{{ p.date_taken }}</div>
+            @if (p.date_taken || auth.isEdition()) {
+              <div class="flex items-center gap-1 text-[var(--mat-sys-on-surface-variant)] text-xs">
+                @if (auth.isEdition()) {
+                  <button mat-icon-button class="!w-7 !h-7 !min-w-0 !p-0 -ml-1.5 !inline-flex items-center justify-center" (click)="editCaptureDate(p)"
+                          [matTooltip]="I18N.capture_date.title | translate"
+                          [attr.aria-label]="I18N.capture_date.title | translate">
+                    <mat-icon class="!text-base !w-4 !h-4 !leading-4">edit_calendar</mat-icon>
+                  </button>
+                }
+                @if (p.date_taken) {
+                  <span class="leading-4">{{ p.date_taken }}</span>
+                }
+              </div>
             }
             <div class="flex items-center gap-2 mt-1">
-              @if (p.category) {
-                <span class="px-2 py-0.5 bg-[var(--mat-sys-primary-container)] text-[var(--mat-sys-on-primary-container)] rounded-full text-xs font-medium">{{ p.category | categoryLabel }}</span>
+              @if (p.category || auth.isEdition()) {
+                <span class="inline-flex items-center gap-0.5 px-2 py-0.5 bg-[var(--mat-sys-primary-container)] text-[var(--mat-sys-on-primary-container)] rounded-full text-xs font-medium">
+                  @if (p.category) { {{ p.category | categoryLabel }} }
+                  <!-- Category explainer toggle: "why isn't this photo classified as X?" — kept for an uncategorized photo too. -->
+                  @if (auth.isEdition()) {
+                    <button type="button" class="w-6 h-6 -my-1 -mr-1.5 inline-flex items-center justify-center rounded-full cursor-pointer hover:bg-black/15"
+                            data-explainer-toggle
+                            (click)="toggleExplainer()"
+                            [attr.aria-expanded]="explainerOpen()"
+                            [matTooltip]="I18N.photo.category_override.explainer_toggle | translate"
+                            [attr.aria-label]="I18N.photo.category_override.explainer_toggle | translate">
+                      <mat-icon class="!text-base !w-4 !h-4 !leading-4" aria-hidden="true">{{ explainerOpen() ? 'expand_less' : 'expand_more' }}</mat-icon>
+                    </button>
+                  }
+                </span>
               }
               @if (keeperHint()?.has_better) {
                 <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-black/60 text-amber-300 rounded-full text-xs font-medium"
@@ -246,25 +265,19 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
             </div>
           </div>
 
-          <!-- Category explainer: "why isn't this photo classified as X?" -->
-          @if (auth.isEdition()) {
+          <!-- Category explainer: the target-category select and its explanation -->
+          @if (auth.isEdition() && explainerOpen()) {
             <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3">
-              <button mat-button class="!px-0 !min-w-0" (click)="toggleExplainer()">
-                <mat-icon>{{ explainerOpen() ? 'expand_less' : 'expand_more' }}</mat-icon>
-                {{ I18N.photo.category_override.explainer_toggle | translate }}
-              </button>
-              @if (explainerOpen()) {
-                <mat-form-field class="w-full !-mt-1">
-                  <mat-label>{{ I18N.photo.category_override.target_category_label | translate }}</mat-label>
-                  <mat-select [value]="explainerTargetCategory()" (selectionChange)="explainerTargetCategory.set($event.value)">
-                    @for (name of explainerCategories(); track name) {
-                      <mat-option [value]="name">{{ name | categoryLabel }}</mat-option>
-                    }
-                  </mat-select>
-                </mat-form-field>
-                @if (explainerTargetCategory(); as target) {
-                  <app-category-explainer [path]="p.path" [targetCategory]="target" />
-                }
+              <mat-form-field class="w-full">
+                <mat-label>{{ I18N.photo.category_override.target_category_label | translate }}</mat-label>
+                <mat-select [value]="explainerTargetCategory()" (selectionChange)="explainerTargetCategory.set($event.value)">
+                  @for (name of explainerCategories(); track name) {
+                    <mat-option [value]="name">{{ name | categoryLabel }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+              @if (explainerTargetCategory(); as target) {
+                <app-category-explainer [path]="p.path" [targetCategory]="target" />
               }
             </div>
           }
@@ -841,6 +854,15 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       if (this.locationMap) { this.locationMap.remove(); this.locationMap = null; }
     });
     this.assistantChanges.batch$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(batch => void this.refreshAfterAssistant(batch));
+    this.store.organizationRestored$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => void this.refreshAfterRestore());
+  }
+
+  /** An Organization history restore may have rewritten this photo; a newer local edit wins over the reply. */
+  private async refreshAfterRestore(): Promise<void> {
+    const previous = this.photo();
+    if (!previous) return;
+    const fresh = await this.fetchPhoto(previous.path).catch(() => undefined);
+    if (fresh && this.photo() === previous) this.photo.set(fresh);
   }
 
   /** An assistant write touched this page's photo (or an unenumerable scope): refetch the full detail row. */
@@ -1383,31 +1405,6 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     });
   }
 
-  protected loadOrganizationHistoryDialog() { return import('./organization-history-dialog.component'); }
-
-  protected async openOrganizationHistory(): Promise<void> {
-    if (!this.auth.isEdition()) return;
-    const path = this.photo()?.path;
-    let opened = false;
-    const { current, dispose } = this.staleness.create(this.destroyRef, { valid: () => this.photo()?.path === path });
-    try {
-      const { OrganizationHistoryDialogComponent } = await this.loadOrganizationHistoryDialog();
-      if (!current()) return;
-      const ref = this.dialog.open(OrganizationHistoryDialogComponent, { width: '95vw', maxWidth: '820px' });
-      const history = ref.componentInstance;
-      opened = true;
-      ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef)).subscribe(async () => {
-        try {
-          await history.whenSettled();
-          if (!history.wasRestored() || !path || !current()) return;
-          const previous = this.photo();
-          const fresh = await this.fetchPhoto(path).catch(() => undefined);
-          if (fresh && current() && this.photo() === previous) this.photo.set(fresh);
-        } finally { dispose(); }
-      });
-    } finally { if (!opened) dispose(); }
-  }
-
   protected loadCaptureDateDialog() { return import('./capture-date-dialog.component'); }
 
   protected async editCaptureDate(p: Photo): Promise<void> {
@@ -1416,7 +1413,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     try {
       const m = await this.loadCaptureDateDialog();
       if (!current()) return;
-      const data = { paths: [p.path], count: 1, manuallySet: p.date_manually_set === 1 };
+      const data = { paths: [p.path], count: 1, manuallySet: p.date_manually_set === 1, reference: p.date_taken ? { path: p.path, date: p.date_taken } : null };
       const ref = this.dialog.open(m.CaptureDateDialogComponent, { width: '95vw', maxWidth: '760px', data });
       opened = true;
       ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef), finalize(dispose)).subscribe((result: import('./capture-date-dialog.component').CaptureDateResult | undefined) => {

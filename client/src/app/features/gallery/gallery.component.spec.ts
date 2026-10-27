@@ -29,6 +29,7 @@ import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AlbumService } from '../../core/services/album.service';
+import { NOTICE_DISMISSALS_KEY } from './notice-dismiss.util';
 import { GalleryComponent } from './gallery.component';
 import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
 import { SlideshowComponent } from './slideshow.component';
@@ -136,6 +137,11 @@ describe('GalleryComponent', () => {
       pinnedPaths: signal<string[] | null>(null),
       clearPinned: vi.fn(() => Promise.resolve()),
       filterKey: vi.fn((f?: GalleryFilters) => JSON.stringify(buildApiParams(f ?? mockStore.filters(), false, undefined))),
+      reviewProgressKey: vi.fn(() => {
+        const scope = buildApiParams(mockStore.filters(), false, undefined);
+        for (const key of ['page', 'per_page', 'sort', 'sort_direction']) delete scope[key];
+        return JSON.stringify(scope);
+      }),
       hiddenSummary: signal({ total: 0, blinks: 0, bursts: 0, duplicates: 0 }),
       hiddenFiltersStash: signal(null),
       showAllHidden: vi.fn(),
@@ -1379,18 +1385,16 @@ describe('GalleryComponent', () => {
   });
 
   describe('thumbnail-migration banner', () => {
-    const RENDER_MIGRATION_KEY = 'facet_render_migration_dismissed';
-
     function rebuild(): GalleryComponent {
       return TestBed.runInInjectionContext(() => new GalleryComponent());
     }
 
     beforeEach(() => {
-      localStorage.removeItem(RENDER_MIGRATION_KEY);
+      sessionStorage.removeItem(NOTICE_DISMISSALS_KEY);
       component = rebuild();
     });
 
-    afterEach(() => localStorage.removeItem(RENDER_MIGRATION_KEY));
+    afterEach(() => sessionStorage.removeItem(NOTICE_DISMISSALS_KEY));
 
     it('stays hidden until the server reports rows awaiting regeneration', () => {
       mockStore.config.set({ render_migration: { pending: 0 } });
@@ -1409,16 +1413,16 @@ describe('GalleryComponent', () => {
       expect(component.showRenderMigrationBanner()).toBe(true);
     });
 
-    it('hides on dismiss and stays hidden for the next visit', () => {
+    it('closes for this tab, stays closed after a reload, and reopens once the pending count changes', () => {
       mockStore.config.set({ render_migration: { pending: 12 } });
-      component.dismissRenderMigration();
+      component['dismissNotice']('render_migration');
 
       expect(component.showRenderMigrationBanner()).toBe(false);
-      expect(localStorage.getItem(RENDER_MIGRATION_KEY)).toBe('true');
+      expect(localStorage.getItem('facet_render_migration_dismissed')).toBeNull();
+      expect(rebuild().showRenderMigrationBanner()).toBe(false);
 
-      // A migration takes hours, so a reload must not raise the notice again.
-      const reloaded = rebuild();
-      expect(reloaded.showRenderMigrationBanner()).toBe(false);
+      mockStore.config.set({ render_migration: { pending: 11 } });
+      expect(component.showRenderMigrationBanner()).toBe(true);
     });
   });
 
@@ -1432,13 +1436,18 @@ describe('GalleryComponent', () => {
     const button = (html: HTMLElement, label: string) =>
       Array.from(html.querySelectorAll('button')).find(b => b.textContent?.includes(label));
 
+    /** The close button of the one card whose text contains `text`, never a positional pick. */
+    const closeFor = (html: HTMLElement, text: string) =>
+      Array.from(stack(html)!.children).find(card => card.textContent?.includes(text))!
+        .querySelector<HTMLButtonElement>(`button[aria-label="${I18N.ui.buttons.dismiss}"]`)!;
+
     beforeEach(() => {
-      localStorage.removeItem('facet_render_migration_dismissed');
+      sessionStorage.removeItem(NOTICE_DISMISSALS_KEY);
       mockStore.hiddenSummary.set({ total: 6, blinks: 0, bursts: 4, duplicates: 0, brackets: 2, panoramas: 0 });
       mockStore.filters.set({ ...DEFAULT_FILTERS, hide_bursts: true });
     });
 
-    afterEach(() => localStorage.removeItem('facet_render_migration_dismissed'));
+    afterEach(() => sessionStorage.removeItem(NOTICE_DISMISSALS_KEY));
 
     it('renders the hidden-photos notice in the stack, outside the scrolling content, and Show all acts', () => {
       const html = render();
@@ -1462,15 +1471,100 @@ describe('GalleryComponent', () => {
       expect(mockStore.restoreHidden).toHaveBeenCalled();
     });
 
-    it('stacks the migration notice below the hidden notice and Dismiss removes only it', () => {
+    it('stacks the migration notice below the hidden notice and its close removes only it', () => {
       mockStore.config.set({ render_migration: { pending: 12 } });
-      const html = render();
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
       const cards = Array.from(stack(html)!.querySelectorAll('[role="status"]'));
       expect(cards).toHaveLength(2);
       expect(cards[0].textContent).toContain(I18N.gallery.hidden_banner.message);
       expect(cards[1].textContent).toContain(I18N.gallery.render_migration.message);
-      button(html, I18N.ui.buttons.dismiss)?.click();
-      expect(localStorage.getItem('facet_render_migration_dismissed')).toBe('true');
+      closeFor(html, I18N.gallery.render_migration.message).click();
+      fixture.detectChanges();
+      const left = Array.from(stack(html)!.querySelectorAll('[role="status"]'));
+      expect(left).toHaveLength(1);
+      expect(left[0].textContent).toContain(I18N.gallery.hidden_banner.message);
+    });
+
+    it('closes the hidden-photos notice without touching the filters, and reopens it when the hidden count changes', () => {
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
+      const before = mockStore.filters();
+      closeFor(html, I18N.gallery.hidden_banner.message).click();
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+      expect(mockStore.filters()).toBe(before);
+      expect(mockStore.showAllHidden).not.toHaveBeenCalled();
+
+      mockStore.hiddenSummary.set({ total: 9, blinks: 0, bursts: 7, duplicates: 0, brackets: 2, panoramas: 0 });
+      fixture.detectChanges();
+      expect(stack(html)?.textContent).toContain(I18N.gallery.hidden_banner.message);
+    });
+
+    it('keeps each scope\'s closed notice closed on return, and ignores re-sorting', () => {
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
+      closeFor(html, I18N.gallery.hidden_banner.message).click();
+      fixture.detectChanges();
+      mockStore.filters.set({ ...mockStore.filters(), sort: 'date_taken', sort_direction: 'ASC' });
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+
+      const scopeA = mockStore.filters();
+      mockStore.filters.set({ ...scopeA, tag: 'beach' });
+      fixture.detectChanges();
+      expect(stack(html)?.textContent).toContain(I18N.gallery.hidden_banner.message);
+      closeFor(html, I18N.gallery.hidden_banner.message).click();
+      fixture.detectChanges();
+
+      mockStore.filters.set(scopeA);
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+    });
+
+    it('closes the resume bookmark without resuming, and reopens it for another remembered queue', () => {
+      mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
+      mockStore.reviewBookmark.set({ path: '/p1.jpg', filters: { tag: 'a' } });
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
+      closeFor(html, I18N.gallery.review_progress.browser).click();
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+      expect(mockStore.continueReview).not.toHaveBeenCalled();
+
+      mockStore.reviewBookmark.set({ path: '/p1.jpg', filters: { tag: 'a' } });
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+      mockStore.reviewBookmark.set({ path: '/p2.jpg', filters: { tag: 'b' } });
+      fixture.detectChanges();
+      expect(stack(html)?.textContent).toContain(I18N.gallery.review_progress.browser);
+    });
+
+    it('closes the restore twin without restoring, and reopens it when the stashed toggles change', () => {
+      mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
+      mockStore.hiddenFiltersStash.set({
+        hide_blinks: true, hide_bursts: true, hide_duplicates: true, hide_brackets: true, hide_panoramas: true,
+      });
+      mockStore.filters.set({ ...DEFAULT_FILTERS, hide_blinks: false, hide_bursts: false, hide_duplicates: false, hide_brackets: false, hide_panoramas: false });
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
+      const before = mockStore.filters();
+      closeFor(html, I18N.gallery.hidden_banner.showing_all).click();
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+      expect(mockStore.restoreHidden).not.toHaveBeenCalled();
+      expect(mockStore.filters()).toBe(before);
+
+      mockStore.hiddenFiltersStash.set({
+        hide_blinks: false, hide_bursts: true, hide_duplicates: true, hide_brackets: true, hide_panoramas: true,
+      });
+      fixture.detectChanges();
+      expect(stack(html)?.textContent).toContain(I18N.gallery.hidden_banner.showing_all);
     });
 
     it('anchors the stack bottom-right, clear of an open end drawer and the content scrollbar', () => {
@@ -2060,25 +2154,17 @@ describe('GalleryComponent', () => {
       mockStore.filterPayload.mockReturnValue({ camera: 'Nikon' });
       mockStore.excludedPaths.set(new Set(['/new.jpg']));
       await pending;
-      expect((dialog.open as Mock).mock.calls[0][1].data).toEqual({ paths: [], filters: { camera: 'Canon' }, exclude: ['/skip.jpg'], count: 12 });
+      expect((dialog.open as Mock).mock.calls[0][1].data).toEqual({ paths: [], filters: { camera: 'Canon' }, exclude: ['/skip.jpg'], count: 12, reference: null });
     });
-  });
-
-  describe('openOrganizationHistory', () => {
-    it.each(['revalidation', 'identity', 'edition', 'navigation', 'destroy'])('guards lazy history launch after %s', async loss => {
-      mockAuth['isEdition'] = vi.fn(() => true);
+    it('passes the first loaded, dated photo of an explicit selection as the reference', async () => {
+      mockStore.photos.set([
+        { path: '/undated.jpg', date_taken: null }, { path: '/other.jpg', date_taken: '2020:01:01 00:00:00' },
+        { path: '/b.jpg', date_taken: '2024:05:06 07:08:09' },
+      ] as never);
+      mockStore.selectedPaths.set(new Set(['/undated.jpg', '/b.jpg'])); mockStore.selectionCount.set(2);
       const dialog = TestBed.inject(MatDialog);
-      const opening = component.openOrganizationHistory();
-      if (loss === 'revalidation') (mockAuth['status'] as ReturnType<typeof signal>).set({ user_id: 'editor' });
-      if (loss === 'identity') (mockAuth['status'] as ReturnType<typeof signal>).set({ user_id: 'bob' });
-      if (loss === 'edition') mockAuth['isEdition'] = vi.fn(() => false);
-      if (loss === 'navigation') {
-        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, '/other'));
-        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(2, '/'));
-      }
-      if (loss === 'destroy') TestBed.resetTestingModule();
-      await opening;
-      expect(dialog.open).toHaveBeenCalledTimes(loss === 'revalidation' ? 1 : 0);
+      await component.openCaptureDateDialog();
+      expect((dialog.open as Mock).mock.calls[0][1].data.reference).toEqual({ path: '/b.jpg', date: '2024:05:06 07:08:09' });
     });
   });
 
@@ -4619,7 +4705,28 @@ describe('GalleryComponent', () => {
       return Array.from(host.querySelectorAll('button')).find(b => b.textContent?.trim() === key);
     }
 
-    afterEach(() => fixture.destroy());
+    afterEach(() => {
+      fixture.destroy();
+      sessionStorage.removeItem(NOTICE_DISMISSALS_KEY);
+    });
+
+    it('closes for this tab without hiding it for good, and reopens for another scope', () => {
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      const host = render();
+      host.querySelector<HTMLButtonElement>(`[data-review-progress] button[aria-label="${I18N.ui.buttons.dismiss}"]`)!.click();
+      fixture.detectChanges();
+      expect(host.querySelector('[data-review-progress]')).toBeNull();
+      expect(mockStore.setReviewProgressVisible).not.toHaveBeenCalled();
+
+      // New counts in the same scope are still the same notice.
+      mockStore.reviewProgress.set({ total: 10, undecided: 5, kept: 4, rejected: 1 });
+      fixture.detectChanges();
+      expect(host.querySelector('[data-review-progress]')).toBeNull();
+
+      mockStore.filters.set({ ...DEFAULT_FILTERS, tag: 'beach' });
+      fixture.detectChanges();
+      expect(host.querySelector('[data-review-progress]')).not.toBeNull();
+    });
 
     it('renders nothing while there is no progress snapshot', () => {
       const host = render();
