@@ -10,3 +10,4 @@ if (-not (Test-FacetReady)) { & "$PSScriptRoot\Setup-Facet.ps1" }
 if ($Folder -notmatch '^[A-Za-z]:\\$') { $Folder = $Folder.TrimEnd('\', '/') }
 Push-Location $FacetApp
 try { & $FacetPython facet.py $Folder @Rest } finally { Pop-Location }
+exit $LASTEXITCODE

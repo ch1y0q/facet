@@ -70,6 +70,7 @@ if ($LASTEXITCODE) { throw 'dependency install failed' }
 if ($variant -ne 'cpu' -and $ortGpu) {
     Step 'onnxruntime-gpu 1.26.0 (GPU face detection)'
     & $FacetUv pip uninstall --python $FacetPython onnxruntime onnxruntime-gpu
+    if ($LASTEXITCODE) { throw 'onnxruntime uninstall failed' }
     & $FacetUv pip install --python $FacetPython 'onnxruntime-gpu==1.26.0'
     if ($LASTEXITCODE) { throw 'onnxruntime-gpu install failed' }
 }

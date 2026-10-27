@@ -48,6 +48,12 @@ def trim(prefix):
     return prefix.rstrip(SEPARATORS) or prefix[:1]
 
 
+def nested(a, b):
+    """True when one prefix is the other or lies inside it (separators compared as one)."""
+    a, b = a.replace('\\', '/'), b.replace('\\', '/')
+    return a == b or a.startswith(b.rstrip('/') + '/') or b.startswith(a.rstrip('/') + '/')
+
+
 def default_sep(dst):
     return '\\' if dst.startswith('\\\\') or re.match(r'^[A-Za-z]:', dst) else '/'
 
@@ -145,6 +151,10 @@ def main():
     sep = args.sep or default_sep(dst)
     if src == dst:
         sys.exit('the old and new prefixes are the same')
+    if nested(src, dst):
+        ap.error(f'one prefix lies inside the other ({src} / {dst}): rows inserted by triggers during '
+                 'the rewrite would be converted twice. Rewrite via an unrelated temporary prefix. '
+                 'Nothing changed.')
     if not Path(args.db).is_file():
         sys.exit(f'no database at {args.db}')
 
@@ -167,9 +177,14 @@ def main():
     history = conn.execute('SELECT count(*) FROM organization_history WHERE reverted = 0').fetchone()[0] \
         if has_table(conn, 'organization_history') else 0
 
+    fk_before = len(conn.execute('PRAGMA foreign_key_check').fetchall())
     conn.execute('BEGIN IMMEDIATE')
     try:
         report = rewrite(conn, src, dst, sep, vec)
+        fk_after = len(conn.execute('PRAGMA foreign_key_check').fetchall())
+        if fk_after > fk_before:
+            conn.execute('ROLLBACK')
+            sys.exit(f'the rewrite would leave {fk_after - fk_before} new foreign-key violations. Nothing changed.')
     except sqlite3.IntegrityError as exc:
         conn.execute('ROLLBACK')
         sys.exit(f'some photos already exist under the new prefix (scanned there before?): {exc}. '
@@ -185,9 +200,11 @@ def main():
         return
     if history:
         print(f'undo history: {history} earlier entr{"y" if history == 1 else "ies"} can no longer be applied')
-    print('integrity:', conn.execute('PRAGMA integrity_check').fetchone()[0],
-          '| foreign keys:', len(conn.execute('PRAGMA foreign_key_check').fetchall()), 'violations',
-          '| photos left on old prefix:', left)
+    integrity = conn.execute('PRAGMA integrity_check').fetchone()[0]
+    fk = len(conn.execute('PRAGMA foreign_key_check').fetchall())
+    print('integrity:', integrity, '| foreign keys:', fk, 'violations', '| photos left on old prefix:', left)
+    if integrity != 'ok' or fk > fk_before:
+        sys.exit(1)
 
 
 if __name__ == '__main__':

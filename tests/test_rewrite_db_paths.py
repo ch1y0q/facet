@@ -147,3 +147,13 @@ def test_a_path_already_under_the_new_prefix_changes_nothing(library):
     assert 'already exist under the new prefix' in result.stderr
     assert 'Traceback' not in result.stderr
     assert _paths(library, 'SELECT path FROM photos ORDER BY rowid') == before
+
+
+@pytest.mark.parametrize('src,dst', [('/data/photos', '/data/photos/lib'), ('/data/photos/lib', '/data/photos')])
+@pytest.mark.parametrize('flags', [(), ('--dry-run',)])
+def test_nested_prefixes_are_refused_and_nothing_changes(library, src, dst, flags):
+    before = _paths(library, 'SELECT path FROM photos ORDER BY rowid')
+    result = _run(library, *flags, src=src, dst=dst, check=False)
+    assert result.returncode == 2
+    assert 'inside the other' in result.stderr
+    assert _paths(library, 'SELECT path FROM photos ORDER BY rowid') == before

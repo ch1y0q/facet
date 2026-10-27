@@ -28,7 +28,7 @@
       <Component Id="Shortcuts" Guid="9B0E8C61-3D2A-4F57-8E1B-5A6C7D8E9F20">
         <Shortcut Id="StartShortcut" Name="Facet" Description="Start the Facet viewer"
                   Target="[System64Folder]WindowsPowerShell\v1.0\powershell.exe"
-                  Arguments="-NoProfile -ExecutionPolicy Bypass -WindowStyle Minimized -File &quot;[INSTALLDIR]installer\Start-Facet.ps1&quot;"
+                  Arguments="-NoProfile -ExecutionPolicy Bypass -WindowStyle Minimized -File &quot;[INSTALLDIR]installer\Start-Facet.ps1&quot; -PauseOnError"
                   WorkingDirectory="INSTALLDIR" />
         <Shortcut Id="StopShortcut" Name="Stop Facet" Description="Stop the Facet viewer and scans"
                   Target="[System64Folder]WindowsPowerShell\v1.0\powershell.exe"
