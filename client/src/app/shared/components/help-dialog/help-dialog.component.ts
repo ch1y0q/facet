@@ -4,27 +4,9 @@ import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/materia
 import { MatIconModule } from '@angular/material/icon';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { i18nKeys } from '../../../core/i18n/keys';
-import { CULLING_SHORTCUT_SECTIONS, type CullingShortcutRow } from '../../../features/gallery/culling-shortcuts';
+import type { CullingShortcutRow } from '../../../features/gallery/culling-shortcuts';
 
 interface ShortcutSection { titleKey: string; rows: CullingShortcutRow[]; }
-
-/** The gallery page's own keyboard reference (the card rating keys and the
- *  view toggles), shown when the Help entry fires there. */
-const GALLERY_SHORTCUT_SECTIONS: ShortcutSection[] = [
-  {
-    titleKey: 'gallery.shortcuts.page_title',
-    rows: [
-      { keys: ['1', '–', '5'], labelKey: 'gallery.shortcuts.rate' },
-      { keys: ['F'], labelKey: 'gallery.shortcuts.favourite' },
-      { keys: ['X'], labelKey: 'gallery.shortcuts.reject' },
-      { keys: ['/'], labelKey: 'gallery.shortcuts.focus_search' },
-      { keys: ['B'], labelKey: 'gallery.shortcuts.toggle_sidebar' },
-      { keys: ['V'], labelKey: 'gallery.shortcuts.swap_layout' },
-      { keys: ['Space'], labelKey: 'gallery.shortcuts.select' },
-      { keys: ['Enter'], labelKey: 'culling.shortcuts.open' },
-    ],
-  },
-];
 
 /** The "?" menu entry's dialog: the current page's help text in a proper
  *  modal, instead of toggling the in-page banner — a menu affordance that

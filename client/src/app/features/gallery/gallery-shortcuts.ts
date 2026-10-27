@@ -4,7 +4,7 @@ export interface GalleryShortcutRow { keys: string[]; labelKey: string; }
 
 export const GALLERY_HELP_SHORTCUT_SECTIONS: { titleKey: string; rows: GalleryShortcutRow[] }[] = [
   {
-    titleKey: 'culling.shortcuts.page_title',
+    titleKey: 'gallery.shortcuts.page_title',
     rows: [
       { keys: ['1', '–', '5'], labelKey: 'gallery.shortcuts.rate' },
       { keys: ['F'], labelKey: 'gallery.shortcuts.favourite' },
