@@ -328,6 +328,28 @@ def test_gray_float_and_sixteen_bit_alpha_keep_their_values(tmp_path, kind):
         assert np.unique(np.asarray(actual).reshape(-1, 3), axis=0).tolist() == [[128, 128, 128]]
 
 
+def test_lossy_float_overshoot_is_clipped_not_refused(tmp_path):
+    # Lossy coding rings a little past [0, 1] even for SDR content, so a
+    # float export must clip like every other sample type rather than fail.
+    path = tmp_path / "lossy_float.jxl"
+    ramp = np.linspace(0, 1, 512, dtype=np.float32)
+    data = np.tile(ramp, (512, 1))
+    path.write_bytes(imagecodecs.jpegxl_encode(data, distance=2.0, numthreads=1))
+    decoded = imagecodecs.jpegxl_decode(path.read_bytes(), numthreads=1)
+    assert decoded.min() < 0 or decoded.max() > 1
+    actual = np.asarray(image_loading.open_nonraw_image(path)).astype(int)
+    assert actual.shape == (512, 512, 3)
+    assert actual[:, :8].max() <= 8 and actual[:, -8:].min() >= 247
+
+
+def test_non_finite_float_samples_are_refused():
+    from utils.jpegxl import _pixel_image
+    pixels = np.zeros((4, 4), dtype=np.float32)
+    pixels[1, 1] = np.nan
+    with pytest.raises(ValueError, match="finite"):
+        _pixel_image(pixels, 32)
+
+
 def test_native_delivery_skips_decode_and_supports_byte_ranges(tmp_path, seed_photos_prefix, jxl_client, monkeypatch):
     from api.routers import thumbnails
     path = tmp_path / "native.jxl"

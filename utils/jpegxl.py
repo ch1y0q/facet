@@ -75,8 +75,8 @@ def _jpegxl_exif(stream):
                     payload = bytes(imagecodecs.brotli_decode(payload, out=bytearray(_MAX_EXIF_BYTES)))
                 except (ValueError, RuntimeError) as error:
                     raise ValueError("JPEG XL EXIF is invalid or exceeds metadata byte limit") from error
-            # pillow-jxl-plugin's encoder writes bare TIFF metadata. Recognise
-            # that representation too; standards-compliant boxes use an offset.
+            # Some encoders write bare TIFF metadata. Recognise that
+            # representation too; standards-compliant boxes use an offset.
             if payload[:4] in (b"II\x2a\x00", b"MM\x00\x2a"):
                 return payload
             if len(payload) < 4:
@@ -160,8 +160,10 @@ def _pixel_image(pixels, bits_per_sample):
         rows = max(1, (4 * 1024 * 1024) // (pixels.shape[1] * channels * 4))
         for start in range(0, pixels.shape[0], rows):
             source = pixels[start:start + rows]
-            if floating_point and (not np.isfinite(source).all() or source.min() < 0 or source.max() > 1):
-                raise ValueError("JPEG XL floating-point samples require SDR range [0, 1]")
+            # Lossy coding overshoots [0, 1] slightly even for SDR content, so
+            # out-of-range floats clip below like every other sample type.
+            if floating_point and not np.isfinite(source).all():
+                raise ValueError("JPEG XL floating-point samples must be finite")
             band = np.multiply(source, 255.0 / maximum, dtype=np.float32)
             np.clip(band, 0, 255, out=band)
             band += 0.5
