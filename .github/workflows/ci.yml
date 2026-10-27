@@ -11,17 +11,20 @@ permissions:
 
 jobs:
   changes:
-    name: Detect Python changes
+    name: Detect changed areas
     # Only a pull request that changes a .py file runs the full Python suites
     # (~45 min on Linux, plus Windows). Any other pull request still runs the
     # Python tests that check NON-Python files against the server (client
     # interfaces and schema.d.ts, the agent UI schema and smart-album fixture,
     # keys.ts and the i18n bundles, the AGENTS / THIRD_PARTY_MODELS docs) and
-    # the gen:api staleness check: about a minute. Pushes to master always run
-    # everything.
+    # the gen:api staleness check: about a minute. The Angular tests run only
+    # when client/ or the i18n bundles (a spec imports them) change; an API
+    # change reaches them through the regenerated client/.../schema.d.ts.
+    # Pushes to master always run everything.
     runs-on: ubuntu-latest
     outputs:
       scope: ${{ steps.filter.outputs.scope }}
+      client: ${{ steps.filter.outputs.client }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -35,11 +38,24 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
         run: |
-          if [ "$EVENT" != "pull_request" ] || git diff --name-only HEAD^1 HEAD | grep -qE '\.py$'; then
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "scope=full" >> "$GITHUB_OUTPUT"
+            echo "client=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only HEAD^1 HEAD)
+          echo "$changed"
+          if echo "$changed" | grep -qE '\.py$'; then
             echo "scope=full" >> "$GITHUB_OUTPUT"
           else
             echo "No .py file changed: running only the cross-file Python checks."
             echo "scope=cross-file" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$changed" | grep -qE '^(client|i18n)/'; then
+            echo "client=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing under client/ or i18n/ changed: skipping the Angular tests."
+            echo "client=false" >> "$GITHUB_OUTPUT"
           fi
 
   python-tests:
@@ -176,6 +192,8 @@ jobs:
 
   angular-tests:
     name: Angular Tests
+    needs: changes
+    if: needs.changes.outputs.client == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
