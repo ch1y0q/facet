@@ -225,6 +225,7 @@ Primeira vez? Siga o roteiro **[Primeiros passos](docs/pt/GETTING_STARTED.md)**:
 | [Visualizador](docs/VIEWER.md) | Recursos e uso da galeria web |
 | [Interoperabilidade](docs/pt/INTEROP.md) | Trocar classificações/tags com Lightroom, Capture One, digiKam, darktable |
 | [Immich](docs/pt/IMMICH.md) | Sincronizar avaliações e favoritos com o Immich, além do webhook de entrada |
+| [Religar](docs/pt/RELINK.md) | Religar fotos movidas |
 | [Agentes de IA](docs/pt/AGENTS.md) | Deixar um assistente compatível com MCP pesquisar a biblioteca com um token pessoal |
 | [Implantação](docs/DEPLOYMENT.md) | Implantação em produção (Synology NAS, Linux, Docker) |
 | [Contribuindo](CONTRIBUTING.md) | Configuração de desenvolvimento, arquitetura, estilo de código |

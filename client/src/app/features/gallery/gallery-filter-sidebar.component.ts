@@ -1,7 +1,6 @@
 import { Component, computed, DestroyRef, effect, ElementRef, inject, signal, viewChild, viewChildren, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { MatMenuTrigger } from '@angular/material/menu';
 import { MatSelectModule, MatSelect } from '@angular/material/select';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatIconModule } from '@angular/material/icon';
@@ -33,6 +32,7 @@ import { CardActionsDialogComponent } from './card-actions-dialog.component';
 import { folderDisplayName } from '../folders/folders.util';
 import { i18nKeys } from '../../core/i18n/keys';
 import { isUnavailableKey, unavailableSet } from '../../shared/utils/unavailable-metrics';
+import { closeOverlayDirectives } from '../../shared/utils/overlays';
 
 export const ADDITIONAL_FILTERS: AdditionalFilterDef[] = [
   // Quality
@@ -597,6 +597,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
             (change)="store.updateFilter('hide_rejected', $event.checked)"
           >{{ I18N.gallery.hide_rejected | translate }}</mat-checkbox>
           <mat-checkbox
+            [disabled]="!!store.filters().review_status"
             [checked]="store.filters().show_rejected"
             (change)="store.updateFilter('show_rejected', $event.checked)"
           >{{ I18N.rating.show_rejected | translate }}</mat-checkbox>
@@ -1166,18 +1167,15 @@ export class GalleryFilterSidebarComponent {
 
   private readonly tooltips = viewChildren(MatTooltip);
   private readonly selects = viewChildren(MatSelect);
-  private readonly menus = viewChildren(MatMenuTrigger);
 
   /** Hide every tooltip the sidebar owns, for a gallery parking behind a photo page. */
   hideTooltips(): void {
-    for (const tooltip of this.tooltips()) tooltip.hide(0);
+    closeOverlayDirectives(this.tooltips());
   }
 
   /** Close overlays before the gallery parks behind a photo. */
   closeOverlays(): void {
-    this.hideTooltips();
-    for (const menu of this.menus()) menu.closeMenu();
-    for (const select of this.selects()) select.close();
+    closeOverlayDirectives(this.tooltips(), [], this.selects());
   }
 
   cancelPendingSearch(): void {

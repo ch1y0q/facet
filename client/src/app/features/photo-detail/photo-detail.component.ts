@@ -17,6 +17,7 @@ import { AssistantChangeBatch, AssistantChangesService } from '../../core/agent/
 import { ExtendedQualityComponent } from '../../shared/components/extended-quality/extended-quality.component';
 import { Photo, KeeperHint, PhotoSet, normalisePhotoFlags } from '../../shared/models/photo.model';
 import { AuthService } from '../../core/services/auth.service';
+import { StalenessGuardFactory } from '../../core/services/staleness-guard.service';
 import { PhotoActionsService } from '../../core/services/photo-actions.service';
 import { PhotoDetailBase } from '../../shared/directives/photo-detail-base.directive';
 import { FixedPipe } from '../../shared/pipes/fixed.pipe';
@@ -38,11 +39,11 @@ import { ComparisonCategoryExplainerComponent } from '../comparison/comparison-c
 import { DownloadOption } from '../../core/api/types';
 import { downloadAll } from '../../shared/utils/download';
 import { GalleryStore } from '../gallery/gallery.store';
-import { GalleryFilters } from '../gallery/gallery-filters.util';
+import { setScopePatch } from '../gallery/gallery-filters.util';
 import * as L from 'leaflet';
 import { createLeafletMap } from '../../shared/leaflet';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
-import { isTypingContext } from '../../shared/utils/keyboard';
+import { isPageShortcutBlocked, isTypingContext } from '../../shared/utils/keyboard';
 import type { CategoryOverrideResult } from './category-override-dialog.component';
 
 const SOCIAL_SOURCE_KEYS: Record<string, string> = {
@@ -286,11 +287,11 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
                 <mat-icon class="!text-red-400">{{ p.is_favorite ? 'favorite' : 'favorite_border' }}</mat-icon>
               </button>
               <!-- Review decisions -->
-              <button mat-icon-button (click)="reviewPhoto('kept')" [class.text-green-400]="p.is_kept"
+              <button mat-icon-button (click)="reviewPhoto(p.is_kept ? 'undecided' : 'kept')" [class.text-green-400]="p.is_kept"
                 [matTooltip]="I18N.review.keep | translate"
                 [attr.aria-label]="I18N.review.keep | translate"
                 [attr.aria-pressed]="!!p.is_kept">
-                <mat-icon>check_circle</mat-icon>
+                <mat-icon>{{ p.is_kept ? 'check_circle' : 'check_circle_outline' }}</mat-icon>
               </button>
               <button mat-icon-button (click)="reviewPhoto('undecided')"
                 [matTooltip]="I18N.review.reset | translate"
@@ -658,6 +659,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly staleness = inject(StalenessGuardFactory);
   private readonly assistantChanges = inject(AssistantChangesService);
   private readonly photoActions = inject(PhotoActionsService);
   private readonly journal = inject(UserActivityJournal);
@@ -930,24 +932,9 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     const set = this.photoSet();
     if (!set?.kind || set.group_id == null) return;
     const groupId = String(set.group_id);
-    const updates: Partial<GalleryFilters> = {
-      sequence_group_id: '', sequence_kind: '', burst_group_id: '', duplicate_group_id: '',
-    };
-    if (set.kind === 'burst') {
-      updates.burst_group_id = groupId;
-      updates.hide_bursts = false;
-    } else if (set.kind === 'duplicate') {
-      updates.duplicate_group_id = groupId;
-      updates.hide_duplicates = false;
-    } else if (set.kind === 'bracket') {
-      updates.sequence_kind = set.kind;
-      updates.sequence_group_id = groupId;
-      updates.hide_brackets = false;
-    } else {
-      updates.sequence_kind = set.kind;
-      updates.sequence_group_id = groupId;
-      updates.hide_panoramas = false;
-    }
+    const updates = setScopePatch(
+      set.kind === 'burst' || set.kind === 'duplicate' ? set.kind : 'sequence', groupId, set.kind,
+    );
     // Carried via router navigation state, never the URL or a post-navigate
     // updateFilters() call: the gallery route re-initialises its filters from
     // config + localStorage + URL on activation, which either overwrites a
@@ -983,9 +970,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
    *  with the filters it came from. */
   @HostListener('document:keydown', ['$event'])
   protected onRatingShortcut(event: KeyboardEvent): void {
-    if (isTypingContext(event)) return;
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
-    if (document.querySelector('mat-dialog-container, mat-bottom-sheet-container')) return;
+    if (isPageShortcutBlocked(event)) return;
     if (!this.auth.isEdition() || !this.store.config()?.features?.show_rating_controls) return;
     const p = this.photo();
     if (!p) return;
@@ -1139,6 +1124,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       await firstValueFrom(this.api.post('/photos/batch_review', { photo_paths: [p.path], decision }));
       if (identity !== this.auth.identity()) return;
       this.applyConfirmed(p, { is_kept: decision === 'kept', is_rejected: false });
+      this.journal.record('review', [p.path], decision);
       if (isOrigin()) await this.advanceAfterReview(p, index, next);
     } catch {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
@@ -1344,7 +1330,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
         if (!res) return;
         // `removed_missing` counts as deleted for this surface: the row is
         // gone either way, which is all the photo page can observe.
-        const gone = res.deleted.includes(p.path) || (res.removed_missing ?? []).includes(p.path);
+        const gone = res.deleted.includes(p.path) || res.removed_missing.includes(p.path);
         if (gone) {
           this.store.removePhotos([p.path]);
           this.snackBar.open(this.i18n.t(I18N.photo_detail.delete.success), '', { duration: 2000 });
@@ -1401,16 +1387,9 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
 
   protected async openOrganizationHistory(): Promise<void> {
     if (!this.auth.isEdition()) return;
-    const owner = this.auth.identity();
     const path = this.photo()?.path;
-    const url = this.router.url;
-    let navigated = false;
     let opened = false;
-    const navigation = this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(event => {
-      if (event instanceof NavigationStart) navigated = true;
-    });
-    const current = () => !navigated && !this.destroyRef.destroyed && this.auth.identity() === owner
-      && this.auth.isEdition() && this.router.url === url && this.photo()?.path === path;
+    const { current, dispose } = this.staleness.create(this.destroyRef, { valid: () => this.photo()?.path === path });
     try {
       const { OrganizationHistoryDialogComponent } = await this.loadOrganizationHistoryDialog();
       if (!current()) return;
@@ -1424,49 +1403,35 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
           const previous = this.photo();
           const fresh = await this.fetchPhoto(path).catch(() => undefined);
           if (fresh && current() && this.photo() === previous) this.photo.set(fresh);
-        } finally { navigation.unsubscribe(); }
+        } finally { dispose(); }
       });
-    } finally { if (!opened) navigation.unsubscribe(); }
+    } finally { if (!opened) dispose(); }
   }
 
   protected loadCaptureDateDialog() { return import('./capture-date-dialog.component'); }
 
   protected async editCaptureDate(p: Photo): Promise<void> {
-    const identity = this.auth.identity();
-    const url = this.router.url;
-    let navigated = false;
     let opened = false;
-    const navigation = this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(event => {
-      if (event instanceof NavigationStart) navigated = true;
-    });
-    const current = () => !navigated && !this.destroyRef.destroyed
-      && this.auth.identity() === identity && this.auth.isEdition() && this.router.url === url && this.photo()?.path === p.path;
+    const { current, dispose } = this.staleness.create(this.destroyRef, { valid: () => this.photo()?.path === p.path });
     try {
       const m = await this.loadCaptureDateDialog();
       if (!current()) return;
       const data = { paths: [p.path], count: 1, manuallySet: p.date_manually_set === 1 };
       const ref = this.dialog.open(m.CaptureDateDialogComponent, { width: '95vw', maxWidth: '760px', data });
       opened = true;
-      ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef), finalize(() => navigation.unsubscribe())).subscribe((result: import('./capture-date-dialog.component').CaptureDateResult | undefined) => {
+      ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef), finalize(dispose)).subscribe((result: import('./capture-date-dialog.component').CaptureDateResult | undefined) => {
         if (current() && result !== undefined) this.applyConfirmed(p, result);
       });
     } finally {
-      if (!opened) navigation.unsubscribe();
+      if (!opened) dispose();
     }
   }
 
   protected loadGpsDialog() { return import('./gps-edit-dialog.component'); }
 
   protected async editGps(p: Photo): Promise<void> {
-    const identity = this.auth.identity();
-    const url = this.router.url;
-    let navigated = false;
     let opened = false;
-    const navigation = this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(event => {
-      if (event instanceof NavigationStart) navigated = true;
-    });
-    const current = () => !navigated && !this.destroyRef.destroyed
-      && this.auth.identity() === identity && this.auth.isEdition() && this.router.url === url && this.photo()?.path === p.path;
+    const { current, dispose } = this.staleness.create(this.destroyRef, { valid: () => this.photo()?.path === p.path });
     try {
       const m = await this.loadGpsDialog();
       if (!current()) return;
@@ -1482,14 +1447,14 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
         },
       });
       opened = true;
-      ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef), finalize(() => navigation.unsubscribe())).subscribe((result: { gps_latitude: number | null; gps_longitude: number | null; gps_manually_set?: number } | undefined) => {
+      ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef), finalize(dispose)).subscribe((result: { gps_latitude: number | null; gps_longitude: number | null; gps_manually_set?: number } | undefined) => {
         if (current() && result !== undefined) {
           this.applyConfirmed(p, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: result.gps_manually_set ?? 1 });
           if (this.photo()?.path === p.path) this.locationName.set('');
         }
       });
     } finally {
-      if (!opened) navigation.unsubscribe();
+      if (!opened) dispose();
     }
   }
 

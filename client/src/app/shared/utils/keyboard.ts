@@ -1,13 +1,14 @@
 /**
- * True when a keyboard event originates from a text-entry context (input,
- * textarea, native select, or contenteditable), where global single-key
- * shortcuts must not fire. Shared by the gallery grid and the burst-culling
- * darkroom so both gate keyboard shortcuts the same way.
+ * True when a keyboard event belongs to text entry or a control with keyboard
+ * navigation/typeahead (including ARIA menus, selects and comboboxes), where
+ * page-level shortcuts must not fire. Shared by the gallery, photo page and
+ * darkroom so they gate keyboard shortcuts the same way.
  */
 export function isTypingContext(event: Event): boolean {
   const target = event.target as HTMLElement | null;
   if (!target) return false;
-  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable;
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable
+    || !!target.closest?.('[role="combobox"], [role="listbox"], [role="option"], [role="menu"], [role="menubar"], [role^="menuitem"]');
 }
 
 /**
@@ -17,4 +18,14 @@ export function isTypingContext(event: Event): boolean {
 export function isControlActivation(event: Event): boolean {
   const target = event.target as HTMLElement | null;
   return !!target?.closest?.('button, a[href], [role="menuitem"], [role="option"]');
+}
+
+/**
+ * True when a page-level letter/digit shortcut must stand down: focus is in a typing
+ * context, a modifier is held, or a dialog / bottom sheet is open.
+ */
+export function isPageShortcutBlocked(event: KeyboardEvent): boolean {
+  return isTypingContext(event)
+    || event.ctrlKey || event.metaKey || event.altKey
+    || !!document.querySelector('mat-dialog-container, mat-bottom-sheet-container');
 }

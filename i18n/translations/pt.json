@@ -210,7 +210,7 @@
     "burst_set": "Abrir grupo de rajada",
     "sequence_set": "Abrir bracket/panorama",
     "open_detail": "Abrir página da foto",
-    "key_hint": "1-5 avaliar · F favorita · X rejeitar · Space selecionar · Enter abrir"
+    "key_hint": "1-5 avaliar · F favorita · X rejeitar · Espaço selecionar · Enter abrir"
   },
   "notifications": {
     "copied": "Copiado!",
@@ -1024,7 +1024,8 @@
     "folders": "Pastas",
     "map": "Mapa",
     "capsules": "Cápsulas",
-    "junk_sweep": "Limpeza"
+    "junk_sweep": "Limpeza",
+    "help": "Ajuda"
   },
   "auth": {
     "logout": "Sair",
@@ -1638,7 +1639,10 @@
       "sequences": "A detetar bracketings",
       "tagging": "Etiquetagem",
       "vec": "Indexação",
-      "done": "Concluído"
+      "done": "Concluído",
+      "moments": "A detetar momentos",
+      "junk": "A detetar fotografias indesejadas",
+      "recompute": "A recalcular pontuações"
     },
     "title": "Escanear Fotos",
     "start_button": "Iniciar Escaneamento",
@@ -1728,7 +1732,7 @@
     "no_faces": "Nenhum rosto encontrado para esta pessoa",
     "split_done": "Pessoa dividida",
     "split_error": "Falha ao dividir a pessoa",
-    "empty_hint": "As pessoas vêm dos rostos que você atribui na página da foto (modo edição). Abra qualquer foto com rostos e escolha Atribuir a uma pessoa para criar a primeira."
+    "empty_hint": "As pessoas vêm dos rostos que você atribui na página da foto (modo edição). Abra qualquer foto com rostos e escolha Atribuir rosto à pessoa para criar a primeira."
   },
   "person_selector": {
     "create_new": "Criar nova pessoa",
@@ -2493,6 +2497,8 @@
     "gps": {
       "online_query": "Endereço ou estabelecimento",
       "online_notice": "A pesquisa online envia esta consulta ao fornecedor Photon configurado. Os locais guardados e as coordenadas funcionam offline. Selecionar um resultado mostra uma prévia; Guardar aplica-o.",
+      "osm_attribution": "© Colaboradores do OpenStreetMap",
+      "opens_new_tab": "(abre em uma nova guia)",
       "online_search": "Pesquisar online",
       "online_disabled": "A pesquisa online está desativada.",
       "online_loading": "A pesquisar online…",
@@ -2521,8 +2527,10 @@
       "batch_title": "Definir localização",
       "only_missing": "Apenas fotos sem localização",
       "preview_batch": "Pré-visualizar alterações",
-      "batch_preview": "{changed} fotos serão alteradas; {skipped} ignoradas.",
-      "batch_applied": "{changed} fotos atualizadas; {skipped} ignoradas.",
+      "batch_preview": "{changed} foto será alterada; {skipped} ignoradas.",
+      "batch_preview_plural": "{changed} fotos serão alteradas; {skipped} ignoradas.",
+      "batch_applied": "{changed} foto atualizada; {skipped} ignoradas.",
+      "batch_applied_plural": "{changed} fotos atualizadas; {skipped} ignoradas.",
       "batch_error": "Não foi possível aplicar a localização. Selecione no máximo 1000 fotos e repita a prévia; a seleção ou o local salvo pode ter mudado.",
       "batch_limit": "Selecione no máximo 1000 fotos. Sem proteção, as localizações existentes são substituídas. Os arquivos originais não são alterados.",
       "batch_hint": "Escolha uma localização e confira as alterações antes de salvar a seleção."
@@ -2602,7 +2610,12 @@
       "refresh": "Atualizar estado",
       "recent": "Exportações recentes de sidecars",
       "none": "Nenhuma exportação recente de sidecars.",
-      "read_failed": "Não foi possível ler o progresso. Atualize o estado para verificar novamente."
+      "read_failed": "Não foi possível ler o progresso. Atualize o estado para verificar novamente.",
+      "errors": {
+        "metadata_repair": "Os metadados existentes precisam ser reparados antes de exportar.",
+        "write_failed": "Não foi possível gravar os metadados. Verifique os logs do servidor.",
+        "stopped": "A exportação parou inesperadamente. Verifique os logs do servidor e tente novamente as fotos restantes."
+      }
     }
   },
   "undo": {
@@ -2875,7 +2888,7 @@
     "before": "Antes",
     "after": "Depois",
     "error": "Não foi possível concluir a ação. Verifique o acesso e os ficheiros e volte a pré-visualizar.",
-    "reset_hint": "A data do ficheiro remove a correção manual. Se o ficheiro não tiver data, a data de captura fica desconhecida.",
+    "reset_hint": "O botão «Usar data do ficheiro» remove a correção manual. Se o ficheiro não tiver data, a data de captura fica desconhecida.",
     "use_file": "Usar data do ficheiro",
     "preview": "Pré-visualizar",
     "apply": "Aplicar correção",
@@ -2907,6 +2920,8 @@
     "yes": "Sim",
     "no": "Não",
     "unknown": "Desconhecido",
-    "photo_count": "Fotos: {count}"
+    "photo_count": "Fotos: {count}",
+    "field": "Campo",
+    "entry_action": "{action} · {kind} · {date} · #{id}"
   }
 }

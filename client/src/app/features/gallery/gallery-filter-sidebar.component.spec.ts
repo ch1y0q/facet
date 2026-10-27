@@ -9,6 +9,7 @@ import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { GalleryStore } from './gallery.store';
 import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
+import { I18N } from '../../core/i18n/keys';
 import { I18nService } from '../../core/services/i18n.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AlbumService } from '../../core/services/album.service';
@@ -221,6 +222,14 @@ describe('GalleryFilterSidebarComponent', () => {
       const mockStore = (component as any).store;
       mockStore.filters.set({ ...mockStore.filters(), favorites_only: true, is_monochrome: true, hide_rejected: true });
       expect(component.sectionActiveCounts()['refine']).toBe(3);
+    });
+
+    it('counts manual_faces_need_review once in the refine section', () => {
+      const mockStore = (component as any).store;
+      mockStore.filters.set({ ...mockStore.filters(), hide_rejected: false });
+      const before = component.sectionActiveCounts()['refine'];
+      mockStore.filters.set({ ...mockStore.filters(), manual_faces_need_review: true });
+      expect(component.sectionActiveCounts()['refine']).toBe(before + 1);
     });
 
     it('counts active metric filters by min/max key', () => {
@@ -447,6 +456,59 @@ describe('GalleryFilterSidebarComponent', () => {
       thumb = fixture.nativeElement.querySelector('mat-slider input');
     });
 
+    for (const [value, label] of [
+      ['undecided', I18N.review.needs_review], ['kept', I18N.review.kept], ['rejected', I18N.review.rejected],
+    ] as const) {
+      it(`selects ${value}, blocks Hide rejected, and restores the toggle after All`, () => {
+        const store = TestBed.inject(GalleryStore);
+        store.filters.update(filters => ({ ...filters, review_status: '', hide_rejected: true }));
+        fixture.detectChanges();
+        const select = fixture.debugElement.queryAll(By.directive(MatSelect))
+          .find(el => el.nativeElement.closest('mat-form-field')?.textContent.includes(I18N.review.status))!
+          .injector.get(MatSelect);
+        const container = TestBed.inject(OverlayContainer).getContainerElement();
+        const hideRejected = () => Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('mat-checkbox'))
+          .find(el => el.textContent?.includes(I18N.gallery.hide_rejected))!
+          .querySelector('input') as HTMLInputElement;
+        const choose = (text: string) => {
+          select.open();
+          fixture.detectChanges();
+          const options = Array.from(container.querySelectorAll('mat-option'));
+          expect(options.map(option => option.textContent?.trim())).toEqual([
+            I18N.review.all, I18N.review.needs_review, I18N.review.kept, I18N.review.rejected,
+          ]);
+          const option = options.find(el => el.textContent?.trim() === text) as HTMLElement;
+          option.click();
+          fixture.detectChanges();
+          expect(select.panelOpen).toBe(false);
+        };
+
+        // Review browsing remains available to a read-only viewer.
+        expect(TestBed.inject(AuthService).isEdition()).toBe(false);
+        expect(hideRejected().disabled).toBe(false);
+        expect(hideRejected().checked).toBe(true);
+        choose(label);
+        expect(mockStore['updateFilter']).toHaveBeenLastCalledWith('review_status', value);
+        store.filters.update(filters => ({ ...filters, review_status: value }));
+        fixture.detectChanges();
+        expect(select.value).toBe(value);
+        expect(hideRejected().disabled).toBe(true);
+        expect(hideRejected().checked).toBe(true);
+        vi.mocked(store.updateFilter).mockClear();
+        hideRejected().click();
+        expect(store.updateFilter).not.toHaveBeenCalled();
+
+        choose(I18N.review.all);
+        expect(store.updateFilter).toHaveBeenLastCalledWith('review_status', '');
+        store.filters.update(filters => ({ ...filters, review_status: '' }));
+        fixture.detectChanges();
+        expect(hideRejected().disabled).toBe(false);
+        expect(hideRejected().checked).toBe(true);
+        hideRejected().click();
+        expect(store.updateFilter).toHaveBeenLastCalledWith('hide_rejected', false);
+      });
+    }
+
     it('offers face naming in People with no people and semantic search disabled', () => {
       TestBed.inject(GalleryStore).config.update(config => config ? {
         ...config, features: { ...config.features, show_semantic_search: false },
@@ -458,6 +520,19 @@ describe('GalleryFilterSidebarComponent', () => {
       expect(control.closest('mat-expansion-panel')?.textContent).toContain('gallery.sidebar.persons');
       (control.querySelector('input') as HTMLInputElement).click();
       expect(mockStore['updateFilter']).toHaveBeenCalledWith('faces_need_names', true);
+    });
+
+    it.each([false, true])('renders the manual-face review checkbox only for edition (edition=%s)', edition => {
+      const auth = TestBed.inject(AuthService);
+      vi.mocked(auth.isEdition).mockReturnValue(edition);
+      fixture.detectChanges();
+      const controls = Array.from(fixture.nativeElement.querySelectorAll('mat-checkbox')) as HTMLElement[];
+      const control = controls.find(el => el.textContent?.includes('gallery.manual_faces_need_review'));
+      expect(!!control).toBe(edition);
+      if (control) {
+        (control.querySelector('input') as HTMLInputElement).click();
+        expect(mockStore['updateFilter']).toHaveBeenCalledWith('manual_faces_need_review', true);
+      }
     });
 
     it.each([false, true])('describes face naming using actions available in edition=%s', edition => {
@@ -478,6 +553,23 @@ describe('GalleryFilterSidebarComponent', () => {
       expect(select.panelOpen).toBe(true);
       fixture.componentInstance.closeOverlays();
       expect(select.panelOpen).toBe(false);
+    });
+
+    it.each(['kept', 'undecided', 'rejected'] as const)('disables rejected-only while review status is %s and restores it after clearing', status => {
+      const filters = TestBed.inject(GalleryStore).filters;
+      filters.update(current => ({ ...current, review_status: status, show_rejected: false }));
+      fixture.detectChanges();
+      const control = (Array.from(fixture.nativeElement.querySelectorAll('mat-checkbox')) as HTMLElement[])
+        .find(element => element.textContent?.includes('rating.show_rejected'))!;
+      const input = control.querySelector('input') as HTMLInputElement;
+      expect(input.disabled).toBe(true);
+      input.click();
+      expect(mockStore['updateFilter']).not.toHaveBeenCalled();
+      filters.update(current => ({ ...current, review_status: '' }));
+      fixture.detectChanges();
+      expect(input.disabled).toBe(false);
+      input.click();
+      expect(mockStore['updateFilter']).toHaveBeenCalledExactlyOnceWith('show_rejected', true);
     });
 
     it('offers no geolocation without the map feature and forwards the checkbox', () => {

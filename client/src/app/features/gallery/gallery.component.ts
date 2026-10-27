@@ -37,7 +37,8 @@ import { ActivatedRoute, NavigationStart, Router, RouterOutlet } from '@angular/
 import { filter, firstValueFrom } from 'rxjs';
 import { GalleryStore, BatchResult, REVIEW_RESUME_NAVIGATION } from './gallery.store';
 import { Photo } from '../../shared/models/photo.model';
-import { isTypingContext } from '../../shared/utils/keyboard';
+import { isPageShortcutBlocked, isTypingContext } from '../../shared/utils/keyboard';
+import { closeOverlayDirectives } from '../../shared/utils/overlays';
 import { PHOTO_PATH } from '../../core/gallery-reuse.strategy';
 import { UndoService } from '../../core/services/undo.service';
 import { SequenceOverrideService, SequenceKind } from '../../core/services/sequence-override.service';
@@ -48,6 +49,7 @@ import { isBracketLadderRejection } from '../../shared/utils/sequence-ladder';
 import { IsSelectedPipe } from '../../shared/pipes/selection.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindLabelPipe } from '../../shared/pipes/photo-set-kind.pipe';
 import { AuthService } from '../../core/services/auth.service';
+import { StalenessGuardFactory } from '../../core/services/staleness-guard.service';
 import { ScanService } from '../../core/services/scan.service';
 import { useDesktopSignal, DETAILS_RAIL_MIN_WIDTH_PX } from '../../shared/utils/media-query';
 import { downloadAll } from '../../shared/utils/download';
@@ -88,6 +90,14 @@ function assertNever(action: never): never {
 }
 
 const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
+
+/** Where the focused card sat in the viewport when the gallery parked. */
+interface ReturnAnchor { offset: number; width: number; height: number }
+
+/** What the gallery restores on return; an anchor implies a photo path to re-anchor to. */
+type ReturnTarget = { scroll: number; focus: Element | null } & (
+  | { path: string | null; anchor: null }
+  | { path: string; anchor: ReturnAnchor });
 
 @Component({
   selector: 'app-gallery',
@@ -243,8 +253,10 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
           @if (store.reviewProgress(); as progress) {
           <section class="mx-2 md:mx-4 mt-2 px-3 py-2 rounded-md bg-[var(--mat-sys-surface-container-high)] text-sm" [attr.aria-label]="I18N.gallery.review_progress.title | translate">
             <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <span class="flex-1">{{ I18N.gallery.review_progress.counts | translate:{ undecided: progress.undecided, kept: progress.kept, rejected: progress.rejected } }}</span>
-              <span>{{ I18N.gallery.review_progress.complete | translate:{ percent: store.reviewPercent(), total: progress.total } }}</span>
+              <span class="flex-1 inline-flex flex-wrap gap-x-4 gap-y-1" role="status" aria-live="polite" aria-atomic="true">
+                <span>{{ I18N.gallery.review_progress.counts | translate:{ undecided: progress.undecided, kept: progress.kept, rejected: progress.rejected } }}</span>
+                <span>{{ I18N.gallery.review_progress.complete | translate:{ percent: store.reviewPercent(), total: progress.total } }}</span>
+              </span>
               @if (progress.undecided > 0 && store.filters().review_status !== 'undecided') {
                 <button mat-button (click)="store.startReviewQueue()">{{ I18N.gallery.review_progress.start | translate }}</button>
               }
@@ -823,10 +835,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly outlet = inject(RouterOutlet, { optional: true });
   private readonly changeDetector = inject(ChangeDetectorRef);
   private parked = false;
-  // Detaching loses the DOM scroll position and focus.
   private resumeNavigation = 0;
-  private returnTo: { scroll: number; focus: Element | null; path: string | null;
-    anchor: { offset: number; width: number; height: number } | null } | null = null;
+  // Detaching loses the DOM scroll position and focus.
+  private returnTo: ReturnTarget | null = null;
   private readonly api = inject(ApiService);
   private readonly pageHelp = inject(PageHelpService);
   private readonly headerSlot = inject(HeaderSlotService);
@@ -851,12 +862,14 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly selectionBar = viewChild<ElementRef<HTMLElement>>('selectionBar');
   private readonly noticeHost = viewChild<ElementRef<HTMLElement>>('noticeHost');
   private readonly destroyRef = inject(DestroyRef);
+  private readonly staleness = inject(StalenessGuardFactory);
   private readonly injector = inject(Injector);
   private readonly document = inject(DOCUMENT);
   private readonly scrollContent = viewChild(MatSidenavContent);
   private readonly sidenavContainer = viewChild(MatSidenavContainer);
   private readonly ownTooltips = viewChildren(MatTooltip);
   private readonly menus = viewChildren(MatMenuTrigger);
+  private readonly photoMenu = viewChild(GalleryPhotoMenuComponent);
   private readonly selects = viewChildren(MatSelect);
   private readonly cards = viewChildren(PhotoCardComponent);
 
@@ -1267,10 +1280,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     return buildMosaicRows(photos, width, this.store.cardWidth() || 168, GalleryComponent.ROW_GAP);
   });
 
-  private gpsDialogOwnerDestroyed = false;
-
   constructor() {
-    this.destroyRef.onDestroy(() => { this.gpsDialogOwnerDestroyed = true; });
     afterNextRender(() => {
       this.isTouchDevice.set(window.matchMedia('(hover: none)').matches);
       this.touchOnly.set(window.matchMedia('(hover: none) and (pointer: coarse)').matches);
@@ -1295,11 +1305,11 @@ export class GalleryComponent implements OnInit, OnDestroy {
       // The photo the focused card belongs to, or the cursor's when focus is elsewhere.
       const path = Number.isInteger(index) ? this.store.photos()[index]?.path ?? null : this.activePath();
       const viewport = this.scrollContent()?.getElementRef().nativeElement.getBoundingClientRect();
-      const anchorIndex = path === null ? -1 : this.store.photos().findIndex(photo => photo.path === path);
-      const card = anchorIndex >= 0 ? document.querySelector(`[data-pidx="${anchorIndex}"]`)?.getBoundingClientRect() : null;
-      const anchor = viewport && card && viewport.width > 0 && viewport.height > 0
-        ? { offset: card.top - viewport.top, width: viewport.width, height: viewport.height } : null;
-      this.returnTo = { scroll: this.scrollContent()?.measureScrollOffset('top') ?? 0, focus, path, anchor };
+      const card = path === null ? null : this.cardRect(this.indexOfPath(path));
+      const scroll = this.scrollContent()?.measureScrollOffset('top') ?? 0;
+      this.returnTo = path !== null && viewport && card && viewport.width > 0 && viewport.height > 0
+        ? { scroll, focus, path, anchor: { offset: card.top - viewport.top, width: viewport.width, height: viewport.height } }
+        : { scroll, focus, path, anchor: null };
     });
     this.outlet?.detachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
       if (component !== this) return;
@@ -1314,9 +1324,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
         this.changeDetector.detectChanges();
       }
       // A tooltip left showing would sit over the photo page and swallow its first Escape.
-      for (const tooltip of this.ownTooltips()) tooltip.hide(0);
-      for (const menu of this.menus()) menu.closeMenu();
-      for (const select of this.selects()) select.close();
+      closeOverlayDirectives(this.ownTooltips(), this.menus(), this.selects());
+      // Context-menu triggers are separate from MatMenuTrigger; all cards share this panel.
+      this.photoMenu()?.menu().closed.emit();
       for (const card of this.cards()) card.closeOverlays();
       this.filterSidebar()?.closeOverlays();
       this.setGalleryChrome(false);
@@ -1336,13 +1346,13 @@ export class GalleryComponent implements OnInit, OnDestroy {
         // The photo page's arrows replace its URL, so the page being left names the photo viewed last.
         const left = this.router.currentNavigation()?.previousNavigation?.finalUrl;
         const viewed = left?.root.children['primary']?.segments[0]?.path === PHOTO_PATH ? left.queryParamMap.get('path') : null;
-        const viewedAt = viewed && viewed !== back.path ? this.store.photos().findIndex(p => p.path === viewed) : -1;
+        const viewedAt = viewed && viewed !== back.path ? this.indexOfPath(viewed) : -1;
         if (viewedAt >= 0) {
           this.setCursor(viewedAt);
           this.focusCard(viewedAt);
         } else {
           // The detach blurred the focused card and `onGridFocusOut` cleared the cursor, so put it back first.
-          const at = back.path === null ? -1 : this.store.photos().findIndex(p => p.path === back.path);
+          const at = back.path === null ? -1 : this.indexOfPath(back.path);
           this.setCursor(at);
           const onCard = !!back.focus?.closest('[data-pidx]');
           // A card whose photo is gone is about to be destroyed: do not focus it.
@@ -1350,7 +1360,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
             back.focus.focus({ preventScroll: true });
           }
           if (at >= 0 && !onCard) this.restoreCursorFocus();
-          if (at >= 0 && back.anchor) this.restoreReturnAnchor(back.path!, back.anchor);
+          if (at >= 0 && back.anchor) this.restoreReturnAnchor(back.path, back.anchor);
         }
       }
       this.refreshSideData();
@@ -1465,8 +1475,17 @@ export class GalleryComponent implements OnInit, OnDestroy {
     }
   }
 
+  private indexOfPath(path: string): number {
+    return this.store.photos().findIndex(photo => photo.path === path);
+  }
+
+  /** The rendered card's rect for a photo index, or null when it is not in the DOM. */
+  private cardRect(index: number): DOMRect | null {
+    return index >= 0 ? document.querySelector(`[data-pidx="${index}"]`)?.getBoundingClientRect() ?? null : null;
+  }
+
   /** Re-anchor after drawer margins and card heights settle, including parked resizes. */
-  private restoreReturnAnchor(path: string, anchor: { offset: number; width: number; height: number }): void {
+  private restoreReturnAnchor(path: string, anchor: ReturnAnchor): void {
     const navigation = this.resumeNavigation;
     let interacted = false;
     const veto = () => { interacted = true; };
@@ -1482,14 +1501,14 @@ export class GalleryComponent implements OnInit, OnDestroy {
         if (interacted || this.parked || this.destroyRef.destroyed || navigation !== this.resumeNavigation) return;
         // Responsive DOM removal can passively clear the cursor; explicit new input vetoes restoration.
         if (this.activePath() !== null && this.activePath() !== path) return;
-        const index = this.store.photos().findIndex(photo => photo.path === path);
+        const index = this.indexOfPath(path);
         if (index < 0) return;
         const focus = document.activeElement;
         if (focus && focus !== document.body && focus !== document.documentElement
           && !focus.closest(`[data-pidx="${index}"]`)) return;
         const content = this.scrollContent();
         const viewport = content?.getElementRef().nativeElement.getBoundingClientRect();
-        const card = document.querySelector(`[data-pidx="${index}"]`)?.getBoundingClientRect();
+        const card = this.cardRect(index);
         if (!content || !viewport || !card || viewport.height <= 0) return;
         const resized = viewport.width !== anchor.width || viewport.height !== anchor.height;
         const offset = resized ? Math.max(0, Math.min(anchor.offset, viewport.height - card.height)) : anchor.offset;
@@ -2175,21 +2194,16 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   async openOrganizationHistory(): Promise<void> {
     if (!this.auth.isEdition()) return;
-    const owner = this.auth.identity();
-    const url = this.router.url;
-    let navigated = false;
-    const navigation = this.router.events.subscribe(event => { if (event instanceof NavigationStart) navigated = true; });
+    const liveness = this.staleness.create(this.destroyRef);
     try {
       const { OrganizationHistoryDialogComponent } = await this.loadOrganizationHistoryDialog();
-      if (this.destroyRef.destroyed || navigated || this.router.url !== url || this.auth.identity() !== owner || !this.auth.isEdition()) return;
+      if (!liveness.current()) return;
       this.dialog.open(OrganizationHistoryDialogComponent, { width: '95vw', maxWidth: '820px' });
-    } finally { navigation.unsubscribe(); }
+    } finally { liveness.dispose(); }
   }
 
   async openCaptureDateDialog(): Promise<void> {
     if (!this.auth.isEdition()) return;
-    const owner = this.auth.status();
-    const url = this.router.url;
     const viewScoped = this.viewScoped();
     const data = {
       paths: [...this.selectedPaths()],
@@ -2198,33 +2212,28 @@ export class GalleryComponent implements OnInit, OnDestroy {
       count: this.selectionCount(),
     };
     if (!viewScoped && !data.paths.length) return;
-    let navigated = false;
-    const navigation = this.router.events.subscribe(event => { if (event instanceof NavigationStart) navigated = true; });
+    const liveness = this.staleness.create(this.destroyRef, { track: 'status' });
     try {
       const { CaptureDateDialogComponent } = await import('../photo-detail/capture-date-dialog.component');
-      if (this.destroyRef.destroyed || navigated || this.router.url !== url || this.auth.status() !== owner || !this.auth.isEdition()) return;
+      if (!liveness.current()) return;
       this.dialog.open(CaptureDateDialogComponent, { width: '95vw', maxWidth: '760px', data });
-    } finally { navigation.unsubscribe(); }
+    } finally { liveness.dispose(); }
   }
 
   async openBatchGpsDialog(): Promise<void> {
     if (!this.auth.isEdition() || !this.selectionCount()) return;
-    const owner = this.auth.identity();
-    const url = this.router.url;
-    let navigated = false;
-    const current = () => !this.gpsDialogOwnerDestroyed && !navigated && this.router.url === url && this.auth.identity() === owner && this.auth.isEdition();
     const selectionIdentity = () => JSON.stringify({
       view: this.viewScoped(), paths: [...this.selectedPaths()].sort(),
       exclude: [...this.excludedPaths()].sort(), filters: this.store.filterPayload(),
     });
     const originalSelection = selectionIdentity();
-    const onBatchApplied = () => {
-      if (current() && selectionIdentity() === originalSelection) this.store.clearSelection();
-    };
     const batch = this.viewScoped()
       ? { filters: structuredClone(this.store.filterPayload()), exclude: [...this.excludedPaths()] }
       : { photo_paths: [...this.selectedPaths()] };
-    const navigation = this.router.events.subscribe(event => { if (event instanceof NavigationStart) navigated = true; });
+    const { current, dispose } = this.staleness.create(this.destroyRef);
+    const onBatchApplied = () => {
+      if (current() && selectionIdentity() === originalSelection) this.store.clearSelection();
+    };
     try {
       const { GpsEditDialogComponent } = await import('../photo-detail/gps-edit-dialog.component');
       if (!current()) return;
@@ -2232,7 +2241,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
         width: '95vw', maxWidth: '640px',
         data: { path: '', filename: this.i18n.t(I18N.photo_detail.gps.batch_title), lat: null, lng: null, batch, onBatchApplied },
       });
-    } finally { navigation.unsubscribe(); }
+    } finally { dispose(); }
   }
 
   /** Bulk add/remove of one manual tag. The dialog owns the request; the list is
@@ -2363,7 +2372,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (!res) return;
     // `removed_missing` rows are as gone as trashed ones -- the grid must not
     // keep a tile for a row the server just reconciled away.
-    const removed = [...res.deleted, ...(res.removed_missing ?? [])];
+    const removed = [...res.deleted, ...res.removed_missing];
     this.store.removePhotos(removed);
     // `removePhotos` already prunes the deleted paths out of the selection.
     if (!explicit) this.clearSelection();
@@ -2545,11 +2554,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
    *  overlay, not a MatDialog, so the dialog query below cannot see it. */
   protected onGalleryShortcut(event: KeyboardEvent): void {
     if (this.parked || this.store.slideshowActive()) return;
-    const target = event.target as HTMLElement | null;
-    if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
-    if (target?.isContentEditable) return;
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
-    if (document.querySelector('mat-dialog-container, mat-bottom-sheet-container')) return;
+    if (isPageShortcutBlocked(event)) return;
 
     switch (event.key) {
       case '/': {

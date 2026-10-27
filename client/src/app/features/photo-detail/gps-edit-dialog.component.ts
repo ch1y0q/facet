@@ -1,5 +1,5 @@
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { NavigationStart, Router } from '@angular/router';
+import { HttpContext } from '@angular/common/http';
 import { Component, inject, signal, computed, effect, viewChild, ElementRef, DestroyRef, afterNextRender, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { firstValueFrom, Subject, takeUntil } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
+import { StalenessGuardFactory } from '../../core/services/staleness-guard.service';
 import * as L from 'leaflet';
 import { createLeafletMap } from '../../shared/leaflet';
 import type { components } from '../../core/api/schema';
@@ -16,7 +17,10 @@ import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { FixedPipe } from '../../shared/pipes/fixed.pipe';
+import { normalizeOnlineQuery } from './online-query';
+import { PluralKeyPipe } from '../../shared/pipes/plural-key.pipe';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
+import { HANDLE_PLACE_SEARCH_ERRORS_LOCALLY } from '../../core/utils/place-search-error.util';
 
 export interface GpsEditDialogData {
   path: string;
@@ -37,7 +41,7 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
 @Component({
   selector: 'app-gps-edit-dialog',
   standalone: true,
-  imports: [FormsModule, MatDialogModule, MatButtonModule, MatIconModule, MatSnackBarModule, TranslatePipe, FixedPipe],
+  imports: [FormsModule, MatDialogModule, MatButtonModule, MatIconModule, MatSnackBarModule, TranslatePipe, FixedPipe, PluralKeyPipe],
   changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="!flex items-center gap-2">
@@ -51,10 +55,11 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
       </label>
       <label class="block text-sm mb-2">
         {{ I18N.photo_detail.gps.online_query | translate }}
-        <input class="block w-full border rounded p-2 bg-transparent" type="search" maxlength="200" [ngModel]="onlineQuery()" (ngModelChange)="setOnlineQuery($event)">
+        <!-- Native maxlength counts UTF-16 units; the request guard limits code points to 200. -->
+        <input class="block w-full border rounded p-2 bg-transparent" type="search" maxlength="400" [ngModel]="onlineQuery()" (ngModelChange)="setOnlineQuery($event)">
       </label>
       <p class="text-xs mb-2">{{ I18N.photo_detail.gps.online_notice | translate }}</p>
-      <p class="text-xs mb-2"><a href="https://photon.komoot.io" target="_blank" rel="noopener noreferrer">Photon</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a></p>
+      <p class="text-xs mb-2"><a href="https://photon.komoot.io" target="_blank" rel="noopener noreferrer">Photon<span class="sr-only"> {{ I18N.photo_detail.gps.opens_new_tab | translate }}</span></a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">{{ I18N.photo_detail.gps.osm_attribution | translate }}<span class="sr-only"> {{ I18N.photo_detail.gps.opens_new_tab | translate }}</span></a></p>
       <button mat-button (click)="searchOnline()" [disabled]="saving() || onlineBusy() || !onlineQueryValid() || !onlineEnabled() || !auth.isEdition()">{{ I18N.photo_detail.gps.online_search | translate }}</button>
       @if (!onlineEnabled()) { <p role="status">{{ I18N.photo_detail.gps.online_disabled | translate }}</p> }
       @if (onlineBusy()) { <p role="status">{{ I18N.photo_detail.gps.online_loading | translate }}</p> }
@@ -120,7 +125,7 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
         <label class="flex items-center gap-2 mt-3"><input type="checkbox" [ngModel]="onlyMissing()" (ngModelChange)="onlyMissing.set($event)">{{ I18N.photo_detail.gps.only_missing | translate }}</label>
         <p class="text-sm mt-2">{{ I18N.photo_detail.gps.batch_limit | translate }}</p>
         @if (previewCurrent()) { @if (batchPreview(); as preview) {
-          <p role="status" class="mt-2">{{ I18N.photo_detail.gps.batch_preview | translate:{ changed: preview.result.changed, skipped: preview.result.skipped } }}</p>
+          <p role="status" class="mt-2">{{ preview.result.changed | pluralKey:I18N.photo_detail.gps.batch_preview:I18N.photo_detail.gps.batch_preview_plural | translate:{ changed: preview.result.changed, skipped: preview.result.skipped } }}</p>
         } }
       }
       @if (saveError()) { <p role="alert">{{ saveError() | translate }}</p> }
@@ -140,15 +145,13 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
 })
 export class GpsEditDialogComponent {
   protected readonly I18N = i18nKeys();
-  readonly auth = inject(AuthService);
-  private readonly router = inject(Router);
+  protected readonly auth = inject(AuthService);
   private readonly owner = this.auth.identity();
-  private readonly url = this.router.url;
-  private navigated = false;
   private readonly api = inject(ApiService);
   private readonly store = inject(GalleryStore);
   private readonly dialogRef = inject(MatDialogRef<GpsEditDialogComponent>);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly staleness = inject(StalenessGuardFactory).create(this.destroyRef, { onNavigate: () => this.invalidateOwner() });
   private readonly snackBar = inject(MatSnackBar);
   private readonly i18n = inject(I18nService);
   readonly data: GpsEditDialogData = inject(MAT_DIALOG_DATA);
@@ -179,7 +182,7 @@ export class GpsEditDialogComponent {
   readonly onlineSearched = signal(false);
   readonly onlineError = signal('');
   readonly onlineEnabled = computed(() => this.store.config()?.place_search_enabled ?? false);
-  readonly onlineQueryValid = computed(() => Array.from(this.onlineQuery().trim()).length >= 3 && Array.from(this.onlineQuery().trim()).length <= 200);
+  readonly onlineQueryValid = computed(() => normalizeOnlineQuery(this.onlineQuery()) !== null);
   private onlineSequence = 0;
   private readonly cancelOnline = new Subject<void>();
   readonly placeName = signal('');
@@ -217,13 +220,17 @@ export class GpsEditDialogComponent {
   /** Same session and page as at opening. A committed write is still published
    *  after a plain Cancel/Escape; only a later session or navigation drops it. */
   private sessionCurrent(): boolean {
-    return !this.navigated && this.auth.identity() === this.owner && this.auth.isEdition() && this.router.url === this.url;
+    return this.staleness.session();
   }
 
-  private invalidateOwner(): void {
+  private dismiss(): void {
     this.dismissed = true;
     this.batchPreview.set(null);
     this.invalidateOnline();
+  }
+
+  private invalidateOwner(): void {
+    this.dismiss();
     this.places.set([]);
     this.recent.set([]);
     this.dialogRef.close();
@@ -233,11 +240,8 @@ export class GpsEditDialogComponent {
     effect(() => {
       if (this.auth.identity() !== this.owner || !this.auth.isEdition()) this.invalidateOwner();
     });
-    this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
-      if (event instanceof NavigationStart) { this.navigated = true; this.invalidateOwner(); }
-    });
     effect(() => { this.auth.status(); this.invalidateOnline(); });
-    this.dialogRef.beforeClosed().pipe(takeUntilDestroyed()).subscribe(() => { this.dismissed = true; this.batchPreview.set(null); this.invalidateOnline(); });
+    this.dialogRef.beforeClosed().pipe(takeUntilDestroyed()).subscribe(() => this.dismiss());
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;
       this.invalidateOnline();
@@ -269,13 +273,13 @@ export class GpsEditDialogComponent {
   }
 
   async searchOnline(): Promise<void> {
-    if (!this.current() || this.saving() || this.onlineBusy() || !this.onlineQueryValid() || !this.onlineEnabled() || !this.auth.isEdition()) return;
+    if (!this.current() || this.saving() || this.onlineBusy() || !this.onlineQueryValid() || !this.onlineEnabled()) return;
     this.invalidateOnline();
     const sequence = this.onlineSequence;
     const auth = this.auth.status();
     this.onlineBusy.set(true);
     try {
-      const response = await firstValueFrom(this.api.get<components['schemas']['PlaceSearchResponse']>('/places/search', { q: this.onlineQuery().trim() }).pipe(takeUntil(this.cancelOnline)));
+      const response = await firstValueFrom(this.api.get<components['schemas']['PlaceSearchResponse']>('/places/search', { q: normalizeOnlineQuery(this.onlineQuery()) ?? '' }, new HttpContext().set(HANDLE_PLACE_SEARCH_ERRORS_LOCALLY, true)).pipe(takeUntil(this.cancelOnline)));
       if (sequence !== this.onlineSequence || auth !== this.auth.status() || this.destroyed || this.dismissed) return;
       this.onlineResults.set(response.results.filter(result => this.validOnlineResult(result)).slice(0, 5));
       this.onlineSearched.set(true);
@@ -287,12 +291,12 @@ export class GpsEditDialogComponent {
   }
 
   private validOnlineResult(result: components['schemas']['PlaceSearchResult']): boolean {
-    return typeof result?.label === 'string' && result.label.trim().length > 0 && result.label.length <= 600 &&
+    return typeof result?.label === 'string' && result.label.trim().length > 0 && Array.from(result.label).length <= 600 &&
       typeof result.latitude === 'number' && typeof result.longitude === 'number' && Number.isFinite(result.latitude) && Number.isFinite(result.longitude) && Math.abs(result.latitude) <= 90 && Math.abs(result.longitude) <= 180;
   }
 
   selectOnlineResult(result: components['schemas']['PlaceSearchResult']): void {
-    if (!this.current() || this.saving() || !this.auth.isEdition() || this.dismissed || this.destroyed || !this.validOnlineResult(result)) return;
+    if (!this.current() || this.saving()) return;
     this.selectRecent(result);
   }
 
@@ -429,7 +433,7 @@ export class GpsEditDialogComponent {
     finally { if (this.current()) this.placeBusy.set(false); }
   }
 
-  cancel(): void { this.dismissed = true; this.batchPreview.set(null); this.invalidateOnline(); this.dialogRef.close(undefined); }
+  cancel(): void { this.dismiss(); this.dialogRef.close(undefined); }
 
   async useFileLocation(): Promise<void> {
     if (!this.current() || this.saving() || this.placeBusy()) return;
@@ -447,7 +451,7 @@ export class GpsEditDialogComponent {
     } catch {
       if (!this.current()) return;
       this.snackBar.open(this.i18n.t(I18N.notifications.connection_error), '', { duration: 3000 });
-      if (this.current()) this.saveError.set(I18N.photo_detail.gps.save_error);
+      this.saveError.set(I18N.photo_detail.gps.save_error);
     } finally { if (this.current()) this.saving.set(false); }
   }
 
@@ -479,7 +483,7 @@ export class GpsEditDialogComponent {
       if (!this.sessionCurrent()) return;
       this.data.onBatchApplied?.();
       void this.store.refreshPaths(null);
-      this.snackBar.open(this.i18n.t(I18N.photo_detail.gps.batch_applied, { changed: result.changed, skipped: result.skipped }), '', { duration: 4000 });
+      this.snackBar.open(this.i18n.t(result.changed === 1 ? I18N.photo_detail.gps.batch_applied : I18N.photo_detail.gps.batch_applied_plural, { changed: result.changed, skipped: result.skipped }), '', { duration: 4000 });
       if (this.current()) this.dialogRef.close(result);
     } catch {
       if (this.current()) { this.batchPreview.set(null); this.saveError.set(I18N.photo_detail.gps.batch_error); }
@@ -507,7 +511,7 @@ export class GpsEditDialogComponent {
     } catch {
       if (!this.current()) return;
       this.snackBar.open(this.i18n.t(I18N.notifications.connection_error), '', { duration: 3000 });
-      if (this.current()) this.saveError.set(I18N.photo_detail.gps.save_error);
+      this.saveError.set(I18N.photo_detail.gps.save_error);
     } finally { if (this.current()) this.saving.set(false); }
   }
 }

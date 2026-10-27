@@ -1,6 +1,6 @@
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { NavigationStart, Router } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
+import { StalenessGuardFactory } from '../../core/services/staleness-guard.service';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -34,14 +34,15 @@ export type CaptureDateResult = components['schemas']['CaptureDateReset'];
       <p class="text-sm mb-3">{{ I18N.gallery.selection.count | translate:{ count: data.count } }}</p>
       <label class="block mb-3">{{ I18N.capture_date.offset | translate }}
         <input class="block w-full border rounded p-2 bg-transparent" type="number" min="-31622400" max="31622400" step="1"
-          [ngModel]="offset()" (ngModelChange)="setOffset($event)" [disabled]="busy()">
+          [ngModel]="offset()" (ngModelChange)="setOffset($event)" [disabled]="busy()"
+          [attr.aria-invalid]="!valid()" [attr.aria-describedby]="valid() ? null : 'capture-date-offset-error'">
       </label>
-      @if (!valid()) { <p role="alert">{{ I18N.capture_date.invalid | translate }}</p> }
+      @if (!valid()) { <p id="capture-date-offset-error" role="alert">{{ I18N.capture_date.invalid | translate }}</p> }
       @if (result(); as preview) {
         <p role="status" class="my-3">{{ I18N.capture_date.counts | translate:{ changed: preview.changed, skipped: preview.skipped } }}</p>
         <p class="text-sm mb-2">{{ I18N.capture_date.samples | translate }}</p>
         <div class="overflow-x-auto"><table class="w-full text-sm">
-          <thead><tr><th class="text-left p-1">{{ I18N.capture_date.photo | translate }}</th><th class="text-left p-1">{{ I18N.capture_date.before | translate }}</th><th class="text-left p-1">{{ I18N.capture_date.after | translate }}</th></tr></thead>
+          <thead><tr><th scope="col" class="text-left p-1">{{ I18N.capture_date.photo | translate }}</th><th scope="col" class="text-left p-1">{{ I18N.capture_date.before | translate }}</th><th scope="col" class="text-left p-1">{{ I18N.capture_date.after | translate }}</th></tr></thead>
           <tbody>@for (sample of preview.samples; track sample.path) {
             <tr><td class="p-1 max-w-48 truncate" [title]="sample.path">{{ sample.path }}</td><td class="p-1 whitespace-nowrap">{{ sample.old_date }}</td><td class="p-1 whitespace-nowrap">{{ sample.new_date }}</td></tr>
           }</tbody>
@@ -66,11 +67,9 @@ export class CaptureDateDialogComponent {
   private readonly dialog = inject(MatDialogRef<CaptureDateDialogComponent>);
   private readonly destroyRef = inject(DestroyRef);
   private readonly auth = inject(AuthService);
-  private readonly router = inject(Router);
   private readonly owner = this.auth.status();
-  private readonly url = this.router.url;
+  private readonly staleness = inject(StalenessGuardFactory).create(this.destroyRef, { track: 'status', onNavigate: () => this.invalidate() });
   private closing = false;
-  private navigated = false;
   private readonly target = this.data.filters
     ? { filters: structuredClone(this.data.filters), exclude: [...(this.data.exclude ?? [])] }
     : { photo_paths: [...this.data.paths], exclude: [...(this.data.exclude ?? [])] };
@@ -82,9 +81,6 @@ export class CaptureDateDialogComponent {
 
   constructor() {
     this.dialog.beforeClosed().pipe(takeUntilDestroyed()).subscribe(() => { this.closing = true; this.result.set(null); });
-    this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
-      if (event instanceof NavigationStart) { this.navigated = true; this.invalidate(); }
-    });
     effect(() => {
       if (this.auth.status() !== this.owner || !this.auth.isEdition()) this.invalidate();
     });
@@ -97,7 +93,7 @@ export class CaptureDateDialogComponent {
   }
 
   private current(): boolean {
-    return !this.closing && !this.navigated && !this.destroyRef.destroyed && this.auth.status() === this.owner && this.auth.isEdition() && this.router.url === this.url;
+    return !this.closing && this.staleness.current();
   }
 
   setOffset(value: number | null): void { this.offset.set(value); this.result.set(null); }

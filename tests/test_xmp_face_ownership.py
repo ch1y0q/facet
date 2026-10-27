@@ -9,6 +9,7 @@ import pytest
 from PIL import Image
 
 from processing import xmp_export as xe
+from tests.conftest import added_region
 
 
 EXE = xe._resolve_exiftool()
@@ -31,11 +32,11 @@ def _face(name="Same name"):
 def test_unmarked_regions_are_not_rewritten_even_with_same_name():
     args = xe._region_args([_face()], _info([FOREIGN]))
     assert not any("RegionInfo=" in arg or "RegionList-=" in arg for arg in args)
-    assert json.loads(next(arg for arg in args if arg.startswith("-XMP-mwg-rs:RegionList+=")).split("=", 1)[1])["Name"] == FOREIGN["Name"]
+    assert added_region(args)["Name"] == FOREIGN["Name"]
 
 
 def test_only_explicitly_owned_regions_are_cleared():
-    owned = json.loads(next(arg for arg in xe._region_args([_face()]) if arg.startswith("-XMP-mwg-rs:RegionList+=")).split("=", 1)[1])
+    owned = added_region(xe._region_args([_face()]))
     args = xe._region_args([], _info([FOREIGN, owned]))
     assert len(args) == 3
     deletion = next(arg for arg in args if arg.startswith("-XMP-mwg-rs:RegionList-="))
@@ -246,6 +247,7 @@ def test_exact_region_read_failure_refuses_without_changing_packet(tmp_path, mon
     target.write_bytes(before)
     def run(args, **kwargs):
         assert '-overwrite_original' not in args
+        assert 'XMP-mwg-rs:RegionInfo' in _requested_tags(args)
         if '-X' in args:
             if failure == 'timeout':
                 raise subprocess.TimeoutExpired(args, 1)
@@ -257,6 +259,34 @@ def test_exact_region_read_failure_refuses_without_changing_packet(tmp_path, mon
     with pytest.raises(xe.MetadataPreconditionError):
         xe._read_existing_regions(str(target), 'exiftool', timeout=1)
     assert target.read_bytes() == before
+
+
+def _requested_tags(args):
+    return {arg.lstrip('-') for arg in args if arg.startswith('-') and ':' in arg}
+
+
+def _rdf_node(xml):
+    return ET.fromstring(f'<rdf:RDF xmlns:rdf="{xe.NS_RDF}" xmlns:dc="http://ns.exiftool.org/XMP/XMP-dc/1.0/">'
+                         f'{xml}</rdf:RDF>')[0]
+
+
+@pytest.mark.parametrize('value,xml,message', [
+    (True, '<dc:Flag>false</dc:Flag>', 'invalid literal'),
+    (True, '<dc:Flag><dc:Child/></dc:Flag>', 'invalid literal'),
+    (True, '<dc:Flag/>', 'invalid literal'),
+    ([True, True], '<rdf:Description><rdf:Bag><rdf:li>true</rdf:li></rdf:Bag></rdf:Description>', 'list differs'),
+    ({'XMP-dc:Flag': True}, '<rdf:Description><dc:Other>true</dc:Other></rdf:Description>', 'field differs'),
+    ({'XMP-dc:Flag': True},
+     '<rdf:Description><dc:Flag>true</dc:Flag><dc:Flag>true</dc:Flag></rdf:Description>', 'field differs'),
+], ids=['literal-mismatch', 'has-children', 'no-text', 'list-length', 'field-missing', 'field-ambiguous'])
+def test_restore_region_boolean_case_refuses_differing_reads(value, xml, message):
+    with pytest.raises(ValueError, match=message):
+        xe._restore_region_boolean_case(value, _rdf_node(xml))
+
+
+def test_restore_region_boolean_case_returns_literal_spelling():
+    node = _rdf_node('<rdf:Description><dc:Flag>tRuE</dc:Flag></rdf:Description>')
+    assert xe._restore_region_boolean_case({'XMP-dc:Flag': True}, node) == {'XMP-dc:Flag': 'tRuE'}
 
 
 @pytest.mark.skipif(not EXE, reason='requires ExifTool')
@@ -282,8 +312,7 @@ def test_legacy_unmarked_matching_region_is_not_adopted(tmp_path):
     image = tmp_path / "legacy.jpg"
     Image.new("RGB", (100, 80), "blue").save(image)
     target = Path(str(image) + ".xmp")
-    legacy = json.loads(next(arg for arg in xe._region_args([_face("Alice")])
-                             if arg.startswith("-XMP-mwg-rs:RegionList+=")).split("=", 1)[1])
+    legacy = added_region(xe._region_args([_face("Alice")]))
     del legacy["Extensions"]
     subprocess.run([EXE, "-api", "StructFormat=JSON", "-XMP-mwg-rs:RegionInfo=" + json.dumps(_info([legacy])),
                     str(target)], check=True, capture_output=True)
@@ -324,11 +353,11 @@ def test_keyword_reconciliation_and_face_ownership_coexist(tmp_path, embedded):
     ], timeout=30)
     assert result.returncode == 0, result.stderr
     foreign = xe._read_existing_regions(str(target), EXE, timeout=30)["RegionList"]
-    assert xe._read_existing_keywords(str(target), EXE, timeout=30, strict=True)[0] == ["TrUe"]
+    assert xe._read_existing_metadata(str(target), EXE, timeout=30, strict=True)[0] == ["TrUe"]
     owned = xe.XmpRating(tags=["Facet keyword"], regions=[_face("Facet face")])
     for rating in (owned, owned, xe.XmpRating(), xe.XmpRating()):
         xe.write_metadata(str(image), rating, embed_original=embedded, reconcile_keywords=True)
-        keywords = xe._read_existing_keywords(str(target), EXE, timeout=30, strict=True)[0]
+        keywords = xe._read_existing_metadata(str(target), EXE, timeout=30, strict=True)[0]
         regions = xe._read_existing_regions(str(target), EXE, timeout=30).get("RegionList", [])
         assert keywords == (["TrUe", "Facet keyword"] if rating.tags else ["TrUe"])
         assert regions[:1] == foreign

@@ -7,9 +7,6 @@ Fully migrated to aiosqlite per the R7 closure batch.
 
 import asyncio
 import hashlib
-from pathlib import Path
-
-import aiosqlite
 import json
 import logging
 import re
@@ -19,8 +16,10 @@ import time
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
+import aiosqlite
 import numpy as np
 from fastapi import APIRouter, Depends, Query, Request
 
@@ -37,6 +36,7 @@ from api.db_helpers import (
 from api.model_cache import AcceleratorBusy, accelerator_lock
 from api.models.discovery import PhotoSearchResponse
 from db.connection import HAS_SQLITE_VEC
+from db.embedding_revision import TRIGGER_NAMES, is_valid_revision
 from db.manual_tags import ManualTagError, normalize_manual_tag
 
 router = APIRouter(tags=["search"])
@@ -497,7 +497,7 @@ async def _embedding_snapshot(conn):
                     rows = await cursor.fetchall()
                 if len(rows) == 1:
                     value = rows[0][0]
-                    if isinstance(value, str) and len(value) == 32 and all(char in '0123456789abcdef' for char in value):
+                    if is_valid_revision(value):
                         revision = value
             except sqlite3.OperationalError as error:
                 # Older read-only databases have no revision schema. Read them
@@ -510,9 +510,9 @@ async def _embedding_snapshot(conn):
             # Without the complete tracking set, later writes cannot invalidate.
             async with reader.execute(
                 "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='photos' "
-                "AND name IN ('embedding_cache_photos_insert','embedding_cache_photos_delete','embedding_cache_photos_update')"
+                f"AND name IN ({','.join('?' * len(TRIGGER_NAMES))})", TRIGGER_NAMES
             ) as cursor:
-                tracked = len(await cursor.fetchall()) == 3
+                tracked = len(await cursor.fetchall()) == len(TRIGGER_NAMES)
             cacheable = revision is not None and tracked
             key = (path, revision, schema_version) if cacheable else None
             yield reader, key, cacheable
@@ -520,11 +520,30 @@ async def _embedding_snapshot(conn):
             await reader.rollback()
 
 
+def _build_embedding_matrix(rows, dimension):
+    """Decode ``rows`` into a stacked unit-vector matrix and its paths (worker thread)."""
+    from utils.embedding import bytes_to_normalized_embedding
+
+    paths = []
+    embeddings = []
+    for row in rows:
+        try:
+            emb = bytes_to_normalized_embedding(row['clip_embedding'], dim=dimension)
+        except (TypeError, ValueError):
+            # One malformed vector must not make the permitted cohort
+            # unavailable to otherwise valid searches.
+            continue
+        if emb is not None and np.isfinite(emb).all():
+            paths.append(row['path'])
+            embeddings.append(emb)
+    if not embeddings:
+        return None, []
+    return np.stack(embeddings, axis=0), paths
+
+
 async def _load_snapshot_embedding_matrix(reader, key, dimension, *, cacheable, vis_sql, vis_params, cohort_key):
     """Share a matrix only under a key read inside the trusted read snapshot."""
     global _embedding_cache
-    from utils.embedding import bytes_to_normalized_embedding
-
     if dimension <= 0:
         raise ValueError('embedding dimension must be positive')
     key = (key, dimension, cohort_key)
@@ -543,29 +562,12 @@ async def _load_snapshot_embedding_matrix(reader, key, dimension, *, cacheable, 
 
         rows = await read_rows(reader)
 
-        # Numpy work below is CPU-bound — push it off the event loop. For 100k photos
+        # Numpy work is CPU-bound — push it off the event loop. For 100k photos
         # this can be ~50ms which is meaningful at moderate concurrency.
-        def _build_matrix(rows):
-            paths_ = []
-            embeddings_ = []
-            for r in rows:
-                try:
-                    emb = bytes_to_normalized_embedding(r['clip_embedding'], dim=dimension)
-                except (TypeError, ValueError):
-                    # One malformed vector must not make the permitted cohort
-                    # unavailable to otherwise valid searches.
-                    continue
-                if emb is not None and np.isfinite(emb).all():
-                    paths_.append(r['path'])
-                    embeddings_.append(emb)
-            if not embeddings_:
-                return None, []
-            return np.stack(embeddings_, axis=0), paths_
-
         # Cancelling to_thread's await cannot stop the worker. Keep the lock
         # until it finishes, even if the request is cancelled repeatedly, so
         # the next miss cannot overlap a still-allocating matrix build.
-        build = asyncio.create_task(asyncio.to_thread(_build_matrix, rows))
+        build = asyncio.create_task(asyncio.to_thread(_build_embedding_matrix, rows, dimension))
         cancelled = False
         while True:
             try:

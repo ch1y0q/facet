@@ -1,5 +1,7 @@
 """Capture walltime correction: bounded preview, atomic apply, strict dates."""
+import sqlite3
 from unittest.mock import patch
+from pathlib import Path
 
 import pytest
 
@@ -79,15 +81,15 @@ def test_edition_required(regular_client):
     assert regular_client.delete('/api/photo/capture_date', params={'path': '/capture/0.jpg'}).status_code in (401, 403)
 
 
-@pytest.mark.parametrize('partial', [False, True])
-def test_rescan_preserves_manual_date_pair(tmp_path, partial):
+@pytest.mark.parametrize('partial,manual', [(False, False), (False, True), (True, True)])
+def test_rescan_preserves_manual_date_pair(tmp_path, partial, manual):
     import sqlite3
     from db.schema import init_database
     from processing.scorer import _PARTIAL_CORE_COLUMNS, _photos_partial_upsert, _photos_upsert
     db = str(tmp_path / 'dates.db')
     init_database(db)
     with sqlite3.connect(db) as conn:
-        conn.execute("INSERT INTO photos(path, date_taken, date_manually_set) VALUES ('p','2024:01:01 01:02:03',1)")
+        conn.execute("INSERT INTO photos(path, date_taken, date_manually_set) VALUES ('p','2024:01:01 01:02:03',?)", (int(manual),))
         if partial:
             sql = _photos_partial_upsert(('date_manually_set',))
             params = {key: None for key in _PARTIAL_CORE_COLUMNS}
@@ -96,7 +98,8 @@ def test_rescan_preserves_manual_date_pair(tmp_path, partial):
             sql = _photos_upsert('INSERT OR REPLACE INTO photos(path,date_taken,date_manually_set) VALUES (?,?,?)')
             params = ('p', '2000:01:01 01:02:03', 0)
         conn.execute(sql, params)
-        assert conn.execute('SELECT date_taken,date_manually_set FROM photos').fetchone() == ('2024:01:01 01:02:03', 1)
+        expected = ('2024:01:01 01:02:03', 1) if manual else ('2000:01:01 01:02:03', 0)
+        assert conn.execute('SELECT date_taken,date_manually_set FROM photos').fetchone() == expected
 
 
 def test_manual_date_export_only():
@@ -204,7 +207,7 @@ def test_apply_rolls_back_all_rows_on_database_failure(edition_client, seed_phot
     with get_db() as conn, conn:
         conn.execute("CREATE TRIGGER capture_fail BEFORE UPDATE OF date_taken ON photos WHEN NEW.path='/capture/1.jpg' BEGIN SELECT RAISE(ABORT, 'test failure'); END")
     try:
-        with pytest.raises(Exception, match='test failure'):
+        with pytest.raises(sqlite3.IntegrityError, match='test failure'):
             edition_client.post('/api/photos/capture_date/apply', json={**body, 'preview_token': preview['preview_token']})
         assert values(paths) == [('2024:01:01 00:00:00', 0)] * 2
     finally:
@@ -236,8 +239,11 @@ def test_explicit_export_preserves_original_until_embed(tmp_path):
     subprocess.run([exe, '-overwrite_original', '-EXIF:DateTimeOriginal=2000:01:01 00:00:00', '-EXIF:CreateDate=2001:01:01 00:00:00', '-EXIF:OffsetTimeOriginal=+02:00', '-EXIF:SubSecTimeOriginal=123', str(image)], check=True, capture_output=True)
     before = image.read_bytes()
     rating = XmpRating.from_row(dict(date_taken='2024:02:29 01:02:03', date_manually_set=1))
-    write_metadata(str(image), rating)
+    sidecar = write_metadata(str(image), rating)['sidecar']
     assert image.read_bytes() == before
+    packet = json.loads(subprocess.check_output(
+        [exe, '-json', '-XMP-exif:DateTimeOriginal', '-G1', sidecar], encoding='utf-8'))[0]
+    assert packet['XMP-exif:DateTimeOriginal'] == '2024:02:29 01:02:03'
     write_metadata(str(image), rating, embed_original=True)
     result = json.loads(subprocess.check_output([exe, '-json', '-EXIF:DateTimeOriginal', '-EXIF:CreateDate', '-EXIF:OffsetTimeOriginal', '-EXIF:SubSecTimeOriginal', '-XMP-exif:DateTimeOriginal', '-G1', str(image)]))[0]
     assert result['ExifIFD:DateTimeOriginal'] == '2024:02:29 01:02:03'
@@ -276,3 +282,87 @@ def test_photo_contract_carries_manual_date(edition_client, seed_photos_prefix):
     response = edition_client.get('/api/photo', params={'path': paths[0]})
     assert response.status_code == 200
     assert response.json()['date_manually_set'] == 1
+
+
+@pytest.fixture
+def reset_photo(edition_client, seed_photos_prefix, tmp_path, monkeypatch):
+    from api.routers import capture_dates
+
+    image = tmp_path / 'reset.jpg'
+    image.write_bytes(b'original')
+    path = str(image)
+    seed_photos_prefix(str(tmp_path), [dict(path=path, filename=image.name,
+                                          date_taken='2024:01:01 01:02:03', date_manually_set=1)])
+    monkeypatch.setattr(capture_dates, 'get_exif_batch',
+                        lambda paths: {path: {'date_taken': '2000:01:01 00:00:00'}})
+    return path
+
+
+@pytest.mark.parametrize('release_on_busy', [True, False])
+def test_reset_retries_real_writer_contention(edition_client, reset_photo, monkeypatch, release_on_busy):
+    import sqlite3
+    from contextlib import contextmanager
+    from api import database
+    from api.db_helpers import RETRY_ATTEMPTS, LIBRARY_BUSY_DETAIL
+    from api.routers import capture_dates
+
+    blocker = sqlite3.connect(database.DEFAULT_DB_PATH, check_same_thread=False)
+    attempts = []
+
+    class ObservedConnection(sqlite3.Connection):
+        def execute(self, sql, parameters=()):
+            try:
+                return super().execute(sql, parameters)
+            except sqlite3.OperationalError:
+                if sql == 'BEGIN IMMEDIATE':
+                    attempts.append(sql)
+                    if release_on_busy:
+                        blocker.rollback()
+                raise
+
+    @contextmanager
+    def database_without_busy_wait():
+        conn = sqlite3.connect(database.DEFAULT_DB_PATH, timeout=0, factory=ObservedConnection)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    monkeypatch.setattr(capture_dates, 'get_db', database_without_busy_wait)
+    blocker.execute('BEGIN IMMEDIATE')
+    try:
+        response = edition_client.delete('/api/photo/capture_date', params={'path': reset_photo})
+        if release_on_busy:
+            assert response.status_code == 200, response.text
+            assert len(attempts) == 1
+            assert response.json() == dict(date_taken='2000:01:01 00:00:00', date_manually_set=0)
+        else:
+            assert response.status_code == 503, response.text
+            assert response.json() == {'detail': LIBRARY_BUSY_DETAIL}
+            assert 'Retry-After' in response.headers
+            assert len(attempts) == RETRY_ATTEMPTS
+    finally:
+        blocker.rollback()
+        blocker.close()
+    expected = ('2000:01:01 00:00:00', 0) if release_on_busy else ('2024:01:01 01:02:03', 1)
+    assert values([reset_photo]) == [expected]
+    assert Path(reset_photo).read_bytes() == b'original'
+
+
+def test_reset_database_failure_rolls_back_override_and_history(edition_client, reset_photo):
+    with get_db() as conn, conn:
+        history_before = conn.execute('SELECT COUNT(*) FROM organization_history').fetchone()[0]
+        conn.execute("CREATE TRIGGER capture_reset_fail BEFORE INSERT ON organization_history BEGIN SELECT RAISE(ABORT, 'private /server/library/date.db'); END")
+    try:
+        response = edition_client.delete('/api/photo/capture_date', params={'path': reset_photo})
+        assert response.status_code == 500
+        assert response.json() == {'detail': 'Internal server error'}
+        assert '/server/library' not in response.text
+        assert values([reset_photo]) == [('2024:01:01 01:02:03', 1)]
+        with get_db() as conn:
+            assert conn.execute('SELECT COUNT(*) FROM organization_history').fetchone()[0] == history_before
+        assert Path(reset_photo).read_bytes() == b'original'
+    finally:
+        with get_db() as conn, conn:
+            conn.execute('DROP TRIGGER capture_reset_fail')

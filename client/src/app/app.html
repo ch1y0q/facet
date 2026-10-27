@@ -379,13 +379,6 @@
               {{ I18N.dialog.connect_assistant.menu | translate }}
             </button>
           }
-          @if (auth.isMultiUser() || auth.loginPasswordRequired()) {
-            <mat-divider />
-            <button mat-menu-item (click)="logout()">
-              <mat-icon>logout</mat-icon>
-              {{ I18N.auth.logout | translate }}
-            </button>
-          }
           <mat-divider />
           <button mat-menu-item (click)="store.setReviewProgressVisible(!store.reviewProgressVisible())">
             <mat-icon>{{ store.reviewProgressVisible() ? 'visibility' : 'visibility_off' }}</mat-icon>
@@ -397,8 +390,15 @@
           </button>
           <button mat-menu-item (click)="openHelpDialog()">
             <mat-icon>help_outline</mat-icon>
-            {{ I18N.culling.help | translate }}
+            {{ I18N.nav.help | translate }}
           </button>
+          @if (auth.isMultiUser() || auth.loginPasswordRequired()) {
+            <mat-divider />
+            <button mat-menu-item (click)="logout()">
+              <mat-icon>logout</mat-icon>
+              {{ I18N.auth.logout | translate }}
+            </button>
+          }
         </mat-menu>
         <mat-menu #langMenu="matMenu">
           @for (lang of i18n.languages(); track lang.code) {

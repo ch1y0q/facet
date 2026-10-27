@@ -273,6 +273,18 @@ describe('App', () => {
       expect((app as any).activeFilterChips().some((c: any) => c.id === 'is_monochrome')).toBe(true);
     });
 
+    it('shows the manual-face review filter only while it is active', () => {
+      const { app, filtersSignal } = createApp('/');
+      expect((app as any).activeFilterChips().some((chip: { id: string }) => chip.id === 'manual_faces_need_review')).toBe(false);
+      filtersSignal.update(filters => ({ ...filters, manual_faces_need_review: true }));
+      expect((app as any).activeFilterChips()).toContainEqual({
+        id: 'manual_faces_need_review', labelKey: I18N.gallery.manual_faces_need_review,
+        value: '', clearKeys: ['manual_faces_need_review'],
+      });
+      filtersSignal.update(filters => ({ ...filters, manual_faces_need_review: false }));
+      expect((app as any).activeFilterChips().some((chip: { id: string }) => chip.id === 'manual_faces_need_review')).toBe(false);
+    });
+
     it('topiq chip uses gallery.topiq_range (not aesthetic_range)', () => {
       const { app, filtersSignal } = createApp('/');
       filtersSignal.set({ ...DEFAULT_FILTERS, min_topiq: '5', max_topiq: '' });
@@ -298,6 +310,19 @@ describe('App', () => {
   });
 
   describe('clearFilterChip', () => {
+    it('clears the manual-face review flag as a boolean and preserves other filters', () => {
+      const { app, filtersSignal, mockStore } = createApp('/');
+      filtersSignal.set({ ...DEFAULT_FILTERS, manual_faces_need_review: true, person_id: '7', min_score: '5' });
+      mockStore.updateFilter.mockImplementation((key: keyof GalleryFilters, value: GalleryFilters[keyof GalleryFilters]) => {
+        filtersSignal.update(filters => ({ ...filters, [key]: value }));
+      });
+      const chip = (app as any).activeFilterChips().find((item: { id: string }) => item.id === 'manual_faces_need_review');
+      expect(chip).toBeDefined();
+      (app as any).clearFilterChip(chip);
+      expect(mockStore.updateFilter).toHaveBeenCalledExactlyOnceWith('manual_faces_need_review', false);
+      expect(filtersSignal()).toMatchObject({ manual_faces_need_review: false, person_id: '7', min_score: '5' });
+      expect((app as any).activeFilterChips().map((item: { id: string }) => item.id)).toEqual(['person_7', 'min_score']);
+    });
     it('removes one person without affecting other person ids', () => {
       const { app, filtersSignal, mockStore } = createApp('/');
       filtersSignal.set({ ...DEFAULT_FILTERS, person_id: '1,2,3' });
@@ -770,6 +795,65 @@ describe('App', () => {
       };
       expect((await lock('/compare?x=1')).router.navigate).toHaveBeenCalledWith(['/']);
       expect((await lock('/stats')).router.navigate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('header edition underline and user menu', () => {
+    function render(edition: boolean, multiUser = false) {
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([]),
+          { provide: GalleryStore, useValue: { filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null), types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), loadConfig: vi.fn(), viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(false), hiddenFiltersStash: signal(null), slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(), reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn() } },
+          { provide: ScanService, useValue: { canLaunch: signal(false), openLauncher: vi.fn() } },
+          { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(true), isReadOnlyInstall: signal(false), features: signal({}), user: signal(null), logout: vi.fn(), isEdition: signal(edition), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(multiUser), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
+          { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string) => k), translations: signal({}) } },
+          { provide: StatsFiltersService, useValue: { filterCategory: signal(''), dateFrom: signal(''), dateTo: signal('') } },
+          { provide: CompareFiltersService, useValue: { selectedCategory: signal('') } },
+          { provide: MatDialog, useValue: { open: vi.fn() } },
+          { provide: ApiService, useValue: { get: vi.fn(() => NEVER), post: vi.fn(() => NEVER) } },
+          { provide: ThemeService, useValue: { theme: signal(''), darkMode: signal(true), THEMES: [], setTheme: vi.fn(), toggleDarkMode: vi.fn(), accentColor: signal('#ff6600'), complementaryColor: signal('#0099ff') } },
+        ],
+      });
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      return { fixture, root: fixture.nativeElement as HTMLElement };
+    }
+
+    const openUserMenu = (fixture: ReturnType<typeof render>['fixture'], root: HTMLElement) => {
+      root.querySelector<HTMLButtonElement>(`button[aria-label="${I18N.auth.user_menu}"]`)!.click();
+      fixture.detectChanges();
+      return Array.from(document.querySelectorAll<HTMLButtonElement>('.mat-mdc-menu-panel button[mat-menu-item]'));
+    };
+
+    afterEach(() => document.querySelectorAll('.cdk-overlay-container').forEach(el => el.replaceChildren()));
+
+    it.each([[true], [false]])('draws the amber 2px underline exactly while edition is %s', (edition) => {
+      const { root } = render(edition);
+      const bar = root.querySelector('mat-toolbar')!;
+      expect(bar.classList.contains('border-amber-400')).toBe(edition);
+      expect(bar.classList.contains('!border-b-2')).toBe(edition);
+    });
+
+    it('lists Card actions then the shell-level Help, and calls their handlers', () => {
+      const { fixture, root } = render(false);
+      const app = fixture.componentInstance as unknown as { openCardActionsDialog: () => void; openHelpDialog: () => void };
+      const openCardActions = vi.spyOn(app, 'openCardActionsDialog').mockImplementation(() => undefined);
+      const openHelp = vi.spyOn(app, 'openHelpDialog').mockImplementation(() => undefined);
+      const items = openUserMenu(fixture, root);
+      const labels = items.map(i => i.textContent!.replace(/\s+/g, ' ').trim());
+      expect(labels.at(-2)).toContain(I18N.gallery.card_actions.title);
+      expect(labels.at(-1)).toContain(I18N.nav.help);
+      expect(labels.join('|')).not.toContain(I18N.culling.help);
+      items.at(-2)!.click();
+      expect(openCardActions).toHaveBeenCalledOnce();
+      items.at(-1)!.click();
+      expect(openHelp).toHaveBeenCalledOnce();
+    });
+
+    it('puts Logout last in the menu', () => {
+      const { fixture, root } = render(false, true);
+      const items = openUserMenu(fixture, root);
+      expect(items.at(-1)!.textContent).toContain(I18N.auth.logout);
     });
   });
 });

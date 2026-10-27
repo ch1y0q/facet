@@ -16,6 +16,11 @@ function job(overrides: Partial<SidecarJobStatus> = {}): SidecarJobStatus {
   return { id: 'job', state: 'running', started_at: 1, total: 3, processed: 0, written: 0, skipped: 0, errors: 0, cancel_requested: false, ...overrides };
 }
 
+/** Lets already-resolved promise continuations (service subscribe -> signal set) run before an assertion. */
+async function flushMicrotasks(turns = 1): Promise<void> {
+  for (let turn = 0; turn < turns; turn++) await Promise.resolve();
+}
+
 describe('Export editor background jobs with HttpClient', () => {
   let fixture: ComponentFixture<ExportEditorDialogComponent> | null;
   let component: ExportEditorDialogComponent;
@@ -82,7 +87,7 @@ describe('Export editor background jobs with HttpClient', () => {
     vi.useFakeTimers(); build(); await start();
     vi.advanceTimersByTime(1000);
     http.expectOne('/api/export/sidecar_jobs/job').flush({}, { status: 503, statusText: 'Unavailable' });
-    await Promise.resolve(); await Promise.resolve();
+    await flushMicrotasks(2);
     expect(component.readError()).toBe(true);
     vi.advanceTimersByTime(4999);
     http.expectNone('/api/export/sidecar_jobs/job');
@@ -90,7 +95,7 @@ describe('Export editor background jobs with HttpClient', () => {
     const retryRead = http.expectOne('/api/export/sidecar_jobs/job');
     expect(retryRead.request.method).toBe('GET');
     retryRead.flush(job({ state: 'completed', processed: 3, written: 2, skipped: 1 }));
-    await Promise.resolve(); await Promise.resolve();
+    await flushMicrotasks(2);
     expect(component.readError()).toBe(false);
     expect(component.job()?.processed).toBe(3);
     expect(component.job()?.skipped).toBe(1);
@@ -102,7 +107,7 @@ describe('Export editor background jobs with HttpClient', () => {
     vi.useFakeTimers(); build(); await start();
     vi.advanceTimersByTime(1000);
     http.expectOne('/api/export/sidecar_jobs/job').flush({}, { status, statusText: 'Unavailable' });
-    await Promise.resolve(); await Promise.resolve();
+    await flushMicrotasks(2);
     vi.advanceTimersByTime(60000);
     http.expectNone('/api/export/sidecar_jobs/job');
     expect(component.readError()).toBe(true);
@@ -112,7 +117,7 @@ describe('Export editor background jobs with HttpClient', () => {
     vi.useFakeTimers(); build(); await start();
     vi.advanceTimersByTime(1000);
     http.expectOne('/api/export/sidecar_jobs/job').flush({}, { status: 503, statusText: 'Unavailable' });
-    await Promise.resolve(); await Promise.resolve();
+    await flushMicrotasks(2);
     component.close();
     vi.advanceTimersByTime(60000);
     http.expectNone('/api/export/sidecar_jobs/job');
@@ -122,8 +127,54 @@ describe('Export editor background jobs with HttpClient', () => {
   it('renders receipt dates in the project day/month/year and 24-hour format', async () => {
     build({ paths: ['/a.jpg'] }, false);
     http.expectOne('/api/export/sidecar_jobs').flush([job({ started_at: new Date(2026, 9, 25, 14, 7).getTime() / 1000 })]);
-    await Promise.resolve(); await Promise.resolve(); fixture!.detectChanges();
+    await flushMicrotasks(2); fixture!.detectChanges();
     expect(fixture!.nativeElement.textContent).toContain('25/10/2026 14:07');
+  });
+
+  it('gives current-status and recent-history refresh controls distinct accessible names', async () => {
+    build();
+    await start(job({ state: 'interrupted', processed: 1, errors: 1 }));
+    fixture!.detectChanges();
+    const refreshes = [...fixture!.nativeElement.querySelectorAll('button')]
+      .filter((button: HTMLElement) => button.textContent?.includes('export.jobs.refresh')) as HTMLElement[];
+    expect(refreshes).toHaveLength(2);
+    const names = refreshes.map(button => button.getAttribute('aria-label') ?? button.textContent!.trim());
+    expect(names[0]).not.toBe(names[1]);
+    expect(names[1]).toContain('export.jobs.recent');
+  });
+
+  it('announces state changes without putting changing progress or controls in the live region', async () => {
+    build();
+    await start(job({ state: 'interrupted', processed: 1, errors: 1 }));
+    fixture!.detectChanges();
+    const region = fixture!.nativeElement.querySelector('[aria-live="polite"]') as HTMLElement;
+    expect(region.textContent).toContain('export.jobs.interrupted');
+    expect(region.querySelector('button, mat-progress-bar')).toBeNull();
+    expect(region.textContent).not.toContain('export.jobs.progress');
+    const pending = component.viewJob(component.job()!);
+    http.expectOne('/api/export/sidecar_jobs/job').flush(job({ state: 'cancelled', processed: 2, errors: 1 }));
+    await pending;
+    fixture!.detectChanges();
+    expect(region.textContent).toContain('export.jobs.cancelled');
+  });
+
+  it('identifies only the receipt whose status is currently displayed', async () => {
+    build({}, false);
+    const first = job({ id: 'first', state: 'failed', processed: 1, errors: 1 });
+    const second = job({ id: 'second', state: 'interrupted', processed: 2, errors: 1 });
+    http.expectOne('/api/export/sidecar_jobs').flush([first, second]);
+    await fixture!.whenStable();
+    expect(fixture!.nativeElement.querySelector('[aria-current="true"]')).toBeNull();
+    for (const receipt of [first, second]) {
+      const selected = component.viewJob(receipt);
+      http.expectOne(`/api/export/sidecar_jobs/${receipt.id}`).flush(receipt);
+      await selected;
+      fixture!.detectChanges();
+      const current = fixture!.nativeElement.querySelectorAll('[aria-current="true"]');
+      expect(current).toHaveLength(1);
+      expect(current[0].textContent).toContain(`export.jobs.${receipt.state}`);
+      http.expectNone(request => request.method === 'POST');
+    }
   });
 
   it('polls progress, cancels the pending read before an explicit stop, and retains cancelled counts', async () => {
@@ -140,7 +191,7 @@ describe('Export editor background jobs with HttpClient', () => {
     expect(component.job()?.cancel_requested).toBe(true);
     vi.advanceTimersByTime(1000);
     http.expectOne('/api/export/sidecar_jobs/job').flush(job({ state: 'cancelled', processed: 2, written: 1, skipped: 1 }));
-    await Promise.resolve(); fixture!.detectChanges();
+    await flushMicrotasks(); fixture!.detectChanges();
     expect(component.job()?.processed).toBe(2);
     expect(component.canRetry()).toBe(true);
     expect(fixture!.nativeElement.textContent).toContain('export.jobs.cancelled');
@@ -170,6 +221,24 @@ describe('Export editor background jobs with HttpClient', () => {
     expect(component.job()?.id).toBe('retry-job');
   });
 
+  it.each([
+    ['metadata_repair', 'export.jobs.errors.metadata_repair'],
+    ['write_failed', 'export.jobs.errors.write_failed'],
+    ['stopped', 'export.jobs.errors.stopped'],
+  ] as const)('renders the translated text for the %s receipt error code, not the English message', async (code, key) => {
+    build(); await start(job({ state: 'completed', processed: 1, errors: 1, first_error: 'English server message', first_error_code: code }));
+    fixture!.detectChanges();
+    const text = fixture!.nativeElement.textContent as string;
+    expect(text).toContain(key);
+    expect(text).not.toContain('English server message');
+  });
+
+  it('falls back to the server message when a receipt carries no error code', async () => {
+    build(); await start(job({ state: 'completed', processed: 1, errors: 1, first_error: 'Server message', first_error_code: null }));
+    fixture!.detectChanges();
+    expect(fixture!.nativeElement.textContent as string).toContain('Server message');
+  });
+
   it('preserves the success snack and close only for a completely successful new job', async () => {
     build(); await start(job({ state: 'completed', processed: 3, written: 3 }));
     expect(close).toHaveBeenCalledOnce();
@@ -180,7 +249,7 @@ describe('Export editor background jobs with HttpClient', () => {
     build({ paths: [] }, false);
     const receipt = job({ state: 'interrupted', processed: 1, errors: 1, first_error: 'Export stopped' });
     http.expectOne('/api/export/sidecar_jobs').flush([receipt]);
-    await Promise.resolve(); fixture!.detectChanges();
+    await flushMicrotasks(); fixture!.detectChanges();
     expect(component.recentJobs()).toEqual([receipt]);
     http.expectNone(r => r.method === 'POST');
     const selecting = component.viewJob(receipt);
@@ -231,7 +300,7 @@ describe('Export editor background jobs with HttpClient', () => {
     expect(close).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1000);
     http.expectOne('/api/export/sidecar_jobs/job').flush(job({ processed: 1, written: 1 }));
-    await Promise.resolve();
+    await flushMicrotasks();
     expect(component.job()?.written).toBe(1);
   });
 
@@ -284,7 +353,7 @@ describe('Export editor background jobs with HttpClient', () => {
     events.next(new NavigationStart(1, '/?camera=Canon'));
     vi.advanceTimersByTime(1000);
     http.expectOne('/api/export/sidecar_jobs/job').flush(job({ processed: 1, written: 1 }));
-    await Promise.resolve();
+    await flushMicrotasks();
     expect(component.job()?.processed).toBe(1); expect(close).not.toHaveBeenCalled();
   });
 
@@ -302,7 +371,7 @@ describe('Export editor background jobs with HttpClient', () => {
     vi.useFakeTimers(); build(); await start();
     vi.advanceTimersByTime(1000);
     http.expectOne('/api/export/sidecar_jobs/job').flush({ detail: 'Progress temporarily unavailable' }, { status: 503, statusText: 'Unavailable' });
-    await Promise.resolve();
+    await flushMicrotasks();
     expect(component.errorDetail()).toBe('Progress temporarily unavailable');
     vi.advanceTimersByTime(3000);
     http.expectNone(r => r.method === 'GET');

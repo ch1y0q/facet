@@ -37,12 +37,20 @@ _STORED_THUMBNAIL_SIZE = 640
 _RENDERED_SIZE = 1920
 _RENDERED_JPEG_QUALITY = 85
 # Renders decode originals on the shared threadpool, so cap them.
-_render_slots = threading.BoundedSemaphore(4)
-# Keep one of the four slots available to JPEGs while slower formats decode.
-_nonjpeg_render_slots = threading.BoundedSemaphore(3)
+_RENDER_SLOTS = 4
+_render_slots = threading.BoundedSemaphore(_RENDER_SLOTS)
+# Keep one slot available to JPEGs while slower formats decode.
+_nonjpeg_render_slots = threading.BoundedSemaphore(_RENDER_SLOTS - 1)
 _RENDER_WAIT_SECONDS = 5
 # Short, so the sharp render shows up once the original is back.
 _FALLBACK_MAX_AGE = 60
+
+# Native browser images need stable types even without an OS MIME registry.
+_BROWSER_IMAGE_MEDIA_TYPES = {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp',
+    '.bmp': 'image/bmp', '.avif': 'image/avif',
+}
 
 
 def _cached_image_response(image_bytes: bytes, request: Request,
@@ -176,11 +184,30 @@ class _NoSignalError(RuntimeError):
     """The original decoded, but to a frame with no image signal."""
 
 
+# Renders that came out with no signal, keyed like the render cache. An
+# exception is not memoised by lru_cache, so without this every revalidation
+# would decode the same broken original again.
+_NO_SIGNAL_CACHE_SIZE = 32
+_no_signal_renders: dict[tuple, bool] = {}
+_no_signal_lock = threading.Lock()
+
+
+def _known_no_signal(key: tuple[str, float, Optional[str]]) -> bool:
+    return key in _no_signal_renders
+
+
+def _remember_no_signal(key: tuple[str, float, Optional[str]]) -> None:
+    with _no_signal_lock:
+        if len(_no_signal_renders) >= _NO_SIGNAL_CACHE_SIZE:
+            _no_signal_renders.pop(next(iter(_no_signal_renders)), None)
+        _no_signal_renders[key] = True
+
+
 _render_inflight: dict[tuple, Future[Optional[bytes]]] = {}
 _render_inflight_lock = threading.Lock()
 
 
-def _coalesced_render(key):
+def _coalesced_render(key: tuple[str, float, Optional[str]]) -> Optional[bytes]:
     """Share one cache miss; complete the LRU call before dropping its flight."""
     with _render_inflight_lock:
         future = _render_inflight.get(key)
@@ -194,29 +221,18 @@ def _coalesced_render(key):
     try:
         # Recheck after joining the flight: another completed render may have
         # published a negative result since the caller's earlier lookup.
-        result = None if key in _no_signal_renders else _render_from_original_cached(*key)
+        result = None if _known_no_signal(key) else _render_from_original_cached(*key)
         future.set_result(result)
         return result
     except BaseException as ex:
         if isinstance(ex, _NoSignalError):
             # Publish the negative cache before dropping the flight too.
-            with _no_signal_lock:
-                if len(_no_signal_renders) >= _NO_SIGNAL_CACHE_SIZE:
-                    _no_signal_renders.pop(next(iter(_no_signal_renders)), None)
-                _no_signal_renders[key] = True
+            _remember_no_signal(key)
         future.set_exception(ex)
         raise
     finally:
         with _render_inflight_lock:
             del _render_inflight[key]
-
-
-# Renders that came out with no signal, keyed like the render cache. An
-# exception is not memoised by lru_cache, so without this every revalidation
-# would decode the same broken original again.
-_NO_SIGNAL_CACHE_SIZE = 32
-_no_signal_renders: dict[tuple, bool] = {}
-_no_signal_lock = threading.Lock()
 
 
 def _render_from_original(path: str, sequence_kind: Optional[str]) -> Optional[bytes]:
@@ -227,16 +243,14 @@ def _render_from_original(path: str, sequence_kind: Optional[str]) -> Optional[b
         return None
     try:
         key = (disk, os.path.getmtime(disk), sequence_kind)
-        if key in _no_signal_renders:
+        if _known_no_signal(key):
             return None
         return _coalesced_render(key)
-    except _NoSignalError as e:
-        logger.warning("Could not render %s (%s), serving the stored thumbnail", disk, e)
-        return None
     except (OSError, ValueError, RuntimeError, FuturesTimeoutError) as e:
         # No traceback: this repeats on every revalidation. A joined render's
         # wait raises FuturesTimeoutError, which is not an OSError before 3.11.
-        logger.warning("Could not render %s (%s), serving the stored thumbnail", disk, e)
+        logger.warning("Could not render %s (%s), serving the stored thumbnail",
+                       disk, str(e) or type(e).__name__)
         return None
 
 
@@ -482,10 +496,8 @@ def image(
                 return _stored_thumbnail_response(path, request)
             return Response(content="Failed to convert HEIF file", status_code=500)
 
-    # Convert TIFF to JPEG: the only new-format extension no major browser
-    # renders natively (confirmed via mimetypes.guess_type). PNG/GIF/WebP/BMP/
-    # AVIF are all browser-renderable and fall through to the bare
-    # FileResponse below, unconverted.
+    # Convert TIFF to JPEG. Native browser formats below keep their original
+    # bytes and receive a known media type independent of the OS MIME registry.
     if Path(real_disk).suffix.lower() in TIFF_EXTENSIONS:
         try:
             mtime = os.path.getmtime(real_disk)
@@ -498,4 +510,4 @@ def image(
                 return _stored_thumbnail_response(path, request)
             return Response(content="Failed to convert TIFF file", status_code=500)
 
-    return FileResponse(real_disk)
+    return FileResponse(real_disk, media_type=_BROWSER_IMAGE_MEDIA_TYPES.get(Path(real_disk).suffix.lower()))

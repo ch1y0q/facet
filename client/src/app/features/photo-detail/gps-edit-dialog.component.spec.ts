@@ -1,3 +1,8 @@
+import { HttpContext, provideHttpClient, withInterceptors, withXhr } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { HANDLE_PLACE_SEARCH_ERRORS_LOCALLY } from '../../core/utils/place-search-error.util';
+import { errorInterceptor } from '../../core/interceptors/error.interceptor';
+import { retryInterceptor } from '../../core/interceptors/retry.interceptor';
 import { signal } from '@angular/core';
 import type { Mock } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -67,6 +72,133 @@ describe('GpsEditDialogComponent', () => {
     } else component = TestBed.inject(GpsEditDialogComponentClass);
   }
 
+  describe('online lookup with the real API and error/retry interceptors', () => {
+    let http: HttpTestingController;
+    let events: Subject<NavigationStart>;
+    let logout: Mock;
+    let revalidate: Mock;
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      authStatus.set({ authenticated: true, edition_authenticated: true, user_id: 'editor' });
+      events = new Subject(); logout = vi.fn(); revalidate = vi.fn(() => Promise.resolve(null));
+      mockSnackBar = { open: vi.fn() };
+      TestBed.configureTestingModule({ imports: [GpsEditDialogComponentClass], providers: [
+        provideHttpClient(withXhr(), withInterceptors([errorInterceptor, retryInterceptor])), provideHttpClientTesting(),
+        { provide: MAT_DIALOG_DATA, useValue: { path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null } },
+        { provide: MatDialogRef, useValue: { close: vi.fn(), beforeClosed: () => NEVER } },
+        { provide: Router, useValue: { url: '/', events } },
+        { provide: AuthService, useValue: { identity, status: authStatus, isEdition: () => authStatus().edition_authenticated, logout, revalidate } },
+        { provide: GalleryStore, useValue: { patchPhoto: vi.fn(), filters: () => ({ no_gps: '' }), config: () => ({ place_search_enabled: true }) } },
+        { provide: MatSnackBar, useValue: mockSnackBar },
+        { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
+      ] });
+      TestBed.overrideProvider(MatSnackBar, { useValue: mockSnackBar });
+      http = TestBed.inject(HttpTestingController);
+      fixture = TestBed.createComponent(GpsEditDialogComponentClass);
+      component = fixture.componentInstance;
+      http.expectOne('/api/places').flush({ places: [], recent: [] });
+      fixture.detectChanges(); await fixture.whenStable();
+      component.setOnlineQuery('Private address');
+    });
+    afterEach(() => { fixture.destroy(); http.verify({ ignoreCancelled: true }); });
+    const request = () => http.expectOne(req => req.url === '/api/places/search');
+
+    it.each([
+      ['one non-BMP', '😀', false], ['two non-BMP', '😀😀', false], ['three non-BMP', '😀😀😀', true],
+      ['two BMP', 'ab', false], ['three BMP', 'abc', true],
+      ['200 mixed codepoints', 'a'.repeat(199) + '😀', true],
+      ['200 non-BMP codepoints', '😀'.repeat(200), true], ['201 non-BMP codepoints', '😀'.repeat(201), false],
+    ] as const)('matches the HTTP query boundary for %s', async (_name, query, valid) => {
+      component.setOnlineQuery(query); fixture.detectChanges();
+      expect(component.onlineQueryValid()).toBe(valid);
+      if (valid) {
+        const input = fixture.nativeElement.querySelector('input[type="search"][maxlength]') as HTMLInputElement;
+        expect(input.maxLength).toBeGreaterThanOrEqual(query.length);
+      }
+      const task = component.searchOnline();
+      if (valid) {
+        const lookup = request(); expect(lookup.request.params.get('q')).toBe(query);
+        lookup.flush({ results: [] });
+      } else http.expectNone(req => req.url === '/api/places/search');
+      await task;
+      expect(mockSnackBar.open).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [429, 'Wait before searching again'], [502, 'Online place search is unavailable'], [503, 'Online place search is disabled'],
+    ])('handles expected %s inline without a global toast or private crash report', async (status, detail) => {
+      const task = component.searchOnline();
+      const lookup = request();
+      expect(lookup.request.params.get('q')).toBe('Private address');
+      lookup.flush({ detail }, { status: status as number, statusText: 'Lookup refused' });
+      await task; fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('[role="alert"]')?.textContent).toContain('photo_detail.gps.online_error');
+      expect(mockSnackBar.open).not.toHaveBeenCalled();
+      expect(logout).not.toHaveBeenCalled(); expect(revalidate).not.toHaveBeenCalled();
+      http.expectNone('/api/client-errors');
+      http.expectNone(req => req.url === '/api/places/search');
+    });
+
+    it.each([[500, 'Unexpected fault'], [502, 'Unexpected gateway response']])('still reports unexpected %s failures without the private query', async (status, detail) => {
+      const task = component.searchOnline();
+      request().flush({ detail }, { status: status as number, statusText: 'Unexpected failure' });
+      const report = http.expectOne('/api/client-errors');
+      expect(JSON.stringify(report.request.body)).not.toContain('Private address');
+      expect(report.request.body.extra).toEqual({ request_url: '/api/places/search', request_method: 'GET', status });
+      report.flush({}); await task;
+      expect(mockSnackBar.open).toHaveBeenCalledWith('errors.server_error', '', expect.anything());
+    });
+
+    it.each([401, 403])('preserves global authentication handling for %s', async status => {
+      const task = component.searchOnline();
+      request().flush({ detail: 'Access denied' }, { status, statusText: 'Authentication refused' });
+      await task; await fixture.whenStable();
+      if (status === 401) expect(logout).toHaveBeenCalledOnce();
+      else { expect(revalidate).toHaveBeenCalledOnce(); expect(mockSnackBar.open).toHaveBeenCalled(); }
+      http.expectNone('/api/client-errors');
+    });
+
+    it('keeps the default global behavior for an API lookup without a local handler', () => {
+      TestBed.inject(ApiService).get('/places/search', { q: 'Private address' }).subscribe({ error: () => {} });
+      request().flush({ detail: 'Online place search is disabled' }, { status: 503, statusText: 'Disabled' });
+      http.expectOne('/api/client-errors').flush({});
+      expect(mockSnackBar.open).toHaveBeenCalledWith('errors.server_error', '', expect.anything());
+    });
+
+    it('does not suppress another endpoint even when the local lookup context is reused', () => {
+      const context = new HttpContext().set(HANDLE_PLACE_SEARCH_ERRORS_LOCALLY, true);
+      TestBed.inject(ApiService).get('/photos', {}, context).subscribe({ error: () => {} });
+      http.expectOne('/api/photos').flush({ detail: 'Wait before searching again' }, { status: 429, statusText: 'Throttled' });
+      http.expectNone('/api/client-errors');
+      expect(mockSnackBar.open).toHaveBeenCalledWith('errors.rate_limited', '', expect.anything());
+    });
+
+    it('allows an explicit retry after a handled failure without automatic HTTP retries', async () => {
+      const first = component.searchOnline();
+      request().flush({ detail: 'Online place search is unavailable' }, { status: 502, statusText: 'Unavailable' });
+      await first;
+      http.expectNone('/api/client-errors');
+      http.expectNone(req => req.url === '/api/places/search');
+      const retry = component.searchOnline();
+      request().flush({ results: [{ label: 'Result', latitude: 1, longitude: 2 }] });
+      await retry;
+      expect(component.onlineError()).toBe('');
+      expect(component.onlineResults()).toEqual([{ label: 'Result', latitude: 1, longitude: 2 }]);
+      expect(mockSnackBar.open).not.toHaveBeenCalled();
+    });
+
+    it('cancels an obsolete lookup on real navigation without reporting a failure', async () => {
+      const pending = component.searchOnline(); const lookup = request();
+      events.next(new NavigationStart(1, '/other'));
+      expect(lookup.cancelled).toBe(true);
+      await pending;
+      expect(component.onlineError()).toBe('');
+      expect(mockSnackBar.open).not.toHaveBeenCalled();
+      http.expectNone('/api/client-errors');
+    });
+  });
+
   it('invalidates a visible batch preview and saved places when ownership is lost', async () => {
     createComponent({ path: '', filename: '', lat: 1, lng: 2, batch: { photo_paths: ['/alice'] } });
     mockApi.post.mockReturnValue(of({ changed: 1, skipped: 0, preview_token: 't' }));
@@ -119,6 +251,9 @@ describe('GpsEditDialogComponent', () => {
       invalidate(); mockDialogRef.close.mockClear();
       pending.next({ changed: 1, gps_latitude: 1, gps_longitude: 2 }); await task;
       expect(mockDialogRef.close).not.toHaveBeenCalled();
+      const write = { batch: mockApi.post, save: mockApi.put, reset: mockApi.delete }[mode];
+      expect(write).toHaveBeenCalledTimes(mode === 'batch' ? 2 : 1);
+      if (mode === 'batch') expect(mockApi.post).toHaveBeenLastCalledWith('/photos/batch_gps', expect.objectContaining({ preview: false, preview_token: 't' }));
       if (publishes) {
         expect(mockStore.refreshPaths).toHaveBeenCalledExactlyOnceWith(null);
         if (mode !== 'batch') expect(mockStore.patchPhoto).toHaveBeenCalledTimes(1);
@@ -126,7 +261,8 @@ describe('GpsEditDialogComponent', () => {
         return;
       }
       expect(mockStore.patchPhoto).not.toHaveBeenCalled(); expect(mockStore.refreshPaths).not.toHaveBeenCalled();
-      expect(applied).not.toHaveBeenCalled(); expect(mockSnackBar.open).not.toHaveBeenCalled();
+      if (mode === 'batch') expect(applied).not.toHaveBeenCalled();
+      expect(mockSnackBar.open).not.toHaveBeenCalled();
     });
   }
 
@@ -235,7 +371,7 @@ describe('GpsEditDialogComponent', () => {
     const result = { label: 'Berlin', latitude: 52.5, longitude: 13.4 };
     mockApi.get.mockReturnValue(of({ results: [result] }));
     await component.searchOnline();
-    expect(mockApi.get).toHaveBeenLastCalledWith('/places/search', { q: 'Berlin' });
+    expect(mockApi.get).toHaveBeenLastCalledWith('/places/search', { q: 'Berlin' }, expect.any(HttpContext));
     expect(component.selectedLat()).toBeNull();
     component.selectedPlaceId.set(99);
     component.selectOnlineResult(result);
@@ -271,7 +407,9 @@ describe('GpsEditDialogComponent', () => {
     mockApi.get.mockReturnValue(throwError(() => new Error('offline')));
     await component.searchOnline();
     expect(component.onlineError()).toBeTruthy();
-    component.selectOnlineResult({ label: 'bad', latitude: NaN, longitude: 2 });
+    mockApi.get.mockReturnValue(of({ results: [{ label: 'bad', latitude: NaN, longitude: 2 }, { label: 'Berlin', latitude: 52, longitude: 13 }] }));
+    await component.searchOnline();
+    expect(component.onlineResults()).toEqual([{ label: 'Berlin', latitude: 52, longitude: 13 }]);
     expect(component.selectedLat()).toBe(1);
     component.selectRecent({ latitude: 0, longitude: 0 });
     expect(component.selectedLat()).toBe(0);

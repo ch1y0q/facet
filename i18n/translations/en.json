@@ -1024,7 +1024,8 @@
     "folders": "Folders",
     "map": "Map",
     "capsules": "Capsules",
-    "junk_sweep": "Junk Sweep"
+    "junk_sweep": "Junk Sweep",
+    "help": "Help"
   },
   "auth": {
     "logout": "Log out",
@@ -1638,7 +1639,10 @@
       "sequences": "Detecting brackets",
       "tagging": "Tagging",
       "vec": "Indexing",
-      "done": "Done"
+      "done": "Done",
+      "moments": "Detecting moments",
+      "junk": "Detecting junk",
+      "recompute": "Recomputing scores"
     },
     "title": "Scan Photos",
     "start_button": "Start Scan",
@@ -1728,7 +1732,7 @@
     "no_faces": "No faces found for this person",
     "split_done": "Person split",
     "split_error": "Failed to split person",
-    "empty_hint": "People come from faces you assign on a photo page (edition mode). Open any photo with faces and pick Assign person to create the first one."
+    "empty_hint": "People come from faces you assign on a photo page (edition mode). Open any photo with faces and pick Assign face to person to create the first one."
   },
   "person_selector": {
     "create_new": "Create new person",
@@ -2493,6 +2497,8 @@
     "gps": {
       "online_query": "Address or business",
       "online_notice": "Search online sends this query to the configured Photon provider. Saved places and coordinates work offline. Selecting a result previews it; Save applies it.",
+      "osm_attribution": "© OpenStreetMap contributors",
+      "opens_new_tab": "(opens in new tab)",
       "online_search": "Search online",
       "online_disabled": "Online search is disabled.",
       "online_loading": "Searching online…",
@@ -2521,8 +2527,10 @@
       "batch_title": "Set location",
       "only_missing": "Only photos missing a location",
       "preview_batch": "Preview location changes",
-      "batch_preview": "{changed} photos will change; {skipped} skipped.",
-      "batch_applied": "Updated {changed} photos; {skipped} skipped.",
+      "batch_preview": "{changed} photo will change; {skipped} skipped.",
+      "batch_preview_plural": "{changed} photos will change; {skipped} skipped.",
+      "batch_applied": "Updated {changed} photo; {skipped} skipped.",
+      "batch_applied_plural": "Updated {changed} photos; {skipped} skipped.",
       "batch_error": "Could not apply location. Select at most 1000 photos and preview again; the selection or saved place may have changed.",
       "batch_limit": "Select at most 1000 photos. Existing locations are replaced when protection is off. Original files are unchanged.",
       "batch_hint": "Choose a location, then preview the changes before saving the selection."
@@ -2602,7 +2610,12 @@
       "refresh": "Refresh status",
       "recent": "Recent sidecar exports",
       "none": "No recent sidecar exports.",
-      "read_failed": "Could not read export progress. Refresh to check again."
+      "read_failed": "Could not read export progress. Refresh to check again.",
+      "errors": {
+        "metadata_repair": "Existing metadata needs repair before exporting.",
+        "write_failed": "Could not write metadata. Check the server logs.",
+        "stopped": "Export stopped unexpectedly. Check the server logs and retry the remaining photos."
+      }
     }
   },
   "undo": {
@@ -2875,7 +2888,7 @@
     "before": "Before",
     "after": "After",
     "error": "Could not complete the action. Check access and files, then preview again.",
-    "reset_hint": "Use file date removes the manual override. If the file has no date, the capture date becomes unknown.",
+    "reset_hint": "The “Use file date” button removes the manual override. If the file has no date, the capture date becomes unknown.",
     "use_file": "Use file date",
     "preview": "Preview",
     "apply": "Apply correction",
@@ -2907,6 +2920,8 @@
     "yes": "Yes",
     "no": "No",
     "unknown": "Unknown",
-    "photo_count": "Photos: {count}"
+    "photo_count": "Photos: {count}",
+    "field": "Field",
+    "entry_action": "{action} · {kind} · {date} · #{id}"
   }
 }

@@ -1,7 +1,8 @@
 """Small, explicit Photon lookup. No query or outbound URL is logged here.
 
-Cache and throttle are per viewer process; deploy one worker or use a private
-Photon instance when sharing an installation across multiple workers.
+The cache is isolated by place owner within each viewer process. The provider
+throttle remains shared; deploy one worker or use a private Photon instance
+when sharing an installation across multiple workers.
 """
 import http.client
 import json
@@ -18,12 +19,26 @@ from fastapi import HTTPException
 
 from api.config import VIEWER_CONFIG
 
+QUERY_MIN = 3
+QUERY_MAX = 200
 _MAX_BYTES = 65536
 _TIMEOUT_SECONDS = 5.0
-_cache: OrderedDict[tuple[str, str], tuple[float, list[dict[str, Any]]]] = OrderedDict()
+_cache: OrderedDict[tuple[tuple[str, str], str, str], tuple[float, list[dict[str, Any]]]] = OrderedDict()
 _lock = threading.Lock()
 _next_request = 0.0
 _inflight = False
+_QUERY_MESSAGE = f'Search must contain {QUERY_MIN} to {QUERY_MAX} characters'
+
+
+def normalize_query(value: str) -> str:
+    """The one query boundary, shared by the HTTP route and `search()`."""
+    # Length is checked before strip() so an oversized value is refused without being copied.
+    if len(value) > QUERY_MAX:
+        raise ValueError(_QUERY_MESSAGE)
+    query = value.strip()
+    if len(query) < QUERY_MIN or any(ord(c) < 32 for c in query):
+        raise ValueError(_QUERY_MESSAGE)
+    return query
 
 
 def endpoint() -> str:
@@ -93,6 +108,7 @@ class _DeadlineConnection(http.client.HTTPConnection):
                 active.connect(address)
                 if self._secure:
                     context = ssl.create_default_context()
+                    context.minimum_version = ssl.TLSVersion.TLSv1_2
                     with self._socket_lock:
                         self.remaining()
                         secure = context.wrap_socket(active, server_hostname=self.host, do_handshake_on_connect=False)
@@ -221,19 +237,18 @@ def _results(data: Any) -> list[dict[str, Any]]:
     return results
 
 
-def search(query: str) -> list[dict[str, Any]]:
+def search(query: str, owner: tuple[str, str]) -> list[dict[str, Any]]:
     global _next_request, _inflight
-    if len(query) > 200:
-        raise HTTPException(422, 'Search must contain 3 to 200 characters')
-    query = query.strip()
-    if not 3 <= len(query) <= 200 or any(ord(c) < 32 for c in query):
-        raise HTTPException(422, 'Search must contain 3 to 200 characters')
+    try:
+        query = normalize_query(query)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
     url = endpoint()
     if not url:
         raise HTTPException(503, 'Online place search is disabled')
     # Do not queue unbounded work. Reserve the provider interval before the call;
     # a busy search refuses new misses while cached searches remain available.
-    key = (url, query)
+    key = (owner, url, query)
     with _lock:
         now = time.monotonic()
         for expired in [k for k, (stamp, _) in _cache.items() if now - stamp >= 900]:
@@ -246,7 +261,7 @@ def search(query: str) -> list[dict[str, Any]]:
         _inflight = True
     try:
         results = _results(_fetch(url, query))
-    except (OSError, ValueError, http.client.HTTPException, zlib.error):
+    except (OSError, ValueError, RecursionError, http.client.HTTPException, zlib.error):
         raise HTTPException(502, 'Online place search is unavailable') from None
     finally:
         with _lock:

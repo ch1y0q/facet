@@ -1039,6 +1039,7 @@ export const I18N = {
     map: "nav.map",
     capsules: "nav.capsules",
     junk_sweep: "nav.junk_sweep",
+    help: "nav.help",
   },
   auth: {
     logout: "auth.logout",
@@ -1652,6 +1653,9 @@ export const I18N = {
       tagging: "scan.phase.tagging",
       vec: "scan.phase.vec",
       done: "scan.phase.done",
+      moments: "scan.phase.moments",
+      junk: "scan.phase.junk",
+      recompute: "scan.phase.recompute",
     },
     title: "scan.title",
     start_button: "scan.start_button",
@@ -2506,6 +2510,8 @@ export const I18N = {
     gps: {
       online_query: "photo_detail.gps.online_query",
       online_notice: "photo_detail.gps.online_notice",
+      osm_attribution: "photo_detail.gps.osm_attribution",
+      opens_new_tab: "photo_detail.gps.opens_new_tab",
       online_search: "photo_detail.gps.online_search",
       online_disabled: "photo_detail.gps.online_disabled",
       online_loading: "photo_detail.gps.online_loading",
@@ -2535,7 +2541,9 @@ export const I18N = {
       only_missing: "photo_detail.gps.only_missing",
       preview_batch: "photo_detail.gps.preview_batch",
       batch_preview: "photo_detail.gps.batch_preview",
+      batch_preview_plural: "photo_detail.gps.batch_preview_plural",
       batch_applied: "photo_detail.gps.batch_applied",
+      batch_applied_plural: "photo_detail.gps.batch_applied_plural",
       batch_error: "photo_detail.gps.batch_error",
       batch_limit: "photo_detail.gps.batch_limit",
       batch_hint: "photo_detail.gps.batch_hint",
@@ -2616,6 +2624,11 @@ export const I18N = {
       recent: "export.jobs.recent",
       none: "export.jobs.none",
       read_failed: "export.jobs.read_failed",
+      errors: {
+        metadata_repair: "export.jobs.errors.metadata_repair",
+        write_failed: "export.jobs.errors.write_failed",
+        stopped: "export.jobs.errors.stopped",
+      },
     },
   },
   undo: {
@@ -2921,6 +2934,8 @@ export const I18N = {
     no: "organization_history.no",
     unknown: "organization_history.unknown",
     photo_count: "organization_history.photo_count",
+    field: "organization_history.field",
+    entry_action: "organization_history.entry_action",
   },
 } as const;
 

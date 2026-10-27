@@ -283,6 +283,22 @@ def test_batch_gps_rejects_same_count_substitution_and_coordinate_changes(editio
         assert conn.execute('SELECT COUNT(*) FROM photos WHERE path LIKE ? AND gps_manually_set=1', (prefix + '%',)).fetchone()[0] == 0
 
 
+def test_batch_gps_explicit_paths_chunked_and_bounded(edition_client, seed_photos_prefix):
+    prefix = '/batchgpsexplicit/'
+    paths = [prefix + str(i) + '.jpg' for i in range(1001)]
+    seed_photos_prefix(prefix, [{'path': p, 'filename': p} for p in paths])
+    body = {'photo_paths': paths, 'gps_latitude': 1, 'gps_longitude': 2, 'preview': True}
+    assert edition_client.post('/api/photos/batch_gps', json=body).status_code == 422
+    body['photo_paths'] = paths[:1000]
+    preview = edition_client.post('/api/photos/batch_gps', json=body).json()
+    assert preview['changed'] == 1000
+    body.update(preview=False, preview_token=preview['preview_token'])
+    assert edition_client.post('/api/photos/batch_gps', json=body).json()['changed'] == 1000
+    with get_db() as conn:
+        assert conn.execute('SELECT COUNT(*) FROM photos WHERE path LIKE ? AND gps_manually_set=1', (prefix + '%',)).fetchone()[0] == 1000
+        assert conn.execute('SELECT gps_latitude FROM photos WHERE path=?', (paths[-1],)).fetchone()[0] is None
+
+
 def test_batch_gps_bounded_scope_and_chunked_apply(edition_client, seed_photos_prefix):
     unrelated = '/batchgpscap-other/'
     seed_photos_prefix(unrelated, [dict(path=unrelated + str(i), filename=str(i)) for i in range(3)])
@@ -338,7 +354,7 @@ def test_batch_gps_preview_does_not_reserve_writer_lock(edition_client, seed_pho
     body = {'photo_paths': [path], 'gps_latitude': 1, 'gps_longitude': 2, 'preview': True}
     snapshot = edition_client.post('/api/photos/batch_gps', json=body).json()
     body.update(preview=preview, preview_token=snapshot['preview_token'])
-    from api.routers.map import _gps_batch_scopes
+    from api.routers.map import _gps_batch_rows
 
     def check_scanner_lock(conn, *args):
         # A separate scanner connection can reserve the writer slot during a
@@ -351,9 +367,9 @@ def test_batch_gps_preview_does_not_reserve_writer_lock(edition_client, seed_pho
             else:
                 with pytest.raises(sqlite3.OperationalError, match='locked'):
                     scanner.execute('BEGIN IMMEDIATE')
-        yield from _gps_batch_scopes(conn, *args)
+        yield from _gps_batch_rows(conn, *args)
 
-    with patch('api.routers.map._gps_batch_scopes', side_effect=check_scanner_lock):
+    with patch('api.routers.map._gps_batch_rows', side_effect=check_scanner_lock):
         response = edition_client.post('/api/photos/batch_gps', json=body)
     assert response.status_code == 200, response.text
     assert response.json()['changed'] == 1

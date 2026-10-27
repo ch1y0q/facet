@@ -2,7 +2,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AfterValidator, BaseModel, Field, field_validator
 
 from api.auth import CurrentUser, require_edition
 from api.config import is_multi_user_enabled
@@ -103,6 +103,16 @@ class PlaceSearchResponse(BaseModel):
     results: list[PlaceSearchResult]
 
 
-@router.get('/api/places/search', response_model=PlaceSearchResponse)
-def api_search_places(q: Annotated[str, Query(min_length=3, max_length=200)], user: CurrentUser = Depends(require_edition)):
-    return {'results': place_search.search(q)}
+class PlaceSearchErrorResponse(BaseModel):
+    detail: str
+
+
+@router.get('/api/places/search', response_model=PlaceSearchResponse, responses={
+    429: {'model': PlaceSearchErrorResponse, 'description': 'Wait before another explicit search.',
+          'headers': {'Retry-After': {'schema': {'type': 'string'}, 'description': 'Seconds before retrying.'}}},
+    502: {'model': PlaceSearchErrorResponse, 'description': 'Online provider unavailable.'},
+    503: {'model': PlaceSearchErrorResponse, 'description': 'Online place search disabled.'},
+})
+def api_search_places(q: Annotated[str, Query(min_length=place_search.QUERY_MIN, max_length=place_search.QUERY_MAX), AfterValidator(place_search.normalize_query)], user: CurrentUser = Depends(require_edition)):
+    owner = ('user', place_owner(user)) if is_multi_user_enabled() else ('installation', '')
+    return {'results': place_search.search(q, owner)}

@@ -9,6 +9,7 @@ import pytest
 
 from api.change_token import close_change_token_sentinels
 from api.routers import search
+from db.schema import PHOTOS_COLUMNS, _build_create_table_sql, init_database
 
 
 @pytest.fixture(autouse=True)
@@ -48,15 +49,19 @@ def vector(axis):
 
 
 async def database(path):
+    """A photos table built from the real schema; a file database also gets its revision triggers."""
+    if str(path) != ':memory:':
+        init_database(str(path), build_photo_indexes=False)
+        # The schema builder leaves the file in WAL mode; the replacement tests
+        # swap whole files, and a leftover -wal/-shm would alias the old one.
+        with sqlite3.connect(path) as setup:
+            setup.execute('PRAGMA journal_mode=DELETE')
     conn = await aiosqlite.connect(path)
     conn.row_factory = aiosqlite.Row
-    await conn.execute('CREATE TABLE photos (path TEXT PRIMARY KEY, clip_embedding BLOB, owner INTEGER)')
-    await conn.execute('INSERT INTO photos VALUES (?, ?, ?)', ('a', vector(0), 1))
+    if str(path) == ':memory:':
+        await conn.execute(_build_create_table_sql('photos', PHOTOS_COLUMNS))
+    await conn.execute('INSERT INTO photos(path,clip_embedding,iso) VALUES (?,?,?)', ('a', vector(0), 1))
     await conn.commit()
-    if str(path) != ':memory:':
-        from db.embedding_revision import init_schema
-        with sqlite3.connect(path) as setup:
-            init_schema(setup)
     return conn
 
 
@@ -79,7 +84,7 @@ async def test_external_same_count_embedding_update_and_delete_add(tmp_path):
         assert second is not first
         with sqlite3.connect(path) as writer:
             writer.execute('DELETE FROM photos')
-            writer.execute('INSERT INTO photos VALUES (?, ?, ?)', ('b', vector(2), 1))
+            writer.execute('INSERT INTO photos(path,clip_embedding,iso) VALUES (?,?,?)', ('b', vector(2), 1))
         third, paths = await load(conn)
         assert paths == ['b']
         np.testing.assert_array_equal(third, [np.frombuffer(vector(2), dtype=np.float32)])
@@ -145,16 +150,16 @@ async def test_concurrent_misses_build_once(tmp_path, monkeypatch):
     conn = await database(tmp_path / 'photos.db')
     started = threading.Event()
     release = threading.Event()
-    original = np.stack
+    original = search._build_embedding_matrix
     builds = []
 
-    def blocked_stack(*args, **kwargs):
+    def blocked_build(*args, **kwargs):
         builds.append(1)
         started.set()
         assert release.wait(5)
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(np, 'stack', blocked_stack)
+    monkeypatch.setattr(search, '_build_embedding_matrix', blocked_build)
     lock = ObservedLock(5)
     monkeypatch.setattr(search, '_embedding_cache_lock', lock)
     tasks = [asyncio.create_task(load(conn)) for _ in range(5)]
@@ -176,7 +181,7 @@ async def test_commit_during_build_does_not_publish_under_new_token(tmp_path, mo
     path = tmp_path / 'photos.db'
     conn = await database(path)
     await conn.execute('PRAGMA journal_mode=WAL')
-    original = np.stack
+    original = search._build_embedding_matrix
 
     def change_during_build(*args, **kwargs):
         with sqlite3.connect(path) as writer:
@@ -185,7 +190,7 @@ async def test_commit_during_build_does_not_publish_under_new_token(tmp_path, mo
 
     try:
         with monkeypatch.context() as patch:
-            patch.setattr(np, 'stack', change_during_build)
+            patch.setattr(search, '_build_embedding_matrix', change_during_build)
             first, _ = await load(conn)
         second, _ = await load(conn)
         assert second is not first
@@ -213,7 +218,7 @@ async def test_empty_matrix_is_reused_until_embedding_appears(tmp_path, monkeypa
         assert await load(conn) == (None, [])
         assert await load(conn) == (None, [])
         assert len(calls) == 1
-        await conn.execute('INSERT INTO photos VALUES (?, ?, ?)', ('new', vector(0), 1))
+        await conn.execute('INSERT INTO photos(path,clip_embedding,iso) VALUES (?,?,?)', ('new', vector(0), 1))
         await conn.commit()
         matrix, paths = await load(conn)
         assert paths == ['new']
@@ -233,7 +238,7 @@ async def test_atomic_replacement_old_reader_cannot_poison_new_file(tmp_path):
         # Establish the old reader's open inode, and a cached old generation.
         first, _ = await load(old)
         await replacement.execute('DELETE FROM photos')
-        await replacement.execute('INSERT INTO photos VALUES (?, ?, ?)', ('new', vector(1), 1))
+        await replacement.execute('INSERT INTO photos(path,clip_embedding,iso) VALUES (?,?,?)', ('new', vector(1), 1))
         await replacement.commit()
         await replacement.close()
         replacement = None
@@ -263,16 +268,16 @@ async def test_cancelled_builder_drains_before_releasing_lock(tmp_path, monkeypa
     conn = await database(tmp_path / 'photos.db')
     started = threading.Event()
     release = threading.Event()
-    original = np.stack
+    original = search._build_embedding_matrix
     builds = []
 
-    def blocked_stack(*args, **kwargs):
+    def blocked_build(*args, **kwargs):
         builds.append(1)
         started.set()
         assert release.wait(5)
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(np, 'stack', blocked_stack)
+    monkeypatch.setattr(search, '_build_embedding_matrix', blocked_build)
     lock = ObservedLock(2)
     monkeypatch.setattr(search, '_embedding_cache_lock', lock)
     first = asyncio.create_task(load(conn))
@@ -304,7 +309,7 @@ async def test_cancelled_builder_drains_before_releasing_lock(tmp_path, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_matrix_and_candidate_tokens_never_run_on_the_event_loop(tmp_path, monkeypatch):
+async def test_matrix_and_candidate_tokens_never_run_on_the_event_loop(tmp_path, monkeypatch, off_event_loop):
     from collections import OrderedDict
     from api import change_token
     path = tmp_path / 'off-loop.db'
@@ -312,15 +317,11 @@ async def test_matrix_and_candidate_tokens_never_run_on_the_event_loop(tmp_path,
     real_token = change_token.db_change_token
     calls = []
 
-    def guarded_token(db_path):
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            pass
-        else:
-            pytest.fail('database sentinel/token read ran on the event loop')
+    def record_thread(db_path):
         calls.append(threading.get_ident())
         return real_token(db_path)
+
+    guarded_token = off_event_loop(record_thread, 'database sentinel/token read ran on the event loop')
 
     async def unavailable(*args):
         return False
@@ -355,8 +356,6 @@ async def test_rating_commit_reuses_embedding_matrix(tmp_path):
     path = tmp_path / 'ratings.db'
     conn = await database(path)
     try:
-        await conn.execute('ALTER TABLE photos ADD COLUMN star_rating INTEGER DEFAULT 0')
-        await conn.commit()
         first, _ = await load(conn)
         with sqlite3.connect(path) as writer:
             writer.execute('UPDATE photos SET star_rating=4')
@@ -371,24 +370,24 @@ async def test_distinct_cohorts_replace_single_matrix_and_recheck_visibility_bef
     path = tmp_path / 'users.db'
     conn = await database(path)
     builds = []
-    original = np.stack
+    original = search._build_embedding_matrix
     def count_builds(*args, **kwargs):
         builds.append(1)
         return original(*args, **kwargs)
-    monkeypatch.setattr(np, 'stack', count_builds)
+    monkeypatch.setattr(search, '_build_embedding_matrix', count_builds)
     try:
-        await conn.execute('INSERT INTO photos VALUES (?, ?, ?)', ('b', vector(0), 2))
+        await conn.execute('INSERT INTO photos(path,clip_embedding,iso) VALUES (?,?,?)', ('b', vector(0), 2))
         await conn.commit()
         query = np.frombuffer(vector(0), dtype=np.float32)
         for owner, expected in [(1, {'a'}), (2, {'b'}), (1, {'a'})]:
-            result = await search._search_numpy(conn, query, 1, .5, 'owner=?', [owner])
+            result = await search._search_numpy(conn, query, 1, .5, 'iso=?', [owner])
             assert set(result) == expected
         assert len(builds) == 3
         # ACL membership changes without changing stored embeddings.
         with sqlite3.connect(path) as writer:
-            writer.execute('UPDATE photos SET owner=2 WHERE path="a"')
-        assert await search._search_numpy(conn, query, None, .5, 'owner=?', [1]) == {}
-        assert set(await search._search_numpy(conn, query, None, .5, 'owner=?', [2])) == {'a', 'b'}
+            writer.execute('UPDATE photos SET iso=2 WHERE path="a"')
+        assert await search._search_numpy(conn, query, None, .5, 'iso=?', [1]) == {}
+        assert set(await search._search_numpy(conn, query, None, .5, 'iso=?', [2])) == {'a', 'b'}
         assert len(builds) == 4
     finally:
         await conn.close()
@@ -401,13 +400,13 @@ async def test_replaced_database_uses_fresh_visibility_not_old_request_handle(tm
     replacement_path = tmp_path / 'replacement.db'
     replacement = await database(replacement_path)
     try:
-        await replacement.execute('UPDATE photos SET owner=2')
-        await replacement.execute('INSERT INTO photos VALUES (?, ?, ?)', ('b', vector(0), 1))
+        await replacement.execute('UPDATE photos SET iso=2')
+        await replacement.execute('INSERT INTO photos(path,clip_embedding,iso) VALUES (?,?,?)', ('b', vector(0), 1))
         await replacement.commit()
         await replacement.close()
         replacement_path.replace(path)
         result = await search._search_numpy(old, np.frombuffer(vector(0), dtype=np.float32), None, .5,
-                                            'owner=?', [1])
+                                            'iso=?', [1])
         assert set(result) == {'b'}
     finally:
         await old.close()
@@ -435,24 +434,20 @@ async def test_fresh_reader_failure_never_publishes_an_empty_matrix(tmp_path, mo
 async def test_shutdown_cancelling_builder_never_publishes_matrix(tmp_path, monkeypatch):
     conn = await database(tmp_path / 'shutdown.db')
     started, release, finished = threading.Event(), threading.Event(), threading.Event()
-    original_stack, original_task = np.stack, asyncio.create_task
-    children = []
-    def blocked_stack(*args, **kwargs):
+    original_build = search._build_embedding_matrix
+    def blocked_build(*args, **kwargs):
         started.set()
         try:
             assert release.wait(5)
-            return original_stack(*args, **kwargs)
+            return original_build(*args, **kwargs)
         finally:
             finished.set()
-    def capture_child(coro):
-        child = original_task(coro)
-        children.append(child)
-        return child
-    monkeypatch.setattr(np, 'stack', blocked_stack)
-    monkeypatch.setattr(asyncio, 'create_task', capture_child)
-    request = original_task(load(conn))
+    monkeypatch.setattr(search, '_build_embedding_matrix', blocked_build)
+    request = asyncio.create_task(load(conn))
+    children = []
     try:
         assert await asyncio.to_thread(started.wait, 5)
+        children = [t for t in asyncio.all_tasks() if t not in (request, asyncio.current_task())]
         assert len(children) == 1
         children[0].cancel()  # Event-loop shutdown also cancels child worker tasks.
         with pytest.raises(asyncio.CancelledError):
@@ -470,10 +465,10 @@ async def test_replacement_between_matrix_and_visibility_keeps_one_snapshot(tmp_
     path, replacement_path = tmp_path / 'live.db', tmp_path / 'replacement.db'
     old, replacement = await database(path), await database(replacement_path)
     try:
-        await old.execute('UPDATE photos SET owner=2')
-        await old.execute('INSERT INTO photos VALUES (?,?,?)', ('visible-other', vector(1), 1))
+        await old.execute('UPDATE photos SET iso=2')
+        await old.execute('INSERT INTO photos(path,clip_embedding,iso) VALUES (?,?,?)', ('visible-other', vector(1), 1))
         await old.commit()
-        await replacement.execute('UPDATE photos SET clip_embedding=?,owner=1', (vector(1),))
+        await replacement.execute('UPDATE photos SET clip_embedding=?,iso=1', (vector(1),))
         await replacement.commit()
         await replacement.close()
         original = search._load_snapshot_embedding_matrix
@@ -491,10 +486,10 @@ async def test_replacement_between_matrix_and_visibility_keeps_one_snapshot(tmp_
         query = np.frombuffer(vector(0), dtype=np.float32)
         # Old a is private; replacement a is visible but below threshold. Mixing
         # old vectors with new ACLs incorrectly returned {'a': 1.0} before this fix.
-        assert await search._search_numpy(old, query, 1, .5, 'owner=?', [1]) == {}
-        assert await search._search_numpy(old, query, None, .5, 'owner=?', [1]) == {}
+        assert await search._search_numpy(old, query, 1, .5, 'iso=?', [1]) == {}
+        assert await search._search_numpy(old, query, None, .5, 'iso=?', [1]) == {}
         assert set(await search._search_numpy(old, np.frombuffer(vector(1), dtype=np.float32), 1, .5,
-                                               'owner=?', [1])) == {'a'}
+                                               'iso=?', [1])) == {'a'}
     finally:
         await old.close()
         await replacement.close()
@@ -508,9 +503,9 @@ async def test_search_own_uncommitted_vectors_and_visibility_are_never_shared(tm
     observer.row_factory = aiosqlite.Row
     try:
         first, _ = await load(observer)
-        await writer.execute('UPDATE photos SET clip_embedding=?,owner=2', (vector(1),))
+        await writer.execute('UPDATE photos SET clip_embedding=?,iso=2', (vector(1),))
         assert set(await search._search_numpy(writer, np.frombuffer(vector(1), dtype=np.float32), 1, .5,
-                                               'owner=?', [2])) == {'a'}
+                                               'iso=?', [2])) == {'a'}
         assert search._embedding_cache['matrix'] is first
         assert writer.in_transaction  # Search must not roll back caller-owned writes.
         assert set(await search._search_numpy(observer, np.frombuffer(vector(0), dtype=np.float32), 1, .5,
@@ -537,7 +532,7 @@ async def test_old_readonly_revision_state_is_uncached_without_migration(tmp_pat
         assert first is not second
         assert search._embedding_cache is None
         assert set(await search._search_numpy(conn, np.frombuffer(vector(0), dtype=np.float32), 1, .5,
-                                               'owner=?', [1])) == {'a'}
+                                               'iso=?', [1])) == {'a'}
         with sqlite3.connect(path) as verify:
             if missing == 'table':
                 assert verify.execute("SELECT name FROM sqlite_master WHERE name='embedding_cache_revision'").fetchall() == []
@@ -557,8 +552,8 @@ async def test_rebuilt_photos_schema_cannot_reuse_an_unchanged_revision(tmp_path
         with sqlite3.connect(path) as writer:
             before = writer.execute('SELECT revision FROM embedding_cache_revision WHERE id=1').fetchone()[0]
             writer.execute('DROP TABLE photos')
-            writer.execute('CREATE TABLE photos(path TEXT PRIMARY KEY, clip_embedding BLOB, owner INTEGER)')
-            writer.execute('INSERT INTO photos VALUES (?,?,?)', ('new', vector(1), 1))
+            writer.execute('CREATE TABLE photos(path TEXT PRIMARY KEY, clip_embedding BLOB, iso INTEGER)')
+            writer.execute('INSERT INTO photos(path,clip_embedding,iso) VALUES (?,?,?)', ('new', vector(1), 1))
             init_schema(writer)
             assert writer.execute('SELECT revision FROM embedding_cache_revision WHERE id=1').fetchone()[0] == before
         matrix, paths = await load(conn)
@@ -592,10 +587,10 @@ async def test_missing_revision_trigger_disables_reuse(tmp_path):
 async def test_malformed_vector_cannot_break_authorized_cohort(tmp_path, bad, restricted):
     conn = await database(tmp_path / 'malformed.db')
     try:
-        await conn.execute('INSERT INTO photos VALUES (?,?,?)', ('private-bad', bad, 2))
+        await conn.execute('INSERT INTO photos(path,clip_embedding,iso) VALUES (?,?,?)', ('private-bad', bad, 2))
         await conn.commit()
         result = await search._search_numpy(conn, np.frombuffer(vector(0), dtype=np.float32), 1, .5,
-                                            'owner=?' if restricted else '1=1', [1] if restricted else [])
+                                            'iso=?' if restricted else '1=1', [1] if restricted else [])
         assert result == {'a': 1.0}
     finally:
         await conn.close()
@@ -616,7 +611,7 @@ async def test_requested_encoder_width_survives_mixed_library_before_scoped_limi
     different[0] = 1
     try:
         await conn.execute('DELETE FROM photos')
-        await conn.executemany('INSERT INTO photos VALUES (?,?,?)', [
+        await conn.executemany('INSERT INTO photos(path,clip_embedding,iso) VALUES (?,?,?)', [
             ('visible', matching.tobytes(), 1),
             *[(f'sample-{i}', hidden.tobytes(), 2) for i in range(999)],
             *[(f'newer-{i}', different.tobytes(), 2) for i in range(1001)],
@@ -632,15 +627,15 @@ async def test_requested_encoder_width_survives_mixed_library_before_scoped_limi
         assert search._stored_embedding_dim() == 768
         assert search._resolve_clip_config()['embedding_dim'] == 768
         query = hidden.copy()
-        result = await search._search_numpy(conn, query, 1, .5, 'owner=?', [1])
+        result = await search._search_numpy(conn, query, 1, .5, 'iso=?', [1])
         assert set(result) == {'visible'}  # Hidden higher scores cannot consume LIMIT.
         assert result['visible'] == pytest.approx(.8)
         matrix = search._embedding_cache['matrix']
         assert matrix.shape == (1, 768)
-        assert len(await search._search_numpy(conn, query, 1, .5, 'owner=?', [2])) == 1
+        assert len(await search._search_numpy(conn, query, 1, .5, 'iso=?', [2])) == 1
         assert search._embedding_cache['matrix'] is not matrix
         assert search._embedding_cache['matrix'].shape == (999, 768)
-        assert set(await search._search_numpy(conn, query, 1, .5, 'owner=?', [1])) == {'visible'}
+        assert set(await search._search_numpy(conn, query, 1, .5, 'iso=?', [1])) == {'visible'}
         assert search._embedding_cache['matrix'].shape == (1, 768)
     finally:
         search._reset_clip_config_cache()
@@ -654,59 +649,61 @@ async def test_restricted_cold_search_reads_and_allocates_only_visible_vectors(t
     conn = await database(tmp_path / 'bounded-cohort.db')
     decoded, stacked, blob_reads = [], [], []
     original_decode = embedding.bytes_to_normalized_embedding
-    original_stack = np.stack
+    original_build = search._build_embedding_matrix
     original_execute = aiosqlite.Connection.execute
     def decode(data, *args, **kwargs):
         decoded.append(data)
         return original_decode(data, *args, **kwargs)
-    def stack(arrays, *args, **kwargs):
-        stacked.append(len(arrays))
-        return original_stack(arrays, *args, **kwargs)
+    def build(rows, dimension):
+        matrix, paths = original_build(rows, dimension)
+        if matrix is not None:
+            stacked.append(len(paths))
+        return matrix, paths
     def execute(reader, sql, *args, **kwargs):
         if sql.startswith('SELECT path, clip_embedding'):
             blob_reads.append((sql, args))
         return original_execute(reader, sql, *args, **kwargs)
     monkeypatch.setattr(embedding, 'bytes_to_normalized_embedding', decode)
-    monkeypatch.setattr(np, 'stack', stack)
+    monkeypatch.setattr(search, '_build_embedding_matrix', build)
     monkeypatch.setattr(aiosqlite.Connection, 'execute', execute)
     try:
-        await conn.executemany('INSERT INTO photos VALUES (?,?,?)',
+        await conn.executemany('INSERT INTO photos(path,clip_embedding,iso) VALUES (?,?,?)',
                               [(f'private-{i}', vector(1), 2) for i in range(256)])
         await conn.commit()
         result = await search._search_numpy(conn, np.frombuffer(vector(0), dtype=np.float32), 1, .5,
-                                            'owner=?', [owner])
+                                            'iso=?', [owner])
         assert result == ({'a': 1.0} if expected_rows else {})
         assert len(decoded) == expected_rows
         assert stacked == ([1] if expected_rows else [])
         assert len(blob_reads) == (1 if expected_rows else 0)
         if expected_rows:
-            assert '(owner=?)' in blob_reads[0][0]
+            assert '(iso=?)' in blob_reads[0][0]
             assert blob_reads[0][1] == ([owner],)
     finally:
         await conn.close()
 
 
 @pytest.mark.asyncio
-async def test_equal_access_sets_share_one_cohort_without_account_or_predicate_identity(tmp_path, monkeypatch):
+async def test_equal_access_sets_share_one_cohort_without_account_or_predicate_identity(tmp_path, monkeypatch, off_event_loop):
     conn = await database(tmp_path / 'equal-cohorts.db')
     builds, hash_threads = [], []
-    original_stack = np.stack
+    original_build = search._build_embedding_matrix
     original_hash = search._visible_path_fingerprint
-    def stack(arrays, *args, **kwargs):
-        builds.append(len(arrays))
-        return original_stack(arrays, *args, **kwargs)
-    def fingerprint(paths):
-        with pytest.raises(RuntimeError):
-            asyncio.get_running_loop()
+    def build(rows, dimension):
+        matrix, paths = original_build(rows, dimension)
+        builds.append(len(paths))
+        return matrix, paths
+    def record_thread(paths):
         hash_threads.append(threading.get_ident())
         return original_hash(paths)
-    monkeypatch.setattr(np, 'stack', stack)
+    fingerprint = off_event_loop(record_thread, 'cohort fingerprint ran on the event loop')
+    monkeypatch.setattr(search, '_build_embedding_matrix', build)
     monkeypatch.setattr(search, '_visible_path_fingerprint', fingerprint)
     try:
-        await conn.execute('INSERT INTO photos VALUES (?,?,?)', ('private', vector(0), 2))
+        await conn.execute('INSERT INTO photos(path,clip_embedding,iso) VALUES (?,?,?)', ('private', vector(0), 2))
         await conn.commit()
         query = np.frombuffer(vector(0), dtype=np.float32)
-        for predicate, params in [('owner=?', [1]), ('path=?', ['a']), ('owner IN (?,?)', [99, 1])]:
+        for predicate, params in [('iso=?', [1]), ('path=?', ['a']), ('iso IN (?,?)', [99, 1])]:
             assert await search._search_numpy(conn, query, 1, .5, predicate, params) == {'a': 1.0}
         assert builds == [1]
         assert len(hash_threads) == 3
@@ -745,15 +742,14 @@ async def test_restricted_rating_commit_reuses_its_visible_cohort(tmp_path):
     path = tmp_path / 'scoped-rating.db'
     conn = await database(path)
     try:
-        await conn.execute('ALTER TABLE photos ADD COLUMN star_rating INTEGER DEFAULT 0')
-        await conn.execute('INSERT INTO photos(path,clip_embedding,owner) VALUES (?,?,?)', ('private', vector(1), 2))
+        await conn.execute('INSERT INTO photos(path,clip_embedding,iso) VALUES (?,?,?)', ('private', vector(1), 2))
         await conn.commit()
         query = np.frombuffer(vector(0), dtype=np.float32)
-        assert await search._search_numpy(conn, query, 1, .5, 'owner=?', [1]) == {'a': 1.0}
+        assert await search._search_numpy(conn, query, 1, .5, 'iso=?', [1]) == {'a': 1.0}
         matrix = search._embedding_cache['matrix']
         with sqlite3.connect(path) as writer:
             writer.execute('UPDATE photos SET star_rating=4')
-        assert await search._search_numpy(conn, query, 1, .5, 'owner=?', [1]) == {'a': 1.0}
+        assert await search._search_numpy(conn, query, 1, .5, 'iso=?', [1]) == {'a': 1.0}
         assert search._embedding_cache['matrix'] is matrix
         assert search._embedding_cache['paths'] == ['a']
     finally:
@@ -765,17 +761,17 @@ async def test_same_count_acl_change_rebuilds_cohort_without_vector_revision_cha
     path = tmp_path / 'same-count-acl.db'
     conn = await database(path)
     try:
-        await conn.execute('INSERT INTO photos VALUES (?,?,?)', ('b', vector(1), 2))
+        await conn.execute('INSERT INTO photos(path,clip_embedding,iso) VALUES (?,?,?)', ('b', vector(1), 2))
         await conn.commit()
         assert await search._search_numpy(conn, np.frombuffer(vector(0), dtype=np.float32), 1, .5,
-                                          'owner=?', [1]) == {'a': 1.0}
+                                          'iso=?', [1]) == {'a': 1.0}
         old_matrix = search._embedding_cache['matrix']
         with sqlite3.connect(path) as writer:
             before = writer.execute('SELECT revision FROM embedding_cache_revision').fetchone()[0]
-            writer.execute('UPDATE photos SET owner=CASE owner WHEN 1 THEN 2 ELSE 1 END')
+            writer.execute('UPDATE photos SET iso=CASE iso WHEN 1 THEN 2 ELSE 1 END')
             assert writer.execute('SELECT revision FROM embedding_cache_revision').fetchone()[0] == before
         assert await search._search_numpy(conn, np.frombuffer(vector(1), dtype=np.float32), 1, .5,
-                                          'owner=?', [1]) == {'b': 1.0}
+                                          'iso=?', [1]) == {'b': 1.0}
         assert search._embedding_cache['matrix'] is not old_matrix
         assert search._embedding_cache['paths'] == ['b']
     finally:

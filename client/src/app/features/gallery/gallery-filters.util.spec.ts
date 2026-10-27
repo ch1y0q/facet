@@ -17,6 +17,8 @@ import {
   smartAlbumFilterJson,
   applySavedAlbumFilters,
   exclusiveHidePatch,
+  reviewStatusPatch,
+  setScopePatch,
   countActiveFilters,
   loadDisplayOptionsFromStorage,
   saveDisplayOptionsToStorage,
@@ -232,6 +234,17 @@ describe('smartAlbumFilterJson', () => {
     expect(saved).toEqual({ camera: 'X100V' });
   });
 
+  it.each([true, false])('saves and reopens rejected-only=%s as a boolean without broadening the view', showRejected => {
+    const stored = smartAlbumFilterJson(filters({ show_rejected: showRejected, review_status: 'kept', camera: 'Canon' }));
+    const saved = JSON.parse(stored);
+    expect(saved.show_rejected).toBe(showRejected ? true : undefined);
+    const reopened = applySavedAlbumFilters(filters(), stored, '42');
+    expect(reopened).toMatchObject({ show_rejected: showRejected, review_status: 'kept', camera: 'Canon', album_id: '42' });
+    expect(buildApiParams(reopened, true, 0.15)).toMatchObject({ review_status: 'kept', camera: 'Canon' });
+    expect(buildApiParams(reopened, true, 0.15)['show_rejected']).toBe(showRejected ? '1' : undefined);
+    expect(JSON.parse(smartAlbumFilterJson(reopened))).toEqual(saved);
+  });
+
   it('keeps an ordinary sort', () => {
     const saved = JSON.parse(smartAlbumFilterJson(filters({ sort: 'date_taken', sort_direction: 'ASC' })));
     expect(saved.sort).toBe('date_taken');
@@ -283,6 +296,36 @@ describe('exclusiveHidePatch', () => {
     expect(exclusiveHidePatch({ show_rejected: true })).toEqual({ hide_rejected: false, favorites_only: false });
     expect(exclusiveHidePatch({ show_rejected: false })).toEqual({});
     expect(exclusiveHidePatch({ blinks_only: true })).toEqual({});
+  });
+});
+
+describe('reviewStatusPatch', () => {
+  it('a review status clears the semantic and similar queries', () => {
+    expect(reviewStatusPatch({ review_status: 'kept' })).toEqual({ similar_to: '', semanticQuery: '' });
+  });
+  it('undecided also sorts oldest first, unless the caller opts out of the sort', () => {
+    expect(reviewStatusPatch({ review_status: 'undecided' }))
+      .toEqual({ similar_to: '', semanticQuery: '', sort: 'date_taken', sort_direction: 'ASC' });
+    expect(reviewStatusPatch({ review_status: 'undecided' }, false)).toEqual({ similar_to: '', semanticQuery: '' });
+  });
+  it('a semantic or similar query clears the review status, and unrelated updates change nothing', () => {
+    expect(reviewStatusPatch({ semanticQuery: 'dog' })).toEqual({ review_status: '' });
+    expect(reviewStatusPatch({ similar_to: '/a.jpg' })).toEqual({ review_status: '' });
+    expect(reviewStatusPatch({ review_status: '', semanticQuery: '' })).toEqual({});
+  });
+});
+
+describe('setScopePatch', () => {
+  const cleared = { sequence_group_id: '', sequence_kind: '', burst_group_id: '', duplicate_group_id: '' };
+  it('burst and duplicate release their own hide toggle', () => {
+    expect(setScopePatch('burst', '3')).toEqual({ ...cleared, burst_group_id: '3', hide_bursts: false });
+    expect(setScopePatch('duplicate', '5')).toEqual({ ...cleared, duplicate_group_id: '5', hide_duplicates: false });
+  });
+  it('a bracket releases hide_brackets, any other sequence kind hide_panoramas', () => {
+    expect(setScopePatch('sequence', '4', 'bracket'))
+      .toEqual({ ...cleared, sequence_kind: 'bracket', sequence_group_id: '4', hide_brackets: false });
+    expect(setScopePatch('sequence', '9', 'hdr_panorama'))
+      .toEqual({ ...cleared, sequence_kind: 'hdr_panorama', sequence_group_id: '9', hide_panoramas: false });
   });
 });
 

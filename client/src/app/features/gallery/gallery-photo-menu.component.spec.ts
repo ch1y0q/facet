@@ -181,6 +181,7 @@ describe('GalleryPhotoMenuComponent', () => {
           I18N.albums.add_photos, I18N.export.action, I18N.cull.action, I18N.cull.delete_action,
           I18N.photoCard.embed_to_file, I18N.manage_persons.assign_face,
           I18N.gallery.selection.mark_sequence, I18N.gallery.selection.edit_tags,
+          I18N.review.keep, I18N.review.reset,
         ]) {
           expect(l).not.toContain(hidden);
         }
@@ -275,6 +276,10 @@ describe('GalleryPhotoMenuComponent', () => {
   describe('emitted actions', () => {
     const photo = makePhoto({ unassigned_faces: 1 });
     const cases: { name: string; bulk: boolean; path: string[]; expected: PhotoMenuAction; profiles?: string[] }[] = [
+      { name: 'bulk keep', bulk: true, path: [I18N.review.keep], expected: { kind: 'review', decision: 'kept' } },
+      { name: 'bulk reset', bulk: true, path: [I18N.review.reset], expected: { kind: 'review', decision: 'undecided' } },
+      { name: 'single keep', bulk: false, path: [I18N.review.keep], expected: { kind: 'review', decision: 'kept' } },
+      { name: 'single reset', bulk: false, path: [I18N.review.reset], expected: { kind: 'review', decision: 'undecided' } },
       { name: 'bulk favorite', bulk: true, path: [I18N.gallery.selection.favorite], expected: { kind: 'favorite' } },
       { name: 'bulk reject', bulk: true, path: [I18N.gallery.selection.reject], expected: { kind: 'reject' } },
       { name: 'bulk rate 5', bulk: true, path: [I18N.gallery.selection.rate, '★★★★★'], expected: { kind: 'rate', rating: 5 } },
@@ -284,6 +289,8 @@ describe('GalleryPhotoMenuComponent', () => {
       { name: 'bulk panorama', bulk: true, path: [I18N.gallery.selection.mark_sequence, I18N.gallery.selection.mark_panorama], expected: { kind: 'mark-panorama', sequenceKind: 'panorama' } },
       { name: 'bulk hdr panorama', bulk: true, path: [I18N.gallery.selection.mark_sequence, I18N.gallery.selection.mark_hdr_panorama], expected: { kind: 'mark-panorama', sequenceKind: 'hdr_panorama' } },
       { name: 'bulk bracket', bulk: true, path: [I18N.gallery.selection.mark_sequence, I18N.gallery.selection.mark_bracket], expected: { kind: 'mark-panorama', sequenceKind: 'bracket' } },
+      { name: 'bulk capture date', bulk: true, path: [I18N.capture_date.title], expected: { kind: 'capture-date' } },
+      { name: 'bulk location', bulk: true, path: [I18N.photo_detail.gps.batch_title], expected: { kind: 'gps' } },
       { name: 'bulk edit tags', bulk: true, path: [I18N.gallery.selection.edit_tags], expected: { kind: 'tags' } },
       { name: 'bulk copy', bulk: true, path: [I18N.gallery.selection.copy_filenames], expected: { kind: 'copy' } },
       { name: 'bulk export', bulk: true, path: [I18N.export.action], expected: { kind: 'export' } },

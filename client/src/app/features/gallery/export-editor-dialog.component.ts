@@ -85,13 +85,14 @@ export interface ExportEditorDialogData {
       }
 
       @if (job(); as current) {
-        <section class="flex flex-col gap-2 border-t pt-3" aria-live="polite">
-          <h3 class="text-sm font-medium">{{ stateKeys[current.state] | translate }}</h3>
+        <section class="flex flex-col gap-2 border-t pt-3">
+          <h3 class="text-sm font-medium" aria-live="polite" aria-atomic="true">{{ stateKeys[current.state] | translate }}</h3>
           <p class="text-sm">{{ I18N.export.jobs.progress | translate:{ processed: current.processed, total: current.total } }}</p>
           <mat-progress-bar mode="determinate" [value]="progressPercent()"
             [attr.aria-label]="I18N.export.jobs.progress | translate:{ processed: current.processed, total: current.total }" />
           <p class="text-sm">{{ I18N.export.jobs.counts | translate:{ written: current.written, skipped: current.skipped, errors: current.errors } }}</p>
-          @if (current.first_error) { <p class="text-xs text-[var(--mat-sys-error)]">{{ current.first_error }}</p> }
+          @if (current.first_error_code; as errorCode) { <p class="text-xs text-[var(--mat-sys-error)]">{{ errorKeys[errorCode] | translate }}</p> }
+          @else if (current.first_error) { <p class="text-xs text-[var(--mat-sys-error)]">{{ current.first_error }}</p> }
           @if (current.state === 'running') {
             <p class="text-xs opacity-70">{{ I18N.export.jobs.close_hint | translate }}</p>
             <button mat-stroked-button [disabled]="submitting() || readingStatus() || current.cancel_requested" (click)="cancelJob()">
@@ -110,10 +111,13 @@ export interface ExportEditorDialogData {
       <section class="flex flex-col gap-2 border-t pt-3">
         <div class="flex items-center justify-between gap-2">
           <h3 class="text-sm font-medium">{{ I18N.export.jobs.recent | translate }}</h3>
-          <button mat-button [disabled]="recentLoading()" (click)="loadRecent()">{{ I18N.export.jobs.refresh | translate }}</button>
+          <button mat-button [disabled]="recentLoading()"
+                  [attr.aria-label]="(I18N.export.jobs.refresh | translate) + ': ' + (I18N.export.jobs.recent | translate)"
+                  (click)="loadRecent()">{{ I18N.export.jobs.refresh | translate }}</button>
         </div>
         @for (receipt of recentJobs(); track receipt.id) {
-          <button mat-stroked-button class="!justify-start" [disabled]="submitting()" (click)="viewJob(receipt)">
+          <button mat-stroked-button class="!justify-start" [disabled]="submitting()"
+                  [attr.aria-current]="job()?.id === receipt.id ? 'true' : null" (click)="viewJob(receipt)">
             {{ receipt.started_at * 1000 | date:'dd/MM/yyyy HH:mm' }} · {{ stateKeys[receipt.state] | translate }} · {{ receipt.processed }}/{{ receipt.total }}
           </button>
         }
@@ -204,6 +208,10 @@ export class ExportEditorDialogComponent {
     running: I18N.export.jobs.running, completed: I18N.export.jobs.completed,
     cancelled: I18N.export.jobs.cancelled, failed: I18N.export.jobs.failed,
     interrupted: I18N.export.jobs.interrupted,
+  };
+  readonly errorKeys = {
+    metadata_repair: I18N.export.jobs.errors.metadata_repair, write_failed: I18N.export.jobs.errors.write_failed,
+    stopped: I18N.export.jobs.errors.stopped,
   };
   readonly errorDetail = signal<string | null>(null);
   readonly readError = signal(false);

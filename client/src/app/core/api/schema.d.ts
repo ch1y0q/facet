@@ -5997,8 +5997,8 @@ export interface components {
          *     just to keep it in sync -- exactly the "tidy the handler to fit the model"
          *     the phase rules out. The outer pagination envelope is still fully typed.
          *
-         *     Every photo in a page also carries the caller's ``is_rejected`` and ``is_favorite`` (0/1 ints, SQLite
-         *     has no boolean) and ``star_rating`` (0-5), from ``user_preferences`` in multi-user mode and the
+         *     Every photo in a page also carries the caller's ``is_rejected``, ``is_favorite`` and ``is_kept`` (0/1
+         *     ints, SQLite has no boolean) and ``star_rating`` (0-5), from ``user_preferences`` in multi-user mode and the
          *     ``photos`` columns otherwise (``attach_user_marks``); ``tests/test_burst_culling.py`` pins the wire types.
          */
         CullingGroupsResponse: {
@@ -7573,7 +7573,7 @@ export interface components {
             /** Refused Bracket Lead */
             refused_bracket_lead: string[];
             /** Removed Missing */
-            removed_missing?: string[] | null;
+            removed_missing: string[];
             /** Sequence Siblings */
             sequence_siblings: string[];
             /** Skipped */
@@ -7808,6 +7808,11 @@ export interface components {
             longitude: number;
             /** Name */
             name: string;
+        };
+        /** PlaceSearchErrorResponse */
+        PlaceSearchErrorResponse: {
+            /** Detail */
+            detail: string;
         };
         /** PlaceSearchResponse */
         PlaceSearchResponse: {
@@ -8345,6 +8350,8 @@ export interface components {
             errors: number;
             /** First Error */
             first_error?: string | null;
+            /** First Error Code */
+            first_error_code?: ("metadata_repair" | "write_failed" | "stopped") | null;
             /** Id */
             id: string;
             /** Processed */
@@ -14586,6 +14593,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Wait before another explicit search. */
+            429: {
+                headers: {
+                    /** @description Seconds before retrying. */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceSearchErrorResponse"];
+                };
+            };
+            /** @description Online provider unavailable. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceSearchErrorResponse"];
+                };
+            };
+            /** @description Online place search disabled. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceSearchErrorResponse"];
                 };
             };
         };

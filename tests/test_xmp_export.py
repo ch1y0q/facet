@@ -375,11 +375,10 @@ class TestExiftoolArgs:
         assert not any(a.startswith("-XMP-dc:Description") for a in args)
 
     def test_regions_args_and_math(self):
-        import json
+        from tests.conftest import added_region
         reg = FaceRegion.from_bbox("Alice", 0, 0, 100, 100, 1000, 1000)
         args = xe._region_args([reg])
-        addition = next(arg for arg in args if arg.startswith('-XMP-mwg-rs:RegionList+='))
-        region = json.loads(addition.split("=", 1)[1])
+        region = added_region(args)
         assert "-XMP-mwg-rs:RegionAppliedToDimensionsW=1000" in args
         assert "-XMP-mwg-rs:RegionAppliedToDimensionsH=1000" in args
         assert region["Area"] == {
@@ -405,7 +404,7 @@ class TestWriteMetadata:
         calls = []
         monkeypatch.setattr(xe, "exiftool_available", lambda: True)
         monkeypatch.setattr(xe, "_run_exiftool",
-                            lambda target, rating, *, timeout: calls.append(target))
+                            lambda target, rating, *, timeout, reconcile: calls.append(target))
         img = tmp_path / "p.jpg"
         img.write_bytes(b"x")
         result = write_metadata(str(img), XmpRating(star_rating=3))
@@ -419,7 +418,7 @@ class TestWriteMetadata:
         monkeypatch.setattr(xe, "_resolve_exiftool", lambda: 'mock-exiftool')
         monkeypatch.setattr(xe, "_exiftool_write_args", lambda *args, **kwargs: [])
         monkeypatch.setattr(xe, "_run_exiftool",
-                            lambda target, rating, *, timeout: calls.append(target))
+                            lambda target, rating, *, timeout, reconcile: calls.append(target))
         img = tmp_path / "p.jpg"
         img.write_bytes(b"x")
         result = write_metadata(str(img), XmpRating(star_rating=3), embed_original=True)
@@ -432,7 +431,7 @@ class TestWriteMetadata:
         calls = []
         monkeypatch.setattr(xe, "exiftool_available", lambda: True)
         monkeypatch.setattr(xe, "_run_exiftool",
-                            lambda target, rating, *, timeout: calls.append(target))
+                            lambda target, rating, *, timeout, reconcile: calls.append(target))
         img = tmp_path / "p.nef"
         img.write_bytes(b"x")
         result = write_metadata(str(img), XmpRating(star_rating=3), embed_original=True)
@@ -482,9 +481,9 @@ def _fake_exiftool(tmp_path, version="13.55", payload="<broken attr=\"a=\" b"):
 
 @pytest.fixture
 def clear_version_cache():
-    xe._exiftool_version.cache_clear()
+    xe._cached_exiftool_version.cache_clear()
     yield
-    xe._exiftool_version.cache_clear()
+    xe._cached_exiftool_version.cache_clear()
 
 
 @pytest.mark.usefixtures("clear_version_cache")
@@ -501,6 +500,78 @@ class TestExiftoolVersionGuard:
             lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=raw + "\n", stderr=""),
         )
         assert (xe.exiftool_defective_version() is not None) is defective
+
+    @pytest.mark.parametrize('failure', ['io', 'timeout', 'nonzero', 'malformed', 'empty'])
+    def test_failed_probe_is_retried_then_success_is_cached(self, monkeypatch, failure):
+        calls = []
+
+        def probe(args, **kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                if failure == 'io':
+                    raise OSError('transient version lookup failure')
+                if failure == 'timeout':
+                    raise subprocess.TimeoutExpired(args, 15)
+                if failure == 'nonzero':
+                    return subprocess.CompletedProcess(args, 1, stdout='13.55', stderr='temporary failure')
+                return subprocess.CompletedProcess(args, 0, stdout='not a version' if failure == 'malformed' else '')
+            return subprocess.CompletedProcess(args, 0, stdout='13.55\n')
+
+        monkeypatch.setattr(xe.subprocess, 'run', probe)
+        assert xe._exiftool_version('/same/exiftool') is None
+        assert xe._exiftool_version('/same/exiftool') == (13, 55)
+        assert xe._exiftool_version('/same/exiftool') == (13, 55)
+        assert len(calls) == 2
+
+    def test_face_writes_recover_after_a_failed_capability_probe(self, monkeypatch, tmp_path):
+        calls = []
+
+        def probe(args, **kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                raise OSError('transient version lookup failure')
+            return subprocess.CompletedProcess(args, 0, stdout='13.55')
+
+        monkeypatch.setattr(xe.subprocess, 'run', probe)
+        monkeypatch.setattr(xe, '_read_existing_regions', lambda *args, **kwargs: {})
+        monkeypatch.setattr(xe, '_read_existing_metadata', lambda *args, **kwargs: ([], [], False))
+        rating = XmpRating(star_rating=4, regions=[FaceRegion.from_bbox('Ada', 1, 1, 4, 4, 10, 10)])
+        target = str(tmp_path / 'new.xmp')
+        first = xe._exiftool_write_args(target, rating, '/same/exiftool', timeout=1)
+        second = xe._exiftool_write_args(target, rating, '/same/exiftool', timeout=1)
+        assert '-XMP:Rating=4' in first and '-XMP:Rating=4' in second
+        assert not any('RegionList' in argument for argument in first)
+        assert any(argument.startswith('-XMP-mwg-rs:RegionList+=') for argument in second)
+        assert len(calls) == 2
+        assert not Path(target).exists()
+
+    @pytest.mark.parametrize('embed', [False, True])
+    def test_recovered_defective_version_refuses_before_any_write(self, monkeypatch, tmp_path, embed):
+        exe = _fake_exiftool(tmp_path, version='13.25', payload=_GOOD_XMP)
+        monkeypatch.setattr(xe, '_resolve_exiftool', lambda: exe)
+        image = tmp_path / 'guard.jpg'
+        image.write_bytes(b'original image')
+        sidecar = Path(str(image) + '.xmp')
+        sidecar.write_text(_GOOD_XMP, encoding='utf-8')
+        before = image.read_bytes(), sidecar.read_bytes()
+        original_run = subprocess.run
+        probes, writes = [], []
+
+        def run(args, **kwargs):
+            if args[1:] == ['-ver']:
+                probes.append(args)
+                if len(probes) == 1:
+                    raise OSError('transient first version lookup failure')
+            if '-overwrite_original' in args:
+                writes.append(args)
+            return original_run(args, **kwargs)
+
+        monkeypatch.setattr(xe.subprocess, 'run', run)
+        with pytest.raises(RuntimeError, match='13.25.*13.28'):
+            write_metadata(str(image), XmpRating(star_rating=3), embed_original=embed)
+        assert len(probes) == 2
+        assert writes == []
+        assert (image.read_bytes(), sidecar.read_bytes()) == before
 
     def test_lookup_failure_does_not_block(self, monkeypatch):
         monkeypatch.setattr(xe, "_resolve_exiftool", lambda: "/nonexistent/exiftool")
@@ -561,6 +632,49 @@ class TestPostWriteValidation:
         assert stats["errors"] == 1 and stats["written"] == 0
         assert "malformed XMP" in caplog.text
         assert not (tmp_path / "p.jpg.xmp").exists()
+
+    def test_export_sidecars_precondition_error_counts_and_continues(self, monkeypatch, tmp_path, request):
+        import sqlite3
+
+        from db.schema import init_database
+        db = str(tmp_path / "e.db")
+        init_database(db)
+        conn = sqlite3.connect(db)
+        request.addfinalizer(conn.close)
+        conn.row_factory = sqlite3.Row
+        paths = []
+        for name in ("a.jpg", "b.jpg"):
+            img = tmp_path / name
+            img.write_bytes(b"x")
+            paths.append(str(img))
+            conn.execute("INSERT INTO photos (path, filename) VALUES (?, ?)", (str(img), name))
+        seen = []
+
+        def write(path, rating, **kwargs):
+            seen.append(path)
+            if path == paths[0]:
+                raise xe.MetadataPreconditionError("Cannot read face metadata; repair it before exporting")
+            return {"ok": True, "embedded": None, "sidecar": path + ".xmp", "skipped": False}
+        monkeypatch.setattr(xe, "write_metadata", write)
+        stats = xe.export_sidecars(conn)
+        assert stats == {"written": 1, "embedded": 0, "missing": 0, "errors": 1}
+        assert sorted(seen) == sorted(paths)
+
+    def test_row_without_ai_tags_marks_no_manual_tag_as_ai(self):
+        rating = XmpRating.from_row({"tags": "dog, manual", "manual_tags": ["manual"]})
+        assert rating.ai_tags == []
+        assert rating.manual_tags == ["manual"]
+
+    @pytest.mark.parametrize("value,expected", [
+        (None, []), ("", []), (1.50, ["1.5"]), (["a", ["b", None, 2]], ["a", "b", "2"]),
+    ])
+    def test_listify_stringifies_scalars_and_nests(self, value, expected):
+        assert xe._listify(value) == expected
+
+    @pytest.mark.parametrize("value", [True, False, ["ok", True], [[False]]])
+    def test_listify_refuses_booleans(self, value):
+        with pytest.raises(RuntimeError, match="Boolean keyword needs lossless readback"):
+            xe._listify(value)
 
 
 _EXIFTOOL = xe._resolve_exiftool()

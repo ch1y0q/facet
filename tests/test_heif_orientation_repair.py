@@ -15,7 +15,10 @@ from PIL import Image
 pytest.importorskip("pillow_heif")
 
 from db import init_database  # noqa: E402
-from processing.scorer import fix_double_transposed_heif_thumbnails  # noqa: E402
+from processing.scorer import (  # noqa: E402
+    HEIF_DOUBLE_TRANSPOSE_WATERMARK_KEY,
+    fix_double_transposed_heif_thumbnails,
+)
 
 ROTATED_HIF = str(__import__('pathlib').Path(__file__).parent / 'fixtures' / 'canon_eos_r8_hdr_pq_rotated.hif')
 UPRIGHT_HIF = str(__import__('pathlib').Path(__file__).parent / 'fixtures' / 'canon_eos_r8_hdr_pq.hif')
@@ -113,7 +116,7 @@ def test_watermark_makes_the_second_run_a_noop(tmp_path):
 
     conn = sqlite3.connect(db)
     watermark = conn.execute(
-        "SELECT value FROM stats_cache WHERE key = 'heif_double_transpose_watermark'"
+        "SELECT value FROM stats_cache WHERE key = ?", (HEIF_DOUBLE_TRANSPOSE_WATERMARK_KEY,)
     ).fetchone()[0]
     conn.close()
     assert watermark == '2026-02-01 10:00:00'  # the newest examined row, repaired or not

@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import type { McpTokenCreate, McpTokenCreated, McpTokenList, McpTokenRevoked } from '../api/types';
 import { thumbnailUrl, faceThumbnailUrl, personThumbnailUrl } from '../../shared/pipes/thumbnail-url.pipe';
@@ -9,7 +9,7 @@ export class ApiService {
   private http = inject(HttpClient);
   private baseUrl = '/api';
 
-  get<T>(path: string, params?: Record<string, string | number | boolean>): Observable<T> {
+  get<T>(path: string, params?: Record<string, string | number | boolean>, context?: HttpContext): Observable<T> {
     let httpParams = new HttpParams();
     if (params) {
       for (const [key, value] of Object.entries(params)) {
@@ -18,7 +18,7 @@ export class ApiService {
         }
       }
     }
-    return this.http.get<T>(`${this.baseUrl}${path}`, { params: httpParams });
+    return this.http.get<T>(`${this.baseUrl}${path}`, { params: httpParams, context });
   }
 
   post<T>(path: string, body?: unknown): Observable<T> {

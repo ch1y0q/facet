@@ -1,6 +1,7 @@
 """Preview and atomically correct capture walltimes without writing originals."""
 import hashlib
 import json
+import logging
 import os
 import sqlite3
 from typing import Any
@@ -9,10 +10,9 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.auth import CurrentUser, require_edition
-from api.config import invalidate_stats_cache
-from api import organization_history
+from api import organization_capture
 from api.database import get_db
-from api.db_helpers import retry_on_locked
+from api.db_helpers import after_commit, is_locked_error, retry_on_locked
 from api.models.capture_dates import CaptureDateApplyRequest, CaptureDatePreview, CaptureDateRequest, CaptureDateReset
 from api.routers.faces import _batch_scope_sql, _require_writable_photo, _writable_photo_paths
 from api.routers.map import resolve_photo_disk_path
@@ -20,6 +20,7 @@ from db.maintenance import evict_derived_stats_cache
 from exiftool.exiftool_batch import get_exif_batch
 from utils.capture_dates import format_capture_date, parse_capture_date
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=['capture_dates'])
 
 
@@ -51,12 +52,6 @@ def _invalidate(conn: sqlite3.Connection) -> None:
     evict_derived_stats_cache(conn)
 
 
-def _after_commit() -> None:
-    from api.routers.burst_culling import _invalidate_culling_groups_cache
-    invalidate_stats_cache()
-    _invalidate_culling_groups_cache()
-
-
 @router.post('/api/photos/capture_date/preview', response_model=CaptureDatePreview)
 def preview_dates(body: CaptureDateRequest, user: CurrentUser = Depends(require_edition)) -> dict[str, Any]:
     with get_db() as conn, conn:
@@ -73,11 +68,11 @@ def apply_dates(body: CaptureDateApplyRequest, user: CurrentUser = Depends(requi
         result, changes = _preview(conn, body, user)
         if result['preview_token'] != body.preview_token:
             raise HTTPException(409, 'Photos changed; preview again')
-        history_before = organization_history.begin(conn, user.user_id, 'date', [change['path'] for change in changes])
+        history_before = organization_capture.begin(conn, user.user_id, 'date', [change['path'] for change in changes])
         conn.executemany('UPDATE photos SET date_taken=?, date_manually_set=1 WHERE path=?', [(change['new_date'], change['path']) for change in changes])
-        organization_history.finish(conn, user.user_id, 'date', history_before)
+        organization_capture.finish(conn, user.user_id, 'date', history_before)
         _invalidate(conn)
-    _after_commit()
+    after_commit()
     return result
 
 
@@ -90,29 +85,36 @@ def _identity(path: str) -> tuple[int, int, int, int, int]:
 
 
 @router.delete('/api/photo/capture_date', response_model=CaptureDateReset)
+@retry_on_locked()
 def reset_date(path: str = Query(...), user: CurrentUser = Depends(require_edition)) -> dict[str, Any]:
-    with get_db() as conn:
-        _require_writable_photo(conn, user, path)
-        before = tuple(conn.execute('SELECT date_taken, date_manually_set FROM photos WHERE path=?', (path,)).fetchone())
-    disk_path = resolve_photo_disk_path(path)
-    identity = _identity(disk_path)
-    metadata = get_exif_batch([disk_path])
-    if disk_path not in metadata:
-        raise HTTPException(404, 'File not readable')
-    raw = metadata[disk_path].get('date_taken')
-    date = parse_capture_date(raw)
-    if raw is not None and date is None:
-        raise HTTPException(409, 'File date is unsupported; manual date was kept')
-    restored = format_capture_date(date) if date else None
-    with get_db() as conn, conn:
-        conn.execute('BEGIN IMMEDIATE')
-        _require_writable_photo(conn, user, path)
-        current = tuple(conn.execute('SELECT date_taken, date_manually_set FROM photos WHERE path=?', (path,)).fetchone())
-        if current != before or resolve_photo_disk_path(path) != disk_path or _identity(disk_path) != identity:
-            raise HTTPException(409, 'Photo changed; try again')
-        history_before = organization_history.begin(conn, user.user_id, 'date', [path])
-        conn.execute('UPDATE photos SET date_taken=?, date_manually_set=0 WHERE path=?', (restored, path))
-        organization_history.finish(conn, user.user_id, 'date', history_before)
-        _invalidate(conn)
-    _after_commit()
-    return dict(date_taken=restored, date_manually_set=0)
+    try:
+        with get_db() as conn:
+            _require_writable_photo(conn, user, path)
+            before = tuple(conn.execute('SELECT date_taken, date_manually_set FROM photos WHERE path=?', (path,)).fetchone())
+        disk_path = resolve_photo_disk_path(path)
+        identity = _identity(disk_path)
+        metadata = get_exif_batch([disk_path])
+        if disk_path not in metadata:
+            raise HTTPException(404, 'File not readable')
+        raw = metadata[disk_path].get('date_taken')
+        date = parse_capture_date(raw)
+        if raw is not None and date is None:
+            raise HTTPException(409, 'File date is unsupported; manual date was kept')
+        restored = format_capture_date(date) if date else None
+        with get_db() as conn, conn:
+            conn.execute('BEGIN IMMEDIATE')
+            _require_writable_photo(conn, user, path)
+            current = tuple(conn.execute('SELECT date_taken, date_manually_set FROM photos WHERE path=?', (path,)).fetchone())
+            if current != before or resolve_photo_disk_path(path) != disk_path or _identity(disk_path) != identity:
+                raise HTTPException(409, 'Photo changed; try again')
+            history_before = organization_capture.begin(conn, user.user_id, 'date', [path])
+            conn.execute('UPDATE photos SET date_taken=?, date_manually_set=0 WHERE path=?', (restored, path))
+            organization_capture.finish(conn, user.user_id, 'date', history_before)
+            _invalidate(conn)
+        after_commit()
+        return dict(date_taken=restored, date_manually_set=0)
+    except sqlite3.Error as exc:
+        if is_locked_error(exc):
+            raise
+        logger.exception("Database error resetting capture date for photo %s", path)
+        raise HTTPException(500, 'Internal server error') from exc

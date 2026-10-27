@@ -9,6 +9,7 @@ import type { components } from '../../core/api/schema';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { i18nKeys } from '../../core/i18n/keys';
+import { ReviewStateKeyPipe } from '../../shared/pipes/review-state-key.pipe';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { GalleryStore } from '../gallery/gallery.store';
 
@@ -16,10 +17,12 @@ type Entry = components['schemas']['OrganizationEntry'];
 type History = components['schemas']['OrganizationHistory'];
 type Revert = components['schemas']['OrganizationRevert'];
 
+const REVERT_ERROR_BY_STATUS: Record<number, 'conflict' | 'unavailable'> = { 409: 'conflict', 404: 'unavailable' };
+
 @Component({
   selector: 'app-organization-history-dialog',
   standalone: true,
-  imports: [MatDialogModule, MatButtonModule, TranslatePipe, DatePipe],
+  imports: [MatDialogModule, MatButtonModule, TranslatePipe, DatePipe, ReviewStateKeyPipe],
   changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title>{{ I18N.organization_history.title | translate }}</h2>
@@ -42,13 +45,13 @@ type Revert = components['schemas']['OrganizationRevert'];
               <p class="text-sm break-all font-medium mt-3">{{ change.path }}</p>
               @if (entry.kind === 'review') {
                 <p class="text-sm">{{ I18N.organization_history.review | translate }}:
-                  {{ (change.before[2] ? I18N.organization_history.rejected : change.before[3] ? I18N.organization_history.kept : I18N.culling.lightbox.undecided) | translate }}
-                  → {{ (change.after[2] ? I18N.organization_history.rejected : change.after[3] ? I18N.organization_history.kept : I18N.culling.lightbox.undecided) | translate }}
+                  {{ change.before | reviewStateKey | translate }}
+                  → {{ change.after | reviewStateKey | translate }}
                 </p>
               }
-              <table class="w-full text-sm"><thead><tr><th></th><th>{{ I18N.capture_date.before | translate }}</th><th>{{ I18N.capture_date.after | translate }}</th></tr></thead>
+              <table class="w-full text-sm"><thead><tr><th scope="col">{{ I18N.organization_history.field | translate }}</th><th scope="col">{{ I18N.capture_date.before | translate }}</th><th scope="col">{{ I18N.capture_date.after | translate }}</th></tr></thead>
               <tbody>@for (field of fields[entry.kind]; track field.key; let i = $index) {
-                <tr><th class="text-left p-1">{{ field.key | translate }}</th>
+                <tr><th scope="row" class="text-left p-1">{{ field.key | translate }}</th>
                   @for (value of [change.before[i], change.after[i]]; track $index) {
                     <td class="p-1 text-center">@if (value === null) { {{ I18N.organization_history.unknown | translate }} } @else if (field.flag) { {{ (value ? I18N.organization_history.yes : I18N.organization_history.no) | translate }} } @else { {{ value }} }</td>
                   }
@@ -57,7 +60,8 @@ type Revert = components['schemas']['OrganizationRevert'];
             }
             }
           </details>
-          <button mat-button [disabled]="busy() || entry.reverted" (click)="revert(entry)">{{ (entry.reverted ? I18N.organization_history.reverted : I18N.organization_history.revert) | translate }}</button>
+          <button mat-button [disabled]="busy() || entry.reverted" (click)="revert(entry)"
+            [attr.aria-label]="I18N.organization_history.entry_action | translate:{ action: ((entry.reverted ? I18N.organization_history.reverted : I18N.organization_history.revert) | translate), kind: (I18N.organization_history[entry.kind] | translate), date: ((entry.created_at | date:'dd/MM/yyyy HH:mm') ?? ''), id: entry.id }">{{ (entry.reverted ? I18N.organization_history.reverted : I18N.organization_history.revert) | translate }}</button>
         </section>
       } @empty { @if (!busy()) { <p>{{ I18N.organization_history.empty | translate }}</p> } }
     </mat-dialog-content>
@@ -164,7 +168,7 @@ export class OrganizationHistoryDialogComponent implements OnInit {
     } catch (failure) {
       if (this.current()) {
         const status = (failure as { status?: number }).status;
-        this.error.set(status === 409 ? 'conflict' : status === 404 ? 'unavailable' : 'error');
+        this.error.set((status !== undefined && REVERT_ERROR_BY_STATUS[status]) || 'error');
       }
     } finally {
       navigation.unsubscribe();

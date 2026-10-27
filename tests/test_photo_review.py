@@ -1,4 +1,5 @@
 """Persistent review decisions, independent of ratings and bounded by visibility."""
+import json
 import sqlite3
 
 import pytest
@@ -67,8 +68,6 @@ def test_culling_confirm_persists_keeps(edition_client, seed_photos_prefix, monk
         table, key = ("user_preferences", "photo_path") if per_user else ("photos", "path")
         assert conn.execute(f"SELECT is_kept, is_rejected, star_rating, is_favorite FROM {table} WHERE {key}=?", paths[:1]).fetchone() == (1, 0, 4, 1)
         assert conn.execute(f"SELECT is_kept, is_rejected FROM {table} WHERE {key}=?", paths[1:]).fetchone() == (0, 1)
-        conn.execute("DELETE FROM user_preferences WHERE photo_path LIKE ?", [prefix + "%"])
-        conn.execute("DELETE FROM comparisons WHERE photo_a_path LIKE ? OR photo_b_path LIKE ?", [prefix + "%"] * 2)
 
 
 def test_schema_upgrade_and_preference_migration(tmp_path):
@@ -145,21 +144,17 @@ def test_review_is_per_user(edition_client, seed_photos_prefix, monkeypatch, dec
     with sqlite3.connect(DEFAULT_DB_PATH) as conn:
         conn.execute("INSERT INTO user_preferences(user_id, photo_path, star_rating, is_favorite, is_rejected) VALUES('test', ?, 5, 1, 1)", [visible])
         conn.execute("INSERT INTO user_preferences(user_id, photo_path, is_kept) VALUES('bob', ?, 1)", [visible])
-    try:
-        scope = {"photo_paths": [visible, hidden, prefix + "missing.jpg"]} if target == "paths" else {"filters": {"camera": "ReviewUserCam"}}
-        response = edition_client.post("/api/photos/batch_review", json={**scope, "decision": decision})
-        assert response.json() == {"success": True, "count": 1}
-        with sqlite3.connect(DEFAULT_DB_PATH) as conn:
-            assert conn.execute("SELECT is_kept, is_rejected, star_rating, is_favorite FROM user_preferences WHERE user_id='test' AND photo_path=?", [visible]).fetchone() == (int(decision == "kept"), int(decision == "rejected"), 0 if decision == "rejected" else 5, 0 if decision == "rejected" else 1)
-            assert conn.execute("SELECT is_kept FROM user_preferences WHERE user_id='bob' AND photo_path=?", [visible]).fetchone() == (1,)
-            assert conn.execute("SELECT COUNT(*) FROM user_preferences WHERE photo_path=?", [hidden]).fetchone() == (0,)
-            assert conn.execute("SELECT is_kept FROM photos WHERE path=?", [visible]).fetchone() == (1,)
-        response = edition_client.get("/api/photos", params={"path_prefix": prefix, "review_status": decision})
-        assert [p["path"] for p in response.json()["photos"]] == [visible]
-        assert response.json()["photos"][0]["is_kept"] == int(decision == "kept")
-    finally:
-        with sqlite3.connect(DEFAULT_DB_PATH) as conn:
-            conn.execute("DELETE FROM user_preferences WHERE photo_path LIKE ?", [prefix + "%"])
+    scope = {"photo_paths": [visible, hidden, prefix + "missing.jpg"]} if target == "paths" else {"filters": {"camera": "ReviewUserCam"}}
+    response = edition_client.post("/api/photos/batch_review", json={**scope, "decision": decision})
+    assert response.json() == {"success": True, "count": 1}
+    with sqlite3.connect(DEFAULT_DB_PATH) as conn:
+        assert conn.execute("SELECT is_kept, is_rejected, star_rating, is_favorite FROM user_preferences WHERE user_id='test' AND photo_path=?", [visible]).fetchone() == (int(decision == "kept"), int(decision == "rejected"), 0 if decision == "rejected" else 5, 0 if decision == "rejected" else 1)
+        assert conn.execute("SELECT is_kept FROM user_preferences WHERE user_id='bob' AND photo_path=?", [visible]).fetchone() == (1,)
+        assert conn.execute("SELECT COUNT(*) FROM user_preferences WHERE photo_path=?", [hidden]).fetchone() == (0,)
+        assert conn.execute("SELECT is_kept FROM photos WHERE path=?", [visible]).fetchone() == (1,)
+    response = edition_client.get("/api/photos", params={"path_prefix": prefix, "review_status": decision})
+    assert [p["path"] for p in response.json()["photos"]] == [visible]
+    assert response.json()["photos"][0]["is_kept"] == int(decision == "kept")
 
 
 @pytest.mark.parametrize("per_user", [False, True])
@@ -306,3 +301,48 @@ def test_review_keeps_unchanged_agent_rating_origin(edition_client, seed_photos_
     assert response.status_code == 200, response.text
     with sqlite3.connect(DEFAULT_DB_PATH) as conn:
         assert conn.execute("SELECT star_rating FROM rating_provenance WHERE photo_path=?", [path]).fetchone() == (4,)
+
+
+@pytest.mark.parametrize("agent", [False, True])
+@pytest.mark.parametrize("include_visible", [False, True])
+def test_culling_keep_only_changes_visible_paths(tmp_path, monkeypatch, agent, include_visible):
+    """Mixed and wholly hidden targets cannot mutate labels, history or origin."""
+    import api.config as config
+    from api.db_helpers import set_photos_kept
+    from db.schema import init_database
+
+    monkeypatch.setitem(config._FULL_CONFIG, "users", {
+        "alice": {"directories": ["/review/visible"]},
+        "bob": {"directories": ["/review/visible-sibling"]},
+    })
+    path = str(tmp_path / "visible-keepers.db")
+    init_database(path)
+    visible = "/review/visible/a.jpg"
+    hidden = "/review/visible-sibling/b.jpg"
+    with sqlite3.connect(path) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.executemany("INSERT INTO photos(path,filename,is_kept,is_rejected,star_rating,is_favorite) "
+                         "VALUES(?,?,0,1,4,1)", [(p, p.rsplit('/', 1)[-1]) for p in [visible, hidden]])
+        conn.executemany("INSERT INTO user_preferences(user_id,photo_path,is_kept,is_rejected,star_rating,is_favorite) "
+                         "VALUES(?,?,0,1,4,1)", [(user, p) for user in ["alice", "bob"] for p in [visible, hidden]])
+        conn.executemany("INSERT INTO rating_provenance(user_id,photo_path,star_rating,is_rejected) VALUES(?,?,4,1)",
+                         [("alice", p) for p in [visible, hidden]])
+        hidden_before = tuple(conn.execute("SELECT * FROM user_preferences WHERE user_id='alice' AND photo_path=?", [hidden]).fetchone())
+        bob_before = [tuple(r) for r in conn.execute("SELECT * FROM user_preferences WHERE user_id='bob' ORDER BY photo_path")]
+        global_before = [tuple(r) for r in conn.execute("SELECT path,is_kept,is_rejected,star_rating,is_favorite FROM photos ORDER BY path")]
+        origin_before = tuple(conn.execute("SELECT * FROM rating_provenance WHERE user_id='alice' AND photo_path=?", [hidden]).fetchone())
+
+        targets = [hidden, "/review/missing.jpg"] + ([visible] if include_visible else [])
+        assert set_photos_kept(conn, targets, "alice", agent=agent) == int(include_visible)
+
+        assert tuple(conn.execute("SELECT is_kept,is_rejected,star_rating,is_favorite FROM user_preferences "
+                                  "WHERE user_id='alice' AND photo_path=?", [visible]).fetchone()) == ((1, 0, 4, 1) if include_visible else (0, 1, 4, 1))
+        assert tuple(conn.execute("SELECT * FROM user_preferences WHERE user_id='alice' AND photo_path=?", [hidden]).fetchone()) == hidden_before
+        assert [tuple(r) for r in conn.execute("SELECT * FROM user_preferences WHERE user_id='bob' ORDER BY photo_path")] == bob_before
+        assert [tuple(r) for r in conn.execute("SELECT path,is_kept,is_rejected,star_rating,is_favorite FROM photos ORDER BY path")] == global_before
+        assert tuple(conn.execute("SELECT * FROM rating_provenance WHERE user_id='alice' AND photo_path=?", [hidden]).fetchone()) == origin_before
+        entries = conn.execute("SELECT owner,scope,payload FROM organization_history").fetchall()
+        assert len(entries) == int(include_visible)
+        if entries:
+            assert tuple(entries[0][:2]) == ("alice", "alice")
+            assert [change['path'] for change in json.loads(entries[0]['payload'])] == [visible]

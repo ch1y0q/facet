@@ -1,6 +1,6 @@
+import { REVIEW_QUEUE_STORAGE_KEY } from '../../core/services/review-queue.storage';
 import { DEFAULT_FILTERS, GalleryFilters } from './gallery-filters.util';
 
-const STORAGE_KEY = 'facet_review_queues_v1';
 const MAX_USERS = 20;
 const MAX_BYTES = 16000;
 const EPHEMERAL = new Set(['page', 'sequence_group_id', 'sequence_kind', 'burst_group_id', 'duplicate_group_id']);
@@ -33,7 +33,7 @@ function canonicalFilters(value: unknown): GalleryFilters | null {
 
 function readEntries(): [string, ReviewQueue][] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(REVIEW_QUEUE_STORAGE_KEY);
     if (!raw || raw.length > MAX_BYTES * MAX_USERS) return [];
     const entries: unknown = JSON.parse(raw);
     if (!Array.isArray(entries)) return [];
@@ -55,5 +55,5 @@ export function saveReviewQueue(identity: string, filters: GalleryFilters): void
   const queue = { filters: canonical };
   if (JSON.stringify(queue).length > MAX_BYTES) return;
   const entries = [...readEntries().filter(([key]) => key !== identity), [identity, queue]].slice(-MAX_USERS);
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); } catch { /* Storage denied/full: reviewing still works. */ }
+  try { localStorage.setItem(REVIEW_QUEUE_STORAGE_KEY, JSON.stringify(entries)); } catch { /* Storage denied/full: reviewing still works. */ }
 }

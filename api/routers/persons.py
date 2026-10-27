@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["persons"])
 
+# Client-side cap: RECENT_LIMIT in person-assignment-history.service.ts.
+MAX_RECENT_IDS = 12
+
 _SORT_CLAUSES = {
     "name_asc": "ORDER BY COALESCE(p.name, '') ASC, p.face_count DESC",
     "name_desc": "ORDER BY COALESCE(p.name, '') DESC, p.face_count DESC",
@@ -139,7 +142,7 @@ async def list_persons(
     search: str = Query(""),
     sort: str = Query("count_desc", pattern="^(count_asc|count_desc|quality_asc|quality_desc|name_asc|name_desc|assignment)$"),
     include_hidden: bool = Query(False),
-    recent_ids: str = Query("", max_length=203),
+    recent_ids: str = Query("", max_length=MAX_RECENT_IDS * 16 + MAX_RECENT_IDS - 1),
     user: CurrentUser = Depends(require_authenticated),
 ):
     """List all persons with pagination and search.
@@ -156,7 +159,7 @@ async def list_persons(
     recent = []
     if recent_ids:
         tokens = recent_ids.split(',')
-        if sort != 'assignment' or len(tokens) > 12 or any(
+        if sort != 'assignment' or len(tokens) > MAX_RECENT_IDS or any(
             not token.isascii() or not token.isdecimal() or not 0 < int(token) <= 9007199254740991
             for token in tokens
         ):
@@ -190,7 +193,7 @@ async def list_persons(
         where_parts.append(person_not_hidden_clause('p'))
     if search.strip():
         term = search.strip()
-        numeric_id = int(term) if term.isdecimal() and len(term) <= 19 else None
+        numeric_id = int(term) if term.isascii() and term.isdecimal() and len(term) <= 19 else None
         if numeric_id is not None and numeric_id <= 9223372036854775807:
             where_parts.append("(p.id = ? OR p.name LIKE ?)")
             params.extend([numeric_id, f"%{term}%"])

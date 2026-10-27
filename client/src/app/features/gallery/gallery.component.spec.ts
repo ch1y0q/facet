@@ -1,19 +1,24 @@
 import type { Mock } from 'vitest';
 import { ComponentFixture, DeferBlockState, TestBed } from '@angular/core/testing';
-import { ChangeDetectorRef, Component, computed, DebugElement, DestroyRef, inject, signal, TemplateRef, WritableSignal } from '@angular/core';
-import { NgTemplateOutlet } from '@angular/common';
-import { ActivatedRoute, Event as RouterEvent, NavigationStart, Router, RouterOutlet } from '@angular/router';
+import { ApplicationRef, ChangeDetectorRef, Component, computed, DebugElement, DestroyRef, inject, signal, TemplateRef, WritableSignal } from '@angular/core';
+import { Location, NgTemplateOutlet } from '@angular/common';
+import { provideLocationMocks } from '@angular/common/testing';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { GalleryReuseStrategy } from '../../core/gallery-reuse.strategy';
+import { ActivatedRoute, Event as RouterEvent, NavigationEnd, NavigationStart, provideRouter, RouteReuseStrategy, Router, RouterOutlet } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { PhotoCardComponent } from '../../shared/components/photo-card/photo-card.component';
 import { GalleryPhotoMenuComponent } from './gallery-photo-menu.component';
 import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Subject, of, throwError } from 'rxjs';
-import { MatMenuTrigger } from '@angular/material/menu';
+import { defer, filter, finalize, firstValueFrom, Subject, of, throwError } from 'rxjs';
+import { MatContextMenuTrigger, MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
+import { MatSelect, MatSelectModule } from '@angular/material/select';
 import { MatDialog } from '@angular/material/dialog';
 import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { MatTooltip } from '@angular/material/tooltip';
 import { MATERIAL_ANIMATIONS, provideNativeDateAdapter } from '@angular/material/core';
+import { ScrollDispatcher } from '@angular/cdk/scrolling';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSidenav, MatSidenavContainer, MatSidenavContent } from '@angular/material/sidenav';
@@ -36,6 +41,9 @@ import { UndoService } from '../../core/services/undo.service';
 import { SequenceKind } from '../../core/services/sequence-override.service';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { PageHelpService } from '../../core/services/page-help.service';
+
+@Component({ template: 'Photo route' })
+class MenuPhotoRoute {}
 
 describe('GalleryComponent', () => {
   let component: GalleryComponent;
@@ -948,6 +956,27 @@ describe('GalleryComponent', () => {
 
       expect(mockStore.readGallerySessionQuery).not.toHaveBeenCalled();
       expect(mockStore.applySessionQuery).not.toHaveBeenCalled();
+    });
+
+    it('records its own filters in the session query after loadConfig on a plain init', async () => {
+      routeMock.snapshot.queryParams = {};
+      const order: string[] = [];
+      mockStore.loadConfig.mockImplementation(async () => { order.push('loadConfig'); });
+      mockStore.saveSessionQuery.mockImplementation(() => { order.push('saveSessionQuery'); });
+
+      await component.ngOnInit();
+
+      expect(order).toEqual(['loadConfig', 'saveSessionQuery']);
+    });
+
+    it('does not write the session query on an album route', async () => {
+      routeMock.snapshot.paramMap.get = vi.fn((k: string) => (k === 'albumId' ? '7' : null));
+      routeMock.snapshot.queryParams = {};
+
+      await component.ngOnInit();
+
+      expect(mockStore.loadConfig).toHaveBeenCalled();
+      expect(mockStore.saveSessionQuery).not.toHaveBeenCalled();
     });
 
     it('does not consult the session query on an album route', async () => {
@@ -2247,6 +2276,7 @@ describe('GalleryComponent', () => {
         refused_bracket_lead: [],
         sequence_siblings: [],
         skipped: [],
+        removed_missing: [],
         trashed: 0,
         errors: {},
         ...overrides,
@@ -3666,7 +3696,7 @@ describe('GalleryComponent', () => {
       const confirmed = { includeCompanions: false, includeSequenceSiblings: false };
       const deleted = (paths: string[]) => of({
         dry_run: false, deleted: paths, not_found: [], not_visible: [], refused_bracket_lead: [],
-        sequence_siblings: [], skipped: [], trashed: paths.length, errors: {},
+        sequence_siblings: [], skipped: [], removed_missing: [], trashed: paths.length, errors: {},
       });
 
       it('opens the single-photo dialog under view scope, where the no-arg form refuses', async () => {
@@ -4368,6 +4398,159 @@ describe('GalleryComponent', () => {
     });
   });
 
+  describe('card menus across real router parking', () => {
+    let harness: RouterTestingHarness;
+    let gallery: GalleryComponent;
+    let allowPhoto: boolean;
+    const photos = Array.from({ length: 3 }, (_, i) => ({
+      path: `/p${i}.jpg`, filename: `p${i}.jpg`, image_width: 4000, image_height: 3000,
+    }));
+
+    beforeEach(async () => {
+      // Keep the rendered gallery and Material directives; replace only the
+      // ordinary unit suite's route/outlet stubs with the real router boundary.
+      TestBed.resetTestingModule();
+      allowPhoto = true;
+      mockAuth['isEdition'] = vi.fn(() => true);
+      mockStore.photos.set(photos);
+      mockStore.total.set(photos.length);
+      mockStore.config.set({ features: { show_rating_controls: true } });
+      TestBed.configureTestingModule({
+        imports: [GalleryComponent, MenuPhotoRoute],
+        providers: [
+          provideRouter([
+            { path: '', component: GalleryComponent },
+            { path: 'photo', component: MenuPhotoRoute, canActivate: [() => allowPhoto] },
+          ]),
+          provideLocationMocks(),
+          provideNativeDateAdapter(),
+          { provide: RouteReuseStrategy, useClass: GalleryReuseStrategy },
+          { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
+          { provide: GalleryStore, useValue: mockStore },
+          { provide: ApiService, useValue: mockApi },
+          { provide: AuthService, useValue: mockAuth },
+          { provide: I18nService, useValue: mockI18n },
+          { provide: AlbumService, useValue: { list: () => of({ albums: [] }) } },
+          { provide: ScanService, useValue: { canLaunch: signal(false) } },
+          { provide: LiveAnnouncer, useValue: { announce: () => Promise.resolve() } },
+        ],
+      });
+      harness = await RouterTestingHarness.create();
+      TestBed.inject(Router).initialNavigation();
+      gallery = await harness.navigateByUrl('/', GalleryComponent);
+      const content = harness.routeDebugElement!.query(By.directive(MatSidenavContent)).componentInstance as MatSidenavContent;
+      vi.spyOn(content, 'scrollTo').mockImplementation(() => {});
+      for (const host of harness.routeNativeElement!.querySelectorAll<HTMLElement>('[data-pidx]')) {
+        host.scrollIntoView = () => {};
+      }
+    });
+
+    const overlay = () => TestBed.inject(OverlayContainer).getContainerElement();
+    async function expectMenuRemoved(): Promise<void> {
+      const container = overlay();
+      if (container.querySelector('[role="menu"]')) {
+        // Material completes overlay teardown asynchronously even with
+        // animations disabled. Observe the real effect instead of sleeping.
+        await new Promise<void>(resolve => {
+          const observer = new MutationObserver(() => {
+            if (!container.querySelector('[role="menu"]')) {
+              observer.disconnect();
+              resolve();
+            }
+          });
+          observer.observe(container, { childList: true, subtree: true });
+        });
+      }
+      expect(container.querySelector('[role="menu"]')).toBeNull();
+    }
+    const contextTrigger = (index: number) => harness.routeDebugElement!
+      .queryAll(By.directive(MatContextMenuTrigger))[index].injector.get(MatContextMenuTrigger);
+    async function rightClick(index: number): Promise<MatContextMenuTrigger> {
+      const card = harness.routeNativeElement!.querySelector(`app-photo-card[data-pidx="${index}"]`)!;
+      card.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: 40, clientY: 50 }));
+      harness.detectChanges();
+      await harness.fixture.whenStable();
+      const trigger = contextTrigger(index);
+      expect(trigger.menuOpen).toBe(true);
+      expect(overlay().querySelector('[role="menu"]')).not.toBeNull();
+      return trigger;
+    }
+    async function back(): Promise<void> {
+      const done = firstValueFrom(TestBed.inject(Router).events.pipe(filter(e => e instanceof NavigationEnd)));
+      TestBed.inject(Location).back();
+      await done;
+      harness.detectChanges();
+      await harness.fixture.whenStable();
+      expect(harness.routeDebugElement!.componentInstance).toBe(gallery);
+    }
+
+    it('removes the right-click overlay on photo navigation and reopens once after arrow navigation and Back', async () => {
+      const dispatcher = TestBed.inject(ScrollDispatcher);
+      const scrolled = dispatcher.scrolled.bind(dispatcher);
+      let scrollSubscriptions = 0;
+      vi.spyOn(dispatcher, 'scrolled').mockImplementation(ms => defer(() => {
+        scrollSubscriptions++;
+        return scrolled(ms).pipe(finalize(() => scrollSubscriptions--));
+      }));
+      const trigger = await rightClick(1);
+      expect(scrollSubscriptions).toBeGreaterThan(0);
+      const closed = vi.fn();
+      trigger.menuClosed.subscribe(closed);
+      await harness.navigateByUrl('/photo?path=%2Fp1.jpg', MenuPhotoRoute);
+      await harness.fixture.whenStable();
+      expect(mockStore.parkListingReads).toHaveBeenCalledOnce();
+      expect(trigger.menuOpen).toBe(false);
+      await expectMenuRemoved();
+      expect(closed).toHaveBeenCalledOnce();
+      expect(scrollSubscriptions).toBe(0);
+      // Photo arrows replace the current entry; Back must retain that viewed
+      // photo as the gallery cursor, without resurrecting the old menu.
+      await TestBed.inject(Router).navigateByUrl('/photo?path=%2Fp2.jpg', { replaceUrl: true });
+      await back();
+      expect(document.activeElement?.closest('[data-pidx]')?.getAttribute('data-pidx')).toBe('2');
+      await expectMenuRemoved();
+      await rightClick(1);
+      expect(scrollSubscriptions).toBeGreaterThan(0);
+      expect(overlay().querySelectorAll('[role="menu"]')).toHaveLength(1);
+      await harness.navigateByUrl('/photo?path=%2Fp1.jpg');
+      await harness.fixture.whenStable();
+      expect(closed).toHaveBeenCalledTimes(2);
+      await expectMenuRemoved();
+      expect(scrollSubscriptions).toBe(0);
+    });
+
+    it('keeps a context menu usable when photo navigation is cancelled, then closes on a successful retry', async () => {
+      const trigger = await rightClick(0);
+      allowPhoto = false;
+      expect(await TestBed.inject(Router).navigateByUrl('/photo?path=%2Fp0.jpg')).toBe(false);
+      expect(mockStore.parkListingReads).not.toHaveBeenCalled();
+      expect(trigger.menuOpen).toBe(true);
+      expect(overlay().querySelector('[role="menu"]')).not.toBeNull();
+      allowPhoto = true;
+      await harness.navigateByUrl('/photo?path=%2Fp0.jpg');
+      await harness.fixture.whenStable();
+      expect(trigger.menuOpen).toBe(false);
+      await expectMenuRemoved();
+      await back();
+      await rightClick(0);
+    });
+
+    it('still closes an ordinary gallery menu across the real outlet detach', async () => {
+      mockStore.selectionCount.set(1);
+      harness.detectChanges();
+      const trigger = harness.routeDebugElement!.query(By.directive(MatMenuTrigger)).injector.get(MatMenuTrigger);
+      trigger.openMenu();
+      harness.detectChanges();
+      await harness.fixture.whenStable();
+      expect(trigger.menuOpen).toBe(true);
+      expect(overlay().querySelector('[role="menu"]')).not.toBeNull();
+      await harness.navigateByUrl('/photo?path=%2Fp0.jpg');
+      await harness.fixture.whenStable();
+      expect(trigger.menuOpen).toBe(false);
+      await expectMenuRemoved();
+    });
+  });
+
   describe('side drawer margins across a park (rendered)', () => {
     let fixture: ComponentFixture<GalleryComponent> | null = null;
 
@@ -4419,6 +4602,62 @@ describe('GalleryComponent', () => {
       fixture.detectChanges();
       expect(container._contentMargins.right).toBe(320);
       expect(contentEl.style.marginRight).toBe('320px');
+    });
+  });
+
+  describe('review-progress banner (rendered)', () => {
+    let fixture: ComponentFixture<GalleryComponent>;
+
+    function render(): HTMLElement {
+      mockI18n.t.mockImplementation((key: string, vars?: Record<string, unknown>) => (vars ? `${key} ${JSON.stringify(vars)}` : key));
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    function buttonLabelled(host: HTMLElement, key: string): HTMLButtonElement | undefined {
+      return Array.from(host.querySelectorAll('button')).find(b => b.textContent?.trim() === key);
+    }
+
+    afterEach(() => fixture.destroy());
+
+    it('renders nothing while there is no progress snapshot', () => {
+      const host = render();
+      expect(host.querySelector('section progress')).toBeNull();
+    });
+
+    it('renders the decision counts and completion for the scope', () => {
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      mockStore.reviewPercent.set(40);
+      const status = render().querySelector('[role="status"]') as HTMLElement;
+      expect(status.textContent).toContain(`${I18N.gallery.review_progress.counts} ${JSON.stringify({ undecided: 6, kept: 3, rejected: 1 })}`);
+      expect(status.textContent).toContain(`${I18N.gallery.review_progress.complete} ${JSON.stringify({ percent: 40, total: 10 })}`);
+    });
+
+    it('Start calls startReviewQueue', () => {
+      mockStore.startReviewQueue = vi.fn();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      const start = buttonLabelled(render(), I18N.gallery.review_progress.start);
+      expect(start).toBeDefined();
+      start!.click();
+      expect(mockStore.startReviewQueue).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers no Start when nothing is undecided or the undecided tab is already active', () => {
+      mockStore.reviewProgress.set({ total: 10, undecided: 0, kept: 9, rejected: 1 });
+      expect(buttonLabelled(render(), I18N.gallery.review_progress.start)).toBeUndefined();
+      fixture.destroy();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      mockStore.filters.set({ ...DEFAULT_FILTERS, review_status: 'undecided' });
+      expect(buttonLabelled(render(), I18N.gallery.review_progress.start)).toBeUndefined();
+    });
+
+    it('Continue calls continueReview on the store', () => {
+      mockStore.reviewBookmark.set({ path: '/p1.jpg' });
+      const resume = buttonLabelled(render(), I18N.gallery.review_progress.resume);
+      expect(resume).toBeDefined();
+      resume!.click();
+      expect(mockStore.continueReview).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -4680,6 +4919,63 @@ describe('GalleryComponent', () => {
       expect(trigger.menuOpen).toBe(false);
     });
 
+    it('closes the toolbar type select when the gallery parks', () => {
+      const view = TestBed.inject(HeaderSlotService).template()!.createEmbeddedView({});
+      TestBed.inject(ApplicationRef).attachView(view);
+      try {
+        view.detectChanges();
+        fixture.detectChanges();
+        const type = (gallery as unknown as { selects(): MatSelect[] }).selects().at(0)!;
+        expect(type).toBeTruthy();
+        type.open();
+        fixture.detectChanges();
+        expect(type.panelOpen).toBe(true);
+        openPhoto(1);
+        expect(type.panelOpen).toBe(false);
+      } finally {
+        TestBed.inject(ApplicationRef).detachView(view);
+        view.destroy();
+      }
+    });
+
+    it('does not override a pointer press made before the anchor frame', () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 0, width: 1000, height: 800 } as DOMRect);
+      let top = 100;
+      vi.spyOn(host, 'getBoundingClientRect').mockImplementation(() => ({ top, height: 200 } as DOMRect));
+      openPhoto(1);
+      top = 180;
+      outletMock.attachEvents.next(gallery);
+      // Focus stays on the opened card; only the pointer veto can stop the re-anchor.
+      document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      scrollTo.mockClear();
+      for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+      expect(scrollTo).not.toHaveBeenCalled();
+    });
+
+    it('clamps a parked-resize anchor so the card stays inside a shorter viewport', () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      let height = 800;
+      let scroll = 640;
+      const absoluteTop = 740;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockImplementation(() => ({ top: 0, width: 1000, height } as DOMRect));
+      vi.spyOn(host, 'getBoundingClientRect').mockImplementation(() => ({ top: absoluteTop - scroll, height: 200 } as DOMRect));
+      vi.spyOn(content, 'measureScrollOffset').mockImplementation(() => scroll);
+      scrollTo.mockImplementation(({ top }: ScrollToOptions) => { scroll = top!; });
+      openPhoto(1);
+      height = 250;
+      outletMock.attachEvents.next(gallery);
+      for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+      // Anchor offset 100 would push the 200px card past a 250px viewport: clamped to 250 - 200.
+      expect(host.getBoundingClientRect().top).toBe(50);
+    });
+
     it('returns to the photo last viewed when the arrows moved off the one opened', () => {
       openPhoto(1);
       const router = TestBed.inject(Router);
@@ -4866,8 +5162,21 @@ describe('GalleryComponent', () => {
     // through a template outlet in the global toolbar.
     @Component({
       selector: 'app-toolbar-host',
-      imports: [NgTemplateOutlet],
-      template: '<ng-container [ngTemplateOutlet]="template()" />',
+      imports: [NgTemplateOutlet, MatMenuModule, MatSelectModule],
+      template: `
+        <ng-container [ngTemplateOutlet]="template()" />
+        <button data-testid="keyboard-test-menu" [matMenuTriggerFor]="menu">Menu</button>
+        <mat-menu #menu="matMenu">
+          <button mat-menu-item>Berries</button>
+          <button mat-menu-item>Violet</button>
+          <button mat-menu-item>/ Slash</button>
+        </mat-menu>
+        <mat-select aria-label="Test selector">
+          <mat-option value="b">Berries</mat-option>
+          <mat-option value="v">Violet</mat-option>
+          <mat-option value="s">/ Slash</mat-option>
+        </mat-select>
+      `,
     })
     class ToolbarHostComponent {
       readonly template = inject(HeaderSlotService).template;
@@ -5030,6 +5339,63 @@ describe('GalleryComponent', () => {
         expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
         expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
         expect(document.activeElement).not.toBe(search);
+      });
+
+      it.each(['b', 'v', '/'])('leaves %s to an open Material menu', async letter => {
+        vi.useRealTimers();
+        const trigger = host.debugElement.query(By.css('[data-testid="keyboard-test-menu"]')).injector.get(MatMenuTrigger);
+        trigger.openMenu();
+        host.detectChanges();
+        await host.whenStable();
+        const menu = TestBed.inject(OverlayContainer).getContainerElement().querySelector('[role="menu"]')!;
+        const item = menu.querySelector('button')!;
+        item.focus();
+        vi.useFakeTimers();
+        key({ key: letter, keyCode: letter === '/' ? 191 : letter.toUpperCase().charCodeAt(0) }, item);
+        vi.runOnlyPendingTimers();
+        host.detectChanges();
+        expect(trigger.menuOpen).toBe(true);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+        expect(document.activeElement?.textContent?.trim()).toBe(letter === 'b' ? 'Berries' : letter === 'v' ? 'Violet' : '/ Slash');
+        trigger.closeMenu();
+      });
+
+      it.each(['b', 'v', '/'])('leaves %s to an open Material select', async letter => {
+        vi.useRealTimers();
+        const select = host.debugElement.query(By.css('mat-select[aria-label="Test selector"]')).componentInstance as MatSelect;
+        select.open();
+        host.detectChanges();
+        await host.whenStable();
+        expect(select.panelOpen).toBe(true);
+        const panel = select.panel.nativeElement as HTMLElement;
+        panel.focus();
+        vi.useFakeTimers();
+        key({ key: letter, keyCode: letter === '/' ? 191 : letter.toUpperCase().charCodeAt(0) }, panel);
+        vi.runOnlyPendingTimers();
+        host.detectChanges();
+        expect(select.panelOpen).toBe(true);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+        expect(document.activeElement).not.toBe(search);
+        const active = document.getElementById((host.debugElement.query(By.css('mat-select[aria-label="Test selector"]')).nativeElement as HTMLElement).getAttribute('aria-activedescendant') ?? '');
+        expect(active?.textContent?.trim()).toBe(letter === 'b' ? 'Berries' : letter === 'v' ? 'Violet' : '/ Slash');
+        select.close();
+      });
+
+      it.each(['b', 'v', '/'])('leaves %s to a focused closed Material select', letter => {
+        const debug = host.debugElement.query(By.css('mat-select[aria-label="Test selector"]'));
+        const select = debug.componentInstance as MatSelect;
+        const element = debug.nativeElement as HTMLElement;
+        element.focus();
+        key({ key: letter, keyCode: letter === '/' ? 191 : letter.toUpperCase().charCodeAt(0) }, element);
+        vi.runOnlyPendingTimers();
+        host.detectChanges();
+        expect(select.panelOpen).toBe(false);
+        expect(select.value).toBe(letter === '/' ? 's' : letter);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(element);
       });
 
       it('does nothing while a dialog is open', () => {
