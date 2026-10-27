@@ -11,17 +11,17 @@ permissions:
 
 jobs:
   changes:
-    name: Detect Python-relevant changes
-    # A pull request that only touches the Angular client skips the Python
-    # suites (~45 min). The filter is inverted on purpose: the suite also reads
-    # docs, README, CHANGELOG, i18n bundles and workflow files, so anything
-    # outside client/ counts, and so do the client files it reads or generates
-    # (schema.d.ts and the npm scripts behind gen:api, keys.ts, photo.model.ts,
-    # the agent UI tool schema, the smart-album fixture). Pushes to master
-    # always run everything.
+    name: Detect Python changes
+    # Only a pull request that changes a .py file runs the full Python suites
+    # (~45 min on Linux, plus Windows). Any other pull request still runs the
+    # Python tests that check NON-Python files against the server (client
+    # interfaces and schema.d.ts, the agent UI schema and smart-album fixture,
+    # keys.ts and the i18n bundles, the AGENTS / THIRD_PARTY_MODELS docs) and
+    # the gen:api staleness check: about a minute. Pushes to master always run
+    # everything.
     runs-on: ubuntu-latest
     outputs:
-      python: ${{ steps.filter.outputs.python }}
+      scope: ${{ steps.filter.outputs.scope }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -31,25 +31,16 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [ "$EVENT" != "pull_request" ]; then
-            echo "python=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          changed=$(git diff --name-only "$BASE_SHA" HEAD)
-          echo "$changed"
-          relevant=$(echo "$changed" | grep -vE '^client/' || true)
-          relevant+=$(echo "$changed" | grep -E '^client/(package(-lock)?\.json$|scripts/|src/app/core/api/schema\.d\.ts$|src/app/core/i18n/keys\.ts$|src/app/core/agent/ui-tools\.schema\.json$|src/app/shared/models/photo\.model\.ts$|src/app/features/gallery/testing/smart-album-stored\.json$)' || true)
-          if [ -n "$relevant" ]; then
-            echo "python=true" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT" != "pull_request" ] || git diff --name-only "$BASE_SHA" HEAD | grep -qE '\.py$'; then
+            echo "scope=full" >> "$GITHUB_OUTPUT"
           else
-            echo "Only client files changed: skipping the Python suites."
-            echo "python=false" >> "$GITHUB_OUTPUT"
+            echo "No .py file changed: running only the cross-file Python checks."
+            echo "scope=cross-file" >> "$GITHUB_OUTPUT"
           fi
 
   python-tests:
     name: Python Tests
     needs: changes
-    if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -71,7 +62,14 @@ jobs:
         # versions are the ones verified against the suite.
         run: pip install pytest pytest-asyncio pytest-cov fastapi[standard] httpx pyjwt mcp==2.3.0 websockets pillow pillow-heif numpy scipy scikit-learn opencv-python-headless tqdm aiosqlite sqlite-vec imagehash psutil watchdog send2trash tifffile imagecodecs lupa jsonschema==4.26.0 pytest-timeout==2.4.0 pytest-xdist==3.8.0
       - name: Run tests
-        run: python -m pytest -n 4 --durations=30 --tb=short -q --cov=api --cov=processing --cov=analyzers --cov=config --cov=utils --cov-report=term-missing
+        env:
+          SCOPE: ${{ needs.changes.outputs.scope }}
+        run: |
+          if [ "$SCOPE" = "full" ]; then
+            python -m pytest -n 4 --durations=30 --tb=short -q --cov=api --cov=processing --cov=analyzers --cov=config --cov=utils --cov-report=term-missing
+          else
+            python -m pytest -n 4 --tb=short -q tests/test_api_contract.py tests/test_agent_ui_contract.py tests/test_agent_write.py tests/test_data_gated_sort_options.py tests/test_activity_label_keys.py tests/test_i18n.py tests/test_agent_actions.py tests/test_agent_scoring.py tests/test_agent_scoring_writes.py tests/test_licensing.py
+          fi
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
@@ -105,7 +103,8 @@ jobs:
     name: Python Tests (Windows)
     # Runs after the Linux suite: no point spending a Windows runner on a tree
     # that is already red, and this is the last gate rather than a parallel one.
-    needs: python-tests
+    needs: [changes, python-tests]
+    if: needs.changes.outputs.scope == 'full'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
