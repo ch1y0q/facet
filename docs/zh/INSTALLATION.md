@@ -172,18 +172,24 @@ python viewer.py                       # 启动照片库
 | 文件夹 | 内容 |
 |---|---|
 | `%LOCALAPPDATA%\Facet\app` | 程序本身，每次升级时替换 |
-| `%LOCALAPPDATA%\Facet\venv` | Python 环境，首次启动时建立 |
+| `%LOCALAPPDATA%\Facet\venv` | Python 环境，安装程序完成时建立 |
 | `%LOCALAPPDATA%\Facet\data` | 数据库（`photo_scores_pro.db`）和日志 |
 | `%LOCALAPPDATA%\Facet\config` | `scoring_config.json` |
 
 **获取安装程序。** 目前还没有发布版本附带它。可以在克隆的仓库中用 `installer\build-msi.ps1`
 构建（需要 WiX 3.14、`uv` 和已构建的前端，脚本会说明从哪里获取 WiX），或从
 *Windows install (MSI)* 工作流的一次运行中下载 `facet-msi` 产物。
+构建时，前端需要 Node.js 22.22.3 或更新版本（22.14 会使 `npm run build` 失败）。
 
-**首次启动。** 开始菜单中的 *Facet* 会在第一次运行时建立 Python 环境（约 6 GB，10–20 分钟），
-在更改了 Facet 依赖的升级之后也会重新建立。它会像 `install.sh` 一样根据你的 NVIDIA 显卡及其
+**首次启动。** 安装程序一结束就会开始建立 Python 环境。
+环境约 6 GB，uv 的下载缓存（`%LOCALAPPDATA%\uv\cache`）还要再占用差不多同样的空间。
+如果从未完成，或升级更改了 Facet 的依赖，开始菜单中的 *Facet* 会运行这一步。
+它会像 `install.sh` 一样根据你的 NVIDIA 显卡及其
 驱动选择 PyTorch 版本，没有 NVIDIA 显卡时则选择 CPU 版本。如果装好的 GPU 版本无法使用显卡，
 安装会停止并说明原因：请更新驱动，或运行 `Setup-Facet.ps1 -Force -Cpu`。
+
+如果图库无法启动（端口被占用、安装失败、90 秒内无响应），开始菜单窗口会显示错误并等待回车。
+90 秒内无响应时，图库会继续运行，之后仍可能启动成功。
 
 **日常使用：**
 
@@ -197,8 +203,9 @@ cd "$env:LOCALAPPDATA\Facet\app\installer"
 图库只在本机上响应。`Start-Facet.ps1 -Lan` 会向其他设备开放，在配置中设置 `viewer.password`
 之前它会拒绝启动。
 
-**卸载**（设置 → 应用）会移除程序及其 Python 环境，保留 `data` 和 `config`。已下载的模型留在
-你的用户文件夹中（`.cache`、`.insightface`）。
+**卸载**（设置 → 应用）会移除程序和快捷方式，保留 `data` 和 `config`。
+只有默认位置 `%LOCALAPPDATA%\Facet\venv` 中的 Python 环境会被移除。
+uv 的下载缓存（`%LOCALAPPDATA%\uv\cache`）和已下载的模型会保留（用户文件夹中的 `.cache`、`.insightface`）。
 
 **从 Docker 迁移图库。** 数据库保存每张照片的完整路径，而 Windows 安装看到的是另一个路径下的
 同一批照片（`\\NAS\Photos\...` 而不是 `/data/photos/...`）。把数据库复制到 `data`，停止 Facet，
@@ -211,8 +218,9 @@ cd "$env:LOCALAPPDATA\Facet\app"
 ```
 
 该工具会保留数据库副本（`photo_scores_pro.db.before-rewrite-<时间>`），拒绝合并已在新路径下扫描过
-的照片，并清空向量索引，可用 `python database.py --populate-vec` 重建。迁移之前的撤销历史之后
+的照片，并清空向量索引，可用 `..\venv\Scripts\python.exe database.py --db ..\data\photo_scores_pro.db --populate-vec` 重建。迁移之前的撤销历史之后
 不再适用。
+这些命令假定使用默认安装文件夹。旧前缀和新前缀若一个位于另一个之内（例如 `D:\Photos` 改为 `D:\Photos\new`），会被拒绝；请经由一个临时前缀中转。
 
 Docker 同样可以在 Windows 上使用；如需使用 NVIDIA 显卡，请按 [WSL2 指南](DEPLOYMENT.md#windowswsl2搭配-nvidia-gpu)操作。
 

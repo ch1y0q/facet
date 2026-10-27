@@ -179,21 +179,27 @@ Un installer per utente (MSI) installa Facet senza diritti di amministratore:
 | Cartella | Contenuto |
 |---|---|
 | `%LOCALAPPDATA%\Facet\app` | il programma, sostituito a ogni aggiornamento |
-| `%LOCALAPPDATA%\Facet\venv` | l'ambiente Python, creato al primo avvio |
+| `%LOCALAPPDATA%\Facet\venv` | l'ambiente Python, creato al termine dell'installer |
 | `%LOCALAPPDATA%\Facet\data` | il database (`photo_scores_pro.db`) e i log |
 | `%LOCALAPPDATA%\Facet\config` | `scoring_config.json` |
 
 **Ottenere l'installer.** Nessuna release lo include ancora. Costruiscilo da un clone con
-`installer\build-msi.ps1` (servono WiX 3.14, `uv` e il client compilato; lo script indica
-dove trovare WiX), oppure scarica l'artefatto `facet-msi` di un'esecuzione del workflow
-*Windows install (MSI)*.
+`installer\build-msi.ps1` (servono WiX 3.14, `uv` e il client compilato; lo script indica dove
+trovare WiX), oppure scarica l'artefatto `facet-msi` di un'esecuzione del workflow *Windows
+install (MSI)*. La costruzione richiede Node.js 22.22.3 o successivo per il client (22.14
+fallisce su `npm run build`).
 
-**Primo avvio.** La voce *Facet* del menu Start crea l'ambiente Python la prima volta (circa
-6 GB, 10-20 minuti), e di nuovo dopo un aggiornamento che cambia le dipendenze di Facet.
-Sceglie la build di PyTorch per la tua scheda NVIDIA e il suo driver come fa `install.sh`,
-oppure la build per CPU senza scheda NVIDIA. Se la build GPU installata non raggiunge la
-scheda, l'installazione si ferma e lo spiega: aggiorna il driver, oppure esegui
+**Primo avvio.** L'installer avvia la creazione dell'ambiente Python appena termina. L'ambiente occupa circa 6 GB, e la cache di download di uv
+(`%LOCALAPPDATA%\uv\cache`) ne occupa altrettanti. La voce *Facet* del menu Start esegue la
+configurazione se non è mai stata completata, e di nuovo dopo un aggiornamento che cambia le
+dipendenze di Facet. Sceglie la build di PyTorch per la tua scheda NVIDIA e il suo driver come
+fa `install.sh`, oppure la build per CPU senza scheda NVIDIA. Se la build GPU installata non
+raggiunge la scheda, l'installazione si ferma e lo spiega: aggiorna il driver, oppure esegui
 `Setup-Facet.ps1 -Force -Cpu`.
+
+Se la galleria non riesce ad avviarsi (porta occupata, errore di configurazione, nessuna
+risposta dopo 90 s), la finestra della voce del menu Start mostra l'errore e attende Invio.
+Dopo 90 s senza risposta la galleria resta in esecuzione e può ancora avviarsi.
 
 **Ogni giorno:**
 
@@ -208,9 +214,10 @@ La galleria risponde solo su questo computer. `Start-Facet.ps1 -Lan` la apre agl
 dispositivi e si rifiuta di partire finché `viewer.password` non è impostato nella
 configurazione.
 
-**La disinstallazione** (Impostazioni, App) rimuove il programma e il suo ambiente Python, e
-conserva `data` e `config`. I modelli scaricati restano nella tua cartella utente (`.cache`,
-`.insightface`).
+**La disinstallazione** (Impostazioni, App) rimuove il programma e i collegamenti, e conserva
+`data` e `config`. Rimuove l'ambiente Python solo nella cartella predefinita
+`%LOCALAPPDATA%\Facet\venv`. La cache di download di uv (`%LOCALAPPDATA%\uv\cache`) e i modelli
+scaricati restano (`.cache`, `.insightface` nella tua cartella utente).
 
 **Spostare una libreria da Docker.** Il database salva il percorso completo di ogni foto, e
 l'installazione Windows vede le stesse foto sotto un altro (`\\NAS\Photos\...` invece di
@@ -225,8 +232,11 @@ cd "$env:LOCALAPPDATA\Facet\app"
 
 Lo strumento tiene una copia del database (`photo_scores_pro.db.before-rewrite-<ora>`), si
 rifiuta di unire una foto già scansionata con il nuovo percorso e svuota l'indice vettoriale,
-che `python database.py --populate-vec` ricostruisce. La cronologia degli annullamenti di
-prima dello spostamento non si applica più.
+che `..\venv\Scripts\python.exe database.py --db ..\data\photo_scores_pro.db --populate-vec`
+ricostruisce. La cronologia degli annullamenti di prima dello spostamento non si applica più.
+Questi comandi presuppongono la cartella di installazione predefinita. Un prefisso vecchio e
+uno nuovo, di cui uno è dentro l'altro (per esempio da `D:\Photos` a `D:\Photos\new`), vengono
+rifiutati; passa da un prefisso temporaneo.
 
 Docker funziona anche su Windows; per una scheda NVIDIA, segui la [guida WSL2](DEPLOYMENT.md#windows-wsl2-con-una-gpu-nvidia).
 

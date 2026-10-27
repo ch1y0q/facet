@@ -180,21 +180,27 @@ Un instalador por usuario (MSI) instala Facet sin permisos de administrador:
 | Carpeta | Contenido |
 |---|---|
 | `%LOCALAPPDATA%\Facet\app` | el programa, que se sustituye en cada actualización |
-| `%LOCALAPPDATA%\Facet\venv` | el entorno Python, creado en el primer arranque |
+| `%LOCALAPPDATA%\Facet\venv` | el entorno Python, creado al terminar el instalador |
 | `%LOCALAPPDATA%\Facet\data` | la base de datos (`photo_scores_pro.db`) y los registros |
 | `%LOCALAPPDATA%\Facet\config` | `scoring_config.json` |
 
-**Conseguir el instalador.** Ninguna versión publicada lo incluye todavía. Constrúyelo desde
-un clon con `installer\build-msi.ps1` (necesita WiX 3.14, `uv` y el cliente compilado, e
-indica dónde conseguir WiX), o descarga el artefacto `facet-msi` de una ejecución del flujo
-*Windows install (MSI)*.
+**Conseguir el instalador.** Ninguna versión publicada lo incluye todavía. Constrúyelo desde un
+clon con `installer\build-msi.ps1` (necesita WiX 3.14, `uv` y el cliente compilado, e indica
+dónde conseguir WiX), o descarga el artefacto `facet-msi` de una ejecución del flujo *Windows
+install (MSI)*. Construirlo necesita Node.js 22.22.3 o posterior para el cliente (22.14 falla
+en `npm run build`).
 
-**Primer arranque.** La entrada *Facet* del menú Inicio crea el entorno Python la primera
-vez (unos 6 GB, 10-20 minutos), y de nuevo tras una actualización que cambie las dependencias
+**Primer arranque.** El instalador inicia la creación del entorno Python en cuanto termina. El entorno ocupa unos 6 GB, y la caché de descargas de uv
+(`%LOCALAPPDATA%\uv\cache`) ocupa otro tanto. La entrada *Facet* del menú Inicio ejecuta la
+instalación si nunca se completó, y de nuevo tras una actualización que cambie las dependencias
 de Facet. Elige la versión de PyTorch para tu tarjeta NVIDIA y su controlador como lo hace
 `install.sh`, o la versión de CPU si no hay tarjeta NVIDIA. Si la versión de GPU instalada no
-llega a la tarjeta, la instalación se detiene y lo explica: actualiza el controlador, o
-ejecuta `Setup-Facet.ps1 -Force -Cpu`.
+llega a la tarjeta, la instalación se detiene y lo explica: actualiza el controlador, o ejecuta
+`Setup-Facet.ps1 -Force -Cpu`.
+
+Si la galería no puede arrancar (puerto en uso, fallo de la instalación, sin respuesta tras 90
+s), la ventana de la entrada del menú Inicio muestra el error y espera a Intro. Tras 90 s sin
+respuesta, la galería sigue en marcha y aún puede arrancar.
 
 **En el día a día:**
 
@@ -209,9 +215,10 @@ La galería solo responde en este equipo. `Start-Facet.ps1 -Lan` la abre a otros
 dispositivos y se niega a arrancar hasta que `viewer.password` esté definido en la
 configuración.
 
-**Desinstalar** (Configuración, Aplicaciones) quita el programa y su entorno Python, y
-conserva `data` y `config`. Los modelos descargados se quedan en tu carpeta de usuario
-(`.cache`, `.insightface`).
+**Desinstalar** (Configuración, Aplicaciones) quita el programa y los accesos directos, y
+conserva `data` y `config`. Solo quita el entorno Python de la carpeta predeterminada
+`%LOCALAPPDATA%\Facet\venv`. La caché de descargas de uv (`%LOCALAPPDATA%\uv\cache`) y los
+modelos descargados se quedan (`.cache`, `.insightface` en tu carpeta de usuario).
 
 **Traer una biblioteca desde Docker.** La base de datos guarda la ruta completa de cada foto,
 y la instalación de Windows ve las mismas fotos con otra (`\\NAS\Photos\...` en lugar de
@@ -224,10 +231,13 @@ cd "$env:LOCALAPPDATA\Facet\app"
 ..\venv\Scripts\python.exe scripts\rewrite_db_paths.py ..\data\photo_scores_pro.db /data/photos "\\NAS\Photos"
 ```
 
-La herramienta guarda una copia de la base de datos (`photo_scores_pro.db.before-rewrite-<hora>`),
-se niega a fusionar una foto ya escaneada con la ruta nueva y vacía el índice vectorial, que
-`python database.py --populate-vec` reconstruye. El historial de deshacer anterior al
-traslado deja de aplicarse.
+La herramienta guarda una copia de la base de datos
+(`photo_scores_pro.db.before-rewrite-<hora>`), se niega a fusionar una foto ya escaneada con la
+ruta nueva y vacía el índice vectorial, que `..\venv\Scripts\python.exe database.py --db
+..\data\photo_scores_pro.db --populate-vec` reconstruye. El historial de deshacer anterior al
+traslado deja de aplicarse. Estos comandos suponen la carpeta de instalación predeterminada. Se
+rechazan un prefijo antiguo y uno nuevo cuando uno está dentro del otro (por ejemplo,
+`D:\Photos` a `D:\Photos\new`); pasa por un prefijo temporal.
 
 Docker también funciona en Windows; para una tarjeta NVIDIA, sigue la [guía de WSL2](DEPLOYMENT.md#windows-wsl2-con-una-gpu-nvidia).
 

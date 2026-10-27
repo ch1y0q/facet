@@ -180,21 +180,27 @@ Um instalador por usuário (MSI) instala o Facet sem direitos de administrador:
 | Pasta | Conteúdo |
 |---|---|
 | `%LOCALAPPDATA%\Facet\app` | o programa, substituído a cada atualização |
-| `%LOCALAPPDATA%\Facet\venv` | o ambiente Python, criado na primeira execução |
+| `%LOCALAPPDATA%\Facet\venv` | o ambiente Python, criado quando o instalador termina |
 | `%LOCALAPPDATA%\Facet\data` | o banco de dados (`photo_scores_pro.db`) e os logs |
 | `%LOCALAPPDATA%\Facet\config` | `scoring_config.json` |
 
 **Obter o instalador.** Nenhuma versão publicada o inclui ainda. Gere-o a partir de um clone
-com `installer\build-msi.ps1` (precisa do WiX 3.14, do `uv` e do cliente compilado, e
-indica onde obter o WiX), ou baixe o artefato `facet-msi` de uma execução do workflow
-*Windows install (MSI)*.
+com `installer\build-msi.ps1` (precisa do WiX 3.14, do `uv` e do cliente compilado, e indica
+onde obter o WiX), ou baixe o artefato `facet-msi` de uma execução do workflow *Windows install
+(MSI)*. A compilação precisa do Node.js 22.22.3 ou mais recente para o cliente (22.14 falha em
+`npm run build`).
 
-**Primeira execução.** O item *Facet* do menu Iniciar cria o ambiente Python na primeira vez
-(cerca de 6 GB, 10-20 minutos), e de novo após uma atualização que mude as dependências do
-Facet. Ele escolhe a versão do PyTorch para sua placa NVIDIA e o driver dela como o
-`install.sh` faz, ou a versão para CPU sem placa NVIDIA. Se a versão para GPU instalada não
-alcançar a placa, a instalação para e explica: atualize o driver, ou rode
-`Setup-Facet.ps1 -Force -Cpu`.
+**Primeira execução.** O instalador inicia a criação do ambiente Python assim que termina. O ambiente tem cerca de 6 GB, e o cache de download do uv
+(`%LOCALAPPDATA%\uv\cache`) ocupa quase o mesmo. O item *Facet* do menu Iniciar executa a
+configuração se ela nunca foi concluída, e de novo após uma atualização que mude as
+dependências do Facet. Ele escolhe a versão do PyTorch para sua placa NVIDIA e o driver dela
+como o `install.sh` faz, ou a versão para CPU sem placa NVIDIA. Se a versão para GPU instalada
+não alcançar a placa, a instalação para e explica: atualize o driver, ou rode `Setup-Facet.ps1
+-Force -Cpu`.
+
+Se a galeria não consegue iniciar (porta em uso, falha na configuração, sem resposta após 90
+s), a janela do item do menu Iniciar mostra o erro e espera por Enter. Após 90 s sem resposta,
+a galeria continua em execução e ainda pode subir.
 
 **No dia a dia:**
 
@@ -209,9 +215,10 @@ A galeria só responde neste computador. `Start-Facet.ps1 -Lan` a abre para outr
 dispositivos e se recusa a iniciar enquanto `viewer.password` não estiver definido na
 configuração.
 
-**Desinstalar** (Configurações, Aplicativos) remove o programa e o ambiente Python dele, e
-mantém `data` e `config`. Os modelos baixados ficam na sua pasta de usuário (`.cache`,
-`.insightface`).
+**Desinstalar** (Configurações, Aplicativos) remove o programa e os atalhos, e mantém `data` e
+`config`. Ele remove o ambiente Python só na pasta padrão `%LOCALAPPDATA%\Facet\venv`. O cache
+de download do uv (`%LOCALAPPDATA%\uv\cache`) e os modelos baixados ficam (`.cache`,
+`.insightface` na sua pasta de usuário).
 
 **Trazer uma biblioteca do Docker.** O banco de dados guarda o caminho completo de cada foto,
 e a instalação do Windows vê as mesmas fotos em outro (`\\NAS\Photos\...` em vez de
@@ -224,10 +231,13 @@ cd "$env:LOCALAPPDATA\Facet\app"
 ..\venv\Scripts\python.exe scripts\rewrite_db_paths.py ..\data\photo_scores_pro.db /data/photos "\\NAS\Photos"
 ```
 
-A ferramenta guarda uma cópia do banco (`photo_scores_pro.db.before-rewrite-<hora>`), se
-recusa a mesclar uma foto já varrida no novo caminho e esvazia o índice vetorial, que
-`python database.py --populate-vec` reconstrói. O histórico de desfazer de antes da mudança
-deixa de valer.
+A ferramenta guarda uma cópia do banco (`photo_scores_pro.db.before-rewrite-<hora>`), se recusa
+a mesclar uma foto já varrida no novo caminho e esvazia o índice vetorial, que
+`..\venv\Scripts\python.exe database.py --db ..\data\photo_scores_pro.db --populate-vec`
+reconstrói. O histórico de desfazer de antes da mudança deixa de valer. Estes comandos
+pressupõem a pasta de instalação padrão. Um prefixo antigo e um novo em que um está dentro do
+outro (por exemplo, `D:\Photos` para `D:\Photos\new`) são recusados; passe por um prefixo
+temporário.
 
 O Docker também funciona no Windows; para uma placa NVIDIA, siga o [guia do WSL2](DEPLOYMENT.md#windows-wsl2-com-uma-gpu-nvidia).
 
