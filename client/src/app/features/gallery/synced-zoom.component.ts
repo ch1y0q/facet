@@ -158,6 +158,7 @@ export class SyncedZoomComponent {
   constructor() {
     effect(onCleanup => {
       const src = this.src();
+      // Read for its dependency only: re-run the preload on a frame change even when src is unchanged.
       this.frameKey();
       if (!this.placeholderSrc()) return;
       untracked(() => {

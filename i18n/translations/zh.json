@@ -129,7 +129,8 @@
       "inpage_hint": "开启后，在此浏览器中运行的助手可以搜索，并在您的会话允许时通过页面修改您的图库。默认关闭，仅对此浏览器生效。",
       "inpage_changed": "助手更改了 {count} 张照片",
       "inpage_changed_plural": "助手更改了 {count} 张照片"
-    }
+    },
+    "ok": "好的"
   },
   "pagination": {
     "scroll_for_more": "向下滚动查看更多",
@@ -209,7 +210,7 @@
     "burst_set": "查看连拍组",
     "sequence_set": "查看包围曝光/全景组",
     "open_detail": "打开照片页",
-    "key_hint": "1-5 评分 · F 收藏 · X 淘汰 · Space 选择 · Enter 打开"
+    "key_hint": "1-5 评分 · F 收藏 · X 淘汰 · 空格 选择 · 回车 打开"
   },
   "notifications": {
     "copied": "已复制！",
@@ -1023,7 +1024,8 @@
     "folders": "文件夹",
     "map": "地图",
     "capsules": "照片胶囊",
-    "junk_sweep": "废片清理"
+    "junk_sweep": "废片清理",
+    "help": "帮助"
   },
   "auth": {
     "logout": "退出登录",
@@ -1036,7 +1038,7 @@
     "user_menu": "用户菜单"
   },
   "gallery": {
-    "help": "浏览和筛选照片库。按评分、日期或个人偏好排序；通过侧栏筛选（人物、标签、相机、类别、评分范围、拍摄时刻）及搜索查找照片。 焦点卡片上的按键：1–5 打星、F 收藏、X 淘汰（编辑模式）；/ 聚焦搜索、B 开合筛选侧栏、V 切换网格与马赛克。",
+    "help": "按评分、日期或个人偏好排序\n用侧栏筛选：人物、标签、相机、类别等\n搜索框按文件名或描述查找",
     "hidden_banner": {
       "message": "当前筛选条件隐藏了 {n} 张照片",
       "some_hidden": "部分照片被筛选条件隐藏",
@@ -1209,7 +1211,6 @@
       "find_filter": "查找筛选条件…",
       "clear_find_filter": "清空筛选搜索",
       "no_filters_match": "没有匹配的筛选条件",
-      "advanced_metrics": "高级指标",
       "refine": "细化筛选",
       "view": "查看",
       "color_quality": "色彩与画质",
@@ -1318,13 +1319,16 @@
       "complete": "已审阅 {total} 张中的 {percent}%",
       "start": "审阅未决定照片",
       "resume": "继续审阅",
-      "browser": "在此浏览器中恢复记住的队列。"
+      "browser": "在此浏览器中恢复记住的队列。",
+      "hide_from_menu": "隐藏审阅进度",
+      "show_from_menu": "显示审阅进度"
     },
     "manual_faces_need_review": "手动人脸需要检查",
     "manual_faces_review_hint": "基于最近一次扫描或人脸编辑器检查，并非持续监控。打开照片的人脸编辑器，检查已保存的标记。",
     "faces_need_names": "未命名的人脸",
     "faces_need_names_hint": "包括未分配的人脸和未命名的人物组。点击 + 分配人脸，或在“人物”中为分组命名。不包括未检测到人脸的照片。",
-    "faces_need_names_readonly_hint": "包含未分配的人脸和尚未命名的人物组。拥有编辑权限的用户可以分配人脸或为组命名。不包含未检测到人脸的照片。"
+    "faces_need_names_readonly_hint": "包含未分配的人脸和尚未命名的人物组。拥有编辑权限的用户可以分配人脸或为组命名。不包含未检测到人脸的照片。",
+    "help_none": "此页面暂无帮助内容。"
   },
   "composition_patterns": {
     "none": "无",
@@ -1624,7 +1628,10 @@
       "sequences": "正在检测包围曝光",
       "tagging": "正在添加标签",
       "vec": "正在建立索引",
-      "done": "完成"
+      "done": "完成",
+      "moments": "正在识别精彩瞬间",
+      "junk": "正在检测不需要的照片",
+      "recompute": "正在重新计算评分"
     },
     "title": "扫描照片",
     "start_button": "开始扫描",
@@ -1997,7 +2004,6 @@
     "similarity_threshold": "相似度阈值",
     "burst_help": "短时间内连续拍摄的照片会被归为一组。点击照片可选择保留（绿色边框），未选中的照片（红色边框）将被隐藏。系统根据清晰度和画质自动选中最佳照片。",
     "similar_help": "使用 AI 特征向量，将照片库中视觉相似的照片分组。逐组复核，保留最佳照片，淘汰近似重复照片。调整阈值滑块，可控制照片达到多高的相似度才会被归为一组。",
-    "help": "帮助",
     "help_text": "快速筛选近似重复的照片。选择分组方式（连拍、相似、场景或合并全部）和排序方式；“严格程度”控制自动选择时保留最佳照片的严格程度。在相似模式下，“相似度”滑块用于调整分组所需的相似程度。单击照片可切换保留状态，双击可仅保留该张，也可开启放大镜（Z）检查像素细节。打开暗房（Enter）可全屏复核，并使用双张／四张对比。使用上／下方向键选择照片组，按空格键确认并进入下一组；点击跳过或确认后有 7 秒等待时间，你可在照片组关闭前取消。确认后，已淘汰照片会从照片库中隐藏。可将范围限定为某个相册或场景，也可切换“排除已淘汰照片”。每次选片决定都会用于训练“我的偏好”个人排序。完整快捷键见下方。",
     "type_burst": "连拍",
     "type_similar": "相似",
@@ -2479,6 +2485,8 @@
     "gps": {
       "online_query": "地址或商家",
       "online_notice": "在线搜索会将此查询发送给已配置的 Photon 服务。已保存地点和坐标输入可离线使用。选择结果仅预览，点击保存后才会应用。",
+      "osm_attribution": "© OpenStreetMap 贡献者",
+      "opens_new_tab": "（在新标签页中打开）",
       "online_search": "在线搜索",
       "online_disabled": "在线搜索已禁用。",
       "online_loading": "正在在线搜索…",
@@ -2508,7 +2516,9 @@
       "only_missing": "仅限缺少位置的照片",
       "preview_batch": "预览位置更改",
       "batch_preview": "将更改 {changed} 张照片；跳过 {skipped} 张。",
+      "batch_preview_plural": "将更改 {changed} 张照片；跳过 {skipped} 张。",
       "batch_applied": "已更新 {changed} 张照片；跳过 {skipped} 张。",
+      "batch_applied_plural": "已更新 {changed} 张照片；跳过 {skipped} 张。",
       "batch_error": "无法应用位置。请选择最多 1000 张照片并重新预览；所选照片或已保存地点可能已更改。",
       "batch_limit": "请选择最多 1000 张照片。关闭保护后将替换现有位置。原始文件保持不变。",
       "batch_hint": "选择一个位置，然后预览更改，再保存所选照片。"
@@ -2588,7 +2598,13 @@
       "refresh": "刷新状态",
       "recent": "最近的附属文件导出",
       "none": "没有最近的附属文件导出。",
-      "read_failed": "无法读取导出进度。请刷新状态后重试。"
+      "read_failed": "无法读取导出进度。请刷新状态后重试。",
+      "errors": {
+        "metadata_repair": "导出前需要先修复现有元数据。",
+        "write_failed": "无法写入元数据。请查看服务器日志。",
+        "exiftool_upgrade": "ExifTool 13.23 至 13.27 会损坏 XMP 附属文件。请将 ExifTool 升级到 13.28 或更高版本。",
+        "stopped": "导出意外停止。请查看服务器日志并重试剩余照片。"
+      }
     }
   },
   "undo": {
@@ -2853,8 +2869,7 @@
   },
   "capture_date": {
     "title": "校正拍摄日期",
-    "offset": "偏移秒数（+ 推后，− 提前）",
-    "invalid": "请输入非零整数秒，范围为 ±366 天；最多选择 1000 张照片。",
+    "invalid": "请选择不为零且不超过 366 天的偏移；最多选择 1000 张照片。",
     "counts": "已更改 {changed} 张 · 已跳过 {skipped} 张",
     "samples": "前 20 项更改。未知、不完整、不支持或超出日期范围的时间将被跳过。",
     "photo": "照片",
@@ -2864,8 +2879,27 @@
     "reset_hint": "点击“使用文件日期”按钮可移除手动校正。如果文件没有日期，拍摄日期将变为未知。",
     "use_file": "使用文件日期",
     "preview": "预览",
-    "apply": "应用校正",
-    "hint": "偏移相机记录的本地时间，不推断时区或夏令时。只有明确导出元数据时才会更改原始文件。"
+    "apply": "应用校正（{count}）",
+    "hint": "偏移相机记录的本地时间，不推断时区或夏令时。只有明确导出元数据时才会更改原始文件。",
+    "mode_shift": "偏移",
+    "mode_exact": "设置准确时间",
+    "mode": "校正方式",
+    "direction": "方向",
+    "earlier": "提前",
+    "later": "推后",
+    "days": "天",
+    "hours": "小时",
+    "minutes": "分钟",
+    "seconds": "秒",
+    "unit_d": "天",
+    "unit_h": "小时",
+    "unit_min": "分钟",
+    "unit_s": "秒",
+    "quick": "快速调整",
+    "summary_earlier": "提前 {amount}",
+    "summary_later": "推后 {amount}",
+    "exact_label": "参考照片的正确日期和时间",
+    "reference": "参考照片："
   },
   "organization_history": {
     "title": "整理历史",

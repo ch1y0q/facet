@@ -1,7 +1,6 @@
 import { Component, computed, DestroyRef, effect, ElementRef, inject, signal, viewChild, viewChildren, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { MatMenuTrigger } from '@angular/material/menu';
 import { MatSelectModule, MatSelect } from '@angular/material/select';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatIconModule } from '@angular/material/icon';
@@ -33,6 +32,7 @@ import { CardActionsDialogComponent } from './card-actions-dialog.component';
 import { folderDisplayName } from '../folders/folders.util';
 import { i18nKeys } from '../../core/i18n/keys';
 import { isUnavailableKey, unavailableSet } from '../../shared/utils/unavailable-metrics';
+import { closeOverlayDirectives } from '../../shared/utils/overlays';
 
 export const ADDITIONAL_FILTERS: AdditionalFilterDef[] = [
   // Quality
@@ -208,7 +208,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
         @if (noFilterMatches()) {
           <p class="text-xs opacity-50 px-2 py-3">{{ I18N.gallery.sidebar.no_filters_match | translate }}</p>
         }
-        @for (group of searchResultGroups(); track group.sectionKey) {
+        @for (group of metricFilterGroups(); track group.sectionKey) {
           <div class="px-1 pt-2 pb-1">
             <div class="flex items-center gap-2 text-xs font-medium opacity-70 mb-1">
               <mat-icon class="!text-base !w-4 !h-4 !leading-4 opacity-60">{{ sectionIcons[group.sectionKey] || 'tune' }}</mat-icon>
@@ -277,7 +277,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
         <mat-form-field subscriptSizing="dynamic" class="w-full">
           <mat-label>{{ I18N.ui.filters.search | translate }}</mat-label>
           <mat-icon matPrefix class="mr-1 opacity-60">search</mat-icon>
-          <input matInput
+          <input matInput #sidebarSearch
             [placeholder]="I18N.gallery.search_placeholder | translate"
             [value]="store.filters().search"
             (input)="onSidebarSearchChange($event)"
@@ -797,32 +797,10 @@ function saveSectionStates(states: Record<string, boolean>): void {
         </mat-expansion-panel>
       }
 
-      <!-- Metric filter sections (collapsed by default) -->
-      <!-- Common metric sections -->
-      @for (group of commonFilterGroups(); track group.sectionKey) {
+      <!-- Metric filter sections, common then advanced, all top-level and collapsed by default -->
+      @for (group of metricFilterGroups(); track group.sectionKey) {
         <ng-container [ngTemplateOutlet]="metricPanel" [ngTemplateOutletContext]="{ $implicit: group }" />
       }
-
-      <!-- Advanced metrics (collapsed; nested sections) -->
-      <mat-expansion-panel class="!mb-1" [expanded]="sectionStates()['advanced'] === true"
-                           (opened)="onSectionToggle('advanced', true)"
-                           (closed)="onSectionToggle('advanced', false)"
-                           [style.background-color]="sectionStates()['advanced'] === true ? 'var(--mat-sys-surface-container)' : null">
-        <mat-expansion-panel-header>
-          <mat-panel-title class="flex items-center gap-2">
-            <mat-icon class="!text-base !w-5 !h-5 !leading-5 opacity-60">tune</mat-icon>
-            {{ I18N.gallery.sidebar.advanced_metrics | translate }}
-            @if (advancedActiveCount()) {
-              <span class="text-xs rounded-full min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center bg-[var(--mat-sys-primary)] text-[var(--mat-sys-on-primary)] leading-none">{{ advancedActiveCount() }}</span>
-            }
-          </mat-panel-title>
-        </mat-expansion-panel-header>
-        <div class="flex flex-col gap-1 pb-1">
-          @for (group of advancedFilterGroups(); track group.sectionKey) {
-            <ng-container [ngTemplateOutlet]="metricPanel" [ngTemplateOutletContext]="{ $implicit: group }" />
-          }
-        </div>
-      </mat-expansion-panel>
       }
 
       <ng-template #metricPanel let-group>
@@ -1080,8 +1058,8 @@ export class GalleryFilterSidebarComponent {
 
   readonly commonFilterGroups = computed(() => this.matchGroups(COMMON_SECTION_ORDER));
   readonly advancedFilterGroups = computed(() => this.matchGroups(ADVANCED_SECTION_ORDER));
-  readonly searchResultGroups = computed(() => [...this.commonFilterGroups(), ...this.advancedFilterGroups()]);
-  readonly noFilterMatches = computed(() => !!this.filterQuery().trim() && this.searchResultGroups().length === 0);
+  readonly metricFilterGroups = computed(() => [...this.commonFilterGroups(), ...this.advancedFilterGroups()]);
+  readonly noFilterMatches = computed(() => !!this.filterQuery().trim() && this.metricFilterGroups().length === 0);
 
   readonly metricHistograms = computed(() => {
     const ranges = this.store.metricRanges();
@@ -1092,11 +1070,6 @@ export class GalleryFilterSidebarComponent {
       out[key] = buckets.map(b => Math.round((b / max) * 100));
     }
     return out;
-  });
-
-  readonly advancedActiveCount = computed(() => {
-    const counts = this.sectionActiveCounts();
-    return ADVANCED_SECTION_ORDER.reduce((sum, key) => sum + (counts[key] || 0), 0);
   });
 
   readonly sectionActiveCounts = computed((): Record<string, number> => {
@@ -1167,18 +1140,15 @@ export class GalleryFilterSidebarComponent {
 
   private readonly tooltips = viewChildren(MatTooltip);
   private readonly selects = viewChildren(MatSelect);
-  private readonly menus = viewChildren(MatMenuTrigger);
 
   /** Hide every tooltip the sidebar owns, for a gallery parking behind a photo page. */
   hideTooltips(): void {
-    for (const tooltip of this.tooltips()) tooltip.hide(0);
+    closeOverlayDirectives(this.tooltips());
   }
 
   /** Close overlays before the gallery parks behind a photo. */
   closeOverlays(): void {
-    this.hideTooltips();
-    for (const menu of this.menus()) menu.closeMenu();
-    for (const select of this.selects()) select.close();
+    closeOverlayDirectives(this.tooltips(), [], this.selects());
   }
 
   cancelPendingSearch(): void {
@@ -1195,6 +1165,15 @@ export class GalleryFilterSidebarComponent {
     firstValueFrom(this.albumService.list()).then(res =>
       this.albums.set(res.albums),
     ).catch(() => {});
+  }
+
+  private readonly sidebarSearch = viewChild<ElementRef<HTMLInputElement>>('sidebarSearch');
+
+  /** The `/` shortcut's target when the toolbar search is hidden (below 1360 px). */
+  focusSearch(): void {
+    const input = this.sidebarSearch()?.nativeElement;
+    input?.focus();
+    input?.select();
   }
 
   onSidebarSearchChange(event: Event): void {

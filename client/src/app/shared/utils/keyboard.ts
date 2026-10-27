@@ -19,3 +19,13 @@ export function isControlActivation(event: Event): boolean {
   const target = event.target as HTMLElement | null;
   return !!target?.closest?.('button, a[href], [role="menuitem"], [role="option"]');
 }
+
+/**
+ * True when a page-level letter/digit shortcut must stand down: focus is in a typing
+ * context, a modifier is held, or a dialog / bottom sheet is open.
+ */
+export function isPageShortcutBlocked(event: KeyboardEvent): boolean {
+  return isTypingContext(event)
+    || event.ctrlKey || event.metaKey || event.altKey
+    || !!document.querySelector('mat-dialog-container, mat-bottom-sheet-container');
+}

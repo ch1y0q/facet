@@ -1,9 +1,9 @@
 import { signal } from '@angular/core';
-import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
-import { AuthService } from '../../core/services/auth.service';
 import { TestBed } from '@angular/core/testing';
 import { MatDialogRef } from '@angular/material/dialog';
 import { of, Subject, throwError } from 'rxjs';
+import { PersonAssignmentHistoryService } from '../../core/services/person-assignment-history.service';
+import { AuthService } from '../../core/services/auth.service';
 import { PersonSelectorDialogComponent } from './person-selector-dialog.component';
 import { I18nService } from '../../core/services/i18n.service';
 import { ApiService } from '../../core/services/api.service';

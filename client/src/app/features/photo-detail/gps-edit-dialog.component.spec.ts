@@ -251,6 +251,9 @@ describe('GpsEditDialogComponent', () => {
       invalidate(); mockDialogRef.close.mockClear();
       pending.next({ changed: 1, gps_latitude: 1, gps_longitude: 2 }); await task;
       expect(mockDialogRef.close).not.toHaveBeenCalled();
+      const write = { batch: mockApi.post, save: mockApi.put, reset: mockApi.delete }[mode];
+      expect(write).toHaveBeenCalledTimes(mode === 'batch' ? 2 : 1);
+      if (mode === 'batch') expect(mockApi.post).toHaveBeenLastCalledWith('/photos/batch_gps', expect.objectContaining({ preview: false, preview_token: 't' }));
       if (publishes) {
         expect(mockStore.refreshPaths).toHaveBeenCalledExactlyOnceWith(null);
         if (mode !== 'batch') expect(mockStore.patchPhoto).toHaveBeenCalledTimes(1);
@@ -258,7 +261,8 @@ describe('GpsEditDialogComponent', () => {
         return;
       }
       expect(mockStore.patchPhoto).not.toHaveBeenCalled(); expect(mockStore.refreshPaths).not.toHaveBeenCalled();
-      expect(applied).not.toHaveBeenCalled(); expect(mockSnackBar.open).not.toHaveBeenCalled();
+      if (mode === 'batch') expect(applied).not.toHaveBeenCalled();
+      expect(mockSnackBar.open).not.toHaveBeenCalled();
     });
   }
 
@@ -403,7 +407,9 @@ describe('GpsEditDialogComponent', () => {
     mockApi.get.mockReturnValue(throwError(() => new Error('offline')));
     await component.searchOnline();
     expect(component.onlineError()).toBeTruthy();
-    component.selectOnlineResult({ label: 'bad', latitude: NaN, longitude: 2 });
+    mockApi.get.mockReturnValue(of({ results: [{ label: 'bad', latitude: NaN, longitude: 2 }, { label: 'Berlin', latitude: 52, longitude: 13 }] }));
+    await component.searchOnline();
+    expect(component.onlineResults()).toEqual([{ label: 'Berlin', latitude: 52, longitude: 13 }]);
     expect(component.selectedLat()).toBe(1);
     component.selectRecent({ latitude: 0, longitude: 0 });
     expect(component.selectedLat()).toBe(0);

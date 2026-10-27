@@ -35,6 +35,8 @@ from api.auth import (
     CurrentUser, get_optional_user, require_auth, require_authenticated, require_edition,
     require_scan_access, require_superadmin,
 )
+from tests._sidecar_helpers import settle_sidecar_job
+from tests.conftest import reset_place_search
 from tests.test_route_coverage import (
     AUTH_ROUTES, PARAMETERISED_ROUTES, POST_ROUTES, PUBLIC_ROUTES, SUPERADMIN_ROUTES,
 )
@@ -121,11 +123,7 @@ def _cold_caches():
     close_change_token_sentinels()
     from api.routers.burst_culling import _invalidate_culling_groups_cache
     _invalidate_culling_groups_cache()
-    from api import place_search
-    with place_search._lock:
-        place_search._cache.clear()
-        place_search._next_request = 0
-        place_search._inflight = False
+    reset_place_search()
 
 
 @pytest.fixture(autouse=True)
@@ -188,26 +186,13 @@ def _requests():
 REQUESTS = list(_requests())
 
 
-def _settle_sidecar_job(job_id, owner):
-    from api import sidecar_jobs
-    from api.database import DEFAULT_DB_PATH
-    from facet import library_job_holder
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        status = sidecar_jobs.status(DEFAULT_DB_PATH, job_id, owner)
-        if status['state'] != 'running' and library_job_holder(DEFAULT_DB_PATH) is None:
-            return status
-        threading.Event().wait(.005)
-    pytest.fail('sidecar worker did not finish and release its library lock')
-
-
 @pytest.fixture()
 def seeded_sidecar_job():
     """A real caller-owned receipt so status/cancel/retry reach their handlers."""
     from api import sidecar_jobs
     from api.database import DEFAULT_DB_PATH
     status = sidecar_jobs.start(DEFAULT_DB_PATH, EDITION.user_id, [], lambda path: None)
-    _settle_sidecar_job(status['id'], EDITION.user_id)
+    settle_sidecar_job(DEFAULT_DB_PATH, status['id'], EDITION.user_id)
     return status['id']
 
 
@@ -236,7 +221,8 @@ def _drive(requests, statuses=None):
         # Successful admission returns before media work. Settle that real worker
         # before the next mutation, rather than testing an accidental lock refusal.
         if method == 'POST' and path.startswith('/api/export/sidecar_jobs') and resp.status_code == 202:
-            _settle_sidecar_job(resp.json()['id'], user.user_id)
+            from api.database import DEFAULT_DB_PATH
+            settle_sidecar_job(DEFAULT_DB_PATH, resp.json()['id'], user.user_id)
         if statuses is not None:
             statuses.append((method, path, resp.status_code))
         found.extend(f"{method} {path}: {hit}" for hit in hits)
@@ -483,7 +469,8 @@ def test_background_sidecar_file_work_does_not_run_on_the_event_loop(tmp_path, s
     with loop_guard() as hits:
         response = TestClient(_user_app(EDITION)).post('/api/export/sidecar_jobs', json={'paths': [str(image)]})
         assert response.status_code == 202, response.text
-        status = _settle_sidecar_job(response.json()['id'], EDITION.user_id)
+        from api.database import DEFAULT_DB_PATH
+        status = settle_sidecar_job(DEFAULT_DB_PATH, response.json()['id'], EDITION.user_id)
     assert hits == []
     assert calls == [('facet-sidecar-export', False)]
     assert status['written'] == 1 and status['errors'] == 0

@@ -9,6 +9,7 @@ import importlib
 import atexit
 import ctypes
 import fnmatch
+import functools
 import math
 import os
 import signal
@@ -80,6 +81,8 @@ if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
 
 import json
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 from datetime import datetime
 from db import DEFAULT_DB_PATH, init_database, get_connection, check_disk_space, write_photo_tags
@@ -1195,6 +1198,23 @@ class _Overlapped(ctypes.Structure):
                 ('hEvent', ctypes.c_void_p)]
 
 
+LOCKFILE_FAIL_IMMEDIATELY = 0x1
+LOCKFILE_EXCLUSIVE_LOCK = 0x2
+
+
+@functools.cache
+def _windows_kernel():
+    """kernel32 with LockFileEx/UnlockFileEx prototypes configured, bound once."""
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.LockFileEx.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
+                                  ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(_Overlapped)]
+    kernel.LockFileEx.restype = ctypes.c_int
+    kernel.UnlockFileEx.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
+                                    ctypes.c_uint32, ctypes.POINTER(_Overlapped)]
+    kernel.UnlockFileEx.restype = ctypes.c_int
+    return kernel
+
+
 class _WindowsLockBackend:
     """Native shared/exclusive Windows locks on one byte past the JSON payload.
 
@@ -1206,24 +1226,19 @@ class _WindowsLockBackend:
     peek_open_flags = os.O_RDWR
 
     @staticmethod
-    def _lock_reserved_byte(fd, exclusive=None):
-        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
-        handle = msvcrt.get_osfhandle(fd)
+    def _lock_reserved_byte(fd, exclusive):
         overlap = _Overlapped(Offset=LIBRARY_LOCK_WINDOWS_OFFSET)
-        if exclusive is None:
-            operation = kernel.UnlockFileEx
-            operation.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
-                                  ctypes.c_uint32, ctypes.POINTER(_Overlapped)]
-            args = (handle, 0, LIBRARY_LOCK_WINDOWS_BYTES, 0, ctypes.byref(overlap))
-        else:
-            operation = kernel.LockFileEx
-            operation.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
-                                  ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(_Overlapped)]
-            # FAIL_IMMEDIATELY; EXCLUSIVE_LOCK is absent for a shared status probe.
-            flags = 1 | (2 if exclusive else 0)
-            args = (handle, flags, 0, LIBRARY_LOCK_WINDOWS_BYTES, 0, ctypes.byref(overlap))
-        operation.restype = ctypes.c_int
-        if not operation(*args):
+        # EXCLUSIVE_LOCK is absent for a shared status probe.
+        flags = LOCKFILE_FAIL_IMMEDIATELY | (LOCKFILE_EXCLUSIVE_LOCK if exclusive else 0)
+        if not _windows_kernel().LockFileEx(msvcrt.get_osfhandle(fd), flags, 0,
+                                            LIBRARY_LOCK_WINDOWS_BYTES, 0, ctypes.byref(overlap)):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    @staticmethod
+    def _unlock_reserved_byte(fd):
+        overlap = _Overlapped(Offset=LIBRARY_LOCK_WINDOWS_OFFSET)
+        if not _windows_kernel().UnlockFileEx(msvcrt.get_osfhandle(fd), 0,
+                                              LIBRARY_LOCK_WINDOWS_BYTES, 0, ctypes.byref(overlap)):
             raise ctypes.WinError(ctypes.get_last_error())
 
     @staticmethod
@@ -1236,7 +1251,7 @@ class _WindowsLockBackend:
 
     @staticmethod
     def unlock(fd):
-        _WindowsLockBackend._lock_reserved_byte(fd)
+        _WindowsLockBackend._unlock_reserved_byte(fd)
 
 
 def _select_os_lock_backend():
@@ -1364,11 +1379,11 @@ def _decode_holder(raw):
 def _read_holder(lock_path):
     """Payload of the process holding *lock_path*, or None when it is free.
 
-    The probe is read-only and, where the platform has a shared mode, taken
-    in it: two overlapping peeks that excluded each other would make one of
-    them read a finished job's leftover payload as a live holder.
+    The probe never writes and is taken in shared mode on both backends (POSIX
+    flock on a read-only descriptor, Windows LockFileEx on an O_RDWR one): two
+    overlapping peeks that excluded each other would make one of them read a
+    finished job's leftover payload as a live holder.
 
-    POSIX flock and Windows LockFileEx both provide actual shared probes.
     An empty payload stays "held" on purpose: a holder whose _write_payload
     hit ENOSPC owns the lock with an empty file, and calling that free would
     be the worse error of the two.
@@ -2409,8 +2424,10 @@ def main():
     args = parser.parse_args()
     if (args.sidecar_fields is not None or args.overwrite_sidecar_review) and not args.import_sidecars:
         parser.error("--sidecar-fields and --overwrite-sidecar-review require --import-sidecars")
-    if args.sidecar_fields is not None and (not set(args.sidecar_fields.split(',')) <= {'review', 'gps', 'keywords'}):
-        parser.error("--sidecar-fields must select review,gps,keywords")
+    if args.sidecar_fields is not None:
+        from processing.xmp_import import SIDECAR_FIELDS
+        if not set(args.sidecar_fields.split(',')) <= set(SIDECAR_FIELDS):
+            parser.error(f"--sidecar-fields must select {','.join(SIDECAR_FIELDS)}")
     if args.sidecar_naming is not None and not args.import_sidecars:
         parser.error("--sidecar-naming requires --import-sidecars")
     if args.reconcile_keywords and not args.export_sidecars:
@@ -2918,8 +2935,8 @@ def main():
 
         # HEIF orientation repair, inline like the schema step rather than as a
         # subprocess flag: no model and no GPU, and idempotent through a
-        # scanned_at watermark, so a run with nothing to repair costs one
-        # indexed query. Sideways rows leave with their subject columns NULLed,
+        # completed-pass scanned_at watermark; failed candidates remain eligible
+        # for retry. Sideways rows leave with their subject columns NULLed,
         # which is exactly what the --recompute-saliency step below selects on.
         from processing.scorer import fix_double_transposed_heif_thumbnails
         logger.info("--- HEIF orientation rebuild (thumbnails + dimensions) ---")
@@ -3926,8 +3943,6 @@ def main():
         from processing.xmp_import import import_sidecars
         root = None if args.import_sidecars == 'all' else args.import_sidecars
         sidecar_naming = args.sidecar_naming or "full"
-        import sqlite3
-        from contextlib import closing
         try:
             if args.dry_run:
                 # A preview must not migrate the DB, stamp edit clocks, or commit the caller's writes.
@@ -3936,7 +3951,8 @@ def main():
                 init_database(args.db)
                 connection = get_connection(args.db)
             with connection as conn:
-                conn.row_factory = sqlite3.Row if args.dry_run else conn.row_factory
+                if args.dry_run:
+                    conn.row_factory = sqlite3.Row
                 stats = import_sidecars(conn, root, user_id=args.user,
                                         overwrite_manual_gps=args.overwrite_manual_gps,
                                         dry_run=args.dry_run,
@@ -3955,10 +3971,10 @@ def main():
             print(json.dumps(stats, ensure_ascii=False, indent=2))
         logger.info(
             "Sidecar import%s (%s): %d updated, %d unchanged, %d without sidecar, %d skipped "
-            "(%d ambiguous, %d naming mismatches, %d full-name sidecars ignored), %d review conflicts, %d untracked legacy review edits",
+            "(%d ambiguous, %d naming mismatches, %d full-name sidecars ignored, %d basename sidecars ignored), %d review conflicts, %d untracked legacy review edits",
             " preview" if args.dry_run else "", sidecar_naming, stats['updated'], stats['unchanged'],
             stats['missing'], stats['skipped'], stats['ambiguous'], stats['naming_mismatch'], stats['full_ignored'],
-            stats['conflicts'], stats['legacy_review_warnings'],
+            stats['basename_ignored'], stats['conflicts'], stats['legacy_review_warnings'],
         )
         exit()
 

@@ -91,7 +91,8 @@ export interface ExportEditorDialogData {
           <mat-progress-bar mode="determinate" [value]="progressPercent()"
             [attr.aria-label]="I18N.export.jobs.progress | translate:{ processed: current.processed, total: current.total }" />
           <p class="text-sm">{{ I18N.export.jobs.counts | translate:{ written: current.written, skipped: current.skipped, errors: current.errors } }}</p>
-          @if (current.first_error) { <p class="text-xs text-[var(--mat-sys-error)]">{{ current.first_error }}</p> }
+          @if (current.first_error_code; as errorCode) { <p class="text-xs text-[var(--mat-sys-error)]">{{ errorKeys[errorCode] | translate }}</p> }
+          @else if (current.first_error) { <p class="text-xs text-[var(--mat-sys-error)]">{{ current.first_error }}</p> }
           @if (current.state === 'running') {
             <p class="text-xs opacity-70">{{ I18N.export.jobs.close_hint | translate }}</p>
             <button mat-stroked-button [disabled]="submitting() || readingStatus() || current.cancel_requested" (click)="cancelJob()">
@@ -207,6 +208,10 @@ export class ExportEditorDialogComponent {
     running: I18N.export.jobs.running, completed: I18N.export.jobs.completed,
     cancelled: I18N.export.jobs.cancelled, failed: I18N.export.jobs.failed,
     interrupted: I18N.export.jobs.interrupted,
+  };
+  readonly errorKeys = {
+    metadata_repair: I18N.export.jobs.errors.metadata_repair, write_failed: I18N.export.jobs.errors.write_failed,
+    exiftool_upgrade: I18N.export.jobs.errors.exiftool_upgrade, stopped: I18N.export.jobs.errors.stopped,
   };
   readonly errorDetail = signal<string | null>(null);
   readonly readError = signal(false);

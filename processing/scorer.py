@@ -28,6 +28,7 @@ from int_affinity import storable_int
 from licensing import LicenceError
 from db import init_database, get_connection
 from db.render_version import DISPLAY_RENDER_VERSION
+from db.manual_faces import validate_review_paths, apply_review_states
 from db.embedding_space import SFACE_MODEL, active_embedding_model
 from db.person_carry_over import replace_photo_faces
 from db.person_centroids import recompute_person_centroid
@@ -38,6 +39,15 @@ from db.vec import sync_vec_batch
 from processing.progress import emit_progress
 from utils.histogram import unpack_histogram
 from utils.image_bounds import LIQE_MIN_SHORT_SIDE, liqe_input_too_small
+
+
+def _manual_override_set(c):
+    """``SET`` fragment for column ``c``: a hand-set GPS or capture date survives a rescan."""
+    if c in ('gps_latitude', 'gps_longitude'):
+        return f"{c}=CASE WHEN photos.gps_manually_set=1 THEN photos.{c} ELSE excluded.{c} END"
+    if c in ('date_taken', 'date_manually_set'):
+        return f"{c}=CASE WHEN photos.date_manually_set=1 THEN photos.{c} ELSE excluded.{c} END"
+    return f"{c}=excluded.{c}"
 
 
 @functools.lru_cache(maxsize=8)
@@ -58,13 +68,7 @@ def _photos_upsert(insert_sql):
     """
     cols_match = _re.search(r'INTO\s+photos\s*\((.*?)\)\s*VALUES', insert_sql, _re.S | _re.I)
     columns = [c.strip() for c in cols_match.group(1).split(',')]
-    updates = ', '.join(
-        (f"{c}=CASE WHEN photos.gps_manually_set=1 THEN photos.{c} ELSE excluded.{c} END"
-         if c in ('gps_latitude', 'gps_longitude') else
-         f"{c}=CASE WHEN photos.date_manually_set=1 THEN photos.{c} ELSE excluded.{c} END"
-         if c in ('date_taken', 'date_manually_set') else f"{c}=excluded.{c}")
-        for c in columns if c != 'path'
-    )
+    updates = ', '.join(_manual_override_set(c) for c in columns if c != 'path')
     base = _re.sub(r'INSERT\s+OR\s+REPLACE\s+INTO\s+photos', 'INSERT INTO photos', insert_sql, flags=_re.I)
     return f"{base}\nON CONFLICT(path) DO UPDATE SET {updates}"
 
@@ -95,13 +99,7 @@ def _photos_partial_upsert(computed_columns):
     insert_cols = list(_PARTIAL_CORE_COLUMNS) + list(computed_columns)
     placeholders = [f":{c}" for c in insert_cols] + ["datetime('now')", str(DISPLAY_RENDER_VERSION)]
     all_cols = insert_cols + ['scanned_at', 'render_version']
-    updates = ', '.join(
-        (f"{c}=CASE WHEN photos.gps_manually_set=1 THEN photos.{c} ELSE excluded.{c} END"
-         if c in ('gps_latitude', 'gps_longitude') else
-         f"{c}=CASE WHEN photos.date_manually_set=1 THEN photos.{c} ELSE excluded.{c} END"
-         if c in ('date_taken', 'date_manually_set') else f"{c}=excluded.{c}")
-        for c in computed_columns
-    )
+    updates = ', '.join(_manual_override_set(c) for c in computed_columns)
     return (
         f"INSERT INTO photos ({', '.join(all_cols)}) "
         f"VALUES ({', '.join(placeholders)}) "
@@ -438,9 +436,10 @@ def fix_thumbnail_rotation(db_path):
 # arithmetic identical to re-decoding the original, two orders of magnitude
 # cheaper -- plus the size swap back and NULLed subject columns, which hand
 # the rescoring to --recompute-saliency's own selection predicate.
-HEIF_DOUBLE_TRANSPOSE_WATERMARK_KEY = 'heif_double_transpose_watermark'
-# EXIF tag id for Orientation, read header-only off the original file.
-_EXIF_ORIENTATION_TAG = 274
+# Earlier progress could pass an unreadable row tied on scanned_at, or a
+# thumbnail that failed to decode. Recheck those candidates once rather than
+# trusting the old marker; repaired portrait rows are already excluded below.
+HEIF_DOUBLE_TRANSPOSE_WATERMARK_KEY = 'heif_double_transpose_watermark_v2'
 # orientation 6 stores the frame rotated 90 CW from upright, orientation 8
 # rotated 270 CW; the double transpose turned each sideways by the opposite
 # extra quarter-turn, so each needs the opposite repair. Orientation 3 needs
@@ -457,10 +456,10 @@ def _stored_heif_orientation(path):
     versions leave getexif() as stored. Header-only: no pixel decode.
     """
     try:
-        from PIL import Image as PILImage
+        from PIL import ExifTags as PILExifTags, Image as PILImage
         with PILImage.open(path) as img:
             return int(img.info.get('original_orientation')
-                       or img.getexif().get(_EXIF_ORIENTATION_TAG) or 0)
+                       or img.getexif().get(PILExifTags.Base.Orientation) or 0)
     except Exception:
         return None
 
@@ -531,10 +530,11 @@ def fix_double_transposed_heif_thumbnails(db_path, batch_size=500):
 
     Candidate rows come from the DATABASE -- HEIF paths still lying on their
     side (``image_width > image_height``) past a ``scanned_at`` watermark in
-    ``stats_cache`` -- so later runs only look at rows scanned since the last
-    one and cost one indexed query when there are none. The candidate read
-    leaves the thumbnail BLOB behind (most candidates are ordinary landscape
-    frames); only a row that needs the repair has its thumbnail fetched. Each
+    ``stats_cache`` -- so after a completed pass, later runs only look at rows
+    scanned since that pass. The initial pass still scans for candidates. The
+    candidate read leaves the thumbnail BLOB behind (most candidates are
+    ordinary landscape frames); only a row that needs the repair has its
+    thumbnail fetched. Each
     candidate's file is header-read once for its stored orientation; a
     quarter-turn family (6 or 8) with the sideways stored size is repaired by
     rotating the stored thumbnail back (JPEG generation 2 at quality 95,
@@ -546,9 +546,11 @@ def fix_double_transposed_heif_thumbnails(db_path, batch_size=500):
     whole-library by design and needs nothing here.
 
     Idempotent twice over: repaired rows drop out of the size predicate, and
-    the watermark advances past every examined row whose file could be read.
-    It stops short of the first unreadable one (an offline volume, a file
-    still being copied) so a later run examines that row again.
+    the watermark advances only when every candidate could be read and, where
+    needed, repaired. Any header or photo thumbnail failure retains the previous
+    marker, including rows tied on scanned_at. Readable landscape candidates
+    may have their headers read again until the failure clears; already
+    repaired portrait rows are excluded and are never rotated twice.
 
     Returns the number of thumbnails re-uprighted.
     """
@@ -585,7 +587,7 @@ def fix_double_transposed_heif_thumbnails(db_path, batch_size=500):
             scanned_at = entry['scanned_at']
             orientation = _stored_heif_orientation(entry['path'])
             if orientation is None:
-                blocked = True  # unreadable now: keep the watermark below it
+                blocked = True  # retain the previous marker for a later retry
             elif not blocked and scanned_at and (new_watermark is None or scanned_at > new_watermark):
                 new_watermark = scanned_at
             transpose = _HEIF_DOUBLE_TRANSPOSE_FIXES.get(orientation)
@@ -598,6 +600,7 @@ def fix_double_transposed_heif_thumbnails(db_path, batch_size=500):
                 PILImage.open(BytesIO(blob)).transpose(
                     getattr(PILImage.Transpose, transpose)).save(buf, format='JPEG', quality=95)
             except Exception as e:
+                blocked = True
                 logger.error("Could not re-upright %s: %s", entry['path'], e)
                 continue
             conn.execute(
@@ -612,7 +615,7 @@ def fix_double_transposed_heif_thumbnails(db_path, batch_size=500):
             if fixed % batch_size == 0:
                 conn.commit()
         conn.commit()
-        if new_watermark and new_watermark != watermark:
+        if not blocked and new_watermark and new_watermark != watermark:
             conn.execute(
                 "INSERT OR REPLACE INTO stats_cache (key, value, updated_at) VALUES (?, ?, ?)",
                 (HEIF_DOUBLE_TRANSPOSE_WATERMARK_KEY, new_watermark, time.time()))
@@ -2882,7 +2885,6 @@ class Facet:
                 if face.get('embedding'):
                     face_records.append(face_upsert_row(res['path'], face, embedding_model))
 
-        from db.manual_faces import validate_review_paths, apply_review_states
         review_states = validate_review_paths(self.db_path, [res['path'] for res, _ in results_with_images])
 
         # Phase 3: Fast DB inserts (short transaction)
@@ -3025,7 +3027,6 @@ class Facet:
                     if face.get('embedding'):
                         face_records.append(face_upsert_row(res['path'], face, embedding_model))
 
-        from db.manual_faces import validate_review_paths, apply_review_states
         review_states = validate_review_paths(self.db_path, [res['path'] for res, _, _ in batch])
         with get_connection(self.db_path, row_factory=False) as conn:
             apply_review_states(conn, review_states)

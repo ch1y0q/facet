@@ -33,3 +33,15 @@ export const DEFAULT_CARD_ACTIONS: CardActionsConfig = {
 };
 
 export const CARD_ACTION_IDS: readonly CardActionId[] = DEFAULT_CARD_ACTIONS.order;
+
+/** Which icon and label key each action's button carries. */
+export const CARD_ACTION_META: Record<CardActionId, { icon: string; labelKey: string }> = {
+  similar: { icon: 'image_search', labelKey: 'similar.find_similar' },
+  critique: { icon: 'analytics', labelKey: 'critique.title' },
+  embed: { icon: 'save', labelKey: 'photoCard.embed_to_file' },
+  assign_face: { icon: 'person_add', labelKey: 'manage_persons.assign_face' },
+  duplicate_set: { icon: 'photo_library', labelKey: 'photoCard.duplicate_set' },
+  burst_set: { icon: 'burst_mode', labelKey: 'photoCard.burst_set' },
+  sequence_set: { icon: 'auto_awesome_motion', labelKey: 'photoCard.sequence_set' },
+  open_detail: { icon: 'open_in_full', labelKey: 'photoCard.open_detail' },
+};

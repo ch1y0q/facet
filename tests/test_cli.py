@@ -104,18 +104,15 @@ def test_reconcile_keywords_requires_export_sidecars_before_database_creation(tm
 
 @pytest.mark.skipif(shutil.which('exiftool') is None, reason='requires ExifTool')
 @pytest.mark.parametrize('embed', [False, True])
-def test_cli_export_preserves_numeric_keyword(tmp_path, embed):
+def test_cli_export_preserves_numeric_keyword(tmp_path, embed, seed_keywords):
     from PIL import Image
     from db.schema import init_database
-    from processing.xmp_export import XmpRating, build_xmp, _read_existing_keywords, _resolve_exiftool
+    from processing.xmp_export import XmpRating, build_xmp, _read_existing_metadata, _resolve_exiftool
     image = tmp_path / 'numeric.jpg'
     Image.new('RGB', (16, 16)).save(image)
     sidecar = Path(str(image) + '.xmp')
     sidecar.write_text(build_xmp(XmpRating()), encoding='utf-8')
-    names = ['true', 'false', 'null', '1.50', '1e3', '2024']
-    for target in (image, sidecar):
-        subprocess.run(['exiftool', '-overwrite_original', *[f'-XMP-dc:Subject={name}' for name in names], str(target)],
-                       check=True, capture_output=True)
+    names = seed_keywords((image, sidecar))
     db = tmp_path / 'numeric.db'
     init_database(str(db))
     with sqlite3.connect(db) as conn:
@@ -125,7 +122,7 @@ def test_cli_export_preserves_numeric_keyword(tmp_path, embed):
     assert result.returncode == 0, result.stderr
     assert '1 written' in result.stdout + result.stderr
     for target in (image, sidecar) if embed else (sidecar,):
-        flat, _ = _read_existing_keywords(str(target), _resolve_exiftool(), timeout=30, strict=True)
+        flat, _, _ = _read_existing_metadata(str(target), _resolve_exiftool(), timeout=30, strict=True)
         assert set(flat) == {*names, 'facet-tag'}
 
 

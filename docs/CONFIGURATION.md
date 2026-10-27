@@ -1701,6 +1701,7 @@ Web gallery display and behavior.
 | `default_category` | `""` | Default category filter |
 | `edition_password` | `""` | Password to unlock edition mode (empty = every edit is refused; the install is read-only, except to a direct local browser or a local Full-editing assistant under `trusted_local_editing`) |
 | `trusted_local_editing` | `false` | Grant edition rights, without an edition password, to a browser on the same computer reaching the viewer directly over loopback. Applies only while BOTH `password` and `edition_password` are empty on a single-user install; covers every edition-gated route, the scan trigger included, and lets the Connect dialog mint a Full-editing assistant token for same-machine `/mcp` requests. **Never enable behind a reverse proxy on the same host.** See [Trusted Local Editing](#trusted-local-editing) |
+| `place_search_url` | `"https://photon.komoot.io/api"` | Photon endpoint behind the gallery's explicit **Search online** lookup; `""` disables it. See [Online place search](#online-place-search). |
 | **comparison_mode** | | |
 | `min_comparisons_for_optimization` | `50` | Minimum number of decisive comparisons (one photo won; ties do not count) in the category before weights are suggested |
 | `pair_selection_strategy` | `"learning"` | Pair strategy: `learning` (embedding-diversity cold-start + rank-disagreement once trained), `uncertainty`, `boundary`, `active`, `random` |
@@ -1984,6 +1985,12 @@ A trusted request holds full edition rights: every route that otherwise needs an
 **Assistants.** The same opt-in lets the Connect dialog mint a **Full editing** token on an open install (`viewer.mcp.enabled` and a token are still required). The token is `edition` only for `/mcp` requests passing the boundary above, so it works from `http://localhost:<port>` or `127.0.0.1` on `:5000` and on the `ng serve` dev proxy `:4200`, and resolves to `readonly` from a LAN client, a hostname or `0.0.0.0` URL, or a Docker deployment. Any password lowers it to `readonly`; clearing the password revives it. Delete tools still need `viewer.mcp.allow_destructive`. `ng serve --host 0.0.0.0` or any unmarked same-host proxy lets a LAN client sending `Host: localhost` pass, leaving only the token protecting `/mcp`. See [AI Agents (MCP)](AGENTS.md). The same boundary, whatever `trusted_local_editing` says, gates assistant token management on an open install: minting, listing and revoking tokens works only from a request that passes it (or in an edition session when `viewer.edition_password` is set). A reverse proxy must send `X-Forwarded-For` or `Forwarded`, otherwise it is treated as the local machine.
 
 > **Warning:** the loopback peer is the only real boundary. `Host`, `Origin`, `Referer` and `Sec-Fetch-Site` are set by the client and can only refuse a request, and a reverse proxy, tunnel or port forward on the same host that adds none of the headers above is indistinguishable from your browser. Never enable this option behind any reverse proxy on the same host. Every local process and every account on the computer can edit while it is on.
+
+### Online place search
+
+`viewer.place_search_url` defaults to `https://photon.komoot.io/api`. Set an empty string to disable address/business lookup, or use a self-hosted Photon HTTP(S) endpoint without credentials, query parameters or fragments. The browser receives only `place_search_enabled`, never the configured URL. Searches require edition access and an explicit **Search online** click. See [Online place search](VIEWER.md#online-place-search) for privacy, caching and worker limits. The [Photon demo policy](https://github.com/komoot/photon#demo-server) allows reasonable project use with no availability guarantee; [Photon API documentation](https://github.com/komoot/photon/blob/master/docs/api-v1.md) defines its GeoJSON format. There are no retries or redirects.
+
+The five-second transport watchdog shuts down the active socket, including TCP/TLS setup and blocked HTTP header/body/chunk framing reads. Native synchronous DNS resolution still follows the operating system resolver timing and can exceed five seconds before a socket exists. The lookup remains single-flight while DNS is pending; if DNS returns after the deadline, no connection is opened. There are no detached request/DNS workers.
 
 ### Viewer Performance
 
@@ -2990,10 +2997,3 @@ The secret that signs session tokens and photo-frame links is **not** a key in t
 - Rotate: `python database.py --rotate-secret`.
 
 A `share_secret` left over from an older install is moved into that file on the next start and removed from `scoring_config.json`. See [Secret storage and rotation](DEPLOYMENT.md#secret-storage-and-rotation).
-
-
-### Online place search
-
-`viewer.place_search_url` defaults to `https://photon.komoot.io/api`. Set an empty string to disable address/business lookup, or use a self-hosted Photon HTTP(S) endpoint without credentials, query parameters or fragments. The browser receives only `place_search_enabled`, never the configured URL. Searches require edition access and an explicit **Search online** click. See [Online place search](VIEWER.md#online-place-search) for privacy, caching and worker limits. The [Photon demo policy](https://github.com/komoot/photon#demo-server) allows reasonable project use with no availability guarantee; [Photon API documentation](https://github.com/komoot/photon/blob/master/docs/api-v1.md) defines its GeoJSON format. There are no retries or redirects.
-
-The five-second transport watchdog shuts down the active socket, including TCP/TLS setup and blocked HTTP header/body/chunk framing reads. Native synchronous DNS resolution still follows the operating system resolver timing and can exceed five seconds before a socket exists. The lookup remains single-flight while DNS is pending; if DNS returns after the deadline, no connection is opened. There are no detached request/DNS workers.

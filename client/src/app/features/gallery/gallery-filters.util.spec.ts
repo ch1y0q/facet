@@ -17,6 +17,8 @@ import {
   smartAlbumFilterJson,
   applySavedAlbumFilters,
   exclusiveHidePatch,
+  reviewStatusPatch,
+  setScopePatch,
   countActiveFilters,
   loadDisplayOptionsFromStorage,
   saveDisplayOptionsToStorage,
@@ -294,6 +296,42 @@ describe('exclusiveHidePatch', () => {
     expect(exclusiveHidePatch({ show_rejected: true })).toEqual({ hide_rejected: false, favorites_only: false });
     expect(exclusiveHidePatch({ show_rejected: false })).toEqual({});
     expect(exclusiveHidePatch({ blinks_only: true })).toEqual({});
+  });
+});
+
+describe('reviewStatusPatch', () => {
+  it('a review status clears the semantic and similar queries', () => {
+    expect(reviewStatusPatch({ review_status: 'kept' })).toEqual({ similar_to: '', semanticQuery: '', show_rejected: false });
+  });
+  it('undecided also sorts oldest first', () => {
+    expect(reviewStatusPatch({ review_status: 'undecided' }))
+      .toEqual({ similar_to: '', semanticQuery: '', show_rejected: false, sort: 'date_taken', sort_direction: 'ASC' });
+  });
+  it('a semantic or similar query clears the review status, and unrelated updates change nothing', () => {
+    expect(reviewStatusPatch({ semanticQuery: 'dog' })).toEqual({ review_status: '' });
+    expect(reviewStatusPatch({ similar_to: '/a.jpg' })).toEqual({ review_status: '' });
+    expect(reviewStatusPatch({ review_status: '', semanticQuery: '' })).toEqual({});
+  });
+  it('a review status clears "Only rejected" without sorting when the caller opts out', () => {
+    expect(reviewStatusPatch({ review_status: 'undecided' }, false))
+      .toEqual({ similar_to: '', semanticQuery: '', show_rejected: false });
+    const seeded = applyQueryParams(DEFAULT_FILTERS, { review_status: 'undecided', show_rejected: 'true' });
+    expect(seeded.show_rejected).toBe(false);
+    expect(applyQueryParams(DEFAULT_FILTERS, { show_rejected: 'true' }).show_rejected).toBe(true);
+  });
+});
+
+describe('setScopePatch', () => {
+  const cleared = { sequence_group_id: '', sequence_kind: '', burst_group_id: '', duplicate_group_id: '' };
+  it('burst and duplicate release their own hide toggle', () => {
+    expect(setScopePatch('burst', '3')).toEqual({ ...cleared, burst_group_id: '3', hide_bursts: false });
+    expect(setScopePatch('duplicate', '5')).toEqual({ ...cleared, duplicate_group_id: '5', hide_duplicates: false });
+  });
+  it('a bracket releases hide_brackets, any other sequence kind hide_panoramas', () => {
+    expect(setScopePatch('sequence', '4', 'bracket'))
+      .toEqual({ ...cleared, sequence_kind: 'bracket', sequence_group_id: '4', hide_brackets: false });
+    expect(setScopePatch('sequence', '9', 'hdr_panorama'))
+      .toEqual({ ...cleared, sequence_kind: 'hdr_panorama', sequence_group_id: '9', hide_panoramas: false });
   });
 });
 

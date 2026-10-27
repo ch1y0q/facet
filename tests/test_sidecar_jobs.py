@@ -3,13 +3,13 @@ from pathlib import Path
 import shutil
 import sqlite3
 import threading
-import time
 
 import pytest
 
 from api import sidecar_jobs as jobs
 from db.schema import init_database
 from facet import LibraryLockError, library_job_holder
+from tests._sidecar_helpers import settle_sidecar_job
 
 
 @pytest.fixture
@@ -20,13 +20,7 @@ def library(tmp_path):
 
 
 def _done(library, job_id, owner='alice'):
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        result = jobs.status(library, job_id, owner)
-        if result['state'] != 'running' and library_job_holder(library) is None:
-            return result
-        threading.Event().wait(0.005)
-    pytest.fail('export worker did not settle')
+    return settle_sidecar_job(library, job_id, owner)
 
 
 def test_one_active_library_job_and_cancel_between_files(library):
@@ -53,6 +47,16 @@ def test_one_active_library_job_and_cancel_between_files(library):
     assert result['processed'] == result['written'] == 1
     assert calls == ['first']
     assert 'owner' not in result
+
+
+def test_worker_crash_reports_the_stopped_error_code(library):
+    def work(path):
+        raise RuntimeError('secret /private/path')
+    state = jobs.start(library, 'alice', ['first'], work)
+    result = _done(library, state['id'])
+    assert result['state'] == 'failed'
+    assert result['first_error_code'] == 'stopped'
+    assert 'secret' not in result['first_error']
 
 
 def test_receipts_are_private_and_path_ids_cannot_escape(library):
@@ -355,6 +359,21 @@ def test_api_returns_not_found_for_invalid_private_retry_record(edition_client):
     assert response.status_code == 404, response.text
 
 
+def test_api_does_not_report_an_unrelated_lookup_bug_as_a_missing_job(edition_client, monkeypatch):
+    """Only an unknown job is a 404; a KeyError while selecting paths is a server error."""
+    from fastapi.testclient import TestClient
+    from api.routers import export
+
+    def broken_selection(*args, **kwargs):
+        raise KeyError('row column')
+
+    monkeypatch.setattr(export, '_selected_paths', broken_selection)
+    client = TestClient(edition_client.app, raise_server_exceptions=False)
+    response = client.post('/api/export/sidecar_jobs', json={'paths': ['/unregistered-job-fixture.jpg']})
+    assert response.status_code == 500, response.text
+    assert 'Export job not found' not in response.text
+
+
 @pytest.mark.parametrize('operation', ['start', 'retry'])
 @pytest.mark.parametrize('unusable', [False, True])
 def test_api_distinguishes_unusable_lock_from_busy(edition_client, monkeypatch, operation, unusable):
@@ -645,6 +664,7 @@ def test_background_export_keeps_precondition_details_private_and_recovers(editi
     assert result['state'] == 'completed'
     assert (result['processed'], result['written'], result['errors'], result['skipped']) == (2, 1, 1, 0)
     assert result['first_error'] == 'Existing metadata needs repair before exporting'
+    assert result['first_error_code'] == 'metadata_repair'
     status = edition_client.get(f'/api/export/sidecar_jobs/{job_id}')
     assert status.status_code == 200
     assert status.json() == result
@@ -661,6 +681,7 @@ def test_background_export_keeps_precondition_details_private_and_recovers(editi
     assert recovered['total'] == recovered['written'] == 1
     assert recovered['errors'] == recovered['skipped'] == 0
     assert recovered['first_error'] is None
+    assert recovered['first_error_code'] is None
     assert parse_sidecar(str(companion))['star_rating'] == 4
     assert [image.read_bytes() for image in images] == originals
 
@@ -688,5 +709,6 @@ def test_old_receipt_errors_stay_private_across_public_endpoints(edition_client)
     returned = [status.json(), next(row for row in recent.json() if row['id'] == job_id), cancelled.json()]
     for row in returned:
         assert row['first_error'] == 'Failed to write metadata; check server logs'
+        assert row['first_error_code'] == 'write_failed'
         assert (row['written'], row['errors'], row['skipped']) == (0, 1, 0)
     assert path.read_bytes() == before

@@ -16,7 +16,7 @@ Facet is a local photo-analysis and culling engine. It scores each image across 
 
 ## How It Works
 
-1. **Scan** — Point Facet at a folder of photos. Each image is analyzed for quality, composition, and faces. Supports JPG, HEIF/HEIC/HIF (Canon HDR PQ `.HIF` stills are decoded with the SMPTE ST 2084 PQ transfer function and tone-mapped to SDR sRGB automatically), 10 RAW formats (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF), and PNG, GIF, WebP, BMP, TIFF, and AVIF stills (AVIF needs a Pillow built with AVIF support, native from 11.3). A RAW LibRaw can't decode — such as a Lightroom "Merge to HDR/Panorama" DNG (`-HDR.dng`, `-Pano.dng`) or a camera newer than the installed LibRaw — falls back to its largest embedded preview via `exiftool` (needs a preview at least 1024 px on the long edge; scores then come from that preview, not a full RAW decode). Lightroom Classic 13+ merges (and Enhance) store that preview as JPEG XL; Facet decodes it directly.
+1. **Scan** — Point Facet at a folder of photos. Each image is analyzed for quality, composition, and faces. Supports JPG, HEIF/HEIC/HIF (Canon HDR PQ `.HIF` stills are decoded with the SMPTE ST 2084 PQ transfer function and tone-mapped to SDR sRGB automatically), 10 RAW formats (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF), and PNG, GIF, WebP, BMP, TIFF, and AVIF stills (AVIF needs a Pillow built with AVIF support, native from 11.3), plus JPEG XL (`.jxl`) through the existing `imagecodecs` dependency, included in standard installs and Docker. A RAW LibRaw can't decode — such as a Lightroom "Merge to HDR/Panorama" DNG (`-HDR.dng`, `-Pano.dng`) or a camera newer than the installed LibRaw — falls back to its largest embedded preview via `exiftool` (needs a preview at least 1024 px on the long edge; scores then come from that preview, not a full RAW decode). Lightroom Classic 13+ merges (and Enhance) store that preview as JPEG XL; Facet decodes it directly.
 2. **Browse** — Open the web gallery to explore your library with filters, search, and multiple view modes.
 3. **Cull** — Facet detects bursts, flags blinks, groups similar photos, and surfaces top picks. Exposure brackets and panorama/HDR sets are recognized and kept whole rather than culled apart.
 
@@ -234,6 +234,7 @@ First time here? Follow the **[Getting Started](docs/GETTING_STARTED.md)** walkt
 | [Viewer](docs/VIEWER.md) | Web gallery features and usage |
 | [Interop](docs/INTEROP.md) | Round-tripping ratings/tags with Lightroom, Capture One, digiKam, darktable |
 | [Immich](docs/IMMICH.md) | Syncing ratings and favorites with Immich, plus the inbound webhook |
+| [Relink](docs/RELINK.md) | Relink moved photos |
 | [AI Agents](docs/AGENTS.md) | Letting an MCP-capable assistant search the library with a personal token |
 | [Deployment](docs/DEPLOYMENT.md) | Production deployment (Synology NAS, Linux, Docker) |
 | [Contributing](CONTRIBUTING.md) | Development setup, architecture, code style |

@@ -18,7 +18,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import NamedTuple, Optional
 
 from fastapi import HTTPException, Query
 from fastapi.requests import HTTPConnection
@@ -28,10 +28,10 @@ from api.config import (
     _photo_tags_available, _photo_tags_lock, PHOTO_TAGS_CACHE_TTL,
     _count_cache, _count_cache_lock, COUNT_CACHE_TTL,
     is_multi_user_enabled, get_user_directories, _FULL_CONFIG, VIEWER_CONFIG,
-    config_load_failed, server_scoring_config,
+    config_load_failed, server_scoring_config, invalidate_stats_cache,
 )
 from api import database as _database
-from api import organization_history
+from api import organization_capture
 from api.change_token import db_change_token
 from api.database import get_db_connection
 from comparison.comparison_manager import record_culling_pairs
@@ -81,6 +81,14 @@ LIBRARY_BUSY_RETRY_AFTER_SECONDS = 5
 # table is locked", "database schema is locked") is a conflict inside one
 # connection, which waiting does not clear, so it is deliberately not matched.
 _BUSY_MESSAGES = ('database is locked', 'database is busy')
+
+
+def after_commit() -> None:
+    """Drop the in-process caches a committed organization/tag write makes stale."""
+    # Local import: api.routers.burst_culling imports this module (import cycle).
+    from api.routers.burst_culling import _invalidate_culling_groups_cache
+    invalidate_stats_cache()
+    _invalidate_culling_groups_cache()
 
 
 def is_locked_error(ex) -> bool:
@@ -262,7 +270,7 @@ def trigger_auto_retrain(db_path, user_id, added=1, conn=None):
         logger.debug("Auto-retrain trigger skipped", exc_info=True)
 
 
-@organization_history.grouped
+@organization_capture.grouped
 def record_culling_decision(conn, keep_paths, reject_paths, sequence_members,
                             user_id=None, group_type='burst', commit=True, record=True):
     """Persist keepers, record ranker training pairs, commit, nudge retrain.
@@ -1648,9 +1656,23 @@ def get_preference_columns(user_id=None):
 
 _LABEL_CHUNK = 500
 
+# What a review reject (faces.py, single and batch) writes, shared by the ``user_preferences`` upsert and the
+# ``photos`` UPDATE (both tables name these columns alike): it clears the rating, favourite and keep so a
+# rejected frame carries none. A culling reject (set_photos_rejected) deliberately keeps rating and favourite.
+REJECT_SET = "is_rejected = 1, star_rating = 0, is_favorite = 0, is_kept = 0"
+
+
+class Labels(NamedTuple):
+    """One photo's review labels; ``kept`` stays 0 unless the read asked for ``include_kept``."""
+
+    star: int
+    favorite: int
+    rejected: int
+    kept: int = 0
+
 
 def _read_label_tuples(conn, scope, chunk, include_kept=False):
-    """``{path: (star_rating, is_favorite, is_rejected)}`` for ``chunk``; a path with no row reads as unrated."""
+    """``{path: Labels}`` for ``chunk``; a path with no row reads as unrated."""
     marks = ','.join('?' * len(chunk))
     kept = ', is_kept' if include_kept else ''
     if scope:
@@ -1661,9 +1683,8 @@ def _read_label_tuples(conn, scope, chunk, include_kept=False):
         rows = conn.execute(
             f"SELECT path, star_rating, is_favorite, is_rejected{kept} FROM photos "
             f"WHERE path IN ({marks})", chunk).fetchall()
-    found = {r[0]: tuple(value or 0 for value in r[1:]) for r in rows}
-    empty = (0, 0, 0, 0) if include_kept else (0, 0, 0)
-    return {p: found.get(p, empty) for p in chunk}
+    found = {r[0]: Labels(*(value or 0 for value in r[1:])) for r in rows}
+    return {p: found.get(p, Labels(0, 0, 0)) for p in chunk}
 
 
 def _label_scope(user_id):
@@ -1671,11 +1692,11 @@ def _label_scope(user_id):
 
 
 def read_labels(conn, user_id, paths, *, include_kept=False):
-    """``{path: (star_rating, is_favorite, is_rejected)}`` from the per-user source (``user_preferences`` in
+    """``{path: Labels}`` from the per-user source (``user_preferences`` in
     multi-user mode, the ``photos`` columns otherwise), read in chunks.
 
     ``include_kept`` appends the review decision for culling preview guards; taste
-    provenance keeps its original three-label tuple.
+    provenance leaves ``Labels.kept`` at 0.
     """
     paths = list(paths)
     scope = _label_scope(user_id)
@@ -1727,7 +1748,7 @@ def record_label_origin(conn, agent, user_id, paths, before=None):
             "VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, photo_path) DO UPDATE SET "
             "star_rating = excluded.star_rating, is_favorite = excluded.is_favorite, "
             "is_rejected = excluded.is_rejected",
-            [(scope, p, *t) for p, t in after.items()
+            [(scope, p, t.star, t.favorite, t.rejected) for p, t in after.items()
              if p in marked or before is None or before.get(p) != t])
 
 
@@ -1763,7 +1784,7 @@ def set_photos_rejected(conn, paths, user_id, agent=False):
     ).fetchall()]
     if not visible:
         return 0
-    history_before = organization_history.begin(conn, user_id, 'review', visible)
+    history_before = organization_capture.begin(conn, user_id, 'review', visible)
     before = snapshot_labels(conn, agent, user_id, visible)
     if user_id and is_multi_user_enabled():
         conn.executemany(
@@ -1776,12 +1797,16 @@ def set_photos_rejected(conn, paths, user_id, agent=False):
         ph = ','.join('?' * len(visible))
         conn.execute(f"UPDATE photos SET is_rejected = 1, is_kept = 0 WHERE path IN ({ph})", visible)
     record_label_origin(conn, agent, user_id, visible, before)
-    organization_history.finish(conn, user_id, 'review', history_before)
+    organization_capture.finish(conn, user_id, 'review', history_before)
     return len(visible)
 
 
 def set_photos_kept(conn, paths, user_id, agent=False):
-    """Persist visible culling keepers without changing favorites or ratings."""
+    """Persist visible culling keepers: sets ``is_kept``, clears ``is_rejected``, leaves favorites and ratings.
+
+    Records the label origin for an assistant's call, or for a person's only on a photo that was
+    rejected (the write changes its labels); other human keeps just stay theirs.
+    """
     if not paths:
         return 0
     vis_sql, vis_params = get_visibility_clause(user_id)
@@ -1789,7 +1814,7 @@ def set_photos_kept(conn, paths, user_id, agent=False):
         conn, f"SELECT path FROM photos WHERE path IN ({{placeholders}}) AND {vis_sql}",
         list(paths), after=vis_params,
     )]
-    history_before = organization_history.begin(conn, user_id, 'review', visible)
+    history_before = organization_capture.begin(conn, user_id, 'review', visible)
     before = read_labels(conn, user_id, visible)
     if user_id and is_multi_user_enabled():
         conn.executemany(
@@ -1801,9 +1826,9 @@ def set_photos_kept(conn, paths, user_id, agent=False):
     else:
         conn.executemany("UPDATE photos SET is_kept = 1, is_rejected = 0 WHERE path = ?",
                          [(path,) for path in visible])
-    origin_paths = visible if agent else [path for path in visible if before[path][2]]
+    origin_paths = visible if agent else [path for path in visible if before[path].rejected]
     record_label_origin(conn, agent, user_id, origin_paths, before)
-    organization_history.finish(conn, user_id, 'review', history_before)
+    organization_capture.finish(conn, user_id, 'review', history_before)
     return len(visible)
 
 

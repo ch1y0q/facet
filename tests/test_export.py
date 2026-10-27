@@ -626,6 +626,26 @@ def test_export_carries_effective_keep_and_manual_gps(client, tmp_path):
     assert parsed['is_favorite'] is True
 
 
+def test_multi_user_export_carries_each_users_own_keep_decision(tmp_path, monkeypatch):
+    from api import config as api_config
+    from api.routers.export import _write_sidecars_for_paths
+    from processing.xmp_import import parse_sidecar
+    path, row = _make_photo(tmp_path, 'shared.jpg', is_kept=0)
+    db = str(tmp_path / 'shared.db')
+    _seed_db(db, [row])
+    monkeypatch.setitem(api_config._FULL_CONFIG, 'users', {
+        'alice': {'role': 'user', 'directories': [str(tmp_path)]},
+        'bob': {'role': 'user', 'directories': [str(tmp_path)]},
+    })
+    with sqlite3.connect(db) as conn:
+        conn.execute("INSERT INTO user_preferences(user_id,photo_path,is_kept) VALUES ('alice',?,1)", (path,))
+    expected = {'alice': 'kept', 'bob': 'undecided'}
+    with _db_cm(db)() as conn:
+        for user, decision in expected.items():
+            assert _write_sidecars_for_paths(conn, [path], user, True)['written'] == 1
+            assert parse_sidecar(path + '.xmp')['review_decision'] == decision
+
+
 @pytest.mark.parametrize('endpoint,body', [
     ('/api/photo/export_xmp', 'single'), ('/api/photo/embed_metadata', 'single'),
     ('/api/export/sidecars', 'batch'), ('/api/albums/7/export', 'album'),
@@ -655,8 +675,7 @@ def test_api_keyword_state_keeps_ai_and_manual_provenance(client, tmp_path, endp
     ('/api/photo/export_xmp', 'single'), ('/api/photo/embed_metadata', 'single'),
     ('/api/export/sidecars', 'batch'), ('/api/albums/7/export', 'album'),
 ])
-def test_numeric_keyword_survives_real_exiftool_api_exports(client, tmp_path, monkeypatch, endpoint, body):
-    import subprocess
+def test_numeric_keyword_survives_real_exiftool_api_exports(client, tmp_path, monkeypatch, endpoint, body, seed_keywords):
     from PIL import Image
     from processing import xmp_export as xe
     from pathlib import Path
@@ -665,10 +684,7 @@ def test_numeric_keyword_survives_real_exiftool_api_exports(client, tmp_path, mo
     Image.new('RGB', (16, 16)).save(path)
     sidecar = Path(path + '.xmp')
     sidecar.write_text(xe.build_xmp(xe.XmpRating()), encoding='utf-8')
-    names = ['true', 'false', 'null', '1.50', '1e3', '2024']
-    for target in (path, str(sidecar)):
-        subprocess.run(['exiftool', '-overwrite_original', *[f'-XMP-dc:Subject={name}' for name in names],
-                        target], check=True, capture_output=True)
+    names = seed_keywords((path, sidecar))
     db = str(tmp_path / 'numeric.db')
     _seed_db(db, [{'path': path, 'filename': 'numeric.jpg', 'tags': 'facet-tag'}])
     if body == 'album':
@@ -684,7 +700,7 @@ def test_numeric_keyword_survives_real_exiftool_api_exports(client, tmp_path, mo
         assert response.json()['errors'] == 0
     targets = (path, str(sidecar)) if 'embed_metadata' in endpoint else (str(sidecar),)
     for target in targets:
-        flat, _ = xe._read_existing_keywords(target, xe._resolve_exiftool(), timeout=30, strict=True)
+        flat, _, _ = xe._read_existing_metadata(target, xe._resolve_exiftool(), timeout=30, strict=True)
         assert set(flat) == {*names, 'facet-tag'}
 @pytest.mark.parametrize("endpoint", ["export_xmp", "embed_metadata"])
 @pytest.mark.parametrize("error_type,status", [("precondition", 412), ("operational", 500)])
@@ -763,3 +779,28 @@ def test_batch_failure_details_stay_private_and_later_photos_export(client, tmp_
     assert body["sidecars"] == [good + ".xmp"]
     assert _read_sidecar_desc(good + ".xmp").get(f"{{{_NS['xmp']}}}Rating") == "4"
     assert not os.path.exists(failed + ".xmp")
+
+
+UPGRADE_MESSAGE = "ExifTool 13.23 to 13.27 corrupts XMP sidecars; upgrade to 13.28 or newer"
+
+
+@pytest.mark.parametrize("endpoint", ["/api/export/sidecars", "/api/photo/export_xmp", "/api/photo/embed_metadata"])
+def test_defective_exiftool_refusal_is_reported_not_hidden(client, tmp_path, monkeypatch, endpoint):
+    """The 13.23-13.27 refusal names its own remedy; a generic "check server logs" hides it."""
+    from api.routers import export
+    import processing.xmp_export as xe
+
+    photo, row = _make_photo(tmp_path, "refused.jpg", star_rating=3)
+    db = str(tmp_path / "refused.db")
+    _seed_db(db, [row])
+    monkeypatch.setattr(export, "get_db", _db_cm(db))
+    monkeypatch.setattr(xe, "exiftool_available", lambda: True)
+    monkeypatch.setattr(xe, "exiftool_defective_version", lambda: (13, 25))
+    payload = {"paths": [photo]} if endpoint == "/api/export/sidecars" else {"path": photo}
+    response = client.post(endpoint, json=payload)
+    if endpoint == "/api/export/sidecars":
+        assert response.status_code == 200, response.text
+        assert (response.json()["errors"], response.json()["first_error"]) == (1, UPGRADE_MESSAGE)
+    else:
+        assert (response.status_code, response.json()["detail"]) == (412, UPGRADE_MESSAGE)
+    assert not os.path.exists(photo + ".xmp")

@@ -615,8 +615,10 @@ describe('UI tool registry and handlers', () => {
       expect(store.filters()).toMatchObject({ show_rejected: true, hide_rejected: false, favorites_only: false, camera: 'Canon' });
       expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ show_rejected: '1', camera: 'Canon' }));
       expect(await run('ui_set_gallery_filters', { patch: { show_rejected: true, review_status: 'kept' } })).toMatchObject({ ok: true });
-      expect(store.filters()).toMatchObject({ show_rejected: true, review_status: 'kept' });
-      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ show_rejected: '1', review_status: 'kept' }));
+      // The review decision wins: a review queue never carries "Only rejected", which would release every hide toggle.
+      expect(store.filters()).toMatchObject({ show_rejected: false, review_status: 'kept' });
+      expect(apiGet).toHaveBeenLastCalledWith('/photos', expect.objectContaining({ review_status: 'kept' }));
+      expect(apiGet.mock.lastCall?.[1]).not.toHaveProperty('show_rejected');
     });
 
     it('refuses conflicting rejected-only and favorite-only patches without changing the tab', async () => {
@@ -656,6 +658,13 @@ describe('UI tool registry and handlers', () => {
       await store.updateFilters({ show_rejected: true, blinks_only: true, duplicates_only: true });
       await run('ui_set_gallery_filters', { patch: { lens: '50mm' }, replace: true });
       expect(store.filters()).toMatchObject({ show_rejected: false, blinks_only: false, duplicates_only: false, lens: '50mm' });
+    });
+
+    it('replace also clears the manual-face review queue the user turned on', async () => {
+      await store.updateFilters({ manual_faces_need_review: true });
+      expect(store.filters().manual_faces_need_review).toBe(true);
+      await run('ui_set_gallery_filters', { patch: { lens: '50mm' }, replace: true });
+      expect(store.filters()).toMatchObject({ manual_faces_need_review: false, lens: '50mm' });
     });
 
     it('refuses a filter the tab cannot show, without applying the rest', async () => {

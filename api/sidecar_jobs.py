@@ -20,8 +20,15 @@ _KIND = 'sidecar-export:'
 _TERMINAL = {'completed', 'cancelled', 'failed', 'interrupted'}
 METADATA_REPAIR_MESSAGE = 'Existing metadata needs repair before exporting'
 WRITE_FAILURE_MESSAGE = 'Failed to write metadata; check server logs'
+EXIFTOOL_UPGRADE_MESSAGE = 'ExifTool 13.23 to 13.27 corrupts XMP sidecars; upgrade to 13.28 or newer'
 _STOPPED_MESSAGE = 'Export stopped unexpectedly; inspect server logs and retry remaining photos'
-_PUBLIC_ERRORS = {METADATA_REPAIR_MESSAGE, WRITE_FAILURE_MESSAGE, _STOPPED_MESSAGE}
+# Stable codes the client maps to translated text; the English messages stay for API and agent callers.
+_ERROR_CODES = {METADATA_REPAIR_MESSAGE: 'metadata_repair', WRITE_FAILURE_MESSAGE: 'write_failed',
+                EXIFTOOL_UPGRADE_MESSAGE: 'exiftool_upgrade', _STOPPED_MESSAGE: 'stopped'}
+
+
+class JobNotFound(LookupError):
+    """No export job or plan with this ID belongs to the caller."""
 
 
 def _directory(db_path):
@@ -36,7 +43,7 @@ def _path(db_path, job_id):
         if str(UUID(job_id)) != job_id:
             raise ValueError('invalid job ID')
     except (ValueError, TypeError, AttributeError) as ex:
-        raise LookupError('Export job not found') from ex
+        raise JobNotFound('Export job not found') from ex
     return _directory(db_path) / (job_id + '.json')
 
 
@@ -118,9 +125,10 @@ def _open_receipt(path):
 def _public(state, *, cancel_requested):
     result = {key: value for key, value in state.items() if key not in {'owner', 'retry'}}
     # Older receipts can contain raw exception text, including server paths.
-    if result.get('first_error') and result['first_error'] not in _PUBLIC_ERRORS:
+    if result.get('first_error') and result['first_error'] not in _ERROR_CODES:
         result['first_error'] = WRITE_FAILURE_MESSAGE
-    return result | {'cancel_requested': cancel_requested}
+    return result | {'first_error_code': _ERROR_CODES.get(result.get('first_error')),
+                     'cancel_requested': cancel_requested}
 
 
 def _read(path):
@@ -131,7 +139,7 @@ def _read(path):
             raise ValueError('invalid job record')
         return state
     except (OSError, ValueError) as ex:
-        raise LookupError('Export job not found') from ex
+        raise JobNotFound('Export job not found') from ex
 
 
 def _record(path):
@@ -142,14 +150,14 @@ def _record(path):
             raise ValueError('Receipt ID does not match its filename')
         return state
     except ValueError as ex:
-        raise LookupError('Export job not found') from ex
+        raise JobNotFound('Export job not found') from ex
 
 
 def _owned(db_path, job_id, owner):
     path = _path(db_path, job_id)
     state = _record(path)
     if state['owner'] != owner:
-        raise LookupError('Export job not found')
+        raise JobNotFound('Export job not found')
     return path, state
 
 
@@ -306,9 +314,9 @@ def remaining(db_path, job_id, owner):
     try:
         plan = SidecarJobPlan.model_validate(_read(path.with_suffix('.plan')))
     except ValueError as ex:
-        raise LookupError('Export plan not found') from ex
+        raise JobNotFound('Export plan not found') from ex
     if plan.owner != owner or len(plan.paths) != state['total']:
-        raise LookupError('Export plan not found')
+        raise JobNotFound('Export plan not found')
     paths = plan.paths
     indices = sorted(set(state['retry']) | set(range(state['processed'], len(paths))))
     return [paths[index] for index in indices], plan.overwrite

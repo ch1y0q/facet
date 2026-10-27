@@ -5,6 +5,16 @@ import pytest
 from api.database import get_db
 
 
+@pytest.fixture(autouse=True)
+def _clean_history():
+    """The API tests share the session DB; start and leave it without history rows."""
+    with get_db() as conn, conn:
+        conn.execute('DELETE FROM organization_history')
+    yield
+    with get_db() as conn, conn:
+        conn.execute('DELETE FROM organization_history')
+
+
 def test_gps_history_restores_manual_pair_and_is_single_use(edition_client, seed_photos_prefix):
     seed_photos_prefix('/history/', [dict(path='/history/a.jpg', filename='a.jpg', gps_latitude=1, gps_longitude=2, gps_manually_set=0)])
     assert edition_client.put('/api/photo/gps', json=dict(path='/history/a.jpg', gps_latitude=3, gps_longitude=4)).status_code == 200
@@ -311,7 +321,7 @@ def test_reject_history_restores_kept_and_rejected_pair(edition_client, seed_pho
 
 def test_grouped_action_is_one_entry_and_keeps_earlier_history(tmp_path):
     import sqlite3
-    from api import organization_history as history
+    from api import organization_capture as history
     from api.db_helpers import set_photos_kept, set_photos_rejected
     from db.schema import init_database
     filename = str(tmp_path / 'grouped.db')
@@ -335,7 +345,7 @@ def test_grouped_action_is_one_entry_and_keeps_earlier_history(tmp_path):
 
 
 def test_failed_finish_maps_to_422_and_rolls_back(edition_client, seed_photos_prefix, monkeypatch):
-    from api import organization_history as history
+    from api import organization_capture as history
     seed_photos_prefix('/history-finish/', [dict(path='/history-finish/a.jpg', filename='a.jpg')])
 
     def refuse(*args, **kwargs):
@@ -345,3 +355,4 @@ def test_failed_finish_maps_to_422_and_rolls_back(edition_client, seed_photos_pr
     assert response.status_code == 422
     with get_db() as conn:
         assert conn.execute("SELECT is_kept FROM photos WHERE path='/history-finish/a.jpg'").fetchone()[0] in (None, 0)
+
