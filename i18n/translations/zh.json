@@ -139,20 +139,16 @@
   "tooltip": {
     "not_computed": "未计算",
     "category": "类别",
-    "aggregate": "综合评分",
-    "quality_section": "画质",
     "aesthetic": "美观度",
     "quality_score": "画质评分",
     "face_quality": "人脸画质",
     "face_sharpness": "人脸清晰度",
     "eye_sharpness": "眼睛清晰度",
     "tech_sharpness": "技术清晰度",
-    "composition_section": "构图",
     "composition": "构图",
     "pattern": "构图模式",
     "power_points": "构图交点",
     "leading_lines": "引导线",
-    "technical_section": "技术指标",
     "exposure": "曝光",
     "color": "色彩",
     "contrast": "对比度",
@@ -162,7 +158,6 @@
     "noise": "噪点",
     "bonus_section": "加分",
     "isolation": "主体突出程度",
-    "exif_section": "EXIF",
     "camera": "相机",
     "lens": "镜头",
     "focal": "焦距",
@@ -188,7 +183,6 @@
     "qrealign_score": "Q-ReAlign",
     "aesthetic_v25": "美学评分 V2.5",
     "deqa_score": "DeQA",
-    "saliency_section": "主体显著性",
     "subject_sharpness": "主体清晰度",
     "subject_prominence": "突出程度",
     "subject_placement": "位置布局",
@@ -201,7 +195,6 @@
     "color_harmony": "色彩和谐度",
     "caption": "照片描述",
     "filter_by_person": "按 {name} 筛选",
-    "set_section": "组",
     "histogram": "直方图"
   },
   "photoCard": {
@@ -577,7 +570,8 @@
     "mark_rejected": "标为淘汰",
     "unmark_rejected": "取消淘汰标记",
     "rejected_badge": "已淘汰",
-    "rating_badge": "已评为 {stars}"
+    "rating_badge": "已评为 {stars}",
+    "stars_out_of_five": "评分 {stars}/5"
   },
   "similar": {
     "title": "相似照片",
@@ -2464,7 +2458,6 @@
     "location": "位置",
     "social_crop": "社交平台裁切",
     "set": {
-      "title": "组",
       "ev_span": "曝光跨度（EV）",
       "kind_duplicate": "重复照片",
       "open_in_gallery": "在照片库中打开此照片组",
@@ -2522,6 +2515,11 @@
       "batch_error": "无法应用位置。请选择最多 1000 张照片并重新预览；所选照片或已保存地点可能已更改。",
       "batch_limit": "请选择最多 1000 张照片。关闭保护后将替换现有位置。原始文件保持不变。",
       "batch_hint": "选择一个位置，然后预览更改，再保存所选照片。"
+    },
+    "distribution": {
+      "top": "位列图库前 {pct}%",
+      "range": "图库范围 {min}–{max}",
+      "top_in_range": "位列图库前 {pct}% · 图库范围 {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2546,7 +2544,8 @@
       "success": "类别已设为{category}。",
       "cleared": "已清除手动指定。请重新计算，以应用根据筛选条件确定的类别。",
       "explainer_toggle": "为什么没有归入其他类别？",
-      "target_category_label": "对比类别"
+      "target_category_label": "对比类别",
+      "target_category_hint": "选择一个类别，查看哪些筛选条件将此照片排除在外，以及怎样才能归入该类别。"
     }
   },
   "download": {

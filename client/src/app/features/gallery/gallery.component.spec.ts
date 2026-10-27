@@ -163,6 +163,8 @@ describe('GalleryComponent', () => {
       colorTemps: signal([]),
       hueBuckets: signal([]),
       metricRanges: signal({}),
+      metricRangesByColumn: signal({}),
+      ensureMetricRanges: vi.fn(() => Promise.resolve()),
       gpsLocationName: signal(''),
       viewFilterParams: signal({}),
     };
@@ -776,6 +778,9 @@ describe('GalleryComponent', () => {
     function render(mode: 'grid' | 'mosaic', virtual: boolean): HTMLElement[] {
       mockStore.photos.set(photos);
       mockStore.config.set({ features: { show_rating_controls: true } });
+      // The floating tooltip: the docked rail (the default at this width) would
+      // render a full details panel these path-only stand-in photos cannot fill.
+      mockStore.filters.set({ ...DEFAULT_FILTERS, tooltip_mode: 'hover' });
       mockStore.galleryMode.set(mode);
       mockStore.virtualScroll.set(virtual);
       fixture = TestBed.createComponent(GalleryComponent);
@@ -1310,6 +1315,21 @@ describe('GalleryComponent', () => {
       mockStore.pinnedPaths.set(null);
       fixture.detectChanges();
       expect(drawer.opened).toBe(true);
+      mockStore.filterDrawerOpen.set(false);
+    });
+
+    it('ignores a stale drawer animation event that no longer matches the drawer, so a quick close and reopen cannot ping-pong', async () => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockStore.filterDrawerOpen.set(true);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const drawer = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as MatSidenav;
+      expect(drawer.opened).toBe(true);
+      mockStore.setFilterDrawerOpen.mockClear();
+      // The close animation of an earlier close() finishes after the reopen.
+      drawer.openedChange.emit(false);
+      await new Promise(resolve => setTimeout(resolve));
+      expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
       mockStore.filterDrawerOpen.set(false);
     });
 
@@ -1952,6 +1972,25 @@ describe('GalleryComponent', () => {
       TestBed.flushEffects();
 
       expect(component['tooltipPhoto']()).toBeNull();
+      card.remove();
+    });
+
+    it('Escape closes a click-opened tooltip first and leaves the selection for the next Escape', () => {
+      mockStore.filters.set({ ...DEFAULT_FILTERS, tooltip_mode: 'click' });
+      TestBed.flushEffects();
+      mockStore.photos.set([{ path: '/a.jpg' }]);
+      mockStore.selectionCount.set(1);
+      mockStore.clearSelection.mockClear();
+      const card = makeCard();
+      component.showTooltip({ currentTarget: card } as unknown as MouseEvent, photo);
+
+      press('Escape');
+      expect(component['tooltipPhoto']()).toBeNull();
+      expect(mockStore.clearSelection).not.toHaveBeenCalled();
+
+      press('Escape');
+      expect(mockStore.clearSelection).toHaveBeenCalled();
+      mockStore.selectionCount.set(0);
       card.remove();
     });
 

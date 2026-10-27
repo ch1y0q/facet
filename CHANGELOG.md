@@ -4,6 +4,18 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Scores placed in the library.** Photo detail, the gallery side panel and the card score badge show where each score sits in the whole library: a sparkline of its distribution with this photo's bar lit, and "Top X% of the library" with the library range on hover or focus. Scores with no better end (ISO, aperture, face count…) show the range only.
+
+### Changed
+
+- **The side panel is the default tooltip mode.** It now uses photo detail's layout, with the metrics in the same icon tabs (EXIF, Quality, Composition, Technical, Histogram), and both remember the same open tab. The **Hover** and **Click** bubbles are reduced to a glance: category, aggregate and its rank, four key scores and one EXIF line.
+
+### Fixed
+
+- **The side panel no longer flickers open and closed.** A filter drawer animation event arriving after the drawer had already changed state flipped it back, in a loop.
+
 ## [1.25.0] "Hyperfocale" — 2026-10-27
 
 ### Added

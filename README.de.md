@@ -28,7 +28,7 @@ Die GPU wird automatisch erkannt und ist optional. Facet läuft rein über CPU o
 
 Jedes Foto wird anhand von 9 Dimensionen bewertet: ästhetische Qualität, Komposition, Gesichtsqualität, Augenschärfe, technische Schärfe, Farbe, Belichtung, Motiverkennung und Dynamikumfang. Fotos werden nach Inhalt kategorisiert (Porträt, Landschaft, Makro, Straße usw. — über 30 Kategorien) und mit kategoriespezifischen Gewichten bewertet. Ein Filter **Beste Auswahl** ordnet die Bibliothek anhand einer kombinierten Wertung.
 
-Bewegen Sie den Mauszeiger über ein beliebiges Foto, um einen Tooltip mit der Wertungsaufschlüsselung und EXIF-Daten zu sehen.
+Bewegen Sie den Mauszeiger über ein beliebiges Foto, um die Wertungsaufschlüsselung und EXIF-Daten in der Seitenleiste der Galerie zu sehen, oder wechseln Sie zu einer Hover-Blase, die die wichtigsten Wertungen auf einen Blick zeigt.
 
 <img src="docs/screenshots/hover-tooltip.jpg" alt="Hover-Tooltip mit Wertungsaufschlüsselung" width="100%">
 
@@ -100,7 +100,7 @@ Bewegen Sie den Mauszeiger über ein beliebiges Foto, um einen Tooltip mit der W
 - **Sortierung „Mein Geschmack“** — sortieren Sie die Galerie nach der gelernten Wertung des persönlichen Rankers, mit einem Konfidenz-Badge, das die gelernte Abdeckung und die Holdout-Genauigkeit anzeigt
 - **Lernen aus Labels** — Auswahlentscheidungen, Sternebewertungen, Favoriten und Ablehnungen fließen in den Gewichtsoptimierer ein (`--sync-label-comparisons`, `--mine-insights`)
 - **Snapshots** — Gewichtskonfigurationen speichern, wiederherstellen und vergleichen
-- **Histogramm** — RGB-/Helligkeitshistogramm mit Clipping-Indikatoren, im Foto-Tooltip und in der Detailansicht
+- **Histogramm** — RGB-/Helligkeitshistogramm mit Clipping-Indikatoren, in der Seitenleiste der Galerie und in der Detailansicht
 - **KI-Beschreibungen** `[GPU]` `[16gb/24gb]` `[Edition]` — Textbeschreibungen, bearbeitbar und in 5 Sprachen übersetzbar
 
 <table><tr>

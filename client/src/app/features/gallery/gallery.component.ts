@@ -216,13 +216,16 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
       <mat-sidenav #filterDrawer [disableClose]="detailsRailVisible()" [mode]="isDesktop() ? 'side' : 'over'" position="end" class="w-[min(320px,100vw)] p-0"
         (openedChange)="onFilterDrawerChange($event)">
         @if (detailsRailVisible()) {
-          <div class="p-2" data-details-rail tabindex="-1" (keydown.escape)="onRailEscape($event)"
+          <!-- Deselect stays put above the scrolling details; the tooltip
+               background covers the whole rail instead of a rounded card. -->
+          <div class="flex flex-col h-full bg-[var(--facet-tooltip-bg)]" data-details-rail tabindex="-1" (keydown.escape)="onRailEscape($event)"
                (focusout)="onGridFocusOut($event)">
             @if (hasActivePhoto()) {
-              <button mat-button class="!min-w-0 mb-2" (click)="releasePanel()">
+              <button mat-button class="!min-w-0 shrink-0 self-start mx-2 mt-2" (click)="releasePanel()">
                 <mat-icon>arrow_back</mat-icon> {{ I18N.gallery.tooltip_mode.panel_deselect | translate }}
               </button>
             }
+            <div class="min-h-0 flex-1 overflow-y-auto">
             @if (panelPhoto(); as p) {
               <app-photo-tooltip [photo]="p" [docked]="true" [pinned]="true"
                                  [histogramDefaultMode]="tooltipHistogramDefaultMode()"
@@ -230,11 +233,11 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                                  [personLinks]="!pinned()"
         (personSelected)="store.updateFilter('person_id', $event)" />
             } @else {
-              <div class="rounded-xl p-4 text-sm opacity-60 text-center"
-                   style="background: var(--facet-tooltip-bg); border: 1px solid var(--facet-tooltip-border)">
+              <div class="p-4 text-sm opacity-60 text-center">
                 {{ I18N.gallery.tooltip_mode.panel_empty | translate }}
               </div>
             }
+            </div>
           </div>
         } @else {
           <!-- Usually closed, and heavy enough that building it eagerly holds up the grid's first paint. -->
@@ -331,6 +334,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                     [isActive]="row.startIndex + i === activeIndex()"
                     [gridHasActiveCard]="hasActivePhoto()"
                     [currentSort]="store.filters().sort"
+                    [metricRanges]="store.metricRangesByColumn()"
                     [thumbSize]="thumbSize()"
                     [isEditionMode]="auth.isEdition()"
                     [personFilterId]="store.filters().person_id"
@@ -387,6 +391,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                   [gridHasActiveCard]="hasActivePhoto()"
                   [hideDetails]="effectiveHideDetails()"
                   [currentSort]="store.filters().sort"
+                  [metricRanges]="store.metricRangesByColumn()"
                   [thumbSize]="thumbSize()"
                   [isEditionMode]="auth.isEdition()"
                   [personFilterId]="store.filters().person_id"
@@ -452,6 +457,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                       [isActive]="row.startIndex + i === activeIndex()"
                       [gridHasActiveCard]="hasActivePhoto()"
                       [currentSort]="store.filters().sort"
+                      [metricRanges]="store.metricRangesByColumn()"
                       [thumbSize]="thumbSize()"
                       [isEditionMode]="auth.isEdition()"
                       [personFilterId]="store.filters().person_id"
@@ -760,7 +766,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
       </button>
     </ng-template>
     <ng-template #noticeClose let-kind let-alignTop="alignTop">
-      <button mat-icon-button data-notice-close class="!w-7 !h-7 !min-w-0 !p-0 -mr-1 shrink-0" [class.self-start]="alignTop" (click)="dismissNotice(kind)"
+      <button mat-icon-button data-notice-close class="!w-7 !h-7 !min-w-0 !p-0 !inline-flex !items-center !justify-center -mr-1 shrink-0" [class.self-start]="alignTop" (click)="dismissNotice(kind)"
               [attr.aria-describedby]="'notice-text-' + kind"
               [matTooltip]="I18N.ui.buttons.dismiss | translate"
               [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
@@ -1640,6 +1646,11 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   /** Save/restore sidebar scroll position on drawer open/close */
   onFilterDrawerChange(open: boolean): void {
+    // openedChange fires when an animation ends, so a close() followed quickly by
+    // open() reports the stale close after the drawer is open again. Recording it
+    // would make the sync effect close the drawer, whose pending open would then
+    // reopen it -- an endless open/close loop.
+    if (open !== this.filterDrawer()?.opened) return;
     // The details rail holds this drawer open by itself, so an `open` it caused
     // must not be recorded as "the user asked for filters" — otherwise closing
     // the filters would immediately re-open them and the toggle would be stuck.
@@ -2845,6 +2856,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'Home': next = 0; break;
       case 'End': next = photos.length - 1; break;
       case 'Escape':
+        // A click-opened tooltip is the innermost layer: close it before touching the selection.
+        if (this.tooltipMode() === 'click' && this.tooltipPhoto()) {
+          event.preventDefault();
+          this.hideTooltip();
+          return;
+        }
         if (this.selectionCount() || (this.panelMode() && this.hasActivePhoto())) {
           event.preventDefault();
           this.escapeSelection();
