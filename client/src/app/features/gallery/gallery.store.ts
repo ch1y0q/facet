@@ -1267,9 +1267,10 @@ export class GalleryStore {
       // A similarity view ranks outside the gallery's WHERE clause: by_paths cannot say a photo left it.
       if (pinned || membership) this.dropMissing(missing);
       if (membership && missing.length && this.hasMore()) {
-        // Removing a filtered row shifts the offsets of every following page.
+        // Removing a filtered row shifts the offsets of every following page. The rows before the
+        // last loaded page keep their positions, so only the tail is refetched, not every page.
         membershipChanged = true;
-        await this.refreshViewInPlace(loadSeq);
+        await this.refreshViewInPlace(loadSeq, false, true);
       }
     } catch {
       // Retain failed repair debt; parking already claimed cancelled reads.
