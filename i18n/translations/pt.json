@@ -2604,6 +2604,7 @@
       "errors": {
         "metadata_repair": "Os metadados existentes precisam ser reparados antes de exportar.",
         "write_failed": "Não foi possível gravar os metadados. Verifique os logs do servidor.",
+        "exiftool_upgrade": "O ExifTool 13.23 a 13.27 corrompe arquivos XMP. Atualize o ExifTool para a 13.28 ou mais recente.",
         "stopped": "A exportação parou inesperadamente. Verifique os logs do servidor e tente novamente as fotos restantes."
       }
     }

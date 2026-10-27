@@ -20,10 +20,11 @@ _KIND = 'sidecar-export:'
 _TERMINAL = {'completed', 'cancelled', 'failed', 'interrupted'}
 METADATA_REPAIR_MESSAGE = 'Existing metadata needs repair before exporting'
 WRITE_FAILURE_MESSAGE = 'Failed to write metadata; check server logs'
+EXIFTOOL_UPGRADE_MESSAGE = 'ExifTool 13.23 to 13.27 corrupts XMP sidecars; upgrade to 13.28 or newer'
 _STOPPED_MESSAGE = 'Export stopped unexpectedly; inspect server logs and retry remaining photos'
 # Stable codes the client maps to translated text; the English messages stay for API and agent callers.
 _ERROR_CODES = {METADATA_REPAIR_MESSAGE: 'metadata_repair', WRITE_FAILURE_MESSAGE: 'write_failed',
-                _STOPPED_MESSAGE: 'stopped'}
+                EXIFTOOL_UPGRADE_MESSAGE: 'exiftool_upgrade', _STOPPED_MESSAGE: 'stopped'}
 
 
 def _directory(db_path):

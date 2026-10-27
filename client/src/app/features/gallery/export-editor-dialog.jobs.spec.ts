@@ -224,6 +224,7 @@ describe('Export editor background jobs with HttpClient', () => {
   it.each([
     ['metadata_repair', 'export.jobs.errors.metadata_repair'],
     ['write_failed', 'export.jobs.errors.write_failed'],
+    ['exiftool_upgrade', 'export.jobs.errors.exiftool_upgrade'],
     ['stopped', 'export.jobs.errors.stopped'],
   ] as const)('renders the translated text for the %s receipt error code, not the English message', async (code, key) => {
     build(); await start(job({ state: 'completed', processed: 1, errors: 1, first_error: 'English server message', first_error_code: code }));

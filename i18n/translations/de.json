@@ -2604,6 +2604,7 @@
       "errors": {
         "metadata_repair": "Vorhandene Metadaten müssen vor dem Export repariert werden.",
         "write_failed": "Metadaten konnten nicht geschrieben werden. Prüfen Sie die Serverprotokolle.",
+        "exiftool_upgrade": "ExifTool 13.23 bis 13.27 beschädigt XMP-Sidecar-Dateien. Aktualisieren Sie ExifTool auf 13.28 oder neuer.",
         "stopped": "Der Export wurde unerwartet beendet. Prüfen Sie die Serverprotokolle und wiederholen Sie die übrigen Fotos."
       }
     }

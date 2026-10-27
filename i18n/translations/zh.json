@@ -2604,6 +2604,7 @@
       "errors": {
         "metadata_repair": "导出前需要先修复现有元数据。",
         "write_failed": "无法写入元数据。请查看服务器日志。",
+        "exiftool_upgrade": "ExifTool 13.23 至 13.27 会损坏 XMP 附属文件。请将 ExifTool 升级到 13.28 或更高版本。",
         "stopped": "导出意外停止。请查看服务器日志并重试剩余照片。"
       }
     }

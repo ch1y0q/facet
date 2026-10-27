@@ -2618,6 +2618,7 @@ export const I18N = {
       errors: {
         metadata_repair: "export.jobs.errors.metadata_repair",
         write_failed: "export.jobs.errors.write_failed",
+        exiftool_upgrade: "export.jobs.errors.exiftool_upgrade",
         stopped: "export.jobs.errors.stopped",
       },
     },

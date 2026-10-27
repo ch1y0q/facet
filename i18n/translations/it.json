@@ -2604,6 +2604,7 @@
       "errors": {
         "metadata_repair": "I metadati esistenti devono essere riparati prima dell’esportazione.",
         "write_failed": "Impossibile scrivere i metadati. Controlla i log del server.",
+        "exiftool_upgrade": "ExifTool dalla 13.23 alla 13.27 danneggia i file XMP. Aggiorna ExifTool alla 13.28 o successiva.",
         "stopped": "L’esportazione si è interrotta in modo imprevisto. Controlla i log del server e riprova con le foto rimanenti."
       }
     }

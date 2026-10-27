@@ -2604,6 +2604,7 @@
       "errors": {
         "metadata_repair": "Existing metadata needs repair before exporting.",
         "write_failed": "Could not write metadata. Check the server logs.",
+        "exiftool_upgrade": "ExifTool 13.23 to 13.27 corrupts XMP sidecars. Upgrade ExifTool to 13.28 or newer.",
         "stopped": "Export stopped unexpectedly. Check the server logs and retry the remaining photos."
       }
     }

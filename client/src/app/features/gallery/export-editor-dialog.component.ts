@@ -211,7 +211,7 @@ export class ExportEditorDialogComponent {
   };
   readonly errorKeys = {
     metadata_repair: I18N.export.jobs.errors.metadata_repair, write_failed: I18N.export.jobs.errors.write_failed,
-    stopped: I18N.export.jobs.errors.stopped,
+    exiftool_upgrade: I18N.export.jobs.errors.exiftool_upgrade, stopped: I18N.export.jobs.errors.stopped,
   };
   readonly errorDetail = signal<string | null>(null);
   readonly readError = signal(false);

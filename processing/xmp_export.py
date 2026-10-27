@@ -552,10 +552,14 @@ def exiftool_defective_version() -> tuple[int, int] | None:
     return None
 
 
+class DefectiveExifToolError(RuntimeError):
+    """The installed ExifTool is a release known to corrupt XMP sidecars."""
+
+
 def _refuse_defective_exiftool_version(version: tuple[int, int] | None) -> None:
     if version is not None and _DEFECTIVE_EXIFTOOL_MIN <= version < _DEFECTIVE_EXIFTOOL_FIXED:
         label = ".".join(map(str, version))
-        raise RuntimeError(
+        raise DefectiveExifToolError(
             f"exiftool {label} corrupts XMP sidecars that contain darktable edit "
             "history (bug in 13.23-13.27); upgrade to 13.28 or newer"
         )
