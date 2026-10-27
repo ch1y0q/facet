@@ -10,8 +10,46 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect Python-relevant changes
+    # A pull request that only touches the Angular client skips the Python
+    # suites (~45 min). The filter is inverted on purpose: the suite also reads
+    # docs, README, CHANGELOG, i18n bundles and workflow files, so anything
+    # outside client/ counts, and so do the client files it reads or generates
+    # (schema.d.ts and the npm scripts behind gen:api, keys.ts, photo.model.ts,
+    # the agent UI tool schema, the smart-album fixture). Pushes to master
+    # always run everything.
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "python=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only "$BASE_SHA" HEAD)
+          echo "$changed"
+          relevant=$(echo "$changed" | grep -vE '^client/' || true)
+          relevant+=$(echo "$changed" | grep -E '^client/(package(-lock)?\.json$|scripts/|src/app/core/api/schema\.d\.ts$|src/app/core/i18n/keys\.ts$|src/app/core/agent/ui-tools\.schema\.json$|src/app/shared/models/photo\.model\.ts$|src/app/features/gallery/testing/smart-album-stored\.json$)' || true)
+          if [ -n "$relevant" ]; then
+            echo "python=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only client files changed: skipping the Python suites."
+            echo "python=false" >> "$GITHUB_OUTPUT"
+          fi
+
   python-tests:
     name: Python Tests
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
