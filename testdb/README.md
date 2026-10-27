@@ -146,7 +146,7 @@ Know the 20 people first, then name each face or call it Unknown:
 ```
 docker run --rm -v $PWD/testdb:/tool:ro -v $TESTDB:/tdb --entrypoint python $IMAGE \
   /tool/make_references.py --lfw /tdb/download/lfw_home/lfw_funneled --photos /tdb/photos --out /tdb/references
-docker run --rm -v $PWD/testdb:/tool:ro -v $TESTDB/references:/data/references:ro -v $TESTDB/data:/app/data:ro \
+docker run --rm -v $PWD/testdb:/tool:ro -v $TESTDB/references:/data/references:ro -v $TESTDB/data:/app/data \
   -v ${MAIN_PROJECT:-facet}_facet-insightface:/home/facet/.insightface -e HOME=/home/facet --entrypoint python $IMAGE \
   /tool/open_set_eval.py --db /app/data/photo_scores_pro.db --refs /data/references
 ```
