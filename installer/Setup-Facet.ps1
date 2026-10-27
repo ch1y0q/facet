@@ -1,13 +1,16 @@
-# Build (or repair) the Facet Python environment. Runs once after install; safe to re-run.
-# Mirrors the CUDA Dockerfile: torch 2.11.0+cu128 first, both lock files with torch held,
-# then the CPU onnxruntime swapped for onnxruntime-gpu 1.26.0 (the last CUDA 12 build).
-param([switch]$Force)
+# Build (or repair) the Facet Python environment. Runs once after install, and again after an
+# upgrade that changes the lock files or this script; safe to re-run.
+# Picks the PyTorch build the way install.sh does: by the lowest GPU compute capability and the
+# CUDA version the NVIDIA driver supports, else CPU. Then both lock files from PyPI with that
+# torch held, then, on a CUDA 12 build, the CPU onnxruntime swapped for onnxruntime-gpu.
+#   -Cpu    install the CPU build even when an NVIDIA GPU is present
+param([switch]$Force, [switch]$Cpu)
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\Facet-Env.ps1"
 
 function Step($msg) { Write-Host "`n== $msg" -ForegroundColor Cyan }
 
-if ((Test-Path $FacetReady) -and (Test-Path (Join-Path $FacetExifTool 'exiftool.exe')) -and -not $Force) {
+if ((Test-FacetReady) -and -not $Force) {
     Write-Host "Facet environment already set up ($FacetVenv). Use -Force to rebuild."
     return
 }
@@ -17,27 +20,54 @@ Step 'Python 3.12 virtual environment'
 & $FacetUv venv $FacetVenv --python 3.12 --allow-existing
 if ($LASTEXITCODE) { throw 'uv venv failed' }
 
-$hasCuda = [bool](Get-Command nvidia-smi -ErrorAction SilentlyContinue)
-$constraint = Join-Path $env:TEMP 'facet-torch-constraint.txt'
-if ($hasCuda) {
-    Step 'PyTorch 2.11.0 (CUDA 12.8)'
-    & $FacetUv pip install --python $FacetPython 'torch==2.11.0' 'torchvision==0.26.0' --index-url https://download.pytorch.org/whl/cu128
-    Set-Content $constraint "torch==2.11.0+cu128`ntorchvision==0.26.0+cu128" -Encoding ascii
-    $extra = @('--extra-index-url', 'https://download.pytorch.org/whl/cu128', '--index-strategy', 'unsafe-best-match')
-} else {
-    Step 'PyTorch 2.11.0 (CPU, no NVIDIA driver found)'
-    & $FacetUv pip install --python $FacetPython 'torch==2.11.0' 'torchvision==0.26.0' --index-url https://download.pytorch.org/whl/cpu
-    Set-Content $constraint "torch==2.11.0+cpu`ntorchvision==0.26.0+cpu" -Encoding ascii
-    $extra = @('--extra-index-url', 'https://download.pytorch.org/whl/cpu', '--index-strategy', 'unsafe-best-match')
+# The PyTorch build. cu128 wheels ship sm_75 upwards only, so a Maxwell, Pascal or Volta card
+# (compute capability below 7.5) takes cu126 whatever the driver (issue #119). The pinned
+# version is the one the Docker images ship; the older CUDA indexes stop at older releases.
+$variant, $torchPin, $ortGpu = 'cpu', '2.11.0', $true
+$smi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
+if ($smi -and -not $Cpu) {
+    $cudaText = (& $smi.Source) -join "`n"
+    $cuda = if ($cudaText -match 'CUDA (?:UMD )?Version:\s*(\d+)\.(\d+)') { [version]"$($Matches[1]).$($Matches[2])" }
+    $arch = @(& $smi.Source --query-gpu=compute_cap --format=csv,noheader 2>$null |
+        Where-Object { $_ -match '^\s*\d+\.\d+\s*$' } | ForEach-Object { [version]$_.Trim() } | Sort-Object)[0]
+    if (-not $cuda) {
+        Write-Warning 'nvidia-smi found, but it reports no CUDA version: installing the CPU build'
+    } elseif ($arch -and $arch -lt [version]'7.5') {
+        $variant, $torchPin = 'cu126', $null
+        Write-Host "GPU compute capability $arch (pre-Turing): cu126, which still ships its kernels"
+    } elseif ($cuda -ge [version]'12.8') {
+        $variant = 'cu128'
+    } elseif ($cuda -ge [version]'12.6') {
+        $variant, $torchPin = 'cu126', $null
+    } elseif ($cuda -ge [version]'12.4') {
+        $variant, $torchPin = 'cu124', $null
+    } elseif ($cuda -ge [version]'11.8') {
+        # The only onnxruntime-gpu for CUDA 11 links cuDNN 8 and the cu118 wheels ship cuDNN 9,
+        # so its CUDA provider would never load: keep the CPU onnxruntime.
+        $variant, $torchPin, $ortGpu = 'cu118', $null, $false
+        Write-Warning 'Driver supports CUDA 11.8 only: face detection runs on the CPU. Update the NVIDIA driver for GPU face detection.'
+    } else {
+        Write-Warning "Driver supports CUDA $cuda only, too old for PyTorch: installing the CPU build. Update the NVIDIA driver to use the GPU."
+    }
 }
+$torchSpec = if ($torchPin) { @("torch==$torchPin", 'torchvision==0.26.0') } else { @('torch', 'torchvision') }
+Step "PyTorch ($variant)"
+& $FacetUv pip install --python $FacetPython @torchSpec --index-url "https://download.pytorch.org/whl/$variant"
 if ($LASTEXITCODE) { throw 'torch install failed' }
 
+# The lock files omit torch. Hold the version just installed (a local "+cu128" build satisfies
+# "==2.11.0"), so the locks come from PyPI alone and cannot replace it.
+$held = & $FacetPython -c "import torch, torchvision; print('torch==' + torch.__version__.split('+')[0]); print('torchvision==' + torchvision.__version__.split('+')[0])"
+if ($LASTEXITCODE) { throw 'torch import failed' }
+$constraint = Join-Path $env:TEMP 'facet-torch-constraint.txt'
+Set-Content $constraint $held -Encoding ascii
+
 Step 'Facet dependencies (requirements.lock.txt + restricted lock)'
-& $FacetUv pip install --python $FacetPython -c $constraint @extra `
+& $FacetUv pip install --python $FacetPython -c $constraint `
     -r (Join-Path $FacetApp 'requirements.lock.txt') -r (Join-Path $FacetApp 'requirements.restricted.lock.txt')
 if ($LASTEXITCODE) { throw 'dependency install failed' }
 
-if ($hasCuda) {
+if ($variant -ne 'cpu' -and $ortGpu) {
     Step 'onnxruntime-gpu 1.26.0 (GPU face detection)'
     & $FacetUv pip uninstall --python $FacetPython onnxruntime onnxruntime-gpu
     & $FacetUv pip install --python $FacetPython 'onnxruntime-gpu==1.26.0'
@@ -75,8 +105,15 @@ if (-not (Test-Path $env:FACET_CONFIG)) {
 Step 'Check'
 & $FacetPython -c "import torch, onnxruntime as o; print('torch', torch.__version__, 'CUDA' if torch.cuda.is_available() else 'CPU'); print('onnxruntime', o.__version__, o.get_available_providers())"
 if ($LASTEXITCODE) { throw 'import check failed' }
+if ($variant -ne 'cpu') {
+    # A GPU build that cannot reach the GPU would scan on the CPU without saying so.
+    & $FacetPython -c "import sys, torch; sys.exit(0 if torch.cuda.is_available() else 3)"
+    if ($LASTEXITCODE) {
+        throw "PyTorch $variant is installed but cannot use the GPU (driver too old or not loaded?). Update the NVIDIA driver and run setup again, or run Setup-Facet.ps1 -Force -Cpu to use the CPU."
+    }
+}
 Push-Location $FacetApp
 try { & $FacetPython database.py; if ($LASTEXITCODE) { throw 'database init failed' } } finally { Pop-Location }
 
-Set-Content $FacetReady (Get-Date -Format s) -Encoding ascii
+Set-Content $FacetReady (Get-FacetSetupKey) -Encoding ascii
 Write-Host "`nFacet is ready. Start it from the Start menu: Facet." -ForegroundColor Green

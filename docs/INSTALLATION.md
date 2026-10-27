@@ -8,10 +8,19 @@ when you need it.
 
 ## Which install is for me?
 
+Both routes run the same Facet; they trade simplicity of installation against
+performance. Pick the one that fits you.
+
+| | Docker | Without Docker |
+|---|---|---|
+| Installing | One command: everything comes in the image | `install.sh` (Linux, macOS) or the Windows installer builds a Python environment on the machine |
+| Updating | Pull the new image | Update the code and run `install.sh` again, or install the new Windows installer |
+| Performance | A container sits between Facet and your files and graphics card; on Windows it runs inside WSL2 | Facet uses the machine's graphics card and files directly |
+
 | Your situation | Go to |
 |----------------|-------|
-| Windows, macOS or Linux, and you just want it running | [Install with Docker](#install-with-docker) |
-| Linux or macOS, and you prefer no containers | [Install without Docker](#install-without-docker) |
+| Windows, macOS or Linux, in a container | [Install with Docker](#install-with-docker) |
+| Windows, macOS or Linux, without containers | [Install without Docker](#install-without-docker) |
 | A NAS, or a server you want to reach from other machines | [Deployment](DEPLOYMENT.md) |
 
 ## Which profile fits my hardware?
@@ -161,8 +170,57 @@ Open <http://localhost:5000>.
 
 ### Windows
 
-Use [Docker](#install-with-docker). To use an NVIDIA card on Windows, follow the
-[WSL2 guide](DEPLOYMENT.md#windows-wsl2-with-an-nvidia-gpu) — it is the tested path.
+A per-user installer (MSI) sets Facet up without administrator rights:
+
+| Folder | What it holds |
+|---|---|
+| `%LOCALAPPDATA%\Facet\app` | the program, replaced on upgrade |
+| `%LOCALAPPDATA%\Facet\venv` | the Python environment, built on first start |
+| `%LOCALAPPDATA%\Facet\data` | the database (`photo_scores_pro.db`) and logs |
+| `%LOCALAPPDATA%\Facet\config` | `scoring_config.json` |
+
+**Getting the installer.** No release ships one yet. Build it from a clone with
+`installer\build-msi.ps1` (it needs WiX 3.14, `uv` and a built client, and says where to
+get WiX), or download the `facet-msi` artifact of a *Windows install (MSI)* workflow run.
+
+**First start.** The *Facet* Start-menu entry sets up the Python environment the first time
+(about 6 GB, 10-20 minutes), and again after an upgrade that changes Facet's dependencies.
+It picks the PyTorch build for your NVIDIA card and driver the way `install.sh` does, or the
+CPU build without an NVIDIA card. If the GPU build it installed cannot reach the card, setup
+stops and says so: update the driver, or run `Setup-Facet.ps1 -Force -Cpu`.
+
+**Every day:**
+
+```powershell
+cd "$env:LOCALAPPDATA\Facet\app\installer"
+.\Scan-Facet.ps1 "\\NAS\Photos"   # score photos; extra arguments go to facet.py
+.\Start-Facet.ps1                # the gallery, at http://localhost:5000
+.\Stop-Facet.ps1                 # stop the gallery and any scan
+```
+
+The gallery answers on this computer only. `Start-Facet.ps1 -Lan` opens it to other
+devices, and refuses to start until `viewer.password` is set in the config.
+
+**Uninstalling** (Settings, Apps) removes the program and its Python environment, and keeps
+`data` and `config`. Downloaded models stay in your user folder (`.cache`, `.insightface`).
+
+**Moving a library from Docker.** The database stores each photo's full path, and the
+Windows install sees the same photos under another one (`\\NAS\Photos\...` rather than
+`/data/photos/...`). Copy the database into `data`, stop Facet, then rewrite the paths,
+with a dry run first:
+
+```powershell
+cd "$env:LOCALAPPDATA\Facet\app"
+..\venv\Scripts\python.exe scripts\rewrite_db_paths.py ..\data\photo_scores_pro.db /data/photos "\\NAS\Photos" --dry-run
+..\venv\Scripts\python.exe scripts\rewrite_db_paths.py ..\data\photo_scores_pro.db /data/photos "\\NAS\Photos"
+```
+
+It keeps a copy of the database (`photo_scores_pro.db.before-rewrite-<time>`), refuses to
+merge a photo already scanned under the new path, and empties the vector index, which
+`python database.py --populate-vec` rebuilds. Undo history from before the move no longer
+applies.
+
+Docker works on Windows too; for an NVIDIA card, follow the [WSL2 guide](DEPLOYMENT.md#windows-wsl2-with-an-nvidia-gpu).
 
 ## First run: what to expect
 

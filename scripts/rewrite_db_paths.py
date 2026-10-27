@@ -1,30 +1,64 @@
 """Rewrite stored photo paths in a Facet database from one prefix to another.
 
 Built for moving a library scanned in Docker (``/data/photos/...``) to a native
-Windows install, where the scanner stores ``Path.resolve()`` paths such as
-``\\\\NAS\\share\\...``. ``viewer.path_mapping`` only covers the viewer, so a
-mapped database would gain duplicate rows on the next scan; rewriting keeps the
+install, where the scanner stores ``Path.resolve()`` paths such as
+``\\\\NAS\\share\\...`` on Windows. ``viewer.path_mapping`` only covers the viewer, so
+a mapped database would gain duplicate rows on the next scan; rewriting keeps the
 viewer and the scanner on one spelling.
 
-Run it on a COPY. It rewrites every plain path column, the JSON columns that
-embed paths, drops the stats cache, and rebuilds FTS. ``photos_vec`` is keyed by
-path, so it is emptied; repopulate it with ``python database.py --populate-vec``.
+It rewrites every plain path column and the JSON columns that embed paths, drops the
+stats cache, rebuilds FTS and empties ``photos_vec`` (keyed by path; repopulate it with
+``python database.py --populate-vec``). Stop the viewer and any scan first: the tool
+takes the library lock, which scans and maintenance jobs hold, but a running viewer
+does not hold it.
 
+    python scripts/rewrite_db_paths.py DB /data/photos "\\\\NAS\\Photos" --dry-run
     python scripts/rewrite_db_paths.py DB /data/photos "\\\\NAS\\Photos"
+
+Safety:
+- ``--dry-run`` reports what would change and writes nothing.
+- Otherwise the database is first copied to ``DB.before-rewrite-<time>`` (``--no-backup``
+  skips that); every change is one transaction, so a failure leaves the database as it was.
+- Matching is exact and case-sensitive: a stored path changes only when it equals the old
+  prefix or continues it with ``/`` or ``\\``.
+- Separators: trailing ones on either prefix are ignored, and the rest of each path takes
+  the new prefix's separator (``\\`` for a drive letter or a UNC path, else ``/``;
+  ``--sep`` overrides).
+
+Undo history recorded before the rewrite (``organization_history``) cannot be applied
+afterwards: each entry is tied to its photos' revisions, which a path change advances on
+purpose. The tool reports how many entries that affects.
 """
 import argparse
 import json
+import re
 import sqlite3
 import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 JSON_COLUMNS = [('albums', 'smart_filter_json'), ('scan_runs', 'args_json')]
+SEPARATORS = '/\\'
+
+
+def trim(prefix):
+    """``prefix`` without trailing separators; a bare root keeps one."""
+    return prefix.rstrip(SEPARATORS) or prefix[:1]
+
+
+def default_sep(dst):
+    return '\\' if dst.startswith('\\\\') or re.match(r'^[A-Za-z]:', dst) else '/'
 
 
 def convert(value, src, dst, sep):
     if not isinstance(value, str):
         return value
-    if value == src or value.startswith(src + '/'):
-        return dst + value[len(src):].replace('/', sep)
+    if value == src:
+        return dst
+    if value.startswith(src) and value[len(src):len(src) + 1] in ('/', '\\'):
+        return dst + re.sub(r'[\\/]', lambda _: sep, value[len(src):])
     return value
 
 
@@ -34,6 +68,11 @@ def convert_json(obj, src, dst, sep):
     if isinstance(obj, list):
         return [convert_json(v, src, dst, sep) for v in obj]
     return convert(obj, src, dst, sep)
+
+
+def under(col):
+    """SQL selecting values equal to ``?1`` or continuing it with a separator (``?2`` = its length)."""
+    return f'("{col}" = ?1 OR substr("{col}", 1, ?2 + 1) IN (?1 || \'/\', ?1 || \'\\\'))'
 
 
 def path_columns(conn):
@@ -47,45 +86,105 @@ def path_columns(conn):
                 yield table, name
 
 
+def has_table(conn, name):
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE name = ?", (name,)).fetchone() is not None
+
+
+def load_vec(conn):
+    """True when sqlite-vec loads, so ``photos_vec`` can be emptied."""
+    try:
+        import sqlite_vec
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        return True
+    except Exception:
+        return False
+
+
+def rewrite(conn, src, dst, sep, vec):
+    """Apply every change inside the open transaction; return the report lines."""
+    report = []
+    args = (src, len(src))
+    for table, col in path_columns(conn):
+        n = conn.execute(
+            f'UPDATE "{table}" SET "{col}" = facet_rewrite("{col}") WHERE {under(col)}', args).rowcount
+        if n:
+            report.append(f'{table}.{col}: {n}')
+    for table, col in JSON_COLUMNS:
+        if not has_table(conn, table):
+            continue
+        changed = 0
+        for rowid, raw in conn.execute(f'SELECT rowid, "{col}" FROM "{table}" WHERE "{col}" IS NOT NULL').fetchall():
+            new = json.dumps(convert_json(json.loads(raw), src, dst, sep))
+            if new != json.dumps(json.loads(raw)):
+                conn.execute(f'UPDATE "{table}" SET "{col}" = ? WHERE rowid = ?', (new, rowid))
+                changed += 1
+        if changed:
+            report.append(f'{table}.{col}: {changed} (json)')
+    if has_table(conn, 'stats_cache'):
+        conn.execute('DELETE FROM stats_cache')
+    if has_table(conn, 'photos_fts'):
+        conn.execute("INSERT INTO photos_fts(photos_fts) VALUES('rebuild')")
+    if vec:
+        report.append(f"photos_vec: emptied {conn.execute('DELETE FROM photos_vec').rowcount} rows "
+                      "(run database.py --populate-vec)")
+    return report
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('db')
     ap.add_argument('src', help='stored prefix, e.g. /data/photos')
     ap.add_argument('dst', help='new prefix, e.g. \\\\NAS\\share')
-    ap.add_argument('--sep', default='\\', help='separator for the rest of the path')
+    ap.add_argument('--sep', choices=['/', '\\'], help='separator for the rest of each path '
+                    '(default: the new prefix\'s own)')
+    ap.add_argument('--dry-run', action='store_true', help='report what would change; write nothing')
+    ap.add_argument('--no-backup', action='store_true', help='do not copy the database first')
     args = ap.parse_args()
-    src = args.src.rstrip('/')
+    src, dst = trim(args.src), trim(args.dst)
+    sep = args.sep or default_sep(dst)
+    if src == dst:
+        sys.exit('the old and new prefixes are the same')
+    if not Path(args.db).is_file():
+        sys.exit(f'no database at {args.db}')
 
-    conn = sqlite3.connect(args.db)
+    if not args.dry_run:
+        from facet import LIBRARY_JOB_MAINTENANCE, hold_library_lock_or_exit
+        hold_library_lock_or_exit(args.db, LIBRARY_JOB_MAINTENANCE)
+    conn = sqlite3.connect(args.db, isolation_level=None)
     conn.execute('PRAGMA foreign_keys = OFF')
-    conn.create_function('facet_rewrite', 1, lambda v: convert(v, src, args.dst, args.sep), deterministic=True)
-    with conn:
-        for table, col in path_columns(conn):
-            n = conn.execute(
-                f'UPDATE "{table}" SET "{col}" = facet_rewrite("{col}") '
-                f'WHERE "{col}" = ? OR "{col}" LIKE ?', (src, src + '/%')).rowcount
-            if n:
-                print(f'{table}.{col}: {n}')
-        for table, col in JSON_COLUMNS:
-            rows = conn.execute(f'SELECT rowid, "{col}" FROM "{table}" WHERE "{col}" LIKE ?',
-                                ('%' + src + '%',)).fetchall()
-            for rowid, raw in rows:
-                new = json.dumps(convert_json(json.loads(raw), src, args.dst, args.sep))
-                conn.execute(f'UPDATE "{table}" SET "{col}" = ? WHERE rowid = ?', (new, rowid))
-            if rows:
-                print(f'{table}.{col}: {len(rows)} (json)')
-        conn.execute('DELETE FROM stats_cache')
-        conn.execute("INSERT INTO photos_fts(photos_fts) VALUES('rebuild')")
+    vec = has_table(conn, 'photos_vec') and load_vec(conn)
+    if has_table(conn, 'photos_vec') and not vec and not args.dry_run:
+        sys.exit('photos_vec exists but sqlite-vec is not installed, so its old paths could not be '
+                 'removed; install sqlite-vec (pip install sqlite-vec) and run again. Nothing changed.')
+    conn.create_function('facet_rewrite', 1, lambda v: convert(v, src, dst, sep), deterministic=True)
+
+    if not args.dry_run and not args.no_backup:
+        backup = Path(f'{args.db}.before-rewrite-{time.strftime("%Y%m%d-%H%M%S")}')
+        with sqlite3.connect(backup) as copy:
+            conn.backup(copy)
+        print(f'backup: {backup}')
+    history = conn.execute('SELECT count(*) FROM organization_history WHERE reverted = 0').fetchone()[0] \
+        if has_table(conn, 'organization_history') else 0
+
+    conn.execute('BEGIN IMMEDIATE')
     try:
-        import sqlite_vec
-        conn.enable_load_extension(True)
-        sqlite_vec.load(conn)
-        with conn:
-            n = conn.execute('DELETE FROM photos_vec').rowcount
-        print(f'photos_vec: emptied {n} rows (run database.py --populate-vec)')
-    except Exception as exc:  # sqlite-vec absent: the table cannot be touched
-        print(f'photos_vec not changed: {exc}', file=sys.stderr)
-    left = conn.execute('SELECT count(*) FROM photos WHERE path LIKE ?', (src + '/%',)).fetchone()[0]
+        report = rewrite(conn, src, dst, sep, vec)
+    except sqlite3.IntegrityError as exc:
+        conn.execute('ROLLBACK')
+        sys.exit(f'some photos already exist under the new prefix (scanned there before?): {exc}. '
+                 'Nothing changed; remove those rows or rescan instead.')
+    left = conn.execute(f'SELECT count(*) FROM photos WHERE {under("path")}', (src, len(src))).fetchone()[0]
+    if args.dry_run:
+        conn.execute('ROLLBACK')
+    else:
+        conn.execute('COMMIT')
+    print('\n'.join(report) if report else f'nothing stored under {src}')
+    if args.dry_run:
+        print('dry run: nothing written')
+        return
+    if history:
+        print(f'undo history: {history} earlier entr{"y" if history == 1 else "ies"} can no longer be applied')
     print('integrity:', conn.execute('PRAGMA integrity_check').fetchone()[0],
           '| foreign keys:', len(conn.execute('PRAGMA foreign_key_check').fetchall()), 'violations',
           '| photos left on old prefix:', left)

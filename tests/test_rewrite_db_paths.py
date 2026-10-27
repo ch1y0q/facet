@@ -14,9 +14,9 @@ SRC = '/data/photos'
 DST = r'\\NAS\Photos'
 
 
-def _run(db, *extra):
-    return subprocess.run([sys.executable, str(SCRIPT), str(db), SRC, DST, *extra],
-                          capture_output=True, text=True, check=True)
+def _run(db, *extra, src=SRC, dst=DST, check=True):
+    return subprocess.run([sys.executable, str(SCRIPT), str(db), src, dst, *extra],
+                          capture_output=True, text=True, check=check)
 
 
 @pytest.fixture
@@ -91,3 +91,59 @@ def test_second_run_changes_nothing(library):
 def test_separator_can_stay_forward_slash(library):
     _run(library, '--sep', '/')
     assert r'\\NAS\Photos/2024/trip/a.jpg' in _paths(library, 'SELECT path FROM photos')
+
+
+def test_dry_run_reports_and_writes_nothing(library):
+    before = _paths(library, 'SELECT path FROM photos ORDER BY rowid')
+    out = _run(library, '--dry-run').stdout
+    assert 'photos.path: 2' in out
+    assert 'dry run: nothing written' in out
+    assert _paths(library, 'SELECT path FROM photos ORDER BY rowid') == before
+    assert not list(library.parent.glob('library.db.before-rewrite-*'))
+
+
+def test_backs_up_the_database_first(library):
+    out = _run(library).stdout
+    backups = list(library.parent.glob('library.db.before-rewrite-*'))
+    assert len(backups) == 1 and f'backup: {backups[0]}' in out
+    assert '/data/photos/b.jpg' in _paths(backups[0], 'SELECT path FROM photos')
+
+
+def test_trailing_separators_never_double(library):
+    _run(library, src='/data/photos/', dst=DST + '\\')
+    assert r'\\NAS\Photos\b.jpg' in _paths(library, 'SELECT path FROM photos')
+
+
+def test_runs_in_reverse_from_a_windows_prefix(library):
+    _run(library)
+    out = _run(library, src=DST, dst=SRC).stdout
+    assert sorted(_paths(library, 'SELECT path FROM photos')) == sorted([
+        '/data/photos/2024/trip/a.jpg', '/data/photos/b.jpg', '/data/photos-old/c.jpg', '/elsewhere/d.jpg'])
+    assert out.rstrip().endswith('photos left on old prefix: 0')
+
+
+def test_separator_follows_a_posix_target(library):
+    _run(library, dst='/srv/photos')
+    assert '/srv/photos/2024/trip/a.jpg' in _paths(library, 'SELECT path FROM photos')
+
+
+def test_matching_is_exact_not_like(library):
+    with sqlite3.connect(library) as conn:
+        conn.executemany('INSERT INTO photos (path, filename) VALUES (?, ?)', [
+            ('/DATA/photos/e.jpg', 'e.jpg'),        # LIKE ignores case
+            ('/dataXphotos/f.jpg', 'f.jpg'),        # an unescaped _ or % would match
+        ])
+    out = _run(library, src='/data_photos').stdout
+    assert 'nothing stored under /data_photos' in out
+    assert {'/DATA/photos/e.jpg', '/dataXphotos/f.jpg'} <= set(_paths(library, 'SELECT path FROM photos'))
+
+
+def test_a_path_already_under_the_new_prefix_changes_nothing(library):
+    with sqlite3.connect(library) as conn:
+        conn.execute('INSERT INTO photos (path, filename) VALUES (?, ?)', (r'\\NAS\Photos\b.jpg', 'b.jpg'))
+    before = _paths(library, 'SELECT path FROM photos ORDER BY rowid')
+    result = _run(library, '--no-backup', check=False)
+    assert result.returncode != 0
+    assert 'already exist under the new prefix' in result.stderr
+    assert 'Traceback' not in result.stderr
+    assert _paths(library, 'SELECT path FROM photos ORDER BY rowid') == before

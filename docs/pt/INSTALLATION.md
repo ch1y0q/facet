@@ -8,10 +8,19 @@ você precisar dela.
 
 ## Qual instalação é para mim?
 
+Os dois caminhos executam o mesmo Facet; eles trocam simplicidade de instalação por
+desempenho. Escolha o que combina com você.
+
+| | Docker | Sem Docker |
+|---|---|---|
+| Instalação | Um comando: tudo vem na imagem | `install.sh` (Linux, macOS) ou o instalador do Windows cria um ambiente Python na máquina |
+| Atualização | Baixar a nova imagem | Atualizar o código e rodar `install.sh` de novo, ou instalar o novo instalador do Windows |
+| Desempenho | Um container fica entre o Facet e seus arquivos e sua placa de vídeo; no Windows ele roda dentro do WSL2 | O Facet usa diretamente a placa de vídeo e os arquivos da máquina |
+
 | A sua situação | Vá para |
 |----------------|-------|
-| Windows, macOS ou Linux, e você só quer que funcione | [Instalar com Docker](#instalar-com-docker) |
-| Linux ou macOS, e você prefere não usar containers | [Instalar sem Docker](#instalar-sem-docker) |
+| Windows, macOS ou Linux, em um container | [Instalar com Docker](#instalar-com-docker) |
+| Windows, macOS ou Linux, sem containers | [Instalar sem Docker](#instalar-sem-docker) |
 | Um NAS, ou um servidor que você quer acessar de outras máquinas | [Implantação](DEPLOYMENT.md) |
 
 ## Qual perfil combina com o meu hardware?
@@ -166,8 +175,61 @@ Abra <http://localhost:5000>.
 
 ### Windows
 
-Use o [Docker](#instalar-com-docker). Para usar uma placa NVIDIA no Windows, siga o
-[guia do WSL2](DEPLOYMENT.md#windows-wsl2-com-uma-gpu-nvidia) — esse é o caminho testado.
+Um instalador por usuário (MSI) instala o Facet sem direitos de administrador:
+
+| Pasta | Conteúdo |
+|---|---|
+| `%LOCALAPPDATA%\Facet\app` | o programa, substituído a cada atualização |
+| `%LOCALAPPDATA%\Facet\venv` | o ambiente Python, criado na primeira execução |
+| `%LOCALAPPDATA%\Facet\data` | o banco de dados (`photo_scores_pro.db`) e os logs |
+| `%LOCALAPPDATA%\Facet\config` | `scoring_config.json` |
+
+**Obter o instalador.** Nenhuma versão publicada o inclui ainda. Gere-o a partir de um clone
+com `installer\build-msi.ps1` (precisa do WiX 3.14, do `uv` e do cliente compilado, e
+indica onde obter o WiX), ou baixe o artefato `facet-msi` de uma execução do workflow
+*Windows install (MSI)*.
+
+**Primeira execução.** O item *Facet* do menu Iniciar cria o ambiente Python na primeira vez
+(cerca de 6 GB, 10-20 minutos), e de novo após uma atualização que mude as dependências do
+Facet. Ele escolhe a versão do PyTorch para sua placa NVIDIA e o driver dela como o
+`install.sh` faz, ou a versão para CPU sem placa NVIDIA. Se a versão para GPU instalada não
+alcançar a placa, a instalação para e explica: atualize o driver, ou rode
+`Setup-Facet.ps1 -Force -Cpu`.
+
+**No dia a dia:**
+
+```powershell
+cd "$env:LOCALAPPDATA\Facet\app\installer"
+.\Scan-Facet.ps1 "\\NAS\Photos"   # pontuar fotos; argumentos extras vão para o facet.py
+.\Start-Facet.ps1                # a galeria, em http://localhost:5000
+.\Stop-Facet.ps1                 # parar a galeria e qualquer varredura
+```
+
+A galeria só responde neste computador. `Start-Facet.ps1 -Lan` a abre para outros
+dispositivos e se recusa a iniciar enquanto `viewer.password` não estiver definido na
+configuração.
+
+**Desinstalar** (Configurações, Aplicativos) remove o programa e o ambiente Python dele, e
+mantém `data` e `config`. Os modelos baixados ficam na sua pasta de usuário (`.cache`,
+`.insightface`).
+
+**Trazer uma biblioteca do Docker.** O banco de dados guarda o caminho completo de cada foto,
+e a instalação do Windows vê as mesmas fotos em outro (`\\NAS\Photos\...` em vez de
+`/data/photos/...`). Copie o banco para `data`, pare o Facet e reescreva os caminhos,
+primeiro em simulação:
+
+```powershell
+cd "$env:LOCALAPPDATA\Facet\app"
+..\venv\Scripts\python.exe scripts\rewrite_db_paths.py ..\data\photo_scores_pro.db /data/photos "\\NAS\Photos" --dry-run
+..\venv\Scripts\python.exe scripts\rewrite_db_paths.py ..\data\photo_scores_pro.db /data/photos "\\NAS\Photos"
+```
+
+A ferramenta guarda uma cópia do banco (`photo_scores_pro.db.before-rewrite-<hora>`), se
+recusa a mesclar uma foto já varrida no novo caminho e esvazia o índice vetorial, que
+`python database.py --populate-vec` reconstrói. O histórico de desfazer de antes da mudança
+deixa de valer.
+
+O Docker também funciona no Windows; para uma placa NVIDIA, siga o [guia do WSL2](DEPLOYMENT.md#windows-wsl2-com-uma-gpu-nvidia).
 
 ## Primeira execução: o que esperar
 

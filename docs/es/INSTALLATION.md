@@ -8,10 +8,19 @@ cuando la necesites.
 
 ## ¿Qué instalación me conviene?
 
+Las dos vías ejecutan el mismo Facet; intercambian sencillez de instalación por
+rendimiento. Elige la que te encaje.
+
+| | Docker | Sin Docker |
+|---|---|---|
+| Instalación | Un comando: todo viene en la imagen | `install.sh` (Linux, macOS) o el instalador de Windows crea un entorno Python en la máquina |
+| Actualización | Descargar la imagen nueva | Actualizar el código y volver a ejecutar `install.sh`, o instalar el nuevo instalador de Windows |
+| Rendimiento | Un contenedor se sitúa entre Facet y tus archivos y tu tarjeta gráfica; en Windows funciona dentro de WSL2 | Facet usa directamente la tarjeta gráfica y los archivos de la máquina |
+
 | Tu situación | Ve a |
 |----------------|-------|
-| Windows, macOS o Linux, y solo quieres tenerlo en marcha | [Instalar con Docker](#instalar-con-docker) |
-| Linux o macOS, y prefieres no usar contenedores | [Instalar sin Docker](#instalar-sin-docker) |
+| Windows, macOS o Linux, en un contenedor | [Instalar con Docker](#instalar-con-docker) |
+| Windows, macOS o Linux, sin contenedores | [Instalar sin Docker](#instalar-sin-docker) |
 | Un NAS, o un servidor al que quieras acceder desde otras máquinas | [Despliegue](DEPLOYMENT.md) |
 
 ## ¿Qué perfil se ajusta a mi hardware?
@@ -166,8 +175,61 @@ Abre <http://localhost:5000>.
 
 ### Windows
 
-Usa [Docker](#instalar-con-docker). Para usar una tarjeta NVIDIA en Windows, sigue la
-[guía de WSL2](DEPLOYMENT.md#windows-wsl2-con-una-gpu-nvidia) — es la vía probada.
+Un instalador por usuario (MSI) instala Facet sin permisos de administrador:
+
+| Carpeta | Contenido |
+|---|---|
+| `%LOCALAPPDATA%\Facet\app` | el programa, que se sustituye en cada actualización |
+| `%LOCALAPPDATA%\Facet\venv` | el entorno Python, creado en el primer arranque |
+| `%LOCALAPPDATA%\Facet\data` | la base de datos (`photo_scores_pro.db`) y los registros |
+| `%LOCALAPPDATA%\Facet\config` | `scoring_config.json` |
+
+**Conseguir el instalador.** Ninguna versión publicada lo incluye todavía. Constrúyelo desde
+un clon con `installer\build-msi.ps1` (necesita WiX 3.14, `uv` y el cliente compilado, e
+indica dónde conseguir WiX), o descarga el artefacto `facet-msi` de una ejecución del flujo
+*Windows install (MSI)*.
+
+**Primer arranque.** La entrada *Facet* del menú Inicio crea el entorno Python la primera
+vez (unos 6 GB, 10-20 minutos), y de nuevo tras una actualización que cambie las dependencias
+de Facet. Elige la versión de PyTorch para tu tarjeta NVIDIA y su controlador como lo hace
+`install.sh`, o la versión de CPU si no hay tarjeta NVIDIA. Si la versión de GPU instalada no
+llega a la tarjeta, la instalación se detiene y lo explica: actualiza el controlador, o
+ejecuta `Setup-Facet.ps1 -Force -Cpu`.
+
+**En el día a día:**
+
+```powershell
+cd "$env:LOCALAPPDATA\Facet\app\installer"
+.\Scan-Facet.ps1 "\\NAS\Photos"   # puntuar fotos; los argumentos extra van a facet.py
+.\Start-Facet.ps1                # la galería, en http://localhost:5000
+.\Stop-Facet.ps1                 # detener la galería y cualquier escaneo
+```
+
+La galería solo responde en este equipo. `Start-Facet.ps1 -Lan` la abre a otros
+dispositivos y se niega a arrancar hasta que `viewer.password` esté definido en la
+configuración.
+
+**Desinstalar** (Configuración, Aplicaciones) quita el programa y su entorno Python, y
+conserva `data` y `config`. Los modelos descargados se quedan en tu carpeta de usuario
+(`.cache`, `.insightface`).
+
+**Traer una biblioteca desde Docker.** La base de datos guarda la ruta completa de cada foto,
+y la instalación de Windows ve las mismas fotos con otra (`\\NAS\Photos\...` en lugar de
+`/data/photos/...`). Copia la base de datos a `data`, detén Facet y reescribe las rutas,
+primero en simulacro:
+
+```powershell
+cd "$env:LOCALAPPDATA\Facet\app"
+..\venv\Scripts\python.exe scripts\rewrite_db_paths.py ..\data\photo_scores_pro.db /data/photos "\\NAS\Photos" --dry-run
+..\venv\Scripts\python.exe scripts\rewrite_db_paths.py ..\data\photo_scores_pro.db /data/photos "\\NAS\Photos"
+```
+
+La herramienta guarda una copia de la base de datos (`photo_scores_pro.db.before-rewrite-<hora>`),
+se niega a fusionar una foto ya escaneada con la ruta nueva y vacía el índice vectorial, que
+`python database.py --populate-vec` reconstruye. El historial de deshacer anterior al
+traslado deja de aplicarse.
+
+Docker también funciona en Windows; para una tarjeta NVIDIA, sigue la [guía de WSL2](DEPLOYMENT.md#windows-wsl2-con-una-gpu-nvidia).
 
 ## Primera ejecución: qué esperar
 

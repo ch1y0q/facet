@@ -1,12 +1,23 @@
 # Start the Facet viewer in the background (no window) and open it in the browser.
-# -Lan binds 0.0.0.0 so other devices can connect (needs a firewall rule for the port).
+# -Lan binds 0.0.0.0 so other devices can connect (needs a firewall rule for the port); it
+# refuses to start without a viewer password (or multi-user accounts) in the config.
 param([int]$Port = 5000, [switch]$Lan, [switch]$NoBrowser)
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\Facet-Env.ps1"
 
-if (-not (Test-Path $FacetReady) -or -not (Test-Path (Join-Path $FacetExifTool 'exiftool.exe'))) {
-    Write-Host 'First run: setting up the Python environment (downloads about 6 GB, 10-20 minutes).'
+if (-not (Test-FacetReady)) {
+    Write-Host 'Setting up the Python environment (first run: downloads about 6 GB, 10-20 minutes).'
     & "$PSScriptRoot\Setup-Facet.ps1"
+}
+
+if ($Lan) {
+    $config = if (Test-Path $env:FACET_CONFIG) { Get-Content $env:FACET_CONFIG -Raw | ConvertFrom-Json } else { $null }
+    $password = if ($config -and $config.viewer) { [string]$config.viewer.password } else { '' }
+    $accounts = if ($config -and $config.users) { @($config.users.PSObject.Properties.Name | Where-Object { $_ -ne 'shared_directories' }) } else { @() }
+    if (-not $password.Trim() -and -not $accounts) {
+        throw "-Lan would open the whole library to the network without a password. Set viewer.password in $env:FACET_CONFIG first (see docs/CONFIGURATION.md)."
+    }
+    Write-Host "Facet will be reachable from other devices on port $Port."
 }
 
 $url = "http://localhost:$Port/"

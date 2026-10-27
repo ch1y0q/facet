@@ -14,6 +14,9 @@ $stage = Join-Path $work 'stage'
 $obj   = Join-Path $work 'obj'
 $dist  = Join-Path $repo 'client\dist\client\browser'
 
+if (-not (Test-Path (Join-Path $WixDir 'candle.exe'))) {
+    throw "WiX 3.14 not found in $WixDir. Download wix314-binaries.zip from https://github.com/wixtoolset/wix3/releases/tag/wix3141rtm (SHA-256 6AC824E1642D6F7277D0ED7EA09411A508F6116BA6FAE0AA5F2C7DAA2FF43D31), unzip it and pass that folder as -WixDir."
+}
 if (-not (Test-Path (Join-Path $dist 'index.html'))) { throw "Build the client first (cd client; npm run build): $dist" }
 if (-not $Uv -or -not (Test-Path $Uv)) { throw 'uv.exe not found: pass -Uv <path>' }
 $dirty = git -C $repo status --porcelain -- . ':!dev-notes' ':!installer/out'

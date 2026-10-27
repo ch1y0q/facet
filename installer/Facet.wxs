@@ -7,7 +7,9 @@
            Manufacturer="Facet (local build)" UpgradeCode="6C1E5D2A-7F3B-4C8E-9A41-2B7D0F6E9C13">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser" InstallPrivileges="limited"
              Description="Facet photo scoring (native Windows)" />
-    <MajorUpgrade DowngradeErrorMessage="A newer Facet is already installed." />
+    <!-- Every build has a new product code, so two builds of one version would otherwise
+         install side by side; AllowSameVersionUpgrades makes the later one replace it. -->
+    <MajorUpgrade DowngradeErrorMessage="A newer Facet is already installed." AllowSameVersionUpgrades="yes" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
     <Property Id="ARPNOMODIFY" Value="1" />
 
@@ -46,8 +48,14 @@
     <!-- Fresh install only: open a console that builds the Python environment. -->
     <CustomAction Id="RunSetup" Directory="INSTALLDIR" Return="asyncNoWait" Impersonate="yes" Execute="immediate"
                   ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -ExecutionPolicy Bypass -NoExit -File &quot;[INSTALLDIR]installer\Setup-Facet.ps1&quot;" />
+    <!-- A real uninstall (not the removal step of an upgrade) also deletes what setup built:
+         the Python environment and ExifTool. The database and settings in data\ and config\
+         stay, as do downloaded models in the user's cache folders. -->
+    <CustomAction Id="RemoveEnvironment" Directory="LocalAppDataFolder" Return="ignore" Impersonate="yes" Execute="immediate"
+                  ExeCommand="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -WindowStyle Hidden -Command &quot;Remove-Item -Recurse -Force -LiteralPath '[LocalAppDataFolder]Facet\venv', '[LocalAppDataFolder]Facet\exiftool' -ErrorAction SilentlyContinue&quot;" />
     <InstallExecuteSequence>
       <Custom Action="RunSetup" After="InstallFinalize">NOT Installed AND NOT REMOVE AND NOT FACET_SKIP_SETUP</Custom>
+      <Custom Action="RemoveEnvironment" After="InstallFinalize">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
     </InstallExecuteSequence>
 
     <Feature Id="Main" Title="Facet" Level="1">

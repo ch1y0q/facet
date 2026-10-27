@@ -8,6 +8,11 @@ All notable changes to Facet are documented in this file.
 
 - **The CPU Docker image pins torch.** It installs torch 2.11.0 and torchvision 0.26.0 from the CPU wheel index, the release the default CUDA image ships, instead of whatever the index serves on the day of the build. `CPU_TORCH_VERSION` and `CPU_TORCHVISION_VERSION` override them.
 
+### Added
+
+- **A native Windows install.** A per-user MSI (no administrator rights) installs Facet under `%LOCALAPPDATA%\Facet`; its first start builds the Python environment, picking the PyTorch build for the NVIDIA card and driver the way `install.sh` does, and stopping with an explanation when a GPU build cannot reach the card. Start-menu entries start, stop and repair it; `Scan-Facet.ps1` scans a folder. The environment is set up again after an upgrade that changes the dependencies, a later build of the same version replaces the earlier one, and uninstalling removes the environment but keeps the database and settings. `Start-Facet.ps1 -Lan` refuses to open the gallery to the network without `viewer.password`. Build it with `installer\build-msi.ps1`; see [Installation](docs/INSTALLATION.md#windows).
+- **`scripts/rewrite_db_paths.py`** moves a library to new photo paths, such as from Docker's `/data/photos` to a Windows share, so the next scan does not add every photo again. It has a dry run, backs the database up first, matches the old prefix exactly, never doubles a separator, takes the library lock, and refuses a photo already scanned under the new path.
+
 ### Fixed
 
 - **LIQE and CLIPIQA load again in the legacy CUDA image.** Its restricted lock pinned setuptools 84.1.0, which no longer ships `pkg_resources`, so PyPI `openai-clip` failed to import. It is held at 81.0.0 like the default image's lock, and the runtime cap is corrected to `<82` (setuptools 82 removed `pkg_resources`, not 81).
