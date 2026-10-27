@@ -392,6 +392,10 @@
             <mat-icon>help_outline</mat-icon>
             {{ I18N.nav.help | translate }}
           </button>
+          <button mat-menu-item (click)="resetAllFilters()">
+            <mat-icon>filter_alt_off</mat-icon>
+            {{ I18N.nav.reset_filters | translate }}
+          </button>
           @if (auth.isMultiUser() || auth.loginPasswordRequired()) {
             <mat-divider />
             <button mat-menu-item (click)="logout()">

@@ -1025,7 +1025,8 @@
     "map": "地图",
     "capsules": "照片胶囊",
     "junk_sweep": "废片清理",
-    "help": "帮助"
+    "help": "帮助",
+    "reset_filters": "重置全部筛选"
   },
   "auth": {
     "logout": "退出登录",

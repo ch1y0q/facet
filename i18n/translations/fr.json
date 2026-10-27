@@ -1025,7 +1025,8 @@
     "map": "Carte",
     "capsules": "Capsules",
     "junk_sweep": "Nettoyage",
-    "help": "Aide"
+    "help": "Aide",
+    "reset_filters": "Réinitialiser tous les filtres"
   },
   "auth": {
     "logout": "Se déconnecter",

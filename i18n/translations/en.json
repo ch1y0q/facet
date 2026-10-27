@@ -1025,7 +1025,8 @@
     "map": "Map",
     "capsules": "Capsules",
     "junk_sweep": "Junk Sweep",
-    "help": "Help"
+    "help": "Help",
+    "reset_filters": "Reset all filters"
   },
   "auth": {
     "logout": "Log out",

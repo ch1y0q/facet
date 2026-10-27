@@ -1025,7 +1025,8 @@
     "map": "Mapa",
     "capsules": "Cápsulas",
     "junk_sweep": "Limpeza",
-    "help": "Ajuda"
+    "help": "Ajuda",
+    "reset_filters": "Redefinir todos os filtros"
   },
   "auth": {
     "logout": "Sair",
