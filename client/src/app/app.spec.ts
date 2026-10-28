@@ -3,7 +3,7 @@ import { Router, provideRouter } from '@angular/router';
 import { Provider, signal } from '@angular/core';
 import { NEVER, Subject, of } from 'rxjs';
 import { App } from './app';
-import { GalleryStore, GalleryFilters, DEFAULT_FILTERS } from './features/gallery/gallery.store';
+import { GalleryStore, GalleryFilters, DEFAULT_FILTERS, ViewerConfig } from './features/gallery/gallery.store';
 import { AuthService } from './core/services/auth.service';
 import { ApiService } from './core/services/api.service';
 import { I18nService } from './core/services/i18n.service';
@@ -18,6 +18,7 @@ import { I18N } from './core/i18n/keys';
 import { ScanService } from './core/services/scan.service';
 import { By } from '@angular/platform-browser';
 import { MatTooltip } from '@angular/material/tooltip';
+import { MatSelect } from '@angular/material/select';
 
 function createApp(routerUrl = '/', extraProviders: Provider[] = []) {
   const filtersSignal = signal<GalleryFilters>({ ...DEFAULT_FILTERS });
@@ -719,14 +720,14 @@ describe('App', () => {
   });
 
   describe('filter bar while an assistant-pinned list is shown', () => {
-    function render() {
+    function render(config: { features?: { show_my_taste?: boolean }; sort_options_grouped?: ViewerConfig['sort_options_grouped'] } | null = null) {
       const store = {
-        filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null),
+        filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(config),
         types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), reloadPhotos: vi.fn(), loadConfig: vi.fn(),
         viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(true), hiddenFiltersStash: signal(null),
         reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(),
         slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(),
-        resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(),
+        setUserSort: vi.fn(() => Promise.resolve()), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(),
       };
       TestBed.configureTestingModule({
         providers: [
@@ -758,6 +759,51 @@ describe('App', () => {
       expect(byLabel(root, I18N.gallery.filters)).toHaveLength(1);
       expect(byLabel(root, I18N.ui.buttons.filters)).toHaveLength(1);
       expect(byLabel(root, I18N.ui.filters.search)).toHaveLength(1);
+    });
+
+    it('adds decorative icons to desktop and mobile fallback options without changing their selected text or values', async () => {
+      const { fixture, store } = render();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const selects = fixture.debugElement.queryAll(By.directive(MatSelect)).map(el => el.componentInstance as MatSelect);
+      expect(selects).toHaveLength(2);
+      for (const select of selects) {
+        const options = select.options.toArray();
+        expect(options.map(option => option.value)).toEqual(['aggregate', 'aesthetic', 'date_taken']);
+        for (const option of options) {
+          const icon = option._getHostElement().querySelector('mat-icon');
+          expect(icon).not.toBeNull();
+          expect(icon?.getAttribute('aria-hidden')).toBe('true');
+          expect(option.viewValue).not.toContain(icon?.textContent);
+        }
+        expect(select.triggerValue).toBe(I18N.gallery.sort_aggregate);
+        select.options.last._getHostElement().click();
+        expect(store.setUserSort).toHaveBeenLastCalledWith('date_taken');
+      }
+    });
+
+    it('covers configured and conditional sorts with icons while preserving labels and the saved-sort handler', () => {
+      const { fixture, store } = render({
+        features: { show_my_taste: true },
+        sort_options_grouped: { General: [
+          { column: 'date_taken', label: 'Date Taken' },
+          { column: 'future_metric', label: 'Future metric' },
+        ] },
+      });
+      store.filters.update(filters => ({ ...filters, semanticQuery: 'sunset' }));
+      fixture.detectChanges();
+      const selects = fixture.debugElement.queryAll(By.directive(MatSelect)).map(el => el.componentInstance as MatSelect);
+      for (const select of selects) {
+        const options = select.options.toArray();
+        expect(options.map(option => option.value)).toEqual(['relevance', 'learned_score', 'date_taken', 'future_metric']);
+        expect(options.map(option => option._getHostElement().querySelector('mat-icon')?.textContent?.trim()))
+          .toEqual(['search', 'psychology', 'event', 'sort']);
+        expect(options.map(option => option.viewValue)).toEqual([
+          I18N.gallery.sort_relevance, I18N.gallery.sort_my_taste, 'sort_options.date_taken', 'sort_options.future_metric',
+        ]);
+        options[2]._getHostElement().click();
+        expect(store.setUserSort).toHaveBeenLastCalledWith('date_taken');
+      }
     });
 
     it('hides them all while pinned, and brings them back when the pin clears', () => {

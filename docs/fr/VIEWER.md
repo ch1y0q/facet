@@ -189,6 +189,8 @@ Filtrer par les motifs détectés par SAMP-Net (le modèle n'en émet que ces
 
 ## Tri
 
+Les choix de tri ont des icônes décoratives dans l’en-tête sur ordinateur et la barre mobile. Les libellés traduits restent leur identification principale.
+
 **Tri mémorisé.** La galerie s'ouvre sur le dernier tri choisi dans le sélecteur de tri, et ce choix l'emporte sur `viewer.defaults.sort`. Il est mémorisé dans le `localStorage` par navigateur, et non par compte utilisateur. Seul un choix fait dans le sélecteur de tri est mémorisé : un tri qui arrive par un lien partagé ou un favori, ou qu'un assistant applique, change la vue sans être mémorisé, et le `sort` propre à un lien l'emporte toujours sur le tri mémorisé. Choisir de nouveau le tri par défaut configuré oublie ce choix, tout comme la réinitialisation des filtres. **Pertinence** n'est jamais mémorisé, car ce tri exige une requête de recherche.
 
 Les vitesses d'obturation sont triées par durée d'exposition en secondes, y compris

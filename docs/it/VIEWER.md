@@ -191,6 +191,8 @@ da `models/samp_net.py`):
 
 **Ordinamento memorizzato.** La galleria si apre sull'ultimo ordinamento scelto nel selettore di ordinamento, e questa scelta prevale su `viewer.defaults.sort`. Viene memorizzata nel `localStorage` per browser, non per account utente. Solo una scelta fatta nel selettore di ordinamento viene memorizzata: un ordinamento che arriva da un link condiviso o da un segnalibro, o che un assistente applica, cambia la vista senza essere memorizzato, e il `sort` proprio di un link prevale comunque su quello memorizzato. Scegliere di nuovo l'ordinamento predefinito configurato dimentica la scelta, così come reimpostare i filtri. **Pertinenza** non viene mai memorizzato, perché richiede una query di ricerca.
 
+Le opzioni di ordinamento hanno icone decorative nell’intestazione desktop e nella barra mobile. Le etichette tradotte restano il riferimento principale.
+
 I tempi di scatto sono ordinati per durata dell'esposizione in secondi, compresi
 i valori EXIF decimali e razionali: `1/250` e `0.004` sono uguali. I valori
 mancanti, malformati, nulli, negativi e non finiti compaiono per ultimi in
