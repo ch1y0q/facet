@@ -28,7 +28,7 @@ Le GPU est détecté automatiquement et reste optionnel. Facet fonctionne en mod
 
 Chaque photo est évaluée selon 9 dimensions : qualité esthétique, composition, qualité des visages, netteté des yeux, netteté technique, couleur, exposition, saillance du sujet et plage dynamique. Les photos sont classées par contenu (portrait, paysage, macro, rue, etc. — plus de 30 catégories) et évaluées avec des poids propres à chaque catégorie. Un filtre **Meilleurs choix** classe la bibliothèque selon un score combiné.
 
-Survolez n'importe quelle photo pour afficher une infobulle avec le détail du score et les données EXIF.
+Survolez n'importe quelle photo pour afficher le détail du score et les données EXIF dans le panneau latéral de la galerie, ou passez à une bulle au survol qui résume les notes clés d'un coup d'œil.
 
 <img src="docs/screenshots/hover-tooltip.jpg" alt="Infobulle au survol avec le détail du score" width="100%">
 
@@ -100,7 +100,7 @@ Survolez n'importe quelle photo pour afficher une infobulle avec le détail du s
 - **Tri « Mon goût »** — triez la galerie selon le score appris du classeur personnel, avec un badge de confiance indiquant la couverture apprise et la précision sur données de validation
 - **Apprentissage à partir des étiquettes** — les décisions de tri, les notes (étoiles), les favoris et les rejets alimentent l'optimiseur de poids (`--sync-label-comparisons`, `--mine-insights`)
 - **Instantanés** — enregistrez, restaurez et comparez des configurations de poids
-- **Histogramme** — histogramme RVB/luminance avec indicateurs d'écrêtage, dans l'infobulle de la photo et la vue détaillée
+- **Histogramme** — histogramme RVB/luminance avec indicateurs d'écrêtage, dans le panneau latéral de la galerie et la vue détaillée
 - **Légendes IA** `[GPU]` `[16gb/24gb]` — descriptions textuelles, modifiables `[Edition]` et traduisibles en 5 langues (la consultation est ouverte ; la génération et la modification requièrent l'édition)
 
 <table><tr>

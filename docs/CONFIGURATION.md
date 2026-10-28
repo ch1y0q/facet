@@ -1679,7 +1679,7 @@ Web gallery display and behavior.
       "hide_brackets": true,
       "hide_panoramas": true,
       "hide_details": true,
-      "tooltip_mode": "hover",
+      "tooltip_mode": "panel",
       "hide_rejected": true,
       "sort": "aggregate",
       "sort_direction": "DESC",
@@ -1765,7 +1765,7 @@ Web gallery display and behavior.
 | `hide_brackets` | `true` | Show only a bracket's base exposure by default |
 | `hide_panoramas` | `true` | Show only one representative frame per panorama by default |
 | `hide_details` | `true` | Hide photo details on cards by default |
-| `tooltip_mode` | `"hover"` | Tooltip trigger: `"hover"`, `"click"`, `"off"`, or `"panel"` (docked rail instead of a floating tooltip — see `panel_activation` below). Replaces the prior `hide_tooltip` boolean. |
+| `tooltip_mode` | `"panel"` | Tooltip trigger: `"hover"`, `"click"`, `"off"`, or `"panel"` (docked rail instead of a floating tooltip — see `panel_activation` below). Replaces the prior `hide_tooltip` boolean. |
 | `panel_activation` | `"both"` | Which gesture retargets the docked rail's selected photo when `tooltip_mode` is `"panel"`: `"hover"`, `"click"`, or `"both"`. No effect on the other tooltip modes. Default `"both"` preserves the original panel behaviour |
 | `hide_rejected` | `true` | Hide rejected photos by default |
 | `gallery_mode` | `"mosaic"` | Default gallery layout (`"grid"` or `"mosaic"`) |
@@ -1830,7 +1830,7 @@ disagree.
 | `badge_percent` | `5` | Percent of pixels, in the worst of R/G/B, above which the gallery card is badged. Measured over a 28-photo sample: worst-channel highlight clipping had a median of 0.31% and a p90 of 2.35%, so 5% fires on roughly 1 photo in 25 |
 | `indicator_percent` | `1` | Threshold for the histogram's own R/G/B end markers. Finer than the badge because you are already looking at a single photo |
 | `histogram_mode` | `"rgb"` | House default for the **detail panel's** histogram: `"luma"`, `"rgb"`, or a single channel (`"r"` / `"g"` / `"b"`). A user's own choice for this surface is stored in `localStorage` under `facet_histogram_mode` and wins over this |
-| `tooltip_histogram_mode` | `"luma"` | House default for the **hover/pinned tooltip's** histogram, same five values. Deliberately independent of `histogram_mode` and persisted under its own `localStorage` key (`facet_histogram_mode_tooltip`): the panel is for studying one photo, where per-channel detail earns its space; the tooltip is for scanning many quickly, where a plain luminance curve usually reads faster. Setting one never retunes the other, and the toggle to change it only renders while the tooltip is pinned (docked rail, or `tooltip_mode: "click"`) — in plain hover mode it shows its resolved mode read-only |
+| `tooltip_histogram_mode` | `"luma"` | House default for the histogram in the **side panel's** Histogram tab (`tooltip_mode: "panel"`), same five values. Deliberately independent of `histogram_mode` and persisted under its own `localStorage` key (`facet_histogram_mode_tooltip`): photo detail is for studying one photo, where per-channel detail earns its space; the side panel is for scanning many quickly, where a plain luminance curve usually reads faster. Setting one never retunes the other. The **Hover** and **Click** bubbles show no histogram |
 
 **Clipping is measured per channel, at exactly bin 0 and bin 255.** It is stored
 in `photos.channel_clip_shadow_pct` / `channel_clip_highlight_pct` as the worst

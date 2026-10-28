@@ -22,11 +22,15 @@ export class ScoreClassPipe implements PipeTransform {
   }
 }
 
+/** The column a sort-score badge shows: the sort column when the photo has a number there, else the aggregate. */
+export function sortScoreColumn(photo: Photo, sort: string): string {
+  return typeof (photo as unknown as Record<string, unknown>)[sort] === 'number' ? sort : 'aggregate';
+}
+
 /** Return the score value for the current sort column (falls back to aggregate). */
 @Pipe({ name: 'sortScore', standalone: true, pure: true })
 export class SortScorePipe implements PipeTransform {
   transform(photo: Photo, sort: string): number | null {
-    const val = (photo as unknown as Record<string, unknown>)[sort];
-    return typeof val === 'number' ? val : photo.aggregate;
+    return (photo as unknown as Record<string, number | null>)[sortScoreColumn(photo, sort)];
   }
 }

@@ -139,20 +139,16 @@
   "tooltip": {
     "not_computed": "Non calcolato",
     "category": "Categoria",
-    "aggregate": "Aggregato",
-    "quality_section": "Qualita",
     "aesthetic": "Estetica",
     "quality_score": "Punteggio qualita",
     "face_quality": "Qualita volto",
     "face_sharpness": "Nitidezza volto",
     "eye_sharpness": "Nitidezza occhi",
     "tech_sharpness": "Nitidezza tecnica",
-    "composition_section": "Composizione",
     "composition": "Composizione",
     "pattern": "Modello",
     "power_points": "Punti di forza",
     "leading_lines": "Linee guida",
-    "technical_section": "Tecnica",
     "exposure": "Esposizione",
     "color": "Colore",
     "contrast": "Contrasto",
@@ -162,7 +158,6 @@
     "noise": "Rumore",
     "bonus_section": "Bonus",
     "isolation": "Isolamento",
-    "exif_section": "EXIF",
     "camera": "Fotocamera",
     "lens": "Obiettivo",
     "focal": "Focale",
@@ -185,7 +180,6 @@
     "qrealign_score": "Q-ReAlign",
     "aesthetic_v25": "Estetica V2.5",
     "deqa_score": "DeQA",
-    "saliency_section": "Salienza del soggetto",
     "subject_sharpness": "Nitidezza soggetto",
     "subject_prominence": "Prominenza",
     "subject_placement": "Posizionamento",
@@ -201,7 +195,6 @@
     "star_rating": "Valutazione",
     "topiq_score": "TOPIQ",
     "filter_by_person": "Filtra per {name}",
-    "set_section": "Gruppo",
     "histogram": "Istogramma"
   },
   "photoCard": {
@@ -577,7 +570,8 @@
     "mark_rejected": "Segna come scartata",
     "unmark_rejected": "Rimuovi segno di scarto",
     "rejected_badge": "Scartata",
-    "rating_badge": "Valutazione {stars}"
+    "rating_badge": "Valutazione {stars}",
+    "stars_out_of_five": "Valutato {stars} su 5"
   },
   "similar": {
     "title": "Foto simili",
@@ -2464,7 +2458,6 @@
     "location": "Posizione",
     "social_crop": "Ritaglio social",
     "set": {
-      "title": "Gruppo",
       "ev_span": "Intervallo EV",
       "kind_duplicate": "Duplicato",
       "open_in_gallery": "Apri questo gruppo nella galleria",
@@ -2522,6 +2515,11 @@
       "batch_error": "Impossibile applicare la posizione. Seleziona al massimo 1000 foto e ripeti l’anteprima; la selezione o il luogo salvato potrebbe essere cambiato.",
       "batch_limit": "Seleziona al massimo 1000 foto. Senza protezione le posizioni esistenti vengono sostituite. I file originali restano invariati.",
       "batch_hint": "Scegli una posizione e visualizza le modifiche prima di salvare la selezione."
+    },
+    "distribution": {
+      "top": "Top {pct}% della libreria",
+      "range": "Intervallo della libreria {min}–{max}",
+      "top_in_range": "Top {pct}% della libreria · intervallo della libreria {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2546,7 +2544,8 @@
       "success": "Categoria impostata su {category}.",
       "cleared": "Sovrascrittura rimossa. Ricalcola per applicare la categoria basata sui filtri.",
       "explainer_toggle": "Perché non è una categoria diversa?",
-      "target_category_label": "Confronta con"
+      "target_category_label": "Confronta con",
+      "target_category_hint": "Scegli una categoria per vedere quali filtri escludono questa foto e cosa le permetterebbe di rientrarvi."
     }
   },
   "download": {

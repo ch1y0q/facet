@@ -4,14 +4,20 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Scores placed in the library.** Photo detail, the gallery side panel and the card score badge show where each score sits in the whole library: a sparkline of its distribution with this photo's bar lit, and "Top X% of the library" with the library range on hover or focus. Scores with no better end (ISO, aperture, face count…) show the range only.
+- **A native Windows install.** A per-user MSI (no administrator rights) installs Facet under `%LOCALAPPDATA%\Facet`; its first start builds the Python environment, picking the PyTorch build for the NVIDIA card and driver the way `install.sh` does, and stopping with an explanation when a GPU build cannot reach the card. Start-menu entries start, stop and repair it; `Scan-Facet.ps1` scans a folder. The environment is set up again after an upgrade that changes the dependencies, a later build of the same version replaces the earlier one, and uninstalling removes the environment but keeps the database and settings. `Start-Facet.ps1 -Lan` refuses to open the gallery to the network without `viewer.password`. An upgrade keeps a custom install folder and does not rerun setup unless the dependencies changed; uninstalling stops Facet first and logs anything it could not delete to `data\logs\uninstall.log`. On Windows the lock holds pyarrow at 23.0.0, since 24.0.0 crashed every scan on one machine. Build it with `installer\build-msi.ps1`; see [Installation](docs/INSTALLATION.md#windows).
+- **`scripts/rewrite_db_paths.py`** moves a library to new photo paths, such as from Docker's `/data/photos` to a Windows share, so the next scan does not add every photo again. It has a dry run, backs the database up first, matches the old prefix exactly, never doubles a separator, takes the library lock, and refuses a photo already scanned under the new path.
+
 ### Changed
 
 - **The CPU Docker image pins torch.** It installs torch 2.11.0 and torchvision 0.26.0 from the CPU wheel index, the release the default CUDA image ships, instead of whatever the index serves on the day of the build. `CPU_TORCH_VERSION` and `CPU_TORCHVISION_VERSION` override them.
+- **The side panel is the default tooltip mode.** It now uses photo detail's layout, with the metrics in the same icon tabs (EXIF, Quality, Composition, Technical, Histogram), and both remember the same open tab. The **Hover** and **Click** bubbles are reduced to a glance: category, aggregate and its rank, four key scores and one EXIF line.
 
-### Added
+### Fixed
 
-- **A native Windows install.** A per-user MSI (no administrator rights) installs Facet under `%LOCALAPPDATA%\Facet`; its first start builds the Python environment, picking the PyTorch build for the NVIDIA card and driver the way `install.sh` does, and stopping with an explanation when a GPU build cannot reach the card. Start-menu entries start, stop and repair it; `Scan-Facet.ps1` scans a folder. The environment is set up again after an upgrade that changes the dependencies, a later build of the same version replaces the earlier one, and uninstalling removes the environment but keeps the database and settings. `Start-Facet.ps1 -Lan` refuses to open the gallery to the network without `viewer.password`. An upgrade keeps a custom install folder and does not rerun setup unless the dependencies changed; uninstalling stops Facet first and logs anything it could not delete to `data\logs\uninstall.log`. On Windows the lock holds pyarrow at 23.0.0, since 24.0.0 crashed every scan on one machine. Build it with `installer\build-msi.ps1`; see [Installation](docs/INSTALLATION.md#windows).
-- **`scripts/rewrite_db_paths.py`** moves a library to new photo paths, such as from Docker's `/data/photos` to a Windows share, so the next scan does not add every photo again. It has a dry run, backs the database up first, matches the old prefix exactly, never doubles a separator, takes the library lock, and refuses a photo already scanned under the new path.
+- **The side panel no longer flickers open and closed.** A filter drawer animation event arriving after the drawer had already changed state flipped it back, in a loop.
 
 ## [1.25.0] "Hyperfocale" — 2026-10-27
 
