@@ -43,7 +43,7 @@ import { CULLING_SHORTCUT_SECTIONS } from './features/gallery/culling-shortcuts'
 import { GALLERY_SHORTCUT_SECTION } from './features/gallery/gallery-shortcuts';
 import { AssistantActivityChipComponent } from './features/agent/assistant-activity-chip.component';
 import { CONNECT_ASSISTANT_DIALOG_ID } from './core/agent/page-context.service';
-import { SortIconPipe } from './shared/pipes/sort-icon.pipe';
+import { SortOptionIconPipe } from './shared/pipes/sort-option-icon.pipe';
 import { SortGroupKeyPipe } from './shared/pipes/sort-group-key.pipe';
 import { PersonThumbnailUrlPipe, ThumbnailUrlPipe } from './shared/pipes/thumbnail-url.pipe';
 import { SlideshowComponent } from './features/gallery/slideshow.component';
@@ -142,7 +142,7 @@ export class EditionDialogComponent {
     MatDividerModule,
     TranslatePipe,
     SortGroupKeyPipe,
-    SortIconPipe,
+    SortOptionIconPipe,
     PersonThumbnailUrlPipe,
     ThumbnailUrlPipe,
     MatSliderModule,

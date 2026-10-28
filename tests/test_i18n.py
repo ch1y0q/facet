@@ -145,13 +145,25 @@ class TestBundleParity:
         hint = _load_bundle(lang)['photoCard']['key_hint']
         assert 'Space' not in hint, f"{lang}.json photoCard.key_hint still names the key 'Space'"
 
+    @pytest.mark.parametrize('lang', SUPPORTED_LANGUAGES)
+    def test_default_sort_groups_have_translated_headings(self, lang):
+        root = os.path.dirname(os.path.dirname(TRANSLATIONS_DIR))
+        with open(os.path.join(root, 'config', 'scoring_config.default.json'), encoding='utf-8') as handle:
+            groups = json.load(handle)['viewer']['sort_options']
+        labels = _load_bundle(lang)['sort_groups']
+        for group in groups:
+            key = re.sub(r'\s+', '_', group.lower())
+            assert labels.get(key), f'{lang}: missing sort_groups.{key}'
 
-@pytest.mark.parametrize('lang', SUPPORTED_LANGUAGES)
-def test_default_sort_groups_have_translated_headings(lang):
-    root = os.path.dirname(os.path.dirname(TRANSLATIONS_DIR))
-    with open(os.path.join(root, 'config', 'scoring_config.default.json'), encoding='utf-8') as handle:
-        groups = json.load(handle)['viewer']['sort_options']
-    labels = _load_bundle(lang)['sort_groups']
-    for group in groups:
-        key = re.sub(r'\s+', '_', group.lower())
-        assert labels.get(key), f'{lang}: missing sort_groups.{key}'
+    def test_every_default_sort_column_has_an_option_icon(self):
+        """The sort menus fall back to a generic 'sort' glyph for a column the pipe does
+        not map, so a new configured sort would silently ship without its own icon."""
+        root = os.path.dirname(os.path.dirname(TRANSLATIONS_DIR))
+        pipe = os.path.join(root, 'client', 'src', 'app', 'shared', 'pipes', 'sort-option-icon.pipe.ts')
+        with open(pipe, encoding='utf-8') as handle:
+            mapped = set(re.findall(r"^  (\w+): '", handle.read(), re.MULTILINE))
+        with open(os.path.join(root, 'config', 'scoring_config.default.json'), encoding='utf-8') as handle:
+            groups = json.load(handle)['viewer']['sort_options']
+        columns = {option['column'] for options in groups.values() for option in options}
+        assert columns
+        assert not columns - mapped, f'sort columns without an option icon: {sorted(columns - mapped)}'

@@ -48,14 +48,14 @@ const MODEL_LABELS: Readonly<Record<string, string>> = {
   face_quality_iqa: 'IQA',
 };
 
-export interface SortIcon {
+export interface SortOptionIcon {
   text: string;
   model: boolean;
 }
 
-@Pipe({ name: 'sortIcon', standalone: true, pure: true })
-export class SortIconPipe implements PipeTransform {
-  transform(column: string): SortIcon {
+@Pipe({ name: 'sortOptionIcon', standalone: true, pure: true })
+export class SortOptionIconPipe implements PipeTransform {
+  transform(column: string): SortOptionIcon {
     if (Object.hasOwn(MODEL_LABELS, column)) return { text: MODEL_LABELS[column], model: true };
     return { text: Object.hasOwn(SORT_ICONS, column) ? SORT_ICONS[column] : 'sort', model: false };
   }

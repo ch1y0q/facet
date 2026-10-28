@@ -770,12 +770,12 @@ describe('App', () => {
       for (const select of selects) {
         const options = select.options.toArray();
         expect(options.map(option => option.value)).toEqual(['aggregate', 'aesthetic', 'date_taken']);
-        for (const option of options) {
-          const icon = option._getHostElement().querySelector('mat-icon');
-          expect(icon).not.toBeNull();
-          expect(icon?.getAttribute('aria-hidden')).toBe('true');
-          expect(option.viewValue).not.toContain(icon?.textContent);
-        }
+        const icons = options.map(option => option._getHostElement().querySelector('mat-icon'));
+        expect(icons.map(icon => icon?.textContent?.trim())).toEqual(['leaderboard', 'auto_awesome', 'event']);
+        for (const icon of icons) expect(icon?.getAttribute('aria-hidden')).toBe('true');
+        expect(options.map(option => option.viewValue)).toEqual([
+          I18N.gallery.sort_aggregate, I18N.gallery.sort_aesthetic, I18N.gallery.sort_date,
+        ]);
         expect(select.triggerValue).toBe(I18N.gallery.sort_aggregate);
         select.options.last._getHostElement().click();
         expect(store.setUserSort).toHaveBeenLastCalledWith('date_taken');
