@@ -272,3 +272,36 @@ def test_explicit_refresh_rechecks_cached_manual_pixels_with_preserved_size_and_
         assert conn.execute('SELECT manual_review_required FROM faces WHERE id=?', (created.json()['id'],)).fetchone()[0] == 1
     fresh = edition_client.get('/api/photo/manual-face-frame', params={'path': path}).json()
     assert fresh['image_base64'] != frame['image_base64']
+
+
+def test_scene_http_responses_preserve_refreshed_preview_revisions(edition_client, seed_photos_prefix, tmp_path):
+    first, second = tmp_path/'first', tmp_path/'second'
+    first.mkdir()
+    second.mkdir()
+    paths = [_source(first), _source(second)]
+    seed_photos_prefix(str(tmp_path)+os.sep, [
+        dict(path=path, filename='image.jpg', thumbnail=b'old', aggregate=8)
+        for path in paths
+    ])
+    refreshed = edition_client.post('/api/photos/refresh', json={'paths': paths})
+    assert refreshed.json() == {'refreshed': paths, 'failed': []}
+    revisions = {path: _row(path)['preview_revision'] for path in paths}
+
+    def scene_photos():
+        response = edition_client.get('/api/scenes')
+        assert response.status_code == 200, response.text
+        return {photo['path']: photo for scene in response.json()['scenes'] for photo in scene['photos']}
+
+    photos = scene_photos()
+    assert {path: photos[path]['preview_revision'] for path in paths} == revisions
+    again = edition_client.post('/api/photos/refresh', json={'paths': [paths[0]]})
+    assert again.json() == {'refreshed': [paths[0]], 'failed': []}
+    photos = scene_photos()
+    assert photos[paths[0]]['preview_revision'] == _row(paths[0])['preview_revision']
+    assert photos[paths[0]]['preview_revision'] != revisions[paths[0]]
+    assert photos[paths[1]]['preview_revision'] == revisions[paths[1]]
+
+    summaries = edition_client.get('/api/scenes', params={'summary': True})
+    assert summaries.status_code == 200, summaries.text
+    assert summaries.json()['scenes']
+    assert all('photos' not in scene for scene in summaries.json()['scenes'])

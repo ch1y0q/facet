@@ -154,6 +154,7 @@ class ScenePhoto(BaseModel):
     """The lightweight photo shape scenes emit -- not a full ``Photo`` row."""
 
     path: str
+    preview_revision: Optional[str] = None
     filename: Optional[str] = None
     aggregate: Optional[float] = None
     date_taken: Optional[str] = None

@@ -8305,6 +8305,8 @@ export interface components {
             filename?: string | null;
             /** Path */
             path: string;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /** ScenesResponse */
         ScenesResponse: {
