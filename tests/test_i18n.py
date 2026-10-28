@@ -10,6 +10,9 @@ from fastapi.testclient import TestClient
 from api import create_app
 from i18n import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES
 
+# Reads client, i18n or docs files: runs on every pull request (see ci.yml).
+pytestmark = pytest.mark.cross_file
+
 
 @pytest.fixture()
 def client():

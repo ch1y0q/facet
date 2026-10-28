@@ -10,6 +10,9 @@ from api.agent.server import MCPServer, _preserve_root_logging, register_all_too
 from api.agent.bridge import TabRegistry
 from api.agent.ui_tools import UI_TOOLS
 
+# Reads client, i18n or docs files: runs on every pull request (see ci.yml).
+pytestmark = pytest.mark.cross_file
+
 TRANSLATIONS = Path(__file__).resolve().parent.parent / "i18n" / "translations"
 LANGS = ("en", "fr", "de", "it", "es", "pt", "zh")
 
