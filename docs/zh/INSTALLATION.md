@@ -512,6 +512,8 @@ FACET_DEVICE=mps python facet.py /path/to/photos --pass embeddings --force
 （不可用时明确报错）。InsightFace 仍留在处理器上，因为它是 ONNX Runtime 模型，
 不是 PyTorch 模型。
 
+TOPIQ 是唯一在 MPS 上输入略有不同的模型：MPS 无法对不能整除的尺寸做自适应池化，因此限定尺寸后任一边不是 32 的倍数的照片（3:2 画面会变成 1024×682）会在 TOPIQ 评分前居中向下裁切到 32 的倍数（1024×672）。因此它的分数可能与同一张照片在 CPU 或 CUDA 上的结果略有差异；其他所有模型在所有设备上评分的像素都相同。
+
 只有当 PyTorch 能看到至少一个设备时，CUDA GPU 才算数。设置 `CUDA_VISIBLE_DEVICES=''` 时，自动选择是 CPU，而 `FACET_DEVICE=cuda` 会以与不可用的 `mps` 相同的 “requested, but that device is not available” 错误中止。
 
 Metal 没有专用显存，所以 `vram_profile: "auto"` 是按统一内存总量来选定的：

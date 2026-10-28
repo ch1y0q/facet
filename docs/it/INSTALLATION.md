@@ -629,6 +629,8 @@ Imposta `FACET_DEVICE=cpu` per disattivare l'accelerazione, oppure `FACET_DEVICE
 per richiederla (e fallire in modo chiaro se non è disponibile). InsightFace resta sul
 processore perché è un modello ONNX Runtime, non un modello PyTorch.
 
+TOPIQ è l'unico modello che riceve un input leggermente diverso su MPS: MPS non sa eseguire il pooling adattivo su dimensioni che non si dividono esattamente, quindi una foto la cui dimensione limitata non è un multiplo di 32 su ogni lato (un fotogramma 3:2 diventa 1024×682) viene ritagliata al centro al multiplo inferiore (1024×672) prima che TOPIQ la valuti. I suoi punteggi possono quindi differire leggermente da un'esecuzione su CPU o CUDA della stessa foto; tutti gli altri modelli valutano gli stessi pixel su ogni dispositivo.
+
 Una GPU CUDA conta solo se PyTorch riesce a vedere almeno un dispositivo. Con `CUDA_VISIBLE_DEVICES=''` la scelta automatica è la CPU, e `FACET_DEVICE=cuda` si ferma con lo stesso errore «requested, but that device is not available» di un `mps` non disponibile.
 
 Metal non ha memoria video dedicata, quindi `vram_profile: "auto"` viene dimensionato

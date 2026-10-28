@@ -602,6 +602,8 @@ Set `FACET_DEVICE=cpu` to disable acceleration, or `FACET_DEVICE=mps` to require
 fail clearly if it is unavailable). InsightFace stays on the processor because it is an
 ONNX Runtime model, not a PyTorch one.
 
+TOPIQ is the one model that sees a slightly different input on MPS: MPS cannot adaptive-pool sizes that do not divide evenly, so a photo whose bounded size is not a multiple of 32 on each side (a 3:2 frame becomes 1024×682) is centre-cropped down to a multiple of 32 (1024×672) before TOPIQ scores it. Its scores can therefore differ slightly from a CPU or CUDA run of the same photo; every other model scores the same pixels on all devices.
+
 A CUDA GPU counts only when PyTorch can see at least one device. With `CUDA_VISIBLE_DEVICES=''`, the automatic choice is the processor, and `FACET_DEVICE=cuda` stops with the same "requested, but that device is not available" error as an unavailable `mps`.
 
 Metal has no dedicated video memory, so `vram_profile: "auto"` is sized from total

@@ -15,6 +15,7 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - **Suggested stack availability.** Similar Photos and semantic-search views no longer offer suggestions that their search scope cannot represent.
+- **TOPIQ scores 3:2 photos on Apple Silicon** (#377). On MPS, every photo whose bounded inference size had a side that was not a multiple of 32 (a 3:2 frame is scored at 1024×682) failed the quality pass, so a scan of a typical camera's JPEGs stored nothing. On MPS, TOPIQ's input is now centre-cropped to multiples of 32 (at most 31 px per axis); the other PyIQA models, and every model on CPU and CUDA, see the same pixels as before.
 - **Screen readers hear location search results and the culling skeleton** (#302). In the location editor, Enter in the address field runs the online search, the field is described by the privacy notice, the results list is named and the number of places found is announced. The culling page's loading skeleton announces "Loading" as text rather than an unread label.
 
 ## [1.26.0] "Histogramme" — 2026-10-28
