@@ -112,8 +112,8 @@ const ANY_KIND = 'any';
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           @for (photo of photos(); track photo.path) {
             <div class="group relative w-full aspect-[4/3] rounded-xl overflow-hidden border-2 border-white/20">
-              <img [src]="photo.path | thumbnailUrl:320"
-                   [appLoupe]="photo.path | imageUrl:true"
+              <img [src]="photo.path | thumbnailUrl:320:photo.preview_revision"
+                   [appLoupe]="photo.path | imageUrl:true:photo.preview_revision"
                    [loupeActive]="loupeActive()"
                    [loupeZoom]="loupeZoom()"
                    class="w-full h-full object-cover"

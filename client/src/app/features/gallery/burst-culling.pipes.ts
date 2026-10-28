@@ -13,6 +13,7 @@ export interface CullReason {
 
 /** A single photo within a burst/similar culling group. */
 export interface CullingPhoto {
+  preview_revision?: string | null;
   path: string;
   filename: string;
   aggregate: number | null;

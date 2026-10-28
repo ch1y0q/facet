@@ -215,6 +215,7 @@ PHOTOS_COLUMNS = [
     # the row's sequence_kind, never on its own. NULL = written before the stamp
     # existed, i.e. before the RAW exposure fix. See db/render_version.py.
     ('render_version', 'INTEGER'),
+    ('preview_revision', 'TEXT'),
     # Manual capture dates survive EXIF rescans.
     ('date_manually_set', 'INTEGER NOT NULL DEFAULT 0'),
     # Manual GPS (including intentional clears) survives EXIF rescans.
@@ -1470,6 +1471,10 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
             row[1] for row in conn.execute('PRAGMA table_info(faces)')}
         for table_name, columns in _MIGRATED_TABLES:
             _migrate_add_missing_columns(conn, table_name, columns)
+
+        conn.execute("""CREATE TRIGGER IF NOT EXISTS photos_preview_revision
+            AFTER UPDATE OF thumbnail ON photos WHEN OLD.thumbnail IS NOT NEW.thumbnail
+            BEGIN UPDATE photos SET preview_revision=lower(hex(randomblob(16))) WHERE path=NEW.path; END""")
 
         if migrate_manual_review:
             _bootstrap_manual_review(conn)

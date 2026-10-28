@@ -13,6 +13,22 @@
 // A call is rewritten to a live namespace access and runs at construction, after init.
 
 export const I18N = {
+  photo_refresh: {
+    limit: "photo_refresh.limit",
+    reasons: {
+      unavailable: "photo_refresh.reasons.unavailable",
+      changed: "photo_refresh.reasons.changed",
+      busy: "photo_refresh.reasons.busy",
+      failed: "photo_refresh.reasons.failed",
+    },
+    title: "photo_refresh.title",
+    description: "photo_refresh.description",
+    one: "photo_refresh.one",
+    many: "photo_refresh.many",
+    start: "photo_refresh.start",
+    completed: "photo_refresh.completed",
+    failed: "photo_refresh.failed",
+  },
   ui: {
     title: "ui.title",
     filters: {
@@ -1346,6 +1362,10 @@ export const I18N = {
     faces_need_names_hint: "gallery.faces_need_names_hint",
     faces_need_names_readonly_hint: "gallery.faces_need_names_readonly_hint",
     help_none: "gallery.help_none",
+    notices: {
+      collapsed: "gallery.notices.collapsed",
+      collapsed_plural: "gallery.notices.collapsed_plural",
+    },
   },
   composition_patterns: {
     none: "composition_patterns.none",

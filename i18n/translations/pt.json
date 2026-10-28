@@ -1,4 +1,20 @@
 {
+  "photo_refresh": {
+    "limit": "Selecione entre 1 e 100 fotos.",
+    "reasons": {
+      "unavailable": "Origem indisponível",
+      "changed": "Foto alterada; atualize novamente",
+      "busy": "Biblioteca ocupada; tente mais tarde",
+      "failed": "Não foi possível ler esta foto"
+    },
+    "title": "Atualizar metadados e pré-visualização",
+    "description": "Lê os metadados disponíveis e recria a pré-visualização. As anotações manuais, classificações, rostos e pontuações de IA não mudam. Os originais não são modificados. Escaneie novamente para atualizar pontuações e rostos após alterações nos píxeis.",
+    "one": "1 foto selecionada",
+    "many": "{count} fotos selecionadas",
+    "start": "Atualizar",
+    "completed": "Atualizadas: {count}",
+    "failed": "Não foi possível atualizar algumas fotos. Tente novamente para atualizar apenas as restantes."
+  },
   "ui": {
     "title": "Facet",
     "filters": {
@@ -1331,7 +1347,11 @@
     "faces_need_names": "Rostos sem nome",
     "faces_need_names_hint": "Inclui rostos não atribuídos e grupos de pessoas sem nome. Use + para atribuir um rosto ou dê um nome a um grupo em Pessoas. Fotos sem rostos detetados são excluídas.",
     "faces_need_names_readonly_hint": "Inclui rostos não atribuídos e grupos sem nome. Quem tem acesso de edição pode atribuir rostos ou dar nomes aos grupos. Fotos sem rostos detetados são excluídas.",
-    "help_none": "Esta página ainda não tem texto de ajuda."
+    "help_none": "Esta página ainda não tem texto de ajuda.",
+    "notices": {
+      "collapsed": "{count} aviso",
+      "collapsed_plural": "{count} avisos"
+    }
   },
   "composition_patterns": {
     "none": "Nenhum",

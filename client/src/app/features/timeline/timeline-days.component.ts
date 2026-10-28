@@ -12,6 +12,7 @@ interface DateEntry {
   date: string;
   count: number;
   hero_photo_path: string | null;
+  preview_revision?: string | null;
 }
 
 interface CalendarCell {
@@ -19,6 +20,7 @@ interface CalendarCell {
   day: number;
   count: number;
   hero_photo_path: string | null;
+  preview_revision?: string | null;
 }
 
 @Component({
@@ -50,7 +52,7 @@ interface CalendarCell {
               [class]="cell.count > 0 ? 'hover:shadow-lg bg-[var(--mat-sys-surface-container)]' : 'opacity-40 bg-[var(--mat-sys-surface-container)] cursor-default'"
               (click)="cell.count > 0 && daySelected.emit(cell.date)">
               @if (cell.hero_photo_path) {
-                <img [src]="cell.hero_photo_path | thumbnailUrl:320"
+                <img [src]="cell.hero_photo_path | thumbnailUrl:320:cell.preview_revision"
                      alt=""
                      class="absolute inset-0 w-full h-full object-cover" loading="lazy" />
                 <div class="absolute inset-0 bg-black/30"></div>
@@ -141,6 +143,7 @@ export class TimelineDaysComponent {
           day: d,
           count: entry?.count ?? 0,
           hero_photo_path: entry?.hero_photo_path ?? null,
+          preview_revision: entry?.preview_revision,
         });
       }
 

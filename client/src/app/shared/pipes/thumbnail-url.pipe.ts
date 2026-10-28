@@ -32,12 +32,17 @@ export class ThumbnailUrlPipe implements PipeTransform {
   }
 }
 
+export function imageUrl(path: string, fallbackThumbnail = false, revision?: string | null): string {
+  const params = new URLSearchParams({ path });
+  if (fallbackThumbnail) params.set('fallback', 'thumbnail');
+  if (revision) params.set('preview', revision);
+  return `/image?${params}`;
+}
+
 @Pipe({ name: 'imageUrl', standalone: true, pure: true })
 export class ImageUrlPipe implements PipeTransform {
-  transform(path: string, fallbackThumbnail = false): string {
-    const params = new URLSearchParams({ path });
-    if (fallbackThumbnail) params.set('fallback', 'thumbnail');
-    return `/image?${params}`;
+  transform(path: string, fallbackThumbnail = false, revision?: string | null): string {
+    return imageUrl(path, fallbackThumbnail, revision);
   }
 }
 

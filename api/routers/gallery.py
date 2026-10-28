@@ -44,6 +44,7 @@ from api.types import (
 )
 from metric_columns import SCORE_RANGE_COLUMNS
 from api.visual_similarity import find_visual_page
+from db.preview_versions import attach_preview_versions_async
 from utils.histogram import unpack_histogram
 from utils.sequence import BRACKET as BRACKET_KIND
 
@@ -809,6 +810,7 @@ async def _fetch_sequence_set(conn, vis_sql, vis_params, kind, group_id):
         {'path': r['path'], 'ev_offset': r['sequence_ev_offset'], 'is_lead': bool(r['is_sequence_lead'])}
         for r in rows
     ]
+    await attach_preview_versions_async(conn, members)
     ev_span = None
     if kind == BRACKET_KIND:
         offsets = [m['ev_offset'] for m in members if m['ev_offset'] is not None]
@@ -832,6 +834,7 @@ async def _fetch_grouped_set(conn, vis_sql, vis_params, kind, group_col, lead_co
         {'path': r['path'], 'ev_offset': None, 'is_lead': bool(r[lead_col])}
         for r in rows
     ]
+    await attach_preview_versions_async(conn, members)
     return {'kind': kind, 'group_id': group_id, 'count': len(members), 'ev_span': None, 'members': members}
 
 

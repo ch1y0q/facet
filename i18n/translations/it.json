@@ -1,4 +1,20 @@
 {
+  "photo_refresh": {
+    "limit": "Seleziona da 1 a 100 foto.",
+    "reasons": {
+      "unavailable": "Sorgente non disponibile",
+      "changed": "Foto modificata; aggiorna di nuovo",
+      "busy": "Libreria occupata; riprova più tardi",
+      "failed": "Impossibile leggere questa foto"
+    },
+    "title": "Aggiorna metadati e anteprima",
+    "description": "Legge i metadati disponibili e ricrea l’anteprima. Annotazioni manuali, valutazioni, volti e punteggi IA restano invariati. Gli originali non vengono modificati. Riesegui la scansione per aggiornare punteggi e volti dopo modifiche ai pixel.",
+    "one": "1 foto selezionata",
+    "many": "{count} foto selezionate",
+    "start": "Aggiorna",
+    "completed": "Aggiornate: {count}",
+    "failed": "Alcune foto non sono state aggiornate. Riprova per aggiornare solo quelle rimanenti."
+  },
   "ui": {
     "title": "Facet",
     "filters": {
@@ -1331,7 +1347,11 @@
     "faces_need_names": "Volti senza nome",
     "faces_need_names_hint": "Include volti non assegnati e gruppi di persone senza nome. Usa + per assegnare un volto o dai un nome a un gruppo in Persone. Le foto senza volti rilevati sono escluse.",
     "faces_need_names_readonly_hint": "Include volti non assegnati e gruppi senza nome. Chi dispone dell’accesso in modifica può assegnare i volti o nominare i gruppi. Le foto senza volti rilevati sono escluse.",
-    "help_none": "Questa pagina non ha ancora un testo di aiuto."
+    "help_none": "Questa pagina non ha ancora un testo di aiuto.",
+    "notices": {
+      "collapsed": "{count} avviso",
+      "collapsed_plural": "{count} avvisi"
+    }
   },
   "composition_patterns": {
     "none": "Nessuno",

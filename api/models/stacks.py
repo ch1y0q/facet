@@ -7,6 +7,7 @@ from api.models.gallery import gallery_filter_keys
 
 
 class StackMember(BaseModel):
+    preview_revision: str | None = None
     path: str
     position: int
 
