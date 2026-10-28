@@ -20,6 +20,7 @@ The link is REST-only in both directions. Facet never touches Immich's database,
 - [Pushing rejections](#pushing-rejections)
 - [Manual stack import and push](#manual-stack-import-and-push)
 - [The inbound webhook](#the-inbound-webhook)
+- [Diagnostics in the viewer](#diagnostics-in-the-viewer)
 - [Configuration reference](#configuration-reference)
 - [Troubleshooting](#troubleshooting)
 
@@ -249,6 +250,10 @@ Scan those photos (`python facet.py /mnt/photos`) and they drop off the list on 
 - Rotate by changing the environment variable and the Immich workflow header together, then restarting the viewer.
 - The webhook reads the global rating columns, so in multi-user mode it mirrors the shared/global rating, not any one user's overlay. If per-user ratings are what you want in Immich, leave the webhook off and use `--immich-sync --user <name>` on a schedule.
 
+## Diagnostics in the viewer
+
+From the user menu, open **Immich diagnostics**. Multi-user installations require superadmin access; single-user installations require locked edition access or trusted local editing. Status reads no remote data until **Test connection** is chosen. The test reads the server version and account access only, with no remote writes. Path coverage samples at most 200 indexed photos; it does not verify remote asset matches. The recorded sync-state update can predate changes to the configured server. Version compatibility does not verify stack permissions. Credentials and server paths are not returned.
+
 ## Configuration reference
 
 The full `immich` block, with the shipped defaults:
@@ -359,7 +364,3 @@ The Immich server is older than 3.0. Upgrade — Facet's clear semantics need `n
 ---
 
 **See also:** [Commands — Immich Sync](COMMANDS.md#immich-sync) · [Configuration](CONFIGURATION.md) · [Editor Interop Recipes](INTEROP.md) for XMP round-tripping with Lightroom, darktable, and digiKam.
-
-## Diagnostics in the viewer
-
-From the user menu, open **Immich diagnostics**. Multi-user installations require superadmin access; single-user installations require locked edition access or trusted local editing. Status reads no remote data until **Test connection** is chosen. The test reads the server version and account access only, with no remote writes. Path coverage samples at most 200 indexed photos; it does not verify remote asset matches. The recorded sync-state update can predate changes to the configured server. Version compatibility does not verify stack permissions. Credentials and server paths are not returned.

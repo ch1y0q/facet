@@ -3002,7 +3002,7 @@
     "sample_hint": "Máximo de {limit} fotos indexadas. A cobertura não confirma correspondências remotas. Sem regras os caminhos não mudam.",
     "last_push": "Última atualização registada do estado de sincronização",
     "unknown": "Sem registo",
-    "version": "Versão do servidor:",
+    "version": "Versão do servidor: {version}",
     "stack_version_ok": "Versão compatível com pilhas; permissões e correspondências não testadas.",
     "stack_version_old": "A troca de pilhas requer Immich 3 ou posterior.",
     "not_checked": "Ligação não testada.",

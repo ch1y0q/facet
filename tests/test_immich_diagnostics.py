@@ -192,7 +192,7 @@ def test_regular_user_cannot_probe_global_key(regular_client, monkeypatch):
     reached = []
     monkeypatch.setattr(diagnostics, '_diagnose', lambda *_: reached.append(True))
     response = regular_client.get('/api/immich/diagnostics?check_connection=true')
-    assert response.status_code in (401, 403)
+    assert response.status_code == 403
     assert response.headers['cache-control'] == 'no-store'
     assert reached == []
 
@@ -302,3 +302,67 @@ def test_connection_uses_one_configuration_snapshot(local_db, monkeypatch):
     assert value['connection'] == 'connected'
     assert len(calls) == 2
     assert all(call[2] == 'private-api-key' for call in calls)
+
+
+def test_sample_spans_the_library_not_the_first_paths(local_db):
+    with sqlite3.connect(local_db) as conn:
+        conn.executemany('INSERT INTO photos (path) VALUES (?)',
+                         [(f'/photos/{i:04}.jpg',) for i in range(300)] + [(f'/zzz/{i:04}.jpg',) for i in range(300)])
+    value = diagnostics._diagnose(config(''), False)
+    assert value['sampled_photos'] == 200
+    # Half the library is mapped. Sorted by path, the sample would be the first
+    # 200 rows, nearly all under the one mapped root.
+    assert 20 < value['mapped_photos'] < 180
+
+
+@pytest.mark.parametrize(('code', 'payload', 'expected'), [
+    (401, b'private-provider-text', 'access_denied'),
+    (403, b'private-provider-text', 'access_denied'),
+    (200, {'email': 'private@example.test'}, 'invalid_response'),
+    (200, {'id': ''}, 'invalid_response'),
+])
+def test_key_check_failures_after_a_public_version_read(local_db, code, payload, expected):
+    replies = {'/api/server/version': (200, {'major': 3, 'minor': 0, 'patch': 0}),
+               '/api/users/me': (code, payload)}
+    with remote(replies) as (url, calls):
+        value = diagnostics._diagnose(config(url), True)
+    assert value['connection'] == expected
+    assert value['version'] is None
+    assert [path for _, path, _ in calls] == ['/api/server/version', '/api/users/me']
+    assert 'private' not in json.dumps(value)
+
+
+@pytest.mark.parametrize(('version', 'expected'), [
+    ({'major': 2, 'minor': 9, 'patch': 9}, False),
+    ({'major': 3, 'minor': 0, 'patch': 0}, True),
+    ({'major': 10001, 'minor': 0, 'patch': 0}, None),
+    ({'major': -1, 'minor': 0, 'patch': 0}, None),
+])
+def test_stack_version_support_and_version_range(local_db, version, expected):
+    replies = {'/api/server/version': (200, version), '/api/users/me': (200, {'id': 'remote-user'})}
+    with remote(replies) as (url, _):
+        value = diagnostics._diagnose(config(url), True)
+    assert value['stack_version_supported'] is expected
+    assert value['connection'] == ('connected' if expected is not None else 'invalid_response')
+
+
+def test_route_errors_keep_no_store(superadmin_client, local_db, monkeypatch):
+    import api.auth
+    from fastapi import HTTPException
+    monkeypatch.setattr(api.auth, 'is_multi_user_enabled', lambda: True)
+
+    def unreadable(*_):
+        raise sqlite3.DatabaseError('file is not a database')
+    monkeypatch.setattr(diagnostics, '_diagnose', unreadable)
+    unavailable = superadmin_client.get('/api/immich/diagnostics')
+    assert unavailable.status_code == 503
+    assert unavailable.headers['cache-control'] == 'no-store'
+    assert 'not a database' not in unavailable.text
+
+    def busy(*_):
+        raise HTTPException(429, 'busy', headers={'Retry-After': '3'})
+    monkeypatch.setattr(diagnostics, '_diagnose', busy)
+    throttled = superadmin_client.get('/api/immich/diagnostics?check_connection=true')
+    assert throttled.status_code == 429
+    assert throttled.headers['retry-after'] == '3'
+    assert throttled.headers['cache-control'] == 'no-store'

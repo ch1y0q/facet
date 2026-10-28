@@ -333,7 +333,7 @@
             <mat-icon>keyboard</mat-icon>
             {{ I18N.shortcuts.keymap_title | translate }}
           </button>
-          @if (auth.isMultiUser() ? auth.isSuperadmin() : auth.isEdition()) {
+          @if (auth.isInstallAdmin()) {
             <button mat-menu-item (click)="openImmichDiagnostics()">
               <mat-icon>sync</mat-icon>
               {{ I18N.immich_diagnostics.title | translate }}

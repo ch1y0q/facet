@@ -20,6 +20,7 @@ Le lien est exclusivement REST dans les deux sens. Facet ne touche jamais à la 
 - [Pousser les rejets](#pousser-les-rejets)
 - [Piles manuelles : import et envoi](#piles-manuelles--import-et-envoi)
 - [Le webhook entrant](#le-webhook-entrant)
+- [Diagnostic dans le visualiseur](#diagnostic-dans-le-visualiseur)
 - [Référence de configuration](#référence-de-configuration)
 - [Dépannage](#dépannage)
 
@@ -249,6 +250,10 @@ Analysez ces photos (`python facet.py /mnt/photos`) et elles disparaissent de la
 - Effectuez la rotation en changeant ensemble la variable d'environnement et l'en-tête du workflow Immich, puis en redémarrant la visionneuse.
 - Le webhook lit les colonnes de note globales, donc en mode multi-utilisateurs il reflète la note partagée/globale, pas la surcouche d'un utilisateur en particulier. Si ce sont des notes par utilisateur que vous voulez dans Immich, laissez le webhook désactivé et utilisez `--immich-sync --user <nom>` sur une planification récurrente.
 
+## Diagnostic dans le visualiseur
+
+Dans le menu utilisateur, ouvrez **Diagnostic Immich**. En multi-utilisateur, seuls les superadministrateurs y accèdent ; en mono-utilisateur, il faut un accès édition verrouillé ou une édition locale approuvée. **Tester la connexion** lit uniquement la version et l’accès au compte, sans écriture distante. La couverture des chemins porte sur 200 photos indexées au maximum et ne vérifie pas les éléments distants. L’état enregistré peut dater d’une ancienne configuration. La version ne confirme pas les permissions des piles. Aucune clé ni chemin du serveur n’est renvoyé.
+
 ## Référence de configuration
 
 Le bloc `immich` complet, avec les valeurs par défaut fournies :
@@ -359,7 +364,3 @@ Le serveur Immich est antérieur à la version 3.0. Mettez-le à niveau — la s
 ---
 
 **Voir aussi :** [Commandes — Synchronisation Immich](COMMANDS.md#synchronisation-immich) · [Configuration](CONFIGURATION.md) · [Recettes d'interopérabilité avec les éditeurs](INTEROP.md) pour l'aller-retour XMP avec Lightroom, darktable et digiKam.
-
-## Diagnostic dans le visualiseur
-
-Dans le menu utilisateur, ouvrez **Diagnostic Immich**. En multi-utilisateur, seuls les superadministrateurs y accèdent ; en mono-utilisateur, il faut un accès édition verrouillé ou une édition locale approuvée. **Tester la connexion** lit uniquement la version et l’accès au compte, sans écriture distante. La couverture des chemins porte sur 200 photos indexées au maximum et ne vérifie pas les éléments distants. L’état enregistré peut dater d’une ancienne configuration. La version ne confirme pas les permissions des piles. Aucune clé ni chemin du serveur n’est renvoyé.

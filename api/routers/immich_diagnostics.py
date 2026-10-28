@@ -36,7 +36,9 @@ class _PrivateRoute(APIRoute):
             try:
                 response = await original(req)
             except RequestValidationError as exc:
-                response = await request_validation_exception_handler(req, exc)
+                # The app's own handler (its log line and error encoding), plus no-store.
+                handler = req.app.exception_handlers.get(RequestValidationError, request_validation_exception_handler)
+                response = await handler(req, exc)
             except HTTPException as exc:
                 exc.headers = {**(exc.headers or {}), 'Cache-Control': 'no-store'}
                 raise
@@ -84,7 +86,9 @@ def _local_status(config, user_id=None):
     with closing(sqlite3.connect(Path(DEFAULT_DB_PATH).resolve().as_uri() + '?mode=ro', uri=True)) as conn:
         conn.execute('BEGIN')
         vis, params = get_visibility_clause(user_id) if is_multi_user_enabled() else ('1=1', [])
-        paths = conn.execute(f'SELECT path FROM photos WHERE {vis} ORDER BY path LIMIT ?',
+        # A random sample: the first paths in sort order all sit under one root,
+        # which would report full coverage while the rest of the library is unmapped.
+        paths = conn.execute(f'SELECT path FROM photos WHERE {vis} ORDER BY random() LIMIT ?',
                              [*params, _SAMPLE_LIMIT]).fetchall()
         row = conn.execute("SELECT updated_at FROM stats_cache WHERE key = ?",
                            (_scope_key(user_id if is_multi_user_enabled() else None),)).fetchone()

@@ -36,7 +36,7 @@ type Diagnostics = components['schemas']['ImmichDiagnosticsResponse'];
         <p class="mt-2 text-xs opacity-70">{{ I18N.immich_diagnostics.sample_hint | translate:{ limit: value.sample_limit } }}</p>
         <p class="mt-3 text-sm" role="status">{{ connectionLabel() | translate }}</p>
         @if (value.version) {
-          <p class="mt-2 text-sm">{{ I18N.immich_diagnostics.version | translate }} {{ value.version }}</p>
+          <p class="mt-2 text-sm">{{ I18N.immich_diagnostics.version | translate:{ version: value.version } }}</p>
           <p class="mt-1 text-xs opacity-70">{{ (value.stack_version_supported ? I18N.immich_diagnostics.stack_version_ok : I18N.immich_diagnostics.stack_version_old) | translate }}</p>
         }
       }
@@ -81,7 +81,7 @@ export class ImmichDiagnosticsDialogComponent {
 
   private current(): boolean {
     return !this.closed && !this.destroyRef.destroyed && this.owner === this.auth.identity()
-      && (this.auth.isMultiUser() ? this.auth.isSuperadmin() : this.auth.isEdition());
+      && this.auth.isInstallAdmin();
   }
 
   async load(checkConnection: boolean): Promise<void> {

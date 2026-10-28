@@ -182,11 +182,10 @@ export class App implements OnInit {
     this.dialog.open(CardActionsDialogComponent, { width: '26rem', autoFocus: false });
   }
 
-  /** The keyboard settings dialog: reassign the primary key of the gallery
-   *  and photo-page actions. Reachable from every route, like Help. */
+  /** Read-only Immich status for whoever may administer the installation. */
   protected async openImmichDiagnostics(): Promise<void> {
     const { current, dispose } = this.staleness.create(this.destroyRef, {
-      valid: () => this.auth.isMultiUser() ? this.auth.isSuperadmin() : this.auth.isEdition(),
+      valid: () => this.auth.isInstallAdmin(),
     });
     try {
       const { ImmichDiagnosticsDialogComponent } = await import('./features/immich/immich-diagnostics-dialog.component');
@@ -194,6 +193,8 @@ export class App implements OnInit {
     } finally { dispose(); }
   }
 
+  /** The keyboard settings dialog: reassign the primary key of the gallery
+   *  and photo-page actions. Reachable from every route, like Help. */
   protected openKeymapDialog(): void {
     this.dialog.open(KeyboardMappingDialogComponent, { width: '26rem', autoFocus: false });
   }

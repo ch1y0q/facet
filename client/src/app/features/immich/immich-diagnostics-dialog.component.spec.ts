@@ -27,8 +27,10 @@ describe('Immich diagnostics HTTP dialog', () => {
     TestBed.configureTestingModule({
       imports: [ImmichDiagnosticsDialogComponent],
       providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting(),
-        { provide: AuthService, useValue: { identity, isEdition: edition, isMultiUser: () => false, isSuperadmin: () => false } },
-        { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
+        { provide: AuthService, useValue: { identity, isInstallAdmin: edition } },
+        { provide: I18nService, useValue: {
+          t: (key: string, params?: Record<string, unknown>) => (params ? `${key} ${Object.values(params).join(' ')}` : key),
+          translations: () => ({}) } },
         { provide: MatDialogRef, useValue: { close, beforeClosed: () => closed } },
       ],
     });
@@ -60,6 +62,27 @@ describe('Immich diagnostics HTTP dialog', () => {
     await pending; fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('3.1.0');
     expect(fixture.nativeElement.textContent).toContain('immich_diagnostics.stack_version_ok');
+  });
+
+  it.each([
+    ['access_denied', 'immich_diagnostics.access_denied'],
+    ['unreachable', 'immich_diagnostics.unreachable'],
+    ['invalid_config', 'immich_diagnostics.invalid_config'],
+  ])('labels a %s connection result', async (connection, label) => {
+    await local();
+    const pending = fixture.componentInstance.load(true);
+    read().flush({ ...LOCAL, connection });
+    await pending; fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain(label);
+  });
+
+  it('warns that stack exchange needs Immich 3 on an older server', async () => {
+    await local();
+    const pending = fixture.componentInstance.load(true);
+    read().flush({ ...LOCAL, connection: 'connected', version: '2.9.0', stack_version_supported: false });
+    await pending; fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('immich_diagnostics.version 2.9.0');
+    expect(fixture.nativeElement.textContent).toContain('immich_diagnostics.stack_version_old');
   });
 
   it('does not launch duplicate tests while a request is pending', async () => {

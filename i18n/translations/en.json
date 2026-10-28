@@ -3002,7 +3002,7 @@
     "sample_hint": "Sample of at most {limit} indexed photos. Coverage does not prove remote matches. Without rules, paths stay unchanged.",
     "last_push": "Last recorded sync-state update",
     "unknown": "Not recorded",
-    "version": "Server version:",
+    "version": "Server version: {version}",
     "stack_version_ok": "Version supports stacks; stack permissions and asset matches are not tested.",
     "stack_version_old": "Stack exchange requires Immich 3 or later.",
     "not_checked": "Connection not tested.",

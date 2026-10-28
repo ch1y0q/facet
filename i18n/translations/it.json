@@ -3002,7 +3002,7 @@
     "sample_hint": "Massimo {limit} foto indicizzate. La copertura non conferma risorse remote. Senza regole i percorsi restano invariati.",
     "last_push": "Ultimo aggiornamento registrato dello stato di sincronizzazione",
     "unknown": "Non registrato",
-    "version": "Versione server:",
+    "version": "Versione server: {version}",
     "stack_version_ok": "Versione compatibile con le pile; permessi e corrispondenze non verificati.",
     "stack_version_old": "Lo scambio di pile richiede Immich 3 o successivo.",
     "not_checked": "Connessione non verificata.",

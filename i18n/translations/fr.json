@@ -3002,7 +3002,7 @@
     "sample_hint": "Au plus {limit} photos indexées. La couverture ne prouve pas une correspondance distante. Sans règle, les chemins restent inchangés.",
     "last_push": "Dernière mise à jour enregistrée de l’état de synchronisation",
     "unknown": "Non enregistré",
-    "version": "Version du serveur :",
+    "version": "Version du serveur : {version}",
     "stack_version_ok": "Version compatible avec les piles ; permissions et correspondances non testées.",
     "stack_version_old": "L’échange de piles nécessite Immich 3 ou ultérieur.",
     "not_checked": "Connexion non testée.",

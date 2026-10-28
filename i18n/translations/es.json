@@ -3002,7 +3002,7 @@
     "sample_hint": "Máximo {limit} fotos indexadas. La cobertura no confirma coincidencias remotas. Sin reglas las rutas no cambian.",
     "last_push": "Última actualización registrada del estado de sincronización",
     "unknown": "Sin registro",
-    "version": "Versión del servidor:",
+    "version": "Versión del servidor: {version}",
     "stack_version_ok": "Versión compatible con pilas; permisos y coincidencias no probados.",
     "stack_version_old": "El intercambio de pilas requiere Immich 3 o posterior.",
     "not_checked": "Conexión no probada.",
