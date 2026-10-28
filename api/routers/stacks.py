@@ -2,14 +2,15 @@
 import logging
 import sqlite3
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 
 from api.auth import CurrentUser, is_multi_user_enabled, require_authenticated, require_edition
 from api.database import get_db
 from api.db_helpers import after_commit, get_visibility_clause, is_locked_error, retry_on_locked
 from api.models.stacks import (CreateStack, PhotoStack, StackMutation, UpdateStack,
-                               StackSuggestionsRequest, StackSuggestionsResponse)
-from db import stacks
+                               StackSuggestionDismissal, StackSuggestionsRequest,
+                               StackSuggestionsResponse)
+from db import stack_suggestions as suggestion_store, stacks
 from db.maintenance import evict_derived_stats_cache
 
 router = APIRouter(tags=['stacks'])
@@ -89,7 +90,6 @@ def stack_suggestions(body: StackSuggestionsRequest, response: Response,
     from pydantic import ValidationError
     from api.models.gallery import query_value
     from api.routers.gallery import gallery_scope_sql, _raise_422_for_invalid_gallery_params
-    from db.stack_suggestions import suggestions
 
     response.headers['Cache-Control'] = 'no-store'
     # The gallery validator reads query-string values, so a JSON number or boolean
@@ -102,4 +102,19 @@ def stack_suggestions(body: StackSuggestionsRequest, response: Response,
             source, where, params = gallery_scope_sql(conn, filters, user.user_id)
         except ValidationError as exc:
             _raise_422_for_invalid_gallery_params(exc, logger, 'Invalid stack suggestion filters: %s')
-        return dict(suggestions=suggestions(conn, stack_owner(user.user_id), source, where, params))
+        return dict(suggestions=suggestion_store.suggestions(conn, stack_owner(user.user_id), source, where, params))
+
+
+@router.post('/api/stacks/suggestions/dismissals', status_code=204)
+@retry_on_locked()
+def dismiss_stack_suggestion(body: StackSuggestionDismissal, user: CurrentUser = Depends(require_edition)):
+    with get_db() as conn, conn:
+        suggestion_store.dismiss(conn, stack_owner(user.user_id), body.kind, list(dict.fromkeys(body.paths)))
+
+
+@router.delete('/api/stacks/suggestions/dismissals/{key}', status_code=204)
+@retry_on_locked()
+def restore_stack_suggestion(key: str = Path(pattern='^[0-9a-f]{64}$'),
+                             user: CurrentUser = Depends(require_edition)):
+    with get_db() as conn, conn:
+        suggestion_store.restore(conn, stack_owner(user.user_id), key)

@@ -27,8 +27,17 @@ def suggestions(conn, owner, source, where, params):
         UNION ALL
         SELECT 'burst', burst_group_id, COUNT(*), SUM(stacked)
         FROM scoped WHERE burst_group_id IS NOT NULL GROUP BY burst_group_id
+    ), skipped AS (
+        -- A skip matches only the exact scoped membership it was made on, so a group
+        -- that gains or loses a photo is suggested again.
+        SELECT d.kind, CASE d.kind WHEN 'duplicate' THEN s.duplicate_group_id ELSE s.burst_group_id END AS group_id,
+               d.size, COUNT(*) AS hits
+        FROM stack_suggestion_dismissals d JOIN scoped s ON s.path=d.photo_path
+        WHERE d.owner=? GROUP BY d.key, 2
     ), chosen AS (
-        SELECT * FROM grouped WHERE n BETWEEN 2 AND ? AND stacked=0
+        SELECT * FROM grouped g WHERE n BETWEEN 2 AND ? AND stacked=0
+        AND NOT EXISTS(SELECT 1 FROM skipped k WHERE k.kind=g.kind AND k.group_id=g.group_id
+                       AND k.size=g.n AND k.hits=g.n)
         ORDER BY CASE kind WHEN 'duplicate' THEN 0 ELSE 1 END, group_id LIMIT ?
     )
     SELECT g.kind,g.group_id,s.path,
@@ -39,7 +48,7 @@ def suggestions(conn, owner, source, where, params):
     ORDER BY CASE g.kind WHEN 'duplicate' THEN 0 ELSE 1 END,g.group_id,
              lead DESC, s.aggregate DESC, s.path
     """
-    rows = conn.execute(query, [owner, *params, MAX_MEMBERS, MAX_CANDIDATE_GROUPS])
+    rows = conn.execute(query, [owner, *params, owner, MAX_MEMBERS, MAX_CANDIDATE_GROUPS])
     result, used = [], set()
     for (kind, group_id), group in groupby(rows, key=lambda r: (r['kind'], r['group_id'])):
         paths = [r['path'] for r in group]
@@ -47,12 +56,26 @@ def suggestions(conn, owner, source, where, params):
         # unexplained residual group or give the same photo multiple suggestions.
         if used.intersection(paths) or len(used) + len(paths) > MAX_RETURNED_MEMBERS:
             continue
-        # Detector IDs can be reassigned by a rescan. Dismissal belongs to the
-        # observed membership, so an unrelated replacement group stays visible.
-        identity = json.dumps([kind, sorted(paths)], ensure_ascii=False, separators=(',', ':'))
-        key = hashlib.sha256(identity.encode('utf-8')).hexdigest()
-        result.append(dict(key=key, kind=kind, paths=paths, cover_path=paths[0]))
+        result.append(dict(key=suggestion_key(kind, paths), kind=kind, paths=paths, cover_path=paths[0]))
         used.update(paths)
         if len(result) == MAX_SUGGESTIONS:
             break
     return result
+
+
+def suggestion_key(kind, paths):
+    # Detector IDs can be reassigned by a rescan. Dismissal belongs to the
+    # observed membership, so an unrelated replacement group stays visible.
+    identity = json.dumps([kind, sorted(paths)], ensure_ascii=False, separators=(',', ':'))
+    return hashlib.sha256(identity.encode('utf-8')).hexdigest()
+
+
+def dismiss(conn, owner, kind, paths):
+    key = suggestion_key(kind, paths)
+    conn.executemany("""INSERT OR IGNORE INTO stack_suggestion_dismissals(owner,key,kind,size,photo_path)
+        VALUES (?,?,?,?,?)""", [(owner, key, kind, len(paths), path) for path in paths])
+    return key
+
+
+def restore(conn, owner, key):
+    conn.execute('DELETE FROM stack_suggestion_dismissals WHERE owner=? AND key=?', (owner, key))

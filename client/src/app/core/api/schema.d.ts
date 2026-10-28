@@ -4417,6 +4417,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stacks/suggestions/dismissals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss Stack Suggestion */
+        post: operations["dismiss_stack_suggestion_api_stacks_suggestions_dismissals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stacks/suggestions/dismissals/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Restore Stack Suggestion */
+        delete: operations["restore_stack_suggestion_api_stacks_suggestions_dismissals__key__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/stacks/{stack_id}": {
         parameters: {
             query?: never;
@@ -8657,6 +8691,16 @@ export interface components {
             cover_path: string;
             /** Key */
             key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "duplicate" | "burst";
+            /** Paths */
+            paths: string[];
+        };
+        /** StackSuggestionDismissal */
+        StackSuggestionDismissal: {
             /**
              * Kind
              * @enum {string}
@@ -15780,6 +15824,66 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["StackSuggestionsResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_stack_suggestion_api_stacks_suggestions_dismissals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StackSuggestionDismissal"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_stack_suggestion_api_stacks_suggestions_dismissals__key__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

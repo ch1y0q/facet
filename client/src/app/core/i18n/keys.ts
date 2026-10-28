@@ -2258,6 +2258,7 @@ export const I18N = {
       out_of_date: "culling.plan.out_of_date",
       replan_flips_dropped: "culling.plan.replan_flips_dropped",
     },
+    stack_group: "culling.stack_group",
   },
   scenes: {
     title: "scenes.title",
@@ -3029,6 +3030,12 @@ export const I18N = {
     badge_filtered: "stacks.badge_filtered",
     stack_id: "stacks.stack_id",
     position: "stacks.position",
+    suggestion_stack: "stacks.suggestion_stack",
+    stacked: "stacks.stacked",
+    suggestion_skipped: "stacks.suggestion_skipped",
+    suggestions_done: "stacks.suggestions_done",
+    stack_failed: "stacks.stack_failed",
+    suggestion_failed: "stacks.suggestion_failed",
   },
   immich_diagnostics: {
     title: "immich_diagnostics.title",

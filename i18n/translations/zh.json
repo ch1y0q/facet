@@ -2243,7 +2243,8 @@
       "oversize": "已略过的分组（过大，无法在此确认）：{count}",
       "out_of_date": "助手的方案已过期 - 请让它重新预览",
       "replan_flips_dropped": "你的 {count} 项更改已不再对应任何分组，已被舍弃。"
-    }
+    },
+    "stack_group": "堆叠此组，以当前画面为封面"
   },
   "scenes": {
     "title": "场景",
@@ -2972,12 +2973,12 @@
   },
   "stacks": {
     "suggestions": "建议的堆叠",
-    "suggestions_hint": "建议来自当前筛选范围内已检测到的重复照片和连拍。检查时不会自动隐藏连拍和重复照片。已有堆叠以及包围曝光或全景组会被跳过。最多显示 20 条建议；缩小筛选范围可查看其他照片。“暂时忽略”仅在此对话框打开期间有效。",
+    "suggestions_hint": "建议基于这些筛选条件内检测到的重复照片和连拍（不自动隐藏连拍/重复成员），一次一组。← → 选择封面，S 以该封面堆叠，X 跳过。跳过的组在其照片变化前保持隐藏。已有堆叠以及包围曝光/全景组不会被建议。每次最多加载 20 条建议；重新加载可获取更多。",
     "suggestions_empty": "此视图中没有堆叠建议",
     "suggestion_burst": "连拍",
     "suggestion_duplicate": "重复照片",
-    "suggestion_review": "检查并选择封面",
-    "suggestion_dismiss": "暂时忽略",
+    "suggestion_review": "编辑成员",
+    "suggestion_dismiss": "跳过",
     "suggestions_error": "无法加载建议，请重试。",
     "suggestions_reload": "重新加载建议",
     "previous": "上一张堆叠照片",
@@ -3014,7 +3015,13 @@
     "badge": "打开堆叠：{count} 个成员",
     "badge_filtered": "打开堆叠：{total} 个可访问成员中有 {count} 个匹配",
     "stack_id": "堆叠 ID",
-    "position": "位置"
+    "position": "位置",
+    "suggestion_stack": "以此封面堆叠",
+    "stacked": "已堆叠 {count} 张照片",
+    "suggestion_skipped": "已跳过建议",
+    "suggestions_done": "此视图中的所有建议均已审阅。重新加载以查找更多。",
+    "stack_failed": "无法堆叠：某张照片可能已属于一个堆叠。",
+    "suggestion_failed": "该更改未保存。请重试。"
   },
   "immich_diagnostics": {
     "title": "Immich 诊断",

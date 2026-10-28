@@ -2190,7 +2190,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     const { StackSuggestionsDialogComponent } = await import('./stack-suggestions-dialog.component');
     if (this.destroyRef.destroyed || !session() || this.pinned()
       || JSON.stringify(this.store.filterPayload()) !== scope || this.dialog.openDialogs.length) return;
-    this.dialog.open(StackSuggestionsDialogComponent, { width: '800px', maxWidth: '96vw', data: { filters } });
+    this.dialog.open(StackSuggestionsDialogComponent, { width: '96vw', maxWidth: '1400px', height: '92vh', data: { filters } });
   }
 
   private async launchStack(data: import('./stack-dialog.component').StackDialogData): Promise<void> {

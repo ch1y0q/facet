@@ -67,5 +67,9 @@ export class PhotoStackService {
   unstack(stack: PhotoStack) {
     return this.api.delete<StackMutation>(`/stacks/${encodeURIComponent(stack.id)}?expected_revision=${stack.revision}`).pipe(tap(this.changed));
   }
+  dismissSuggestion(kind: string, paths: string[]) {
+    return this.api.post<void>('/stacks/suggestions/dismissals', { kind, paths });
+  }
+  restoreSuggestion(key: string) { return this.api.delete<void>(`/stacks/suggestions/dismissals/${key}`); }
   revert(entryId: number) { return this.api.post(`/organization_history/${entryId}/revert`, {}).pipe(tap(this.changed)); }
 }

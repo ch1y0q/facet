@@ -2243,7 +2243,8 @@
       "oversize": "Gruppi esclusi (troppo grandi per essere confermati qui): {count}",
       "out_of_date": "Il piano dell'assistente è obsoleto - chiedigli di generare di nuovo l'anteprima",
       "replan_flips_dropped": "{count} delle tue modifiche non corrispondono più a nessun gruppo e sono state scartate."
-    }
+    },
+    "stack_group": "Impila questo gruppo, fotogramma corrente come copertina"
   },
   "scenes": {
     "title": "Scene",
@@ -2972,12 +2973,12 @@
   },
   "stacks": {
     "suggestions": "Pile suggerite",
-    "suggestions_hint": "Suggerimenti da duplicati e raffiche rilevati con questi filtri, ignorandone la selezione automatica del solo rappresentante. Pile esistenti e serie bracket/panorama escluse. Sono mostrati fino a 20 suggerimenti: restringi i filtri per altre foto. Ignorare vale solo finché questa finestra resta aperta.",
+    "suggestions_hint": "I suggerimenti usano duplicati e raffiche rilevati entro questi filtri, senza l’occultamento automatico di raffiche/duplicati, un gruppo alla volta. ← → scelgono la copertina, S impila con quella copertina, X salta. I gruppi saltati restano nascosti finché le loro foto non cambiano. Pile esistenti e serie di bracketing o panorami non vengono suggeriti. Si caricano fino a 20 suggerimenti alla volta; Ricarica ne recupera altri.",
     "suggestions_empty": "Nessuna pila suggerita in questa vista",
     "suggestion_burst": "Raffica",
     "suggestion_duplicate": "Duplicati",
-    "suggestion_review": "Rivedi e scegli la copertina",
-    "suggestion_dismiss": "Ignora per ora",
+    "suggestion_review": "Modifica membri",
+    "suggestion_dismiss": "Salta",
     "suggestions_error": "Impossibile caricare i suggerimenti. Riprova.",
     "suggestions_reload": "Ricarica i suggerimenti",
     "previous": "Foto precedente della pila",
@@ -3014,7 +3015,13 @@
     "badge": "Apri pila: {count} membri",
     "badge_filtered": "Apri pila: {count} corrispondenze su {total} membri consentiti",
     "stack_id": "ID pila",
-    "position": "Posizione"
+    "position": "Posizione",
+    "suggestion_stack": "Impila con questa copertina",
+    "stacked": "{count} foto impilate",
+    "suggestion_skipped": "Suggerimento saltato",
+    "suggestions_done": "Tutti i suggerimenti di questa vista sono stati esaminati. Ricarica per cercarne altri.",
+    "stack_failed": "Impossibile impilare: una foto potrebbe appartenere già a una pila.",
+    "suggestion_failed": "La modifica non è stata salvata. Riprova."
   },
   "immich_diagnostics": {
     "title": "Diagnostica Immich",

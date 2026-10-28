@@ -28,6 +28,7 @@ _PLAIN_REFS = {
     ('album_client_picks', 'photo_path'), ('rating_provenance', 'photo_path'),
     ('face_reextract_snapshot', 'photo_path'),
     ('photo_stacks', 'cover_path'), ('photo_stack_members', 'photo_path'),
+    ('stack_suggestion_dismissals', 'photo_path'),
 }
 _NON_ASSET_PATHS = {
     ('photos', 'path'), ('photos_fts', 'path'), ('scan_failures', 'path'),
@@ -42,6 +43,7 @@ _AUXILIARY_COLUMNS = {
     'immich_stack_send_claims': {'admission_scope', 'asset_id', 'operation_id'},
     'immich_stack_receipts': {'scope', 'admission_scope', 'operation_id', 'status', 'local_stack_id', 'remote_stack_id', 'asset_ids', 'updated_at'},
     'photo_stack_members': {'stack_id', 'owner', 'photo_path', 'position'},
+    'stack_suggestion_dismissals': {'owner', 'key', 'kind', 'size', 'photo_path'},
     'organization_clock': {'id', 'revision'},
     'organization_history': {'id', 'owner', 'kind', 'scope', 'created_at', 'payload', 'part', 'parts', 'reverted'},
 }

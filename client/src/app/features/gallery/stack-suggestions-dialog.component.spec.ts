@@ -6,12 +6,16 @@ import { provideRouter, Router } from '@angular/router';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { Subject } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
+import { UndoService, UndoableCommand } from '../../core/services/undo.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { GalleryStore } from './gallery.store';
 import { StackDialogComponent } from './stack-dialog.component';
 import { StackSuggestionsDialogComponent } from './stack-suggestions-dialog.component';
+import { components } from '../../core/api/schema';
 
-const candidate = { key: 'duplicate:2', kind: 'duplicate' as const, paths: ['/a.jpg', '/b.jpg'], cover_path: '/b.jpg' };
+type Suggestion = components['schemas']['StackSuggestion'];
+const candidate: Suggestion = { key: 'a'.repeat(64), kind: 'duplicate', paths: ['/a.jpg', '/b.jpg'], cover_path: '/b.jpg' };
+const second: Suggestion = { key: 'b'.repeat(64), kind: 'burst', paths: ['/c.jpg', '/d.jpg', '/e.jpg'], cover_path: '/c.jpg' };
 
 describe('suggested stack review through HTTP and router', () => {
   let fixture: ComponentFixture<StackSuggestionsDialogComponent>;
@@ -22,19 +26,23 @@ describe('suggested stack review through HTTP and router', () => {
   let close: ReturnType<typeof vi.fn>;
   let open: ReturnType<typeof vi.fn>;
   let reviewed: Subject<boolean>;
+  let register: ReturnType<typeof vi.fn>;
+  let keys: Subject<KeyboardEvent>;
+  let refresh: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     owner = signal('alice'); edition = signal(true); filters = signal({ path_prefix: '/photos' });
-    const beforeClosed = new Subject<void>(); reviewed = new Subject<boolean>();
+    const beforeClosed = new Subject<void>(); reviewed = new Subject<boolean>(); register = vi.fn(); keys = new Subject<KeyboardEvent>(); refresh = vi.fn(async () => undefined);
     close = vi.fn(() => beforeClosed.next()); open = vi.fn(() => ({ afterClosed: () => reviewed, close: vi.fn(() => { reviewed.next(false); reviewed.complete(); }) }));
     TestBed.configureTestingModule({
       imports: [StackSuggestionsDialogComponent],
       providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting(),
         { provide: AuthService, useValue: { identity: owner, isEdition: edition } },
         { provide: I18nService, useValue: { t: (k: string) => k, translations: () => ({}) } },
-        { provide: GalleryStore, useValue: { filters, pinnedPaths: signal(null), filterPayload: filters } },
+        { provide: GalleryStore, useValue: { filters, pinnedPaths: signal(null), filterPayload: filters, refreshPaths: refresh } },
         { provide: MatDialog, useValue: { open } },
-        { provide: MatDialogRef, useValue: { close, beforeClosed: () => beforeClosed } },
+        { provide: UndoService, useValue: { register } },
+        { provide: MatDialogRef, useValue: { close, beforeClosed: () => beforeClosed, keydownEvents: () => keys } },
         { provide: MAT_DIALOG_DATA, useValue: { filters: { path_prefix: '/photos' } } },
       ],
     });
@@ -46,28 +54,128 @@ describe('suggested stack review through HTTP and router', () => {
     try { fixture?.destroy(); http?.verify(); } finally { TestBed.resetTestingModule(); vi.restoreAllMocks(); }
   });
 
-  async function loaded() {
+  async function loaded(suggestions: Suggestion[] = [candidate]) {
     const request = http.expectOne('/api/stacks/suggestions');
     expect(request.request.body).toEqual({ filters: { path_prefix: '/photos' } });
-    request.flush({ suggestions: [candidate] });
+    request.flush({ suggestions });
     await fixture.whenStable(); fixture.detectChanges();
   }
 
-  it('renders candidates without creating stacks; dismissal makes no write and survives reload in this dialog', async () => {
-    await loaded();
-    expect(fixture.nativeElement.querySelectorAll('img').length).toBe(2);
-    fixture.componentInstance.dismiss(candidate.key); fixture.detectChanges();
-    expect(fixture.componentInstance.candidates()).toEqual([]);
+  /** Keys arrive through the dialog's own stream, wherever focus is. */
+  function key(k: string, init: KeyboardEventInit = {}) {
+    const event = new KeyboardEvent('keydown', { key: k, cancelable: true, ...init });
+    keys.next(event);
+    return event;
+  }
+
+  async function settle() { await fixture.whenStable(); fixture.detectChanges(); }
+
+  it('shows one suggestion at a time with its proposed cover large and progress', async () => {
+    await loaded([candidate, second]);
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('stacks.browse_position');
+    const pressed = fixture.nativeElement.querySelector('button[aria-pressed="true"] img') as HTMLImageElement;
+    expect(new URL(pressed.src).searchParams.get('path')).toBe('/b.jpg');
+    expect(fixture.nativeElement.querySelectorAll('button[aria-pressed] img')).toHaveLength(2);
+    expect(fixture.componentInstance.focusedPath()).toBe('/b.jpg');
     http.expectNone('/api/stacks');
-    const reload = fixture.componentInstance.load(); await loaded(); await reload;
-    expect(fixture.componentInstance.candidates()).toEqual([]);
-    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('stacks with the focused frame as cover, advances, and Undo reverts and brings it back', async () => {
+    await loaded([candidate, second]);
+    expect(key('ArrowRight').defaultPrevented).toBe(true);
+    expect(fixture.componentInstance.focusedPath()).toBe('/a.jpg');
+    key('s');
+    const create = http.expectOne('/api/stacks');
+    expect(create.request.body).toEqual({ paths: ['/a.jpg', '/b.jpg'], cover_path: '/a.jpg' });
+    create.flush({ stack: null, undo: { entry_id: 7 } });
+    await vi.waitFor(() => expect(fixture.componentInstance.candidate()).toBe(second));
+    expect(fixture.componentInstance.handled()).toBe(1);
+    expect(fixture.componentInstance.focusedPath()).toBe('/c.jpg');
+    expect(refresh).toHaveBeenCalledWith(null);
+    const command = register.mock.calls[0][0] as UndoableCommand;
+    expect(command.labelParams).toEqual({ count: 2 });
+    const undone = command.undo();
+    http.expectOne('/api/organization_history/7/revert').flush({});
+    await undone;
+    expect(fixture.componentInstance.candidate()).toBe(candidate);
+    expect(fixture.componentInstance.handled()).toBe(0);
+  });
+
+  it('skip persists the dismissal and Undo restores it', async () => {
+    await loaded([candidate, second]);
+    key('x');
+    const dismiss = http.expectOne('/api/stacks/suggestions/dismissals');
+    expect(dismiss.request.method).toBe('POST');
+    expect(dismiss.request.body).toEqual({ kind: 'duplicate', paths: ['/a.jpg', '/b.jpg'] });
+    dismiss.flush(null, { status: 204, statusText: 'No Content' });
+    await vi.waitFor(() => expect(fixture.componentInstance.candidate()).toBe(second));
+    const undone = (register.mock.calls[0][0] as UndoableCommand).undo();
+    const restore = http.expectOne(`/api/stacks/suggestions/dismissals/${candidate.key}`);
+    expect(restore.request.method).toBe('DELETE');
+    restore.flush(null, { status: 204, statusText: 'No Content' });
+    await undone;
+    expect(fixture.componentInstance.candidate()).toBe(candidate);
+  });
+
+  it('keeps reviewing by keyboard after a decision, ignoring keys while one is in flight', async () => {
+    await loaded([candidate, second]);
+    key('S'); key('x');
+    http.expectOne('/api/stacks').flush({ stack: null, undo: null });
+    http.expectNone('/api/stacks/suggestions/dismissals');
+    await vi.waitFor(() => expect(fixture.componentInstance.candidate()).toBe(second));
+    key('ArrowLeft');
+    expect(fixture.componentInstance.focusedPath()).toBe('/e.jpg');
+    key('X');
+    http.expectOne('/api/stacks/suggestions/dismissals').flush(null, { status: 204, statusText: 'No Content' });
+    await vi.waitFor(() => expect(fixture.componentInstance.handled()).toBe(2));
+  });
+
+  it('refuses an Undo once the account has changed', async () => {
+    await loaded([candidate, second]);
+    key('x');
+    http.expectOne('/api/stacks/suggestions/dismissals').flush(null, { status: 204, statusText: 'No Content' });
+    await vi.waitFor(() => expect(register).toHaveBeenCalled());
+    owner.set('bob');
+    await expect((register.mock.calls[0][0] as UndoableCommand).undo()).rejects.toThrow();
+    http.expectNone(`/api/stacks/suggestions/dismissals/${candidate.key}`);
+  });
+
+  it('keeps the suggestion and reports a failed stack', async () => {
+    await loaded();
+    void fixture.componentInstance.stack();
+    http.expectOne('/api/stacks').flush({ detail: 'x' }, { status: 409, statusText: 'Conflict' });
+    await vi.waitFor(() => expect(fixture.componentInstance.actionFailed()).toBe(true));
+    await settle();
+    expect(fixture.componentInstance.candidate()).toBe(candidate);
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain('stacks.suggestion_failed');
+    expect(register).not.toHaveBeenCalled();
+  });
+
+  it('says the batch is done once every suggestion is handled', async () => {
+    await loaded();
+    void fixture.componentInstance.skip();
+    http.expectOne('/api/stacks/suggestions/dismissals').flush(null, { status: 204, statusText: 'No Content' });
+    await vi.waitFor(() => expect(fixture.componentInstance.candidate()).toBeNull());
+    await settle();
+    expect(fixture.nativeElement.textContent).toContain('stacks.suggestions_done');
+  });
+
+  it('makes no write for read-only accounts or a modified key', async () => {
+    await loaded();
+    for (const modifier of ['metaKey', 'ctrlKey', 'altKey']) expect(key('s', { [modifier]: true }).defaultPrevented).toBe(false);
+    edition.set(false); fixture.detectChanges();
+    key('s'); key('x');
+    await settle();
+    http.expectNone('/api/stacks');
+    http.expectNone('/api/stacks/suggestions/dismissals');
+    expect(fixture.componentInstance.candidate()).toBe(candidate);
   });
 
   it('refreshes only suggestion image URLs on successful load/reopen and keeps them stable on rerender', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(42);
     await loaded();
-    const images = () => [...fixture.nativeElement.querySelectorAll('img')]
+    const images = () => [...fixture.nativeElement.querySelectorAll('button[aria-pressed] img')]
       .map((img: HTMLImageElement) => img.getAttribute('src')!);
     const first = images();
     expect(first).toHaveLength(2);
@@ -91,16 +199,17 @@ describe('suggested stack review through HTTP and router', () => {
     http.expectNone('/api/stacks');
   });
 
-  it('opens the existing editor with exact reviewed membership and recommended cover', async () => {
+  it('opens the existing editor with exact membership and the focused frame as cover', async () => {
     await loaded();
     const item = fixture.componentInstance.candidates()[0];
+    fixture.componentInstance.step(1);
     const pending = fixture.componentInstance.review(item);
     expect(open).toHaveBeenCalledWith(StackDialogComponent, expect.objectContaining({ data: {
-      paths: ['/a.jpg', '/b.jpg'], activePath: '/b.jpg',
+      paths: ['/a.jpg', '/b.jpg'], activePath: '/a.jpg',
     } }));
     http.expectNone('/api/stacks');
     reviewed.next(false); reviewed.complete();
-    await vi.waitFor(() => expect(fixture.componentInstance.reviewing()).toBe(false));
+    await vi.waitFor(() => expect(fixture.componentInstance.busy()).toBe(false));
     await loaded(); await pending;
   });
 
