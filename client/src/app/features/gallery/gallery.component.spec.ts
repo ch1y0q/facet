@@ -24,7 +24,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSidenav, MatSidenavContainer, MatSidenavContent } from '@angular/material/sidenav';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { GalleryStore, GalleryFilters, DEFAULT_FILTERS } from './gallery.store';
-import { buildApiParams, DISPLAY_OPTIONS_KEY } from './gallery-filters.util';
+import { buildApiParams, countActiveFilters, DISPLAY_OPTIONS_KEY } from './gallery-filters.util';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
@@ -1619,7 +1619,7 @@ describe('GalleryComponent', () => {
       const activate = (filters: Partial<GalleryFilters>) => {
         const next = { ...DEFAULT_FILTERS, ...filters };
         mockStore.filters.set(next);
-        mockStore.activeFilterCount.set(Object.keys(filters).length);
+        mockStore.activeFilterCount.set(countActiveFilters(next));
       };
       const renderFixture = () => {
         const fixture = TestBed.createComponent(GalleryComponent);
@@ -1653,16 +1653,25 @@ describe('GalleryComponent', () => {
         const html = fixture.nativeElement as HTMLElement;
         expect(stack(html)!.textContent).toContain(I18N.gallery.filters_notice.message);
         expect(stack(html)!.textContent).not.toContain(I18N.gallery.filters_notice.message_plural);
+        expect(mockI18n.t).toHaveBeenCalledWith(I18N.gallery.filters_notice.message, { count: 1 });
         activate({ camera: 'Canon', tag: 'beach' });
         fixture.detectChanges();
         expect(stack(html)!.textContent).toContain(I18N.gallery.filters_notice.message_plural);
+        expect(mockI18n.t).toHaveBeenCalledWith(I18N.gallery.filters_notice.message_plural, { count: 2 });
       });
 
       it('resets every filter from its action', () => {
         activate({ camera: 'Canon' });
-        const html = renderFixture().nativeElement as HTMLElement;
+        mockStore.resetFilters.mockImplementationOnce(() => {
+          activate({});
+          return Promise.resolve();
+        });
+        const fixture = renderFixture();
+        const html = fixture.nativeElement as HTMLElement;
         reset(html)!.click();
+        fixture.detectChanges();
         expect(mockStore.resetFilters).toHaveBeenCalledOnce();
+        expect(stack(html)).toBeNull();
       });
 
       it('closes without resetting, and returns when the set of active filters changes', () => {

@@ -42,9 +42,18 @@ describe('activeFilterKeys', () => {
     expect(a).toEqual(['camera', 'tag', 'is_monochrome']);
     expect(b).toEqual(a);
   });
-  it('agrees with countActiveFilters', () => {
-    const f = filters({ camera: 'Canon', favorites_only: true, semanticQuery: 'dog' });
-    expect(activeFilterKeys(f)).toHaveLength(countActiveFilters(f));
+  it('lists every flag after the string filters, in declaration order', () => {
+    const f = filters({
+      faces_need_names: true, manual_faces_need_review: true, is_monochrome: true, duplicates_only: true,
+      blinks_only: true, show_rejected: true, favorites_only: true,
+      semanticQuery: 'dog', similar_to: '/a.jpg', camera: 'Canon',
+    });
+    expect(activeFilterKeys(f)).toEqual([
+      'camera', 'similar_to', 'semanticQuery',
+      'favorites_only', 'show_rejected', 'blinks_only', 'duplicates_only', 'is_monochrome',
+      'manual_faces_need_review', 'faces_need_names',
+    ]);
+    expect(countActiveFilters(f)).toBe(10);
   });
 });
 
