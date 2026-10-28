@@ -1,0 +1,364 @@
+import { signal } from '@angular/core';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { HttpRequest, provideHttpClient, withInterceptors, withXhr } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { ActivatedRoute, convertToParamMap, provideRouter, Router, NavigationEnd } from '@angular/router';
+import { MATERIAL_ANIMATIONS, provideNativeDateAdapter } from '@angular/material/core';
+import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { NEVER, Subject, filter, firstValueFrom, take, of } from 'rxjs';
+import { AuthService } from '../../core/services/auth.service';
+import { I18nService } from '../../core/services/i18n.service';
+import { ScanService } from '../../core/services/scan.service';
+import { AssistantChangesService, AssistantChangeBatch } from '../../core/agent/assistant-changes.service';
+import { makePhoto } from '../../../testing/photo.fixture';
+import { GalleryComponent } from './gallery.component';
+import { GalleryStore } from './gallery.store';
+import { App } from '../../app';
+import { ThemeService } from '../../core/services/theme.service';
+
+const counts = { total: 2, undecided: 2, kept: 0, rejected: 0 };
+const rows = [makePhoto({ path: '/trip/a.jpg' }), makePhoto({ path: '/trip/b.jpg' })];
+const page = { photos: rows, total: 2, page: 1, per_page: 64, total_pages: 1, has_more: false };
+const config = {
+  pagination: { default_per_page: 64 },
+  defaults: { sort: 'star_rating', sort_direction: 'ASC', gallery_mode: 'grid', hide_details: true },
+  display: { card_width_px: 168, image_width_px: 640, tags_per_photo: 5 },
+  features: { show_rating_controls: true }, cull: { trash_available: true },
+  quality_thresholds: { good: 6, great: 7, excellent: 8, best: 9 },
+  sort_options_grouped: [], search_threshold_default: 0.15,
+};
+
+describe('stack representative repairs through rendered gallery and HTTP', () => {
+  let fixture: ComponentFixture<GalleryComponent>;
+  let store: GalleryStore;
+  let http: HttpTestingController;
+  let auth: AuthService;
+  let requests: Subject<HttpRequest<unknown>>;
+  let assistantBatches: Subject<AssistantChangeBatch>;
+  const requested = (url: string) => firstValueFrom(requests.pipe(filter(request => request.url === url), take(1)));
+  const progressRequests = () => http.match(request => request.url === '/api/photos/review_progress');
+  const flushSideData = () => {
+    for (const request of http.match(request => request.url.startsWith('/api/filter_options/') || request.url === '/api/type_counts')) {
+      request.flush({ types: [], cameras: [], lenses: [], tags: [], persons: [], patterns: [], temps: [], hue_buckets: [], ranges: {} });
+    }
+    for (const request of http.match('/api/photos/keeper_hints')) request.flush({});
+  };
+
+  beforeEach(async () => {
+    localStorage.clear(); sessionStorage.clear();
+    requests = new Subject();
+    assistantBatches = new Subject();
+    TestBed.configureTestingModule({ providers: [
+      provideHttpClient(withXhr(), withInterceptors([(request, next) => { requests.next(request); return next(request); }])), provideHttpClientTesting(), provideRouter([]), provideNativeDateAdapter(),
+      { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
+      { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {}, paramMap: convertToParamMap({}) } } },
+      { provide: ScanService, useValue: { canLaunch: signal(false) } },
+      { provide: I18nService, useValue: { translations: signal({}), locale: () => 'en', languages: signal([]), t: (key: string, params?: unknown) => `${key} ${JSON.stringify(params ?? {})}` } },
+      { provide: AssistantChangesService, useValue: { batch$: assistantBatches.asObservable(), active: signal(false), activity: signal([]) } },
+      { provide: ThemeService, useValue: { theme: signal(''), darkMode: signal(true), THEMES: [], accentColor: signal('#ff6600'), complementaryColor: signal('#0099ff') } },
+      { provide: MatSnackBar, useValue: { open: vi.fn(() => ({ onAction: () => NEVER, afterDismissed: () => NEVER })) } },
+    ] });
+    auth = TestBed.inject(AuthService);
+    auth.status.set({ authenticated: true, multi_user: true, edition_enabled: true, edition_authenticated: true,
+      edition_password_required: false, login_password_required: true, user_id: 'alice', user_role: 'admin',
+      display_name: 'Alice', features: {}, download_profiles: [] });
+    http = TestBed.inject(HttpTestingController);
+    store = TestBed.inject(GalleryStore);
+    fixture = TestBed.createComponent(GalleryComponent);
+    fixture.detectChanges();
+    const photosStarted = requested('/api/photos');
+    http.expectOne('/api/config').flush(config);
+    await photosStarted;
+    const sideDataStarted = requested('/api/filter_options/metric_ranges');
+    http.expectOne(request => request.url === '/api/photos').flush(page);
+    progressRequests().forEach(request => request.flush(counts));
+    await sideDataStarted;
+    flushSideData();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(store.photos()).toHaveLength(2);
+  });
+
+  afterEach(() => {
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    http.verify({ ignoreCancelled: true });
+    localStorage.clear(); sessionStorage.clear();
+  });
+
+
+  it('stack badge opens the normal viewer directly without opening the editor or replacing scope', async () => {
+    const router = TestBed.inject(Router);
+    router.resetConfig([{ path: 'photo', children: [] }]);
+    const originalFilters = store.filters();
+    const photo = makePhoto({ path: '/trip/b.jpg', stack_id: 's1', stack_count: 3, stack_total_count: 3 });
+    store.photos.set([photo]); fixture.detectChanges();
+    const dialog = vi.spyOn(fixture.debugElement.injector.get(MatDialog), 'open');
+    const navigation = firstValueFrom(router.events.pipe(filter(event => event instanceof NavigationEnd), take(1)));
+    const badge = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('[data-stack-badge]')!;
+    expect(badge).not.toBeNull(); badge.click();
+    await navigation;
+    expect(router.url).toBe('/photo?path=%2Ftrip%2Fb.jpg');
+    expect(dialog).not.toHaveBeenCalled();
+    expect(store.pinnedPaths()).toBeNull();
+    expect(store.filters()).toEqual(originalFilters);
+    expect(store.photos()).toEqual([photo]);
+  });
+
+  it.each(['grid', 'mosaic'] as const)('expands and collapses %s via the mobile shell button through HTTP without losing photo totals or paging', async mode => {
+    store.setGalleryMode(mode);
+    store.filters.update(filters => ({ ...filters, per_page: 2 }));
+    fixture.componentInstance['containerWidth'].set(768);
+    const a = makePhoto({ path: '/a.jpg', stack_id: 's1', stack_count: 3, stack_total_count: 3 });
+    const b = makePhoto({ path: '/b.jpg', stack_id: 's1', stack_count: 3, stack_total_count: 3 });
+    const c = makePhoto({ path: '/c.jpg', stack_id: 's1', stack_count: 3, stack_total_count: 3 });
+    const d = makePhoto({ path: '/d.jpg' });
+    const loading = store.reloadPhotos();
+    http.expectOne(req => req.url === '/api/photos').flush({ ...page, per_page: 2, photos: [a,d], total: 2, photo_total: 4 });
+    progressRequests().forEach(req => req.flush({ ...counts, total: 4 }));
+    await loading; flushSideData(); fixture.detectChanges();
+    // Gallery startup has completed above; render the real shell with its shared
+    // store, without running a second copy of application startup HTTP.
+    const startup = vi.spyOn(App.prototype, 'ngOnInit').mockResolvedValue();
+    const shell = TestBed.createComponent(App);
+    shell.detectChanges(); startup.mockRestore();
+    try {
+      const root = shell.nativeElement as HTMLElement;
+      const button = root.querySelector<HTMLButtonElement>('[data-stack-collapse-mobile]');
+      expect(button).not.toBeNull();
+      expect(button?.closest('.lg\\:hidden')).not.toBeNull();
+      expect(fixture.componentInstance.effectiveGalleryMode()).toBe(mode);
+      expect((fixture.nativeElement as HTMLElement).querySelectorAll('app-photo-card')).toHaveLength(2);
+      button!.click();
+      const expand = http.expectOne(req => req.url === '/api/photos');
+      expect(expand.request.params.get('collapse_stacks')).toBe('0');
+      expect(expand.request.params.get('page')).toBe('1');
+      expect(expand.request.params.get('per_page')).toBe('2');
+      expand.flush({ ...page, per_page: 2, photos: [a,b], total: 4, photo_total: 4, has_more: true, total_pages: 2 });
+      progressRequests().forEach(req => req.flush({ ...counts, total: 4 }));
+      await fixture.whenStable(); flushSideData(); fixture.detectChanges(); shell.detectChanges();
+      expect(store.total()).toBe(4); expect(store.photoTotal()).toBe(4);
+      expect(button!.getAttribute('aria-pressed')).toBe('true');
+      const paging = store.nextPage();
+      const next = http.expectOne(req => req.url === '/api/photos');
+      expect(next.request.params.get('collapse_stacks')).toBe('0');
+      expect(next.request.params.get('page')).toBe('2');
+      next.flush({ ...page, per_page: 2, photos: [c,d], total: 4, photo_total: 4, page: 2, total_pages: 2 });
+      await paging; flushSideData(); fixture.detectChanges();
+      expect(store.photos().map(photo => photo.path)).toEqual(['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg']);
+      expect((fixture.nativeElement as HTMLElement).querySelectorAll('app-photo-card')).toHaveLength(4);
+      button!.click();
+      const collapse = http.expectOne(req => req.url === '/api/photos');
+      expect(collapse.request.params.get('collapse_stacks')).toBe('1');
+      expect(collapse.request.params.get('page')).toBe('1');
+      collapse.flush({ ...page, per_page: 2, photos: [a,d], total: 2, photo_total: 4 });
+      progressRequests().forEach(req => req.flush({ ...counts, total: 4 }));
+      await fixture.whenStable(); flushSideData(); fixture.detectChanges(); shell.detectChanges();
+      expect(store.total()).toBe(2); expect(store.photoTotal()).toBe(4);
+      expect(store.photos().map(photo => photo.path)).toEqual(['/a.jpg', '/d.jpg']);
+      expect((fixture.nativeElement as HTMLElement).querySelectorAll('app-photo-card')).toHaveLength(2);
+      expect(button!.getAttribute('aria-pressed')).toBe('false');
+      // Existing bottom-bar actions remain reachable alongside the new control.
+      const slideshow = root.querySelector<HTMLButtonElement>('button[aria-label^="slideshow.start"]');
+      expect(slideshow).not.toBeNull(); slideshow!.click();
+      expect(store.slideshowActive()).toBe(true);
+    } finally { shell.destroy(); }
+  });
+
+  it.each([true, false])('refreshes projected stack counts after an assistant changes an offscreen member (collapsed=%s)', async collapsed => {
+    store.collapseStacks.set(collapsed);
+    store.filters.update(filters => ({ ...filters, review_status: 'kept', per_page: 1 }));
+    const cover = makePhoto({ path: '/trip/a.jpg', stack_id: 's1', stack_count: 3, stack_total_count: 3 });
+    const loading = store.reloadPhotos();
+    http.expectOne(req => req.url === '/api/photos').flush({ ...page, photos: [cover], per_page: 1,
+      total: collapsed ? 1 : 3, photo_total: 3, has_more: !collapsed, total_pages: collapsed ? 1 : 3 });
+    progressRequests().forEach(req => req.flush({ ...counts, total: 3, kept: 3 }));
+    await loading; flushSideData();
+    store.selectWholeView();
+    const filters = store.filters();
+    const started = requested('/api/photos');
+    assistantBatches.next({ paths: ['/trip/b.jpg'] });
+    await started;
+    const repair = http.expectOne(req => req.url === '/api/photos');
+    expect(repair.request.params.get('collapse_stacks')).toBe(collapsed ? '1' : '0');
+    repair.flush({ ...page, photos: [{ ...cover, stack_count: 2 }], per_page: 1,
+      total: collapsed ? 1 : 2, photo_total: 2, has_more: !collapsed, total_pages: collapsed ? 1 : 2 });
+    progressRequests().forEach(req => req.flush({ ...counts, kept: 2 }));
+    await fixture.whenStable(); flushSideData();
+    expect(store.photos()[0].stack_count).toBe(2);
+    expect(store.photoTotal()).toBe(2);
+    expect(store.selectionCount()).toBe(2);
+    expect(store.filters()).toEqual(filters);
+    http.expectNone(req => req.url === '/api/photos/by_paths');
+  });
+
+  it('defers an offscreen stack member repair while parked and updates it on Back', async () => {
+    const cover = makePhoto({ path: '/trip/a.jpg', stack_id: 's1', stack_count: 3, stack_total_count: 3 });
+    const loading = store.reloadPhotos();
+    http.expectOne(req => req.url === '/api/photos').flush({ ...page, photos: [cover], total: 1, photo_total: 3 });
+    progressRequests().forEach(req => req.flush({ ...counts, total: 3 }));
+    await loading; flushSideData();
+    store.parkListingReads();
+    assistantBatches.next({ paths: ['/trip/b.jpg'] });
+    http.expectNone(req => req.url === '/api/photos' || req.url === '/api/photos/by_paths');
+    const started = requested('/api/photos');
+    const returning = store.resumeListingReads();
+    await started;
+    http.expectOne(req => req.url === '/api/photos').flush({ ...page, photos: [{ ...cover, stack_count: 2 }], total: 1, photo_total: 2 });
+    progressRequests().forEach(req => req.flush(counts));
+    await returning; flushSideData();
+    expect(store.photoTotal()).toBe(2);
+    expect(store.photos()[0].stack_count).toBe(2);
+  });
+
+  it.each(['review', 'delete'] as const)('repairs retained stack badges after an expanded member %s', async action => {
+    store.collapseStacks.set(false);
+    store.filters.update(filters => ({ ...filters, review_status: 'kept' }));
+    const members = ['/trip/a.jpg', '/trip/b.jpg', '/trip/c.jpg'].map(path => makePhoto({
+      path, stack_id: 's1', stack_count: 3, stack_total_count: 3,
+    }));
+    const loading = store.reloadPhotos();
+    http.expectOne(req => req.url === '/api/photos').flush({ ...page, photos: members, total: 3, photo_total: 3 });
+    progressRequests().forEach(req => req.flush({ ...counts, total: 3 }));
+    await loading; flushSideData();
+    store.restoreSelection([members[2].path]);
+    const started = requested('/api/photos');
+    if (action === 'review') {
+      const targeted = requested('/api/photos/by_paths');
+      assistantBatches.next({ paths: [members[1].path] });
+      await targeted;
+      http.expectOne('/api/photos/by_paths').flush({ photos: [], missing: [members[1].path] });
+    } else store.removePhotos([members[1].path]);
+    await started;
+    http.expectOne(req => req.url === '/api/photos').flush({ ...page,
+      photos: [members[0], members[2]].map(photo => ({ ...photo, stack_count: 2, stack_total_count: action === 'delete' ? 2 : 3 })),
+      total: 2, photo_total: 2,
+    });
+    progressRequests().forEach(req => req.flush(counts));
+    await fixture.whenStable(); flushSideData(); fixture.detectChanges();
+    expect(store.photoTotal()).toBe(2);
+    expect(store.photos().map(photo => photo.stack_count)).toEqual([2, 2]);
+    expect([...store.selectedPaths()]).toEqual([members[2].path]);
+    const badges = [...(fixture.nativeElement as HTMLElement).querySelectorAll('[data-stack-badge]')];
+    expect(badges).toHaveLength(2);
+    expect(badges.every(badge => badge.textContent?.includes('2'))).toBe(true);
+  });
+
+  it('still expands through HTTP when persisting the browser preference fails', async () => {
+    const original = Storage.prototype.setItem;
+    const blocked = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function(this: Storage, key: string, value: string) {
+      if (key === 'facet_collapse_stacks') throw new DOMException('Storage full', 'QuotaExceededError');
+      original.call(this, key, value);
+    });
+    try {
+      const expanding = store.toggleStackCollapse();
+      const request = http.expectOne(req => req.url === '/api/photos');
+      expect(request.request.params.get('collapse_stacks')).toBe('0');
+      request.flush({ ...page, photo_total: 2 });
+      progressRequests().forEach(req => req.flush(counts));
+      await expanding;
+      flushSideData();
+      expect(store.collapseStacks()).toBe(false);
+      expect(store.photos()).toEqual(rows);
+    } finally { blocked.mockRestore(); }
+  });
+
+  it.each(['cover', 'hidden-member', 'two-member-dissolve'] as const)('reconciles %s deletion without expanding the requested targets', async scenario => {
+    const paths = ['/trip/a.jpg', '/trip/b.jpg', '/trip/c.jpg'];
+    const members = scenario === 'two-member-dissolve' ? paths.slice(0, 2) : paths;
+    const reloading = store.reloadPhotos();
+    http.expectOne(req => req.url === '/api/photos').flush({ ...page, total: 1, photo_total: members.length,
+      photos: [{ ...rows[0], stack_id: 's1', stack_count: members.length, stack_total_count: members.length }] });
+    progressRequests().forEach(req => req.flush(counts)); await reloading; flushSideData();
+    // Select all members explicitly, then narrow to the one deletion target.
+    store.restoreSelection(members);
+    const target = scenario === 'hidden-member' ? paths[1] : paths[0];
+    store.restoreSelection([target]); fixture.detectChanges();
+    vi.spyOn(fixture.debugElement.injector.get(MatDialog), 'open').mockReturnValue({ afterClosed: () => of({ includeCompanions: false, includeSequenceSiblings: false, removeMissing: true }) } as never);
+    const deletion = vi.spyOn(fixture.componentInstance, 'deleteSelected');
+    const refresh = vi.spyOn(store, 'refreshPaths');
+    const started = requested('/api/photo/delete');
+    const deleteButton = [...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('[data-selection-bar] button')]
+      .find(button => button.getAttribute('aria-label')?.startsWith('cull.delete_action'))!;
+    expect(deleteButton).toBeDefined(); expect(deleteButton.disabled).toBe(false); deleteButton.click();
+    await started;
+    expect(deletion).toHaveBeenCalled();
+    expect(fixture.debugElement.injector.get(MatDialog).open).toHaveBeenCalled();
+    const write = http.expectOne('/api/photo/delete');
+    expect(write.request.body).toEqual({ paths: [target], include_companions: false, include_sequence_siblings: false, remove_missing: true, dry_run: false });
+    const repaired = requested('/api/photos');
+    write.flush({ deleted: [target], removed_missing: [], refused_bracket_lead: [], not_found: [], not_visible: [], skipped: [], errors: {}, trashed: 1 });
+    await repaired;
+    const survivor = target === paths[0] ? paths[1] : paths[0];
+    const remaining = members.length - 1;
+    http.expectOne(req => req.url === '/api/photos').flush({ ...page, total: 1, photo_total: remaining,
+      photos: [makePhoto({ path: survivor, ...(remaining > 1 ? { stack_id: 's1', stack_count: remaining, stack_total_count: remaining } : {}) })] });
+    progressRequests().forEach(req => req.flush(counts));
+    await refresh.mock.results[0].value; await deletion.mock.results[0].value; flushSideData(); fixture.detectChanges();
+    expect(store.photos().map(photo => photo.path)).toEqual([survivor]);
+    expect(store.total()).toBe(1); expect(store.photoTotal()).toBe(remaining);
+    expect(store.selectedPaths().size).toBe(0);
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('app-photo-card')).toHaveLength(1);
+    expect((fixture.nativeElement as HTMLElement).querySelector('[data-stack-badge]') !== null).toBe(remaining > 1);
+    http.expectNone(req => req.url === '/api/photo/delete');
+  });
+
+  it('repairs both loaded pages when Keep elects an earlier fallback and preserves explicit selection and later paging', async () => {
+    const a = makePhoto({ path: '/a.jpg', stack_id: 's1', stack_count: 2, stack_total_count: 2 });
+    const a2 = makePhoto({ path: '/a2.jpg', stack_id: 's1', stack_count: 1, stack_total_count: 2 });
+    const b = makePhoto({ path: '/b.jpg' }), c = makePhoto({ path: '/c.jpg' }), d = makePhoto({ path: '/d.jpg' }), e = makePhoto({ path: '/e.jpg' });
+    store.filters.update(f => ({ ...f, page: 2, per_page: 2, review_status: 'undecided' }));
+    store.photos.set([a, b, c, d]); store.restoreSelection([b.path]);
+    const keeping = store.batchReview([a.path], 'kept', false);
+    const firstStarted = requested('/api/photos');
+    http.expectOne('/api/photos/batch_review').flush({ count: 1 }); await firstStarted;
+    const first = http.expectOne(req => req.url === '/api/photos');
+    expect(first.request.params.get('page')).toBe('1');
+    const nextStarted = requested('/api/photos');
+    first.flush({ ...page, page: 1, per_page: 2, total: 5, photo_total: 5, photos: [b,a2], has_more: true }); await nextStarted;
+    const second = http.expectOne(req => req.url === '/api/photos'); expect(second.request.params.get('page')).toBe('2');
+    second.flush({ ...page, page: 2, per_page: 2, total: 5, photo_total: 5, photos: [c,d], has_more: true });
+    progressRequests().forEach(req => req.flush(counts)); const result = await keeping; flushSideData();
+    expect(store.photos().map(photo => photo.path)).toEqual(['/b.jpg', '/a2.jpg', '/c.jpg', '/d.jpg']);
+    expect(new Set(store.photos().map(photo => photo.path)).size).toBe(4);
+    expect([...store.selectedPaths()]).toEqual(['/b.jpg']); expect(store.photoTotal()).toBe(5);
+    const paging = store.nextPage();
+    const third = http.expectOne(req => req.url === '/api/photos'); expect(third.request.params.get('page')).toBe('3');
+    third.flush({ ...page, page: 3, per_page: 2, total: 5, photo_total: 5, photos: [e], has_more: false }); await paging; flushSideData();
+    expect(store.photos().map(photo => photo.path)).toEqual(['/b.jpg', '/a2.jpg', '/c.jpg', '/d.jpg', '/e.jpg']);
+    expect(store.total()).toBe(5); expect(store.hasMore()).toBe(false);
+    const undoStarted = requested('/api/photos/batch_review');
+    const undoing = store.restoreSnapshot(result!.snapshot); await undoStarted;
+    const undo = http.expectOne('/api/photos/batch_review');
+    expect(undo.request.body).toEqual({ photo_paths: ['/a.jpg'], decision: 'undecided' });
+    const restoreStarted = requested('/api/photos'); undo.flush({ count: 1 }); await restoreStarted;
+    for (const [index, photos] of [[a,b], [c,d], [e]].entries()) {
+      const request = http.expectOne(req => req.url === '/api/photos');
+      expect(request.request.params.get('page')).toBe(String(index + 1));
+      const next = index < 2 ? requested('/api/photos') : null;
+      request.flush({ ...page, page: index + 1, per_page: 2, total: 5, photo_total: 6, photos, has_more: index < 2 });
+      if (next) await next;
+    }
+    progressRequests().forEach(req => req.flush(counts)); await undoing; flushSideData();
+    expect(store.photos().map(photo => photo.path)).toEqual(['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg', '/e.jpg']);
+    expect(store.photoTotal()).toBe(6);
+  });
+  it('cancels the replacement-prefix read on a real navigation and refuses late rows', async () => {
+    const router = TestBed.inject(Router);
+    router.resetConfig([{ path: 'away', children: [] }]);
+    const a = makePhoto({ path: '/a.jpg', stack_id: 's1', stack_count: 2, stack_total_count: 2 });
+    store.filters.update(f => ({ ...f, page: 2, per_page: 2, review_status: 'undecided' }));
+    store.photos.set([a, makePhoto({ path: '/b.jpg' }), makePhoto({ path: '/c.jpg' }), makePhoto({ path: '/d.jpg' })]);
+    const keeping = store.batchReview([a.path], 'kept', false);
+    const started = requested('/api/photos'); http.expectOne('/api/photos/batch_review').flush({ count: 1 }); await started;
+    const read = http.expectOne(req => req.url === '/api/photos');
+    expect(read.request.params.get('page')).toBe('1');
+    await router.navigateByUrl('/away');
+    expect(read.cancelled).toBe(true);
+    store.photos.set([makePhoto({ path: '/new-view.jpg' })]);
+    await keeping; flushSideData();
+    expect(store.photos().map(photo => photo.path)).toEqual(['/new-view.jpg']);
+    http.expectNone(req => req.url === '/api/photos');
+  });
+});

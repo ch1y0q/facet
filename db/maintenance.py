@@ -991,7 +991,49 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
 
 
 # Tables a viewer database export must not carry (the DROP list of the full export).
-VIEWER_EXPORT_EXCLUDED_TABLES = ('mcp_tokens', 'rating_provenance', 'organization_history')
+VIEWER_EXPORT_EXCLUDED_TABLES = ('mcp_tokens', 'rating_provenance', 'organization_history',
+                                 'photo_stack_members', 'photo_stacks',
+                                 'immich_stack_links', 'immich_stack_receipts', 'immich_stack_send_claims')
+
+
+def _omit_private_stack_albums(conn) -> int:
+    """A full source snapshot must not publish filters naming excluded stacks.
+
+    Incremental exports do not copy albums at all; destination-owned albums and
+    private stacks therefore remain untouched on that path. Unreadable filter
+    documents are omitted conservatively because their private scope is unknown.
+    """
+    from db.schema import table_exists
+    if not table_exists(conn, 'albums'):
+        return 0
+    columns = {row[1] for row in conn.execute('PRAGMA table_info(albums)')}
+    if not {'id', 'is_smart', 'smart_filter_json'} <= columns:
+        return 0
+    # Query objects are normally a few KiB. Bound the text handed to the JSON
+    # decoder rather than materializing an arbitrary database BLOB in Python.
+    max_filter_bytes = 1024 * 1024
+    rows = conn.execute("""SELECT id, CASE
+        WHEN typeof(smart_filter_json)='text' AND length(CAST(smart_filter_json AS BLOB))<=?
+        THEN smart_filter_json ELSE NULL END
+        FROM albums WHERE is_smart!=0 AND smart_filter_json IS NOT NULL""", (max_filter_bytes,))
+    excluded = []
+    for album_id, raw in rows:
+        if raw == '':
+            continue
+        try:
+            filters = json.loads(raw) if raw is not None else None
+        except (ValueError, TypeError, RecursionError):
+            filters = None
+        if not isinstance(filters, dict) or filters.get('stack_id'):
+            excluded.append(album_id)
+    for start in range(0, len(excluded), 300):
+        batch = excluded[start:start + 300]
+        placeholders = ','.join('?' for _ in batch)
+        for table in ('album_photos', 'album_client_picks'):
+            if table_exists(conn, table):
+                conn.execute(f'DELETE FROM {table} WHERE album_id IN ({placeholders})', batch)
+        conn.execute(f'DELETE FROM albums WHERE id IN ({placeholders})', batch)
+    return len(excluded)
 
 
 def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnail_size=320, verbose=True, force=False):
@@ -1069,9 +1111,20 @@ def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnai
                      "raw_sharpness_variance = NULL, caption_embedding = NULL")
     dst_conn.commit()
 
-    # Three side tables never ship in a viewer export: the provenance table holds user paths, the
+    omitted_albums = _omit_private_stack_albums(dst_conn)
+    if verbose and omitted_albums:
+        logger.info('  Omitted %d private or unreadable smart albums', omitted_albums)
+
+    # Owner-private stacks and their path-bearing revision scopes never ship.
+    # Their photo triggers reference the excluded tables; remove them together.
+    for (trigger,) in dst_conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB 'organization_stack_*'").fetchall():
+        dst_conn.execute('DROP TRIGGER "' + trigger.replace('"', '""') + '"')
+    if table_exists(dst_conn, 'organization_revisions'):
+        dst_conn.execute("DELETE FROM organization_revisions WHERE kind='stack'")
+
+    # Private side tables never ship in a viewer export: the provenance table holds user paths, the
     # token table holds bearer-secret hashes, and organization_history holds per-owner before/after
-    # snapshots of edited photos. The viewer's own init_database re-creates all three empty. (The
+    # snapshots of edited photos. The viewer's own init_database re-creates them empty. (The
     # incremental path copies none of them.) organization_revisions and organization_clock stay: they
     # are trigger-maintained derived counters (photo paths and integers only) that the
     # destination's own triggers keep advancing.

@@ -172,6 +172,12 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
         </mat-form-field>
       }
 
+      @if (!pinned()) {
+        <button mat-icon-button data-stack-collapse (click)="store.toggleStackCollapse()"
+          [attr.aria-pressed]="!store.collapseStacks()"
+          [matTooltip]="(store.collapseStacks() ? I18N.stacks.expand_all : I18N.stacks.collapse) | translate"
+          [attr.aria-label]="(store.collapseStacks() ? I18N.stacks.expand_all : I18N.stacks.collapse) | translate"><mat-icon>{{ store.collapseStacks() ? 'unfold_more' : 'unfold_less' }}</mat-icon></button>
+      }
       <!-- Keep top N%: server-rank the current view by the current sort and
            select the bottom (100-N)% for review/rejection via the selection bar. -->
       @if (auth.isEdition() && store.total() > 0 && store.canScopeSelectionToView()) {
@@ -191,7 +197,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
               <span class="text-sm font-medium w-9 text-right">{{ keepPercent() }}%</span>
             </div>
             <div class="text-xs opacity-70 my-2">
-              {{ I18N.gallery.keep_top.preview | translate:{ keep: keepPreviewKeep(), cut: keepPreviewCut(), total: store.total() } }}
+              {{ I18N.gallery.keep_top.preview | translate:{ keep: keepPreviewKeep(), cut: keepPreviewCut(), total: store.photoTotal() } }}
             </div>
             <button mat-flat-button class="w-full" [disabled]="keepApplying() || keepPreviewCut() === 0" (click)="applyKeepTop()">
               @if (keepApplying()) {
@@ -250,6 +256,10 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
       <!-- Main content. The drawer reserves its own strip, so the grid gets
            exactly the width it has whenever the filters are open. -->
       <mat-sidenav-content>
+        @if (store.photoTotal() !== store.total()) {
+          <p role="status" class="text-sm opacity-80 px-3 py-2">{{ I18N.stacks.totals | translate:{ photos: store.photoTotal(), items: store.total() } }}</p>
+        }
+
         <!-- Set-scope chip: the photo-detail "open this set in the gallery" action.
              Never reflected in the URL (sequence_group_id is renumbered on every
              detection pass), so this is the only affordance out of it. -->
@@ -352,6 +362,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                     (embedMetadataClicked)="embedMetadata($event)"
                     (openAddPersonClicked)="openAddPerson($event)"
                     [cardActions]="cardActions()"
+                    (openStackClicked)="openStack($event)"
                     (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
                     (openDetailClicked)="downloadPhoto($event)"
                     (favoriteToggled)="store.toggleFavorite($event)"
@@ -411,7 +422,8 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                   (embedMetadataClicked)="embedMetadata($event)"
                   (openAddPersonClicked)="openAddPerson($event)"
                   [cardActions]="cardActions()"
-                  (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                  (openStackClicked)="openStack($event)"
+                    (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
                   (openDetailClicked)="downloadPhoto($event)"
                   (favoriteToggled)="store.toggleFavorite($event)"
                   (rejectedToggled)="store.toggleRejected($event)"
@@ -475,7 +487,8 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                       (embedMetadataClicked)="embedMetadata($event)"
                       (openAddPersonClicked)="openAddPerson($event)"
                       [cardActions]="cardActions()"
-                      (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                      (openStackClicked)="openStack($event)"
+                    (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
                       (openDetailClicked)="downloadPhoto($event)"
                       (favoriteToggled)="store.toggleFavorite($event)"
                       (rejectedToggled)="store.toggleRejected($event)"
@@ -651,8 +664,11 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
           @if (offerWholeView()) {
             <div class="w-full flex flex-wrap items-center gap-2 text-xs opacity-80 px-1">
               <span>{{ I18N.gallery.selection.view_scope_offer | translate:{ count: store.photos().length } }}</span>
-              <button mat-button class="!text-xs" (click)="selectWholeView()">{{ I18N.gallery.selection.view_scope_select_all | translate:{ total: store.total() } }}</button>
+              <button mat-button class="!text-xs" (click)="selectWholeView()">{{ I18N.gallery.selection.view_scope_select_all | translate:{ total: store.photoTotal() } }}</button>
             </div>
+          }
+          @if (viewScoped()) {
+            <p class="text-xs basis-full opacity-80">{{ I18N.stacks.folded_scope | translate }}</p>
           }
           <span data-selection-status tabindex="-1" class="text-sm font-medium shrink-0 px-1">{{ (viewScoped() ? I18N.gallery.selection.view_scope_active : I18N.gallery.selection.count) | translate:{ count: selectionCount() } }}</span>
           <button mat-icon-button disabledInteractive (click)="clearSelection()" [matTooltip]="I18N.gallery.selection.clear | translate" [attr.aria-label]="I18N.gallery.selection.clear | translate"><mat-icon>close</mat-icon></button>
@@ -664,6 +680,11 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
             <button mat-icon-button disabledInteractive (click)="compareSelection()" [matTooltip]="I18N.gallery.selection.compare | translate" [attr.aria-label]="I18N.gallery.selection.compare | translate"><mat-icon>compare</mat-icon></button>
           }
           <!-- Mobile: single Actions trigger opening a touch-friendly bottom sheet -->
+          @if (auth.isEdition()) {
+            <button mat-icon-button data-create-stack (click)="createStack()" [disabled]="!canCreateStack()"
+              [matTooltip]="(canCreateStack() ? I18N.stacks.create : I18N.stacks.explicit_only) | translate"
+              [attr.aria-label]="I18N.stacks.create | translate"><mat-icon>photo_library</mat-icon></button>
+          }
           <button mat-icon-button class="md:!hidden" (click)="openActionsSheet()" [disabled]="downloading()" [matTooltip]="I18N.gallery.selection.actions | translate" [attr.aria-label]="I18N.gallery.selection.actions | translate">
             @if (downloading()) { <mat-spinner diameter="18" [attr.aria-label]="I18N.ui.labels.loading | translate"></mat-spinner> } @else { <mat-icon>more_horiz</mat-icon> }
           </button>
@@ -868,8 +889,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
   // "Keep top N%" cull dial: keep the top N% of the current view, select the rest.
   protected readonly keepPercent = signal(20);
   protected readonly keepApplying = signal(false);
-  protected readonly keepPreviewKeep = computed(() => Math.ceil(this.store.total() * this.keepPercent() / 100));
-  protected readonly keepPreviewCut = computed(() => Math.max(0, this.store.total() - this.keepPreviewKeep()));
+  protected readonly keepPreviewKeep = computed(() => Math.ceil(this.store.photoTotal() * this.keepPercent() / 100));
+  protected readonly keepPreviewCut = computed(() => Math.max(0, this.store.photoTotal() - this.keepPreviewKeep()));
 
   private resizeObserver: ResizeObserver | null = null;
   private readonly scrollDirective = viewChild(InfiniteScrollDirective);
@@ -911,9 +932,16 @@ export class GalleryComponent implements OnInit, OnDestroy {
   protected readonly viewScoped = this.store.viewScopeSelected;
 
   /** True when every loaded photo is already selected. */
-  protected readonly allLoadedSelected = computed(() =>
-    this.store.photos().length > 0 && this.selectionCount() >= this.store.photos().length,
-  );
+  protected readonly allLoadedSelected = computed(() => {
+    const photos = this.store.photos();
+    if (!photos.length) return false;
+    if (this.viewScoped()) {
+      const excluded = this.excludedPaths();
+      return photos.every(photo => !excluded.has(photo.path));
+    }
+    const selected = this.selectedPaths();
+    return photos.every(photo => selected.has(photo.path));
+  });
 
   /**
    * Whether to offer widening the selection to the whole filtered view.
@@ -927,7 +955,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     !this.viewScoped()
     && this.store.canScopeSelectionToView()
     && this.allLoadedSelected()
-    && this.store.total() > this.store.photos().length,
+    && this.store.photoTotal() > this.store.photos().length,
   );
 
   /** True when the device has no hover capability (touch device) */
@@ -2083,6 +2111,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'delete': await this.deleteSelected(paths); break;
       case 'download': await this.downloadSelected(action.type, action.profile, paths); break;
       // Selection-wide kinds: the single-photo menu never offers them.
+      case 'stack':
       case 'favorite':
       case 'reject':
       case 'invert':
@@ -2105,6 +2134,30 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (photo) this.downloadPhoto(photo);
   }
 
+  protected readonly canCreateStack = computed(() => this.auth.isEdition() && !this.viewScoped() && this.selectionCount() >= 2 && this.selectionCount() <= 1000);
+
+  protected async createStack(): Promise<void> {
+    if (!this.canCreateStack()) return;
+    await this.launchStack({ paths: [...this.selectedPaths()], activePath: this.store.focusedPath() });
+  }
+
+  protected async openStack(photo: Photo): Promise<void> {
+    if (!photo.stack_id) return;
+    this.downloadPhoto(photo);
+  }
+
+  private async launchStack(data: import('./stack-dialog.component').StackDialogData): Promise<void> {
+    const identity = this.auth.identity();
+    const url = this.router.url;
+    let navigated = false;
+    const navigation = this.router.events.subscribe(event => { if (event instanceof NavigationStart) navigated = true; });
+    try {
+      const { StackDialogComponent } = await import('./stack-dialog.component');
+      if (this.destroyRef.destroyed || navigated || identity !== this.auth.identity() || url !== this.router.url) return;
+      this.dialog.open(StackDialogComponent, { data, width: '900px', maxWidth: '96vw' });
+    } finally { navigation.unsubscribe(); }
+  }
+
   protected downloadPhoto(photo: Photo): void {
     this.router.navigate(['/photo'], {
       queryParams: { path: photo.path },
@@ -2123,6 +2176,8 @@ export class GalleryComponent implements OnInit, OnDestroy {
         albums: this.albumOptions(),
         downloadProfiles: this.auth.downloadProfiles(),
         canCompare: this.canCompareSelection(),
+        canStack: this.canCreateStack(),
+        viewScoped: this.viewScoped(),
         trashAvailable: this.store.config()?.cull?.trash_available ?? false,
       },
     });
@@ -2135,6 +2190,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
    *  sheet and the right-click menu's bulk mode so the two cannot drift. */
   private async runSelectionAction(action: SheetAction): Promise<void> {
     switch (action.kind) {
+      case 'stack': await this.createStack(); break;
       case 'review': await this.batchReview(action.decision); break;
       case 'favorite': await this.batchFavorite(); break;
       case 'reject': await this.batchReject(); break;

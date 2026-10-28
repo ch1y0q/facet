@@ -130,6 +130,7 @@ const WAIT_STEP_MS = 25;
 const WAIT_TIMEOUT_MS = 10_000;
 
 const COMPACT_KEYS = [
+  'stack_id', 'stack_count', 'stack_total_count', 'stack_revision',
   'path', 'filename', 'date_taken', 'aggregate', 'aesthetic', 'comp_score', 'face_quality',
   'category', 'face_count', 'is_favorite', 'star_rating', 'is_rejected', 'sequence_kind',
 ] as const;
@@ -418,7 +419,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       if (gallery.loadError()) throw new UiToolError('upstream_error', 'The gallery could not load photos for these filters.');
       return {
         applied: Object.keys(patch),
-        total: gallery.total(),
+        total: gallery.total(), photo_total: gallery.photoTotal(),
         loaded: gallery.photos().length,
         filters: viewFilters(),
       };
@@ -436,7 +437,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       return {
         shown: gallery.photos().length,
         missing: missing.slice(0, 50),
-        total: gallery.total(),
+        total: gallery.total(), photo_total: gallery.photoTotal(),
       };
     },
 
@@ -452,7 +453,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         filters: viewFilters(),
         sort: gallery.filters().sort,
         sort_direction: gallery.filters().sort_direction,
-        total: gallery.total(),
+        total: gallery.total(), photo_total: gallery.photoTotal(),
         loaded: gallery.photos().length,
         has_more: gallery.hasMore(),
         photos,
@@ -575,7 +576,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         timeline: timelineMatch ? { year: Number(timelineMatch[1]), month: timelineMatch[2] ? Number(timelineMatch[2]) : null } : null,
         selection: { scope: selection['scope'], count: selection['count'] },
         gallery: inGallery
-          ? { total: gallery.total(), loaded: gallery.photos().length, has_more: gallery.hasMore(), pinned }
+          ? { total: gallery.total(), photo_total: gallery.photoTotal(), loaded: gallery.photos().length, has_more: gallery.hasMore(), pinned }
           : null,
         culling: capCullingSnapshot(plan.snapshot()),
         // A stored preset without a stored slider value reports no strictness: the preset's own applies.
@@ -598,7 +599,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       return {
         loaded: gallery.photos().length,
         added: gallery.photos().length - before,
-        total: gallery.total(),
+        total: gallery.total(), photo_total: gallery.photoTotal(),
         has_more: gallery.hasMore(),
       };
     },

@@ -1,3 +1,4 @@
+import { PhotoStackService } from '../../core/services/photo-stack.service';
 import { GalleryStore } from '../gallery/gallery.store';
 import { makePhoto } from '../../../testing/photo.fixture';
 import type { Mock, MockInstance } from 'vitest';
@@ -102,6 +103,7 @@ describe('PhotoDetailComponent', () => {
   }, 20000);
 
   beforeEach(() => {
+    vi.spyOn(PhotoStackService.prototype, 'byPhoto').mockReturnValue(of(null));
     changes$ = new Subject<AssistantChangeBatch>();
     mockApi = {
       get: vi.fn(() => of(samplePhoto)),
@@ -2147,7 +2149,8 @@ describe('PhotoDetailComponent', () => {
         state: { photo: expect.objectContaining({ path: '/photos/sibling.jpg' }) },
         replaceUrl: true,
       });
-      expect(component.photo()?.path).toBe('/photos/sibling.jpg');
+      // Real Router activation owns the photo update; a mocked navigation does not.
+      expect(component.photo()?.path).toBe(samplePhoto.path);
     });
   });
 

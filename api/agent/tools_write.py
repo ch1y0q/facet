@@ -49,6 +49,8 @@ EXPORT_SIDECARS_SHOWN = 20
 EXPORT_METADATA_TIMEOUT_S = 180
 # The levels each write tool needs; the matrix test walks this table.
 WRITE_TOOL_LEVELS: dict[str, str] = {
+    "create_photo_stack": "edition", "update_photo_stack": "edition", "unstack_photos": "edition",
+    "undo_photo_stack": "edition",
     "set_rating": "user", "set_favorite": "user", "set_rejected": "user",
     "batch_set_rating": "edition", "batch_set_favorite": "edition", "batch_set_rejected": "edition",
     "create_album": "edition", "album_add_photos": "edition", "album_remove_photos": "edition",
@@ -84,7 +86,7 @@ def _too_large(count: int, cap: int) -> dict:
 
 def _scope_filters(filters: Any) -> dict:
     """The filters as the routes read them, with the viewer's hide defaults applied exactly as
-    ``search_photos`` applies them, so its ``total`` is the ``expected_count`` and the set written."""
+    ``search_photos`` applies them, so its ``photo_total`` is the ``expected_count`` and the set written."""
     merged = _hide_defaults(filters.model_dump(exclude_none=True))
     return {key: query_value(value) for key, value in merged.items()}
 
@@ -115,7 +117,7 @@ async def resolve_scope(
     scope = _scope_filters(filters)
     if expected_count is None:
         return err("invalid_input", "A filter-scoped write requires `expected_count`: "
-                   "the number of photos the filters match (see search_photos `total`)"), {}
+                   "the number of photos the filters match (see search_photos `photo_total`)"), {}
     counted = await client.call(grant, "photos_count", query=scope, timeout=settings["call_timeout_s"])
     if not counted["ok"]:
         return counted, {}
@@ -456,6 +458,7 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
         "Create an album. Not idempotent: calling twice makes two albums. With none of the three it is empty. "
         "At most ONE of: `filters` (the search_photos filter object) saves a SMART album that follows those filters; "
         "`target: \"view\"` saves a smart album from the filters of the user's open gallery view; "
+        "this includes every matching original, including folded stack members (`photo_total`), not just display tiles. "
         f"`paths` (<={BATCH_CAP}) or `target: \"selection\"` (the tab's selection, optional `tab_id`) creates a FIXED "
         "album and fills it in the same call (`added`, `skipped`: paths not in the library). A smart album stores no "
         "hide toggles (the album page applies the viewer's own), only filters the gallery sidebar has a field for "

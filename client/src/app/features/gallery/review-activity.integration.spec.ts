@@ -1,3 +1,4 @@
+import { MatDialog } from '@angular/material/dialog';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { signal } from '@angular/core';
@@ -28,7 +29,7 @@ const config = {
   sort_options_grouped: [], search_threshold_default: 0.15,
 };
 
-describe('manual review activity from rendered gallery menus', () => {
+describe('manual activity from rendered gallery menus and stacks', () => {
   let fixture: ComponentFixture<GalleryComponent>;
   let store: GalleryStore;
   let http: HttpTestingController;
@@ -81,6 +82,73 @@ describe('manual review activity from rendered gallery menus', () => {
     TestBed.resetTestingModule();
     http.verify({ ignoreCancelled: true });
     localStorage.clear(); sessionStorage.clear();
+  });
+
+  it('creates a reviewed stack from the rendered selection bar and records activity only after HTTP success', async () => {
+    const journal = TestBed.inject(UserActivityJournal);
+    const cursor = journal.since().until;
+    const selected = [...rows, makePhoto({ path: '/trip/c.jpg' })];
+    store.restoreSelection(selected.map(photo => photo.path)); fixture.detectChanges();
+    const start = requested('/api/photos/by_paths');
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('[data-create-stack]')!.click();
+    await start;
+    http.expectOne('/api/photos/by_paths').flush({ photos: selected, total: 3, missing: [] });
+    await fixture.whenStable();
+    const overlay = TestBed.inject(OverlayContainer).getContainerElement();
+    const stackDialog = overlay.querySelector('app-stack-dialog')!;
+    expect(stackDialog).toBeTruthy();
+    expect([...stackDialog.querySelectorAll('img')].every(image => image.getAttribute('src')?.startsWith('/thumbnail?'))).toBe(true);
+    const coverButtons = stackDialog.querySelectorAll<HTMLButtonElement>('button[aria-pressed]');
+    coverButtons[1].click();
+    await fixture.whenStable();
+    const refresh = vi.spyOn(store, 'refreshPaths');
+    const saving = requested('/api/stacks');
+    stackDialog.querySelector<HTMLButtonElement>('button[mat-flat-button]')!.click(); await saving;
+    const request = http.expectOne('/api/stacks');
+    expect(request.request.body).toEqual({ paths: selected.map(photo => photo.path), cover_path: rows[1].path });
+    expect(journal.since(cursor).items).toEqual([]);
+    const refreshed = requested('/api/photos');
+    request.flush({ stack: { id: 's1', revision: 1, editable: true, cover_path: rows[1].path,
+      members: selected.map((photo, position) => ({ path: photo.path, position })) }, undo: { entry_id: 55 } });
+    await refreshed;
+    http.expectOne(req => req.url === '/api/photos').flush({ ...page, photo_total: 4, total: 2, photos: [{ ...rows[1], stack_id: 's1', stack_count: 3, stack_total_count: 3 }, makePhoto({ path: '/trip/unstacked.jpg' })] });
+    progressRequests().forEach(req => req.flush(counts)); flushSideData();
+    await refresh.mock.results[0].value;
+    await fixture.whenStable(); fixture.detectChanges();
+    expect(journal.since(cursor).items).toEqual([expect.objectContaining({ kind: 'stack', paths: selected.map(photo => photo.path), value: 'create' })]);
+    expect(fixture.nativeElement.textContent).toContain('stacks.totals');
+    expect(store.selectedPaths().size).toBe(3);
+    expect(fixture.nativeElement.textContent).not.toContain('gallery.selection.view_scope_offer');
+    const cards = [...(fixture.nativeElement as HTMLElement).querySelectorAll('app-photo-card [role=button]')];
+    expect(cards.map(card => card.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
+  });
+
+  it('explicitly selects every permitted member through the separate stack editor', async () => {
+    store.photos.set([{ ...rows[0], stack_id: 's1', stack_count: 1, stack_total_count: 3 }]);
+    fixture.detectChanges(); const loading = requested('/api/stacks/s1');
+    const { StackDialogComponent } = await import('./stack-dialog.component');
+    TestBed.inject(MatDialog).open(StackDialogComponent, { data: { stackId: 's1' } });
+    fixture.detectChanges(); await loading;
+    const members = ['/trip/a.jpg', '/elsewhere/filtered.jpg', '/rejected/member.jpg'];
+    http.expectOne('/api/stacks/s1').flush({ id: 's1', revision: 7, editable: false, cover_path: members[0],
+      members: members.map((path, position) => ({ path, position })) });
+    await fixture.whenStable();
+    const dialog = TestBed.inject(OverlayContainer).getContainerElement().querySelector('app-stack-dialog')!;
+    expect(dialog.querySelectorAll('img')).toHaveLength(3);
+    expect(dialog.textContent).toContain('stacks.read_only');
+    const select = [...dialog.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('stacks.select_all'))!;
+    select.click(); await fixture.whenStable();
+    expect([...store.selectedPaths()]).toEqual(members);
+    expect(store.viewScopeSelected()).toBe(false);
+    http.expectNone(request => request.method === 'PUT' || request.method === 'DELETE');
+  });
+
+  it('disables stack creation for whole-view selection and discloses folded members', async () => {
+    store.selectWholeView(); fixture.detectChanges();
+    const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('[data-create-stack]')!;
+    expect(button.disabled).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('stacks.folded_scope');
+    button.click(); http.expectNone('/api/stacks');
   });
 
   it.each([

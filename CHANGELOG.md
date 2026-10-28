@@ -6,6 +6,8 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
+- **Manual photo stacks.** Group explicit photos behind a chosen cover, reorder or change membership, browse permitted members directly in the viewer with an ordered thumbnail strip, previous/next buttons and position counter, manage the stack separately and Undo organization changes without changing originals or review decisions. Gallery counts and whole-view selections include folded matching photos; stacks remain owner-private and survive rescans and relinking. Local assistant tools use the same permission and revision checks.
+- **Previewed Immich stack import and push.** Local CLI plans require a reviewed digest before apply, create only fully mapped conflict-free groups, adopt exact matches and reconcile uncertain sends before retry. Existing stacks are never overwritten; no automatic sync or unstack propagation is added.
 - **Scores placed in the library.** Photo detail, the gallery side panel and the card score badge show where each score sits in the whole library: a sparkline of its distribution with this photo's bar lit, and "Top X% of the library" with the library range on hover or focus. Scores with no better end (ISO, aperture, face count…) show the range only.
 
 ### Changed
@@ -14,6 +16,8 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Keep keyboard arrows inside the visible photo stack.** Left/Right now follow the same members and boundaries as the stack buttons even when an exact photo list is active, without adding photos to that list. Handled arrow keys no longer trigger default browser movement.
+- **Refresh stack browsing after a history restore.** Reload membership for the open photo and discard older replies so restored or dissolved stacks do not leave stale navigation controls.
 - **The side panel no longer flickers open and closed.** A filter drawer animation event arriving after the drawer had already changed state flipped it back, in a loop.
 
 ## [1.25.0] "Hyperfocale" — 2026-10-27

@@ -964,10 +964,11 @@ def get_cached_count(conn, where_str, sql_params, from_clause="photos"):
     return count
 
 
-async def get_cached_count_async(conn, where_str, sql_params, from_clause="photos"):
+async def get_cached_count_async(conn, where_str, sql_params, from_clause="photos", *, use_cache=True):
     """Async variant of get_cached_count for aiosqlite paths."""
-    cache_key = await asyncio.to_thread(_count_cache_key, "", from_clause, where_str, sql_params)
-    cached = _count_cache_lookup(cache_key)
+    # Snapshot callers must not stamp an old read with a newer external token.
+    cache_key = await asyncio.to_thread(_count_cache_key, "", from_clause, where_str, sql_params) if use_cache else None
+    cached = _count_cache_lookup(cache_key) if cache_key is not None else None
     if cached is not None:
         return cached
 
@@ -975,11 +976,13 @@ async def get_cached_count_async(conn, where_str, sql_params, from_clause="photo
     row = await cursor.fetchone()
     await cursor.close()
     count = row[0] if row else 0
-    _count_cache_store(cache_key, count)
+    if cache_key is not None:
+        _count_cache_store(cache_key, count)
     return count
 
 
-async def get_cached_hidden_aggregates_async(conn, where_str, sql_params, from_clause="photos"):
+async def get_cached_hidden_aggregates_async(conn, where_str, sql_params, from_clause="photos", *, use_cache=True,
+                                             stack_owner=None):
     """Cached blink/burst/duplicate/bracket aggregates over the no-hide set.
 
     The gallery builds its hidden_summary from a full-table aggregate (~100ms on a
@@ -987,19 +990,29 @@ async def get_cached_hidden_aggregates_async(conn, where_str, sql_params, from_c
     with the same TTL/keying as the count cache instead of re-running it on every
     infinite-scroll fetch.
     """
-    cache_key = await asyncio.to_thread(_count_cache_key, "hs:", from_clause, where_str, sql_params)
-    cached = _count_cache_lookup(cache_key)
+    # Manual members are restored by the gallery's automatic-hide exception.
+    # Use the same membership predicate, in this snapshot and owner scope, so the
+    # category counts describe automatic followers that can actually be hidden.
+    auto_exclusion = ''
+    aggregate_params = list(sql_params)
+    if stack_owner is not None:
+        from api.stack_gallery import membership_clause
+        auto_exclusion = f' AND NOT ({membership_clause()})'
+        aggregate_params = [stack_owner, stack_owner, *sql_params]
+        use_cache = False
+    cache_key = await asyncio.to_thread(_count_cache_key, "hs:", from_clause, where_str, sql_params) if use_cache else None
+    cached = _count_cache_lookup(cache_key) if cache_key is not None else None
     if cached is not None:
         return cached
     cursor = await conn.execute(
         "SELECT COUNT(*) AS unhidden, "
         "SUM(CASE WHEN is_blink = 1 THEN 1 ELSE 0 END) AS blinks, "
-        f"SUM(CASE WHEN {HIDDEN_BURST_SQL} THEN 1 ELSE 0 END) AS bursts, "
-        f"SUM(CASE WHEN {HIDDEN_DUPLICATE_SQL} THEN 1 ELSE 0 END) AS duplicates, "
+        f"SUM(CASE WHEN {HIDDEN_BURST_SQL}{auto_exclusion} THEN 1 ELSE 0 END) AS bursts, "
+        f"SUM(CASE WHEN {HIDDEN_DUPLICATE_SQL}{auto_exclusion} THEN 1 ELSE 0 END) AS duplicates, "
         f"SUM(CASE WHEN {HIDDEN_BRACKET_SQL} THEN 1 ELSE 0 END) AS brackets, "
         f"SUM(CASE WHEN {HIDDEN_PANORAMA_SQL} THEN 1 ELSE 0 END) AS panoramas "
         f"FROM {from_clause}{where_str}",
-        sql_params,
+        aggregate_params,
     )
     row = await cursor.fetchone()
     await cursor.close()
@@ -1011,7 +1024,8 @@ async def get_cached_hidden_aggregates_async(conn, where_str, sql_params, from_c
         'brackets': int(row['brackets'] or 0) if row else 0,
         'panoramas': int(row['panoramas'] or 0) if row else 0,
     }
-    _count_cache_store(cache_key, agg)
+    if cache_key is not None:
+        _count_cache_store(cache_key, agg)
     return agg
 
 

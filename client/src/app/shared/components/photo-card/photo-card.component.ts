@@ -166,6 +166,15 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
           (load)="imageLoaded.set(true)"
         />
 
+        @if (photo().stack_id) {
+          <button mat-button data-stack-badge class="!absolute !top-1 !right-1 !z-30 !min-w-0 !bg-black/75 !text-white"
+            (click)="openStackClicked.emit(photo()); $event.stopPropagation()"
+            (keydown)="$event.stopPropagation()"
+            [attr.aria-label]="((photo().stack_count ?? 0) !== (photo().stack_total_count ?? photo().stack_count ?? 0) ? I18N.stacks.badge_filtered : I18N.stacks.badge) | translate:{ count: photo().stack_count ?? 0, total: photo().stack_total_count ?? photo().stack_count ?? 0 }">
+            <mat-icon aria-hidden="true">photo_library</mat-icon>
+            {{ photo().stack_count }}@if (photo().stack_total_count !== photo().stack_count) { /{{ photo().stack_total_count }} }
+          </button>
+        }
         <!-- Persistent badges.
              Each one occupies the EXACT box of the hover-bar control it stands
              for -- same w-7 h-7, same bottom-1, same left-1.5 / right-1.5 /
@@ -727,6 +736,7 @@ export class PhotoCardComponent {
   readonly openCritiqueClicked = output<Photo>();
   readonly embedMetadataClicked = output<Photo>();
   readonly openAddPersonClicked = output<Photo>();
+  readonly openStackClicked = output<Photo>();
   readonly openSetClicked = output<{ photo: Photo; kind: CardSetKind }>();
   readonly openDetailClicked = output<Photo>();
   readonly favoriteToggled = output<string>();

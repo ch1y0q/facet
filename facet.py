@@ -2422,6 +2422,19 @@ def main():
 
     parser = cli_args.build_parser()
     args = parser.parse_args()
+    if args.stack_plan_out and not args.immich_stacks_plan:
+        parser.error('--stack-plan-out requires --immich-stacks-plan')
+    if args.ack_stack_plan and not args.immich_stacks_apply:
+        parser.error('--ack-stack-plan requires --immich-stacks-apply')
+    if args.immich_stack_ids and not args.immich_stacks_plan:
+        parser.error('--stack-id requires --immich-stacks-plan')
+    if args.immich_stacks_plan or args.immich_stacks_apply:
+        if args.photo_paths or args.immich_sync or args.immich_test:
+            parser.error('Stack exchange must run separately from scans and rating synchronization')
+        if args.immich_stacks_apply and (not args.ack_stack_plan or args.dry_run):
+            parser.error('Stack apply requires --ack-stack-plan and cannot be combined with --dry-run')
+        from sync.immich_stacks import run_cli
+        sys.exit(run_cli(args, ScoringConfig(args.config, validate=False).config))
     if (args.sidecar_fields is not None or args.overwrite_sidecar_review) and not args.import_sidecars:
         parser.error("--sidecar-fields and --overwrite-sidecar-review require --import-sidecars")
     if args.sidecar_fields is not None:

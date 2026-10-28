@@ -115,6 +115,18 @@ Viewers im `progress`-Feld von `/api/scan/status` und im SSE-Stream bereitstellt
 
 Bewertungen folgen Immichs versionssicherer Richtlinie (nur 1–5, nie 0/−1); ein optionales Top-Picks-Album sammelt Fotos oberhalb eines Bewertungsschwellenwerts. Nur REST — keine direkte Kopplung an die Immich-Datenbank. Siehe [Konfiguration — Immich-Synchronisierung](CONFIGURATION.md#immich-sync) für den vollständigen Block.
 
+### Immich-Stapelpläne
+
+Vorhandene Optionen `--config`, `--db`, `--user` verwenden; im Mehrbenutzermodus einen bestehenden Eigentümer ausdrücklich nennen. Vorschau schreibt und migriert nicht. Anwenden erfordert den geprüften Digest.
+
+| CLI | |
+|---|---|
+| `python facet.py --immich-stacks-plan import --stack-plan-out NEW_JSON` | Entfernte Stapel zum lokalen Import prüfen |
+| `python facet.py --immich-stacks-plan push --stack-id UUID --stack-plan-out NEW_JSON` | Lokale Stapel zur entfernten Erstellung prüfen |
+| `python facet.py --immich-stacks-apply PLAN_JSON --ack-stack-plan SHA256` | Geprüften Plan ausdrücklich anwenden |
+
+`--stack-id UUID` für Quellgruppen wiederholen. `--stack-plan-out NEW_JSON` erstellt eine private Datei (POSIX `0600`), ohne Überschreiben. Grenzen: 1000 Gruppen, 1000 Mitglieder/Gruppe, insgesamt 20000, 16 MiB. Exakte Treffer können Verknüpfungen übernehmen; unvollständige Zuordnungen und Überschneidungen überspringen ganze Gruppen. Bestehende Stapel werden nie aktualisiert; unklare Erstellungen werden vor Wiederholung abgeglichen. Siehe [Rechte, Konflikte und entfernte Konkurrenz](IMMICH.md#manuelle-stapel-importieren-und-übertragen). Wählen Sie unter Windows einen Ausgabeordner, dessen ACL den Zugriff auf Ihr Konto beschränkt; POSIX-Modusbits gewährleisten unter Windows keinen privaten Dateizugriff.
+
 ## Neuberechnungen
 
 Diese Befehle aktualisieren bestimmte Metriken, leiten neue Daten ab (KI-Bildunterschriften, GPS, Embeddings) oder analysieren die Datenbank — alles, ohne die vollständige Bewertungspipeline erneut auszuführen. Die meisten verwenden gespeicherte Thumbnails/Landmarken erneut und sind CPU-leicht, aber die KI-/Extraktionszeilen (z. B. `--generate-captions`) und die aus-dem-Bild-neuberechnenden Zeilen sind GPU-intensiv.

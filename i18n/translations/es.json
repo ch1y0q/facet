@@ -2838,7 +2838,11 @@
       "set_favorite": "Favoritos modificados",
       "set_rating": "Valoración",
       "set_rejected": "Rechazo",
-      "start_scan": "Análisis iniciado"
+      "start_scan": "Análisis iniciado",
+      "create_photo_stack": "Pila de fotos creada",
+      "update_photo_stack": "Pila de fotos actualizada",
+      "unstack_photos": "Fotos desapiladas",
+      "undo_photo_stack": "Cambio de pila deshecho"
     },
     "ui": {
       "ui_navigate": "Página abierta",
@@ -2928,6 +2932,43 @@
     "unknown": "Desconocido",
     "photo_count": "Fotos: {count}",
     "field": "Campo",
-    "entry_action": "{action} · {kind} · {date} · #{id}"
+    "entry_action": "{action} · {kind} · {date} · #{id}",
+    "stack": "Pila de fotos"
+  },
+  "stacks": {
+    "previous": "Foto anterior de la pila",
+    "next": "Foto siguiente de la pila",
+    "browse_position": "{position} de {count}",
+    "manage": "Gestionar pila",
+    "title": "Pila de fotos",
+    "create": "Apilar fotos",
+    "hint": "Se conservan los originales y sus decisiones. Elige una portada y guarda. El orden inicial es cronológico.",
+    "member_count": "{count} miembro",
+    "member_count_plural": "{count} miembros",
+    "open_member": "Abrir {path}",
+    "cover_for": "Usar {path} como portada",
+    "cover": "Portada",
+    "move_up": "Mover {path} antes",
+    "move_down": "Mover {path} después",
+    "remove": "Quitar {path} de la pila",
+    "add_selected": "Añadir {count} fotos seleccionadas",
+    "select_all": "Seleccionar los {count} miembros",
+    "unstack": "Desapilar",
+    "read_only": "Puedes ver los miembros permitidos. La edición requiere acceso a todos los miembros.",
+    "dissolve_hint": "Guardar menos de dos miembros disuelve la pila. Las fotos se conservan.",
+    "error": "La solicitud falló. Se conserva el borrador; inténtalo de nuevo.",
+    "conflict": "La pila cambió, no está disponible o una foto ya pertenece a una pila. Recarga los miembros. Abre las pilas existentes desde su insignia y quita miembros antes de reagruparlos.",
+    "unavailable": "Esta pila o un miembro no está disponible.",
+    "reload": "Recargar miembros",
+    "saved": "Pila de fotos actualizada",
+    "expand_all": "Expandir todas las pilas",
+    "collapse": "Contraer pilas",
+    "totals": "{photos} fotos coincidentes · {items} elementos visibles",
+    "folded_scope": "Las acciones de toda la vista incluyen los miembros contraídos. Una miniatura seleccionada solo afecta a esa foto.",
+    "explicit_only": "Selecciona explícitamente entre 2 y 1000 fotos para crear una pila.",
+    "badge": "Abrir pila: {count} miembros",
+    "badge_filtered": "Abrir pila: {count} coincidencias de {total} miembros permitidos",
+    "stack_id": "ID de pila",
+    "position": "Posición"
   }
 }

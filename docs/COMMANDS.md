@@ -115,6 +115,18 @@ Push your Facet ratings and favorites to an [Immich](https://immich.app/) server
 
 Ratings follow Immich's version-safe policy (1–5 only, never 0/−1); an optional top-picks album collects photos above a rating threshold. REST-only — no direct Immich database coupling. See [Configuration — Immich Sync](CONFIGURATION.md#immich-sync) for the full block.
 
+### Immich stack plans
+
+Use the existing `--config`, `--db` and `--user` options; multi-user mode requires an explicit existing owner. Preview never writes or migrates. Apply requires the reviewed plan digest.
+
+| CLI | |
+|---|---|
+| `python facet.py --immich-stacks-plan import --stack-plan-out NEW_JSON` | Preview remote stacks for local import |
+| `python facet.py --immich-stacks-plan push --stack-id UUID --stack-plan-out NEW_JSON` | Preview local stacks for remote creation |
+| `python facet.py --immich-stacks-apply PLAN_JSON --ack-stack-plan SHA256` | Apply the reviewed plan explicitly |
+
+Repeat `--stack-id UUID` to scope source groups. `--stack-plan-out NEW_JSON` writes a new private file (POSIX `0600`), refusing overwrite. Limits: 1000 groups, 1000 members/group, 20000 total members, 16 MiB. Exact matches may adopt links; incomplete mappings and overlaps skip whole groups. Existing groups are never updated, and uncertain creates are reconciled before retry. See [permissions, conflicts and remote race limits](IMMICH.md#manual-stack-import-and-push). On Windows, choose an output directory whose ACL restricts access to your account; POSIX mode bits do not establish Windows file privacy.
+
 ## Recompute Operations
 
 These commands update specific metrics, derive new data (AI captions, GPS, embeddings), or analyze the database — all without re-running the full scoring pipeline. Most reuse stored thumbnails/landmarks and are CPU-light, but the AI/extraction rows (e.g. `--generate-captions`) and recompute-from-image rows are GPU-heavy.

@@ -30,6 +30,8 @@ SELECTION = "selection"
 SELECTION_RULE = (
     'Or pass `target: "selection"` (and optionally `tab_id`) to act on exactly what the user has '
     "selected in their open Facet tab, instead of `paths` / `filters`. Exactly one of the three. "
+    "A whole-view selection includes folded matching stack members, and the real photo count and whole-view "
+    "scope must be shown before applying. A selected collapsed tile alone names only its displayed photo. "
     "A whole-view selection is re-counted on the server and refused (`invalid_input`) if the view "
     "changed since the tab counted it.")
 FRAME_LIMIT_NOTE = "the bridge frame limit is 256 KB"
@@ -278,7 +280,7 @@ async def resolve_view(
     if data.get("filters_scopable") is not True:
         return _view_refusal("The tab's current view (similar photos, a semantic search or a list chosen by an "
                              "assistant) cannot be saved as a smart album; use `paths` instead"), "", 0, None
-    total = data.get("total")
+    total = data.get("photo_total", data.get("total"))
     if not isinstance(total, int) or isinstance(total, bool) or total < 0:
         return err("upstream_error", "The tab reported an unusable total"), "", 0, None
     raw = data.get("album_filter_json")

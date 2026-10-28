@@ -2,7 +2,7 @@
 
 > 🌐 [English](../AGENTS.md) · [Français](../fr/AGENTS.md) · [Deutsch](../de/AGENTS.md) · [Italiano](../it/AGENTS.md) · [Español](../es/AGENTS.md) · [Português](../pt/AGENTS.md) · **简体中文**
 
-Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（MCP）服务器，让支持 MCP 的 AI 助手使用与图库相同的筛选条件搜索和查看你的照片库。它提供十三个不会改动照片库的只读工具，以及十五个 `ui_*` 工具：它们操作你已经打开的浏览器标签页（页面、筛选条件、选择），从不写入照片库数据。获得授权的令牌还可以[修改内容](#修改内容)（评分、标记、标签、相册、选片和删除）并操作[暗房](#暗房选片分组)。
+Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（MCP）服务器，让支持 MCP 的 AI 助手使用与图库相同的筛选条件搜索和查看你的照片库。它提供十四个不会改动照片库的只读工具，以及十五个 `ui_*` 工具：它们操作你已经打开的浏览器标签页（页面、筛选条件、选择），从不写入照片库数据。获得授权的令牌还可以[修改内容](#修改内容)（评分、标记、标签、相册、选片和删除）并操作[暗房](#暗房选片分组)。
 
 ## 启用
 
@@ -45,13 +45,14 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 ## 工具
 
-十三个数据工具均为只读：
+十四个数据工具均为只读：
 
 | 工具 | 作用 |
 |------|--------------|
 | `search_photos` | 像图库一样筛选和排序照片库，除非筛选条件另行设置，否则应用查看器的默认隐藏开关（闭眼、连拍、重复、包围曝光、全景、已拒绝）（会报告 `hidden_summary`）。默认显示在你打开的标签页中（见下文）；`fields` 可添加任意照片列 |
 | `semantic_search` | 按含义查找照片，或用 `scope: "text"` 按说明文字中的词查找。它返回的行会固定在标签页中。 `filters` 像图库的筛选一样缩小搜索范围,每一行都带有其 `similarity`。 |
 | `get_photo` | 按路径获取单张照片的完整详情（不含直方图）;或用 `target: "selection"`(配合 `tab_id`)指定用户选中的那一张照片 |
+| `get_photo_stack` | 按精确路径读取本地堆栈，或 null |
 | `get_thumbnail` | 查看一张照片:其缩略图作为图像部分(`size` 160 至 640,默认 512)。若 JPEG 会超过 `viewer.mcp.max_image_bytes`,则使用更小的尺寸;都放不下则返回 `too_large`;或用 `target: "selection"`(配合 `tab_id`)指定用户选中的那一张照片 |
 | `contact_sheet` | 将 1 至 16 张照片作为一张带编号的网格图查看(`columns` 2 至 4,最长边 1024)。文本部分列出 `legend`(格子编号对应路径,按请求顺序)和 `unavailable`(因照片缺失或不可见而留空的格子);或用 `target: "selection"` 指定选中的照片(最多 16 张) |
 | `possible_faces` | 与某个已识别人物相似的人脸:与该人物质心的余弦相似度,最佳在前,仅限同一嵌入模型。`scope` 为 `unassigned`(默认)、`other_persons` 或 `all`;`min_similarity` 默认 0.30;`limit` 最多 100。超过 192000 张人脸的扫描会被拒绝(`too_large`):用 `scope`、`path_prefix`、`date_from` 或 `date_to` 缩小范围。照片会显示在你的标签页中。`candidates` 是范围内您可见的人脸数量（在嵌入维度检查之前）；`faces_scanned` 是实际评分的行数。 |
@@ -180,6 +181,10 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `batch_set_rejected` | `edition` | 淘汰大量照片 | 1000 个路径，或 `filters` |
 | `add_tags` | `edition` | 添加手动标签（与 AI 标签分开保存） | 10 个标签；1000 个路径，或 `filters` |
 | `remove_tags` | `edition` | 移除手动标签 | 10 个标签；1000 个路径，或 `filters` |
+| `create_photo_stack` | `edition` | 明确创建本地堆栈，返回撤销条目 | 2–1000 paths |
+| `update_photo_stack` | `edition` | 替换成员/顺序及可选封面，拒绝旧版本 | 1000 paths |
+| `unstack_photos` | `edition` | 解散堆栈，保留原片 |  |
+| `undo_photo_stack` | `edition` | 仅撤销可用的堆栈条目，拒绝后续变更 |  |
 | `create_album` | `edition` | 创建相册（不幂等：调用两次会创建两个相册）：可为空，也可由 `filters` / `target: "view"` 创建跟随这些筛选条件的智能相册，或由 `paths` / `target: "selection"` 创建并在同一次调用中填充的固定相册（`added`、`skipped`）。智能相册使用查看器自身的隐藏开关，在 `list_albums` 中显示 0 张照片。不含任何有效筛选条件的 `filters`（`{}`，或仅含已关闭的显示开关）会被拒绝并返回 `invalid_input`：要创建空相册请省略 `filters` | |
 | `album_add_photos` | `edition` | 向相册添加照片（已有的会被忽略） | 1000 个路径 |
 | `album_remove_photos` | `edition` | 从相册移除照片；照片本身不受影响 | 1000 个路径 |
@@ -192,9 +197,15 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `cull_apply` | `edition` | 复制保留的照片，或移动、移入回收站被淘汰的照片（[先预览再确认](#破坏性操作先预览再确认)） | 10000 个路径，或 `filters` |
 | `delete_photos` | `edition` | 把文件移入回收站并删除其照片库记录（[先预览再确认](#破坏性操作先预览再确认)） | 1000 个路径 |
 
+### 本地手动堆栈
+
+`get_photo_stack(path)` 读取本地堆栈或 null；部分可见时仅返回有权查看的成员且禁止编辑。`create_photo_stack(paths, cover_path)` 要求明确指定 2–1000 张未堆叠照片。`update_photo_stack(stack_id, paths, expected_revision, cover_path?)` 替换成员和顺序，0/1 个成员时解散。`unstack_photos(stack_id, expected_revision)` 解散堆栈。这三个工具需要 `edition`；已有堆栈须提供 UUID 和当前版本，切勿盲目重试创建。成功变更返回 `undo.entry_id`；`undo_photo_stack(entry_id)` 需要编辑权限，检查历史类型为堆栈，并拒绝后续编辑或可见性丢失。路径最长 4096 字符。不改变文件、审阅决定或远程 Immich 状态；全局凭据仅用于 CLI。 大型变更成功时的 `stack_truncated: true` 表示只返回 UUID/revision/member_count 摘要，仍保留 `undo.entry_id`。这不是可用于编辑的完整成员列表。
+
+`search_photos` 和图库上下文区分显示项 `total` 与匹配原片 `photo_total`。筛选写入的 `expected_count` 应使用 `photo_total`。整视图选择和 `target:view` 包括折叠匹配成员，执行前须说明真实照片数和整个视图范围。单张折叠卡片只选择显示的照片。`user_activity` 包含 `stack` create/update/unstack/undo。服务器专用的 `stack_id`/`collapse_stacks` 不是标签页筛选键。
+
 - **在单密码安装上，`user` 工具需要编辑令牌**，因为该模式没有中间级别（参见[权限级别](#权限级别)）。
 - **设置语义。** 逐张照片的工具先读取当前状态，只写入有差异的部分，因此重复调用是无害的；每个路径会报告 `changed` 或 `already`。它们一次处理一个路径，遇到第一个 `library_busy`、`outcome_unknown` 或 `forbidden_level` 就停止，并报告 `affected`、每个路径的 `results` 和 `not_attempted`。批量工具设置的是同样的状态。
-- **选择照片。** 批量、标签和 `cull_apply` 工具接受 `paths` 或 `filters`（`search_photos` 的筛选对象）二者之一，外加可选的 `exclude` 列表。`filters` 目标必须带有 `expected_count`，即应用 `exclude` 之前筛选条件的匹配数（`search_photos` 的 `total`）。Facet 会先重新统计，数字不一致时不写入任何内容（`invalid_input`，附带 `actual_count`）。 查看器的默认隐藏开关(包括已拒绝的照片)对 `filters` 的应用方式与 `search_photos` 完全相同,因此其 `total` 就是 `expected_count`。所以已拒绝的照片会从 `filters` 目标中隐藏:对于 `move_rejects` 和 `trash_rejects`,请把 `show_rejected`(或 `hide_rejected: false`)同时传给 `search_photos` 和 `cull_apply`;`copy_keeps` 无需额外设置。
+- **选择照片。** 批量、标签和 `cull_apply` 工具接受 `paths` 或 `filters`（`search_photos` 的筛选对象）二者之一，外加可选的 `exclude` 列表。`filters` 目标必须带有 `expected_count`，即应用 `exclude` 之前筛选条件的匹配数（`search_photos` 的 `photo_total`）。Facet 会先重新统计，数字不一致时不写入任何内容（`invalid_input`，附带 `actual_count`）。 查看器的默认隐藏开关(包括已拒绝的照片)对 `filters` 的应用方式与 `search_photos` 完全相同,因此其 `photo_total` 就是 `expected_count`。所以已拒绝的照片会从 `filters` 目标中隐藏:对于 `move_rejects` 和 `trash_rejects`,请把 `show_rejected`(或 `hide_rejected: false`)同时传给 `search_photos` 和 `cull_apply`;`copy_keeps` 无需额外设置。
 - **状态归谁。** 评分、收藏和淘汰都属于令牌所有者本人。
 - **被跳过的文件。** 当 `cull_apply` 或 `delete_photos` 返回非空的 `skipped` 列表时，结果还会带有 `skipped_reason`：这些库路径在磁盘上没有可读文件（缺失、已移动或不在扫描目录内），对它们未执行任何操作。
 - **用户所选的照片。** 在工具接受 `paths` 的地方,`target: "selection"` 改用已打开标签页的选择(`tab_id` 选择标签页)。预览与确认之间选择发生变化时返回 `invalid_input` 并带 `selection_changed`,选择过大而无法放入标签页回复时返回 `too_large`,`delete_photos` 在确认时会重新读取选择。 `get_photo`、`get_thumbnail`(恰好一张选中的照片)和 `contact_sheet`(最多 16 张)也接受 `target: "selection"`,可在任意页面使用。`junk_reject` 仅在标签页位于图库页面时接受它(否则返回 `invalid_input`)。

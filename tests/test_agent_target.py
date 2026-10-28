@@ -296,6 +296,20 @@ def gallery_view(stored=None, total=11, **over):
 
 
 class TestCreateAlbumFromTheView:
+    def test_folded_view_saves_every_matching_original(self, setup, made_albums):
+        env, token, _ = setup(gallery_view(total=9, photo_total=11))
+        stacked = env.call(token, 'create_photo_stack', {'paths': PATHS[:3], 'cover_path': PATHS[0]})
+        assert stacked['ok'], stacked
+        result = env.call(token, 'create_album', {'name': ALBUM_PREFIX + 'folded', 'target': 'view'})
+        assert result['ok'], result
+        assert result['data']['photo_count'] == 11
+        assert result['data']['target']['count'] == 11
+        album_id = result['data']['id']
+        response = env.client.get(f'/api/albums/{album_id}/photos', headers=env.login(edition=True),
+                                  params={'collapse_stacks': 'false'})
+        assert response.status_code == 200, response.text
+        assert {photo['path'] for photo in response.json()['photos']} == set(PATHS)
+
     def test_the_views_store_form_filters_become_a_smart_album_as_the_tab_wrote_them(self, setup, made_albums):
         view = gallery_view()
         env, token, tab = setup(view)

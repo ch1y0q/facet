@@ -81,6 +81,10 @@ def counting(monkeypatch):
 
 class TestGrantMatrix:
     ARGS = {
+        "create_photo_stack": {"paths": [P[0]] , "cover_path": P[0]},
+        "update_photo_stack": {"stack_id": "invalid", "paths": [], "expected_revision": 1},
+        "unstack_photos": {"stack_id": "invalid", "expected_revision": 1},
+        "undo_photo_stack": {"entry_id": 0},
         "set_rating": {"paths": [P[0]], "rating": 2}, "set_favorite": {"paths": [P[0]], "value": True},
         "set_rejected": {"paths": [P[0]], "value": True},
         "batch_set_rating": {"paths": [P[0]], "rating": 2}, "batch_set_favorite": {"paths": [P[0]]},

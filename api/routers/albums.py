@@ -166,7 +166,12 @@ async def _fetch_album_photos(conn, album_row, user_id, page, per_page, sort_col
         from api.routers.gallery import _build_gallery_where
         saved_filters = json.loads(album_row['smart_filter_json'])
         saved_filters = _normalize_smart_filters(saved_filters)
-        where_clauses, sql_params = _build_gallery_where(saved_filters, conn, user_id=owner_id)
+        from api.stack_gallery import enabled_owner_async
+        stack_owner = await enabled_owner_async(conn, owner_id) if include_manual else None
+        where_clauses, sql_params = _build_gallery_where(
+            saved_filters, conn, user_id=owner_id, stack_owner=stack_owner,
+            include_stacks=include_manual,
+        )
         from_clause, from_params = get_photos_from_clause(owner_id)
         all_params = from_params + sql_params
         where_str = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
@@ -200,7 +205,10 @@ async def _fetch_album_photos(conn, album_row, user_id, page, per_page, sort_col
 
         if filters:
             from api.routers.gallery import _build_gallery_where
-            extra_clauses, extra_params = _build_gallery_where(filters, conn, include_manual=include_manual)
+            from api.stack_gallery import enabled_owner_async
+            stack_owner = await enabled_owner_async(conn, user_id) if include_manual else None
+            extra_clauses, extra_params = _build_gallery_where(
+                filters, conn, user_id=user_id, include_manual=include_manual, stack_owner=stack_owner)
             base_where.extend(extra_clauses)
             base_params.extend(extra_params)
 

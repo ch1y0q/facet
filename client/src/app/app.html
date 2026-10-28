@@ -198,7 +198,7 @@
 
       <!-- Gallery: photo count + active filters + filter toggle (right side, lg+ only) -->
       @if (auth.isAuthenticated() && isGalleryRoute()) {
-        <span class="!hidden min-[1360px]:!inline text-sm opacity-70">{{ I18N.gallery.photo_count | translate:{ count: store.total() } }}</span>
+        <span class="!hidden min-[1360px]:!inline text-sm opacity-70">{{ I18N.gallery.photo_count | translate:{ count: pinned() ? store.total() : store.photoTotal() } }}</span>
 
         @if (!pinned()) {
           <mat-form-field class="!hidden lg:!inline-flex w-48 shrink-0" subscriptSizing="dynamic">
@@ -604,6 +604,16 @@
         @if (scan.canLaunch()) {
           <button mat-icon-button class="!w-9 !h-9 shrink-0 !bg-[var(--mat-sys-primary-container)] !text-[var(--mat-sys-on-primary-container)]" (click)="openScanLauncher()" [matTooltip]="I18N.gallery.scan_action | translate" [attr.aria-label]="I18N.gallery.scan_action | translate">
             <mat-icon>add_photo_alternate</mat-icon>
+          </button>
+        }
+
+        @if (!pinned()) {
+          <button mat-icon-button class="!w-9 !h-9 shrink-0" data-stack-collapse-mobile
+                  (click)="store.toggleStackCollapse()"
+                  [attr.aria-pressed]="!store.collapseStacks()"
+                  [matTooltip]="(store.collapseStacks() ? I18N.stacks.expand_all : I18N.stacks.collapse) | translate"
+                  [attr.aria-label]="(store.collapseStacks() ? I18N.stacks.expand_all : I18N.stacks.collapse) | translate">
+            <mat-icon>{{ store.collapseStacks() ? 'unfold_more' : 'unfold_less' }}</mat-icon>
           </button>
         }
 

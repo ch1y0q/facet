@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from api.auth import CurrentUser, get_optional_user
 from api import database as _database
+from api import stack_gallery
 from api.change_token import db_change_token
 from api.config import VIEWER_CONFIG, _FULL_CONFIG, cull_allow_trash
 from api.database import get_async_db, get_db
@@ -409,7 +410,7 @@ def _apply_color_quality_filters(where_clauses, sql_params, params):
             sql_params.append(hi)
 
 
-def _apply_visibility_and_hide_filters(where_clauses, sql_params, params, user_id):
+def _apply_visibility_and_hide_filters(where_clauses, sql_params, params, user_id, stack_owner=None):
     """Apply visibility, top picks, aggregate minimum, and hide blinks/bursts/duplicates."""
     vis_sql, vis_params = get_visibility_clause(user_id)
     where_clauses.append(vis_sql)
@@ -446,7 +447,7 @@ def _apply_visibility_and_hide_filters(where_clauses, sql_params, params, user_i
     # both a bracket and a burst), so any one of them could still collapse
     # the very set the user asked to see.
     scope_kind, _ = _active_set_scope(params)
-    if scope_kind is not None:
+    if scope_kind is not None or params.get('stack_id'):
         hide_bursts_val = ''
         hide_duplicates_val = ''
         hide_brackets_val = ''
@@ -467,9 +468,19 @@ def _apply_visibility_and_hide_filters(where_clauses, sql_params, params, user_i
         hide_brackets_val = ''
         hide_panoramas_val = ''
 
-    where_clauses.extend(build_hide_clauses(
-        hide_blinks_val, hide_bursts_val, hide_duplicates_val, hide_brackets_val,
-        hide_panoramas_val))
+    owner = stack_owner
+    if owner is not None:
+        # Durable user groups take precedence over recomputed burst/duplicate
+        # leads. Content/visibility filters still apply to every member.
+        where_clauses.extend(build_hide_clauses(
+            hide_blinks_val, '', '', hide_brackets_val, hide_panoramas_val))
+        for clause in build_hide_clauses('', hide_bursts_val, hide_duplicates_val, '', ''):
+            where_clauses.append(f'({clause} OR {stack_gallery.membership_clause()})')
+            sql_params.append(owner)
+    else:
+        where_clauses.extend(build_hide_clauses(
+            hide_blinks_val, hide_bursts_val, hide_duplicates_val, hide_brackets_val,
+            hide_panoramas_val))
 
     if blinks_only:
         where_clauses.append("is_blink = 1")
@@ -579,15 +590,21 @@ def _apply_date_album_geo_filters(where_clauses, sql_params, params):
         sql_params.append(escaped + '%')
 
 
-def _build_gallery_where(params, conn=None, user_id=None, include_manual=True):
+def _build_gallery_where(params, conn=None, user_id=None, include_manual=True, *, stack_owner=None, include_stacks=True):
     """Build WHERE clauses for gallery queries.
 
     ``include_manual=False`` makes the tag filter and the text search AI-only:
     a share-link request must not be able to probe the owner's manual tags.
     """
+    # Stack ownership is trusted execution context, never a filter value. Smart
+    # album JSON is user-controlled even when its keys begin with an underscore.
+    if not include_stacks:
+        stack_owner = None
+    if stack_owner is None and include_manual and include_stacks and isinstance(conn, sqlite3.Connection):
+        stack_owner = stack_gallery.enabled_owner(conn, user_id)
     where_clauses = []
     sql_params = []
-    _apply_visibility_and_hide_filters(where_clauses, sql_params, params, user_id)
+    _apply_visibility_and_hide_filters(where_clauses, sql_params, params, user_id, stack_owner)
     _apply_text_filters(where_clauses, sql_params, params, conn, include_manual=include_manual)
     _apply_preference_filters(where_clauses, sql_params, params, user_id)
     _apply_score_range_filters(where_clauses, sql_params, params)
@@ -595,6 +612,16 @@ def _build_gallery_where(params, conn=None, user_id=None, include_manual=True):
     _apply_color_quality_filters(where_clauses, sql_params, params)
     _apply_date_album_geo_filters(where_clauses, sql_params, params)
     _apply_set_scope_filter(where_clauses, sql_params, params)
+    if params.get('stack_id'):
+        # Smart-album and share consumers call this builder directly too.
+        # Private membership must never become an ignored/broadening filter.
+        owner = stack_owner
+        if not include_manual or not include_stacks or owner is None:
+            where_clauses.append('0=1')
+        else:
+            where_clauses.append('EXISTS (SELECT 1 FROM photo_stack_members sm '
+                                 'WHERE sm.photo_path=photos.path AND sm.owner=? AND sm.stack_id=?)')
+            sql_params.extend([owner, params['stack_id']])
     return where_clauses, sql_params
 
 
@@ -612,7 +639,7 @@ def _scoped_album_id(filters):
     return album_params[0] if album_params else None
 
 
-def _gallery_scope_sql_checked(conn, filters, user_id, exclude, prepared):
+def _gallery_scope_sql_checked(conn, filters, user_id, exclude, prepared, stack_owner=None):
     """The scope tuple, with the album access check ALREADY performed.
 
     Private on purpose: the two public entry points below each run the access
@@ -625,7 +652,7 @@ def _gallery_scope_sql_checked(conn, filters, user_id, exclude, prepared):
     if prepared is None:
         _, prepared = _prepare_gallery_params(dict(filters or {}))
     from_clause, from_params = get_photos_from_clause(user_id)
-    where_clauses, sql_params = _build_gallery_where(prepared, conn, user_id=user_id)
+    where_clauses, sql_params = _build_gallery_where(prepared, conn, user_id=user_id, stack_owner=stack_owner)
     all_params = list(from_params) + list(sql_params)
     if exclude:
         placeholders = ','.join('?' * len(exclude))
@@ -676,7 +703,10 @@ def gallery_scope_sql(conn, filters, user_id, exclude=None, prepared=None):
     if album_id is not None:
         from api.routers.albums import _check_album_access
         _check_album_access(conn, album_id, user_id)
-    return _gallery_scope_sql_checked(conn, filters, user_id, exclude, prepared)
+    owner = stack_gallery.enabled_owner(conn, user_id)
+    if (filters or {}).get('stack_id'):
+        stack_gallery.check_stack_scope(conn, owner, filters['stack_id'], user_id)
+    return _gallery_scope_sql_checked(conn, filters, user_id, exclude, prepared, owner)
 
 
 async def gallery_scope_sql_async(conn, filters, user_id, exclude=None, prepared=None):
@@ -692,7 +722,10 @@ async def gallery_scope_sql_async(conn, filters, user_id, exclude=None, prepared
     if album_id is not None:
         from api.routers.albums import _check_album_access_async
         await _check_album_access_async(conn, album_id, user_id)
-    return _gallery_scope_sql_checked(conn, filters, user_id, exclude, prepared)
+    owner = await stack_gallery.enabled_owner_async(conn, user_id)
+    if (filters or {}).get('stack_id'):
+        await stack_gallery.check_stack_scope_async(conn, owner, filters['stack_id'], user_id)
+    return _gallery_scope_sql_checked(conn, filters, user_id, exclude, prepared, owner)
 
 
 @router.get("/api/photo", response_model=Photo, response_model_exclude_unset=True)
@@ -1271,6 +1304,9 @@ async def api_photos(
     try:
         async with get_async_db() as conn:
             user_id = user.user_id if user else None
+            owner = await stack_gallery.enabled_owner_async(conn, user_id)
+            if owner is not None:
+                await conn.execute('BEGIN')
             # The listing's own scope, from the same builder every whole-view
             # surface uses -- album access check included. `params` is already
             # prepared above for the sort and paging, so it is handed over
@@ -1283,7 +1319,19 @@ async def api_photos(
                 candidates, where_str, all_params = await _apply_semantic_gate(
                     conn, semantic_q, semantic_threshold, user_id, where_str, all_params, "gallery search")
 
-            total_count = await get_cached_count_async(conn, where_str, all_params, from_clause=from_clause)
+            if owner is not None:
+                total_count = await get_cached_count_async(
+                    conn, where_str, all_params, from_clause=from_clause, use_cache=False)
+            else:
+                total_count = await get_cached_count_async(conn, where_str, all_params, from_clause=from_clause)
+            photo_total = total_count
+            display = None
+            if owner is not None:
+                display = stack_gallery.projection(
+                    from_clause, where_str, all_params, owner,
+                    collapse=params.get('collapse_stacks') not in ('0', 'false') and not params.get('stack_id'),
+                )
+                total_count = await display.count(conn, photo_total)
             total_pages, offset = paginate(total_count, page, per_page)
 
             any_hide_active = any(
@@ -1292,26 +1340,22 @@ async def api_photos(
                           'hide_panoramas', 'no_blink', 'burst_only')
             )
             if any_hide_active:
-                _, from_params = get_photos_from_clause(user_id)
                 params_no_hide = dict(params)
                 for k in ('hide_blinks', 'hide_bursts', 'hide_duplicates', 'hide_brackets',
                           'hide_panoramas', 'no_blink', 'burst_only'):
                     params_no_hide[k] = ''
-                where_no_hide, params_no_hide_sql = _build_gallery_where(
-                    params_no_hide, conn, user_id=user_id,
-                )
-                all_params_no_hide = from_params + params_no_hide_sql
-                where_str_no_hide = (
-                    f" WHERE {' AND '.join(where_no_hide)}" if where_no_hide else ""
+                _, where_str_no_hide, all_params_no_hide = await gallery_scope_sql_async(
+                    conn, qp, user_id, prepared=params_no_hide,
                 )
                 if candidates is not None:
                     where_str_no_hide = _with_semantic_clause(where_str_no_hide)
                     all_params_no_hide = all_params_no_hide + [candidates.paths_json]
+                aggregate_kwargs = {'use_cache': False, 'stack_owner': owner} if owner is not None else {}
                 agg = await get_cached_hidden_aggregates_async(
-                    conn, where_str_no_hide, all_params_no_hide, from_clause=from_clause
+                    conn, where_str_no_hide, all_params_no_hide, from_clause=from_clause, **aggregate_kwargs
                 )
                 hidden_summary = {
-                    'total': max(0, agg['unhidden'] - total_count),
+                    'total': max(0, agg['unhidden'] - photo_total),
                     'blinks': agg['blinks'],
                     'bursts': agg['bursts'],
                     'duplicates': agg['duplicates'],
@@ -1347,14 +1391,21 @@ async def api_photos(
                     page_where = f"{base_where} AND {_RELEVANCE_CLAUSE}" if base_where else f" WHERE {_RELEVANCE_CLAUSE}"
                     descending = params['dir'] != 'ASC'
                     page_params = [candidates.ordered_json(descending)] + all_params[:-1]
-                query = f"SELECT {', '.join(select_cols)} FROM {page_from}{page_where} ORDER BY {order_by_clause} LIMIT ? OFFSET ?"
-                cur = await conn.execute(query, page_params + [per_page, offset])
+                if display:
+                    query, page_values = display.page_query(
+                        select_cols, page_from, page_where, page_params, order_by_clause, per_page, offset)
+                else:
+                    query = f"SELECT {', '.join(select_cols)} FROM {page_from}{page_where} ORDER BY {order_by_clause} LIMIT ? OFFSET ?"
+                    page_values = page_params + [per_page, offset]
+                cur = await conn.execute(query, page_values)
                 rows = await cur.fetchall()
                 await cur.close()
             else:
                 rows = []
 
             photos = await _assemble_gallery_rows(rows, conn)
+            if owner is not None:
+                await stack_gallery.enrich_counts(photos, conn, owner, user_id)
             if candidates is not None:
                 for photo in photos:
                     photo['similarity'] = round(candidates.blended.get(photo['path'], 0.0), 4)
@@ -1371,6 +1422,7 @@ async def api_photos(
         'photos': photos,
         'page': page,
         'total': total_count,
+        'photo_total': photo_total,
         'per_page': per_page,
         'total_pages': total_pages,
         'has_more': page < total_pages,

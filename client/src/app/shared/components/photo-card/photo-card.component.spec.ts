@@ -115,6 +115,19 @@ describe('PhotoCardComponent', () => {
     expect(card.photo().filename).toBe('test.jpg');
   });
 
+  it('opens a stack from its matching/permitted count badge without selecting the representative', () => {
+    fixture.componentInstance.photo.set(makePhoto({ stack_id: 'stack', stack_count: 2, stack_total_count: 4 }));
+    fixture.detectChanges();
+    const opened = vi.fn(); getCard().openStackClicked.subscribe(opened);
+    const button = fixture.nativeElement.querySelector('[data-stack-badge]') as HTMLButtonElement;
+    expect(button.textContent).toContain('2'); expect(button.textContent).toContain('/4');
+    expect(button.getAttribute('aria-label')).toBe('stacks.badge_filtered');
+    button.click();
+    expect(opened).toHaveBeenCalledWith(fixture.componentInstance.photo());
+    expect(fixture.componentInstance.selected).toEqual([]);
+    expect(fixture.nativeElement.querySelector('img').src).toContain('/thumbnail?');
+  });
+
   it('should have default input values', () => {
     const card = getCard();
     expect(card.isSelected()).toBe(false);

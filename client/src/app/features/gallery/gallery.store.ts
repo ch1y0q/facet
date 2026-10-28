@@ -72,6 +72,11 @@ export function chunkPhotoPaths(paths: string[]): string[][] {
   return chunks;
 }
 
+function readStackCollapse(): boolean {
+  try { return localStorage.getItem('facet_collapse_stacks') !== 'off'; }
+  catch { return true; }
+}
+
 // --- API response types ---
 
 export interface HiddenSummary {
@@ -89,6 +94,7 @@ export interface PhotosResponse {
   page: number;
   per_page: number;
   total_pages: number;
+  photo_total?: number | null;
   has_more: boolean;
   hidden_summary?: HiddenSummary;
 }
@@ -481,7 +487,28 @@ export class GalleryStore {
   private smartSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private rangeLoadTimer: ReturnType<typeof setTimeout> | null = null;
   readonly photos = signal<Photo[]>([]);
+  /** Number of display items, used only for paging/layout. */
   readonly total = signal(0);
+  private readonly matchingPhotoTotal = signal<number | null>(null);
+  /** Individual matching photos, including folded members. Optional on non-gallery feeds. */
+  readonly photoTotal = computed(() => this.matchingPhotoTotal() ?? this.total());
+  readonly collapseStacks = signal(readStackCollapse());
+
+  async toggleStackCollapse(): Promise<void> {
+    this.collapseStacks.update(value => !value);
+    try { localStorage.setItem('facet_collapse_stacks', this.collapseStacks() ? 'on' : 'off'); } catch { /* Tab-local preference still works. */ }
+    await this.loadPhotos();
+  }
+
+  private listingParams(f: GalleryFilters = this.filters()): Record<string, string | number | boolean> {
+    return { ...buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default),
+      collapse_stacks: this.collapseStacks() ? '1' : '0' };
+  }
+
+  private setTotals(response: { total: number; photo_total?: number | null }): void {
+    this.total.set(response.total);
+    this.matchingPhotoTotal.set(response.photo_total ?? null);
+  }
   readonly loading = signal(false);
   /** Set when the current photo request failed; the grid stays empty rather than
    *  silently reinstating the previous view's photos. Cleared on every new load. */
@@ -552,7 +579,7 @@ export class GalleryStore {
 
   /** Cheap equality token for the current query state (or an explicit candidate filter set). */
   filterKey(f: GalleryFilters = this.filters()): string {
-    return JSON.stringify(buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default));
+    return JSON.stringify(this.listingParams(f));
   }
 
   // --- Selection state (store-level so it survives navigation and is visible to services) ---
@@ -571,7 +598,7 @@ export class GalleryStore {
 
   readonly selectionCount = computed(() =>
     this.viewScopeSelected()
-      ? Math.max(0, this.total() - this.excludedPaths().size)
+      ? Math.max(0, this.photoTotal() - this.excludedPaths().size)
       : this.selectedPaths().size,
   );
 
@@ -1083,7 +1110,7 @@ export class GalleryStore {
       }
       const last = pages[pages.length - 1];
       this.photos.set([...prefix, ...normalisePhotoFlagsAll(pages.flatMap(page => page.similar ?? []))]);
-      this.total.set(last.total);
+      this.setTotals(last);
       this.hasMore.set(last.has_more);
       this.loadError.set(false);
     } catch {
@@ -1149,14 +1176,13 @@ export class GalleryStore {
       const f = this.filters();
 
       if (pinned) {
-        const res = await this.pageRead(
-          this.api.post<{ photos: Photo[]; total: number; missing: string[] }>('/photos/by_paths', { paths: pinned }),
-        );
+        const { rows, missing } = await this.fetchByPaths(pinned);
         if (!fresh()) return;
-        this.photos.set(normalisePhotoFlagsAll(res.photos));
-        this.total.set(res.photos.length);
+        const byPath = new Map(rows.map(photo => [photo.path, photo]));
+        this.photos.set(pinned.flatMap(path => byPath.has(path) ? [byPath.get(path)!] : []));
+        this.setTotals({ total: rows.length });
         this.hasMore.set(false);
-        this.pinnedMissing.set(res.missing);
+        this.pinnedMissing.set(missing);
         this.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
         return;
       }
@@ -1165,7 +1191,7 @@ export class GalleryStore {
         const res = await this.fetchSimilarPage(f, (f.page - 1) * f.per_page);
         if (!fresh()) return;
         this.photos.set(normalisePhotoFlagsAll(res.similar ?? []));
-        this.total.set(res.total);
+        this.setTotals(res);
         this.hasMore.set(res.has_more);
         const reasonKey = res.message ? SIMILAR_REASON_KEYS[res.message] : undefined;
         if (reasonKey) {
@@ -1175,7 +1201,7 @@ export class GalleryStore {
         return;
       }
 
-      const params = buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
+      const params = this.listingParams(f);
       const res = await this.pageRead(this.api.get<PhotosResponse>('/photos', params));
       if (!fresh()) return;
       this.photos.set(normalisePhotoFlagsAll(res.photos));
@@ -1183,7 +1209,7 @@ export class GalleryStore {
         saveReviewQueue(this.auth.identity(), f);
         this.bookmarkVersion.update(n => n + 1);
       }
-      this.total.set(res.total);
+      this.setTotals(res);
       this.hasMore.set(res.has_more);
       this.hiddenSummary.set(
         res.hidden_summary ?? { total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 },
@@ -1191,7 +1217,7 @@ export class GalleryStore {
       void this.fetchKeeperHints(res.photos.map(p => p.path));
     } catch {
       if (!fresh()) return;
-      this.total.set(0);
+      this.setTotals({ total: 0 });
       this.hasMore.set(false);
       this.loadError.set(true);
     } finally {
@@ -1226,6 +1252,14 @@ export class GalleryStore {
    */
   async refreshPaths(paths: string[] | null): Promise<void> {
     if (!this.loadedOnce || this.destroyRef.destroyed) return;
+    if (paths !== null && this.readOwner === this.auth.identity() && this.pinnedPaths() === null
+      && this.photos().some(photo => !!photo.stack_id)) {
+      const loaded = new Set(this.photos().map(photo => photo.path));
+      // A folded or offscreen member can leave the filter while its displayed
+      // representative stays. Membership is private server state: refresh the
+      // projected scope rather than silently discard an unknown changed path.
+      if (paths.some(path => !loaded.has(path))) paths = null;
+    }
     if (!this.listingReadsActive) {
       this.progressRefreshOwed = true;
       if (paths === null) this.listingRefreshOwed = true;
@@ -1270,16 +1304,18 @@ export class GalleryStore {
       const filters = membership
         ? buildByPathsFilters(f, this.currentAlbum()?.is_smart ?? false, this.config()?.defaults?.type ?? '', this.config()?.search_threshold_default)
         : undefined;
+      const rowsBefore = this.photos();
       const { rows, missing } = await this.fetchByPaths(wanted, filters, true);
       if (!this.claimRefresh(loadSeq)) return;
       this.mergeRows(rows);
       // A similarity view ranks outside the gallery's WHERE clause: by_paths cannot say a photo left it.
       if (pinned || membership) this.dropMissing(missing);
-      if (membership && missing.length && this.hasMore()) {
-        // Removing a filtered row shifts the offsets of every following page. The rows before the
-        // last loaded page keep their positions, so only the tail is refetched, not every page.
+      const stackMembershipRemoved = rowsBefore.some(photo =>
+        missing.includes(photo.path) && !!photo.stack_id && (photo.stack_count ?? 0) > 1);
+      if (membership && missing.length && (this.hasMore() || stackMembershipRemoved)) {
+        // Ordinary removals preserve earlier pages. A new stack representative can reorder the prefix.
         membershipChanged = true;
-        await this.refreshViewInPlace(loadSeq, false, true);
+        await this.refreshViewInPlace(loadSeq, false, !stackMembershipRemoved);
       }
     } catch {
       // Retain failed repair debt; parking already claimed cancelled reads.
@@ -1305,11 +1341,11 @@ export class GalleryStore {
     const chunks: string[][] = [];
     for (let i = 0; i < paths.length; i += BY_PATHS_MAX) chunks.push(paths.slice(i, i + BY_PATHS_MAX));
     const responses = await Promise.all(chunks.map(chunk => this.pageRead(
-      this.api.post<{ photos: Photo[] }>('/photos/by_paths', filters ? { paths: chunk, filters } : { paths: chunk }), targeted,
+      this.api.post<{ photos: Photo[]; missing?: string[] }>('/photos/by_paths', filters ? { paths: chunk, filters } : { paths: chunk }), targeted,
     )));
     const rows = normalisePhotoFlagsAll(responses.flatMap(res => res.photos));
     const returned = new Set(rows.map(p => p.path));
-    return { rows, missing: paths.filter(path => !returned.has(path)) };
+    return { rows, missing: [...new Set([...paths.filter(path => !returned.has(path)), ...responses.flatMap(response => response.missing ?? [])])] };
   }
 
   private mergeRows(rows: Photo[]): void {
@@ -1324,7 +1360,7 @@ export class GalleryStore {
   private dropMissing(missing: string[]): void {
     if (missing.length === 0) return;
     const gone = new Set(missing);
-    this.removePhotos(gone);
+    this.removePhotos(gone, false);
     if (this.pinnedPaths() === null) return;
     this.pinnedPaths.update(current => current && current.filter(path => !gone.has(path)));
     this.pinnedMissing.update(current => [...new Set([...current, ...missing])]);
@@ -1339,7 +1375,7 @@ export class GalleryStore {
     const fresh = new Map(rows.map(p => [p.path, p] as const));
     const old = new Map(this.photos().map(p => [p.path, p] as const));
     this.photos.set(pinned.filter(path => fresh.has(path)).map(path => ({ ...old.get(path), ...fresh.get(path) }) as Photo));
-    this.total.set(rows.length);
+    this.setTotals({ total: rows.length });
     this.dropMissing(missing);
   }
 
@@ -1362,7 +1398,7 @@ export class GalleryStore {
         return;
       }
       const f = this.filters();
-      const base = buildApiParams(f, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
+      const base = this.listingParams(f);
       const prefix = preserveLoaded ? this.photos().slice(0, Math.min(Math.floor(this.photos().length / f.per_page), f.page - 1) * f.per_page) : [];
       const pages: PhotosResponse[] = [];
       for (let page = prefix.length / f.per_page + 1; page <= f.page; page++) {
@@ -1374,7 +1410,7 @@ export class GalleryStore {
       const last = pages[pages.length - 1];
       const rows = [...prefix, ...normalisePhotoFlagsAll(pages.flatMap(res => res.photos))];
       this.photos.set(rows);
-      this.total.set(last.total);
+      this.setTotals(last);
       this.hasMore.set(last.has_more);
       this.hiddenSummary.set(
         pages[0].hidden_summary ?? { total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 },
@@ -1478,14 +1514,14 @@ export class GalleryStore {
         const res = await this.fetchSimilarPage(f, (nextPage - 1) * f.per_page);
         if (!current()) return;
         this.photos.update(prev => [...prev, ...normalisePhotoFlagsAll(res.similar ?? [])]);
-        this.total.set(res.total);
+        this.setTotals(res);
         this.hasMore.set(res.has_more);
       } else {
-        const params = buildApiParams(this.filters(), this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
+        const params = this.listingParams();
         const res = await this.pageRead(this.api.get<PhotosResponse>('/photos', params));
         if (!current()) return;
         this.photos.update(prev => [...prev, ...normalisePhotoFlagsAll(res.photos)]);
-        this.total.set(res.total);
+        this.setTotals(res);
         this.hasMore.set(res.has_more);
         if (res.hidden_summary) {
           this.hiddenSummary.set(res.hidden_summary);
@@ -1862,22 +1898,23 @@ export class GalleryStore {
     );
   }
 
-  /**
-   * Drop deleted photos from local state without a refetch.
-   *
-   * `POST /api/photo/delete` removes the DB row immediately (decision 5), so
-   * by the time its response returns these rows are already gone server-side
-   * -- filtering them out here is correct, and the existing bulk-action
-   * pattern's `await this.store.loadPhotos()` refetch would be pure added
-   * latency for a delete specifically (decision 6 bullet 4).
-   */
-  removePhotos(paths: Iterable<string>): void {
+  /** Drop deleted rows immediately. Projected stacks need authoritative representative/count
+   *  reconciliation: deleting a cover can replace its tile, and deleting an unloaded member
+   *  can change a loaded stack's badge. Ordinary rows keep the local-only fast path. */
+  removePhotos(paths: Iterable<string>, reconcileStacks = true): void {
     const pathSet = new Set(paths);
     if (pathSet.size === 0) return;
+    const rows = this.photos();
+    const loaded = new Set(rows.map(photo => photo.path));
+    const unknownMember = [...pathSet].some(path => !loaded.has(path));
+    const repairsStack = reconcileStacks && this.pinnedPaths() === null
+      && !this.filters().similar_to && rows.some(photo => !!photo.stack_id
+        && (pathSet.has(photo.path) || unknownMember));
     const before = this.photos().length;
     this.photos.update(photos => photos.filter(p => !pathSet.has(p.path)));
     const removed = before - this.photos().length;
     this.total.update(total => Math.max(0, total - removed));
+    this.matchingPhotoTotal.update(total => total === null ? null : Math.max(0, total - removed));
     this.selectedPaths.update(selected => {
       const next = new Set(selected);
       for (const path of pathSet) next.delete(path);
@@ -1894,6 +1931,7 @@ export class GalleryStore {
       for (const path of pathSet) next.delete(path);
       return next;
     });
+    if (repairsStack) void this.refreshPaths(null);
   }
 
   /** Fetch "a better shot exists in this group" hints and merge them in.
@@ -2224,10 +2262,17 @@ export class GalleryStore {
     const key = scope();
     let seq = this._loadSeq;
     const current = () => seq === this._loadSeq && identity === this.auth.identity() && key === scope() && this.pinnedPaths() === null;
+    const previous = this.photos();
+    const retained = previous.filter(photo => f.review_status === 'kept' ? !!photo.is_kept
+      : f.review_status === 'rejected' ? !!photo.is_rejected : !photo.is_kept && !photo.is_rejected);
+    const retainedPaths = new Set(retained.map(photo => photo.path));
+    // A sibling elected after the old representative leaves may sort into any loaded page.
+    // Only that stack case invalidates the prefix; ordinary decisions retain the tail fast path.
+    rebuild ||= this.collapseStacks() && previous.some(photo => !!photo.stack_id
+      && (photo.stack_count ?? 0) > 1 && !retainedPaths.has(photo.path));
     // A rebuild delegates its one count request to loadPhotos.
     if (!rebuild || !f.review_status || this.pinnedPaths() !== null) void this.loadReviewProgress();
     if (!f.review_status || this.pinnedPaths() !== null) return;
-    const previous = this.photos();
     this.reviewRefreshOwed = false;
     if (rebuild) {
       const pages = Math.max(1, Math.ceil(previous.length / f.per_page));
@@ -2238,8 +2283,6 @@ export class GalleryStore {
       for (let page = 1; page < pages && this.hasMore() && current(); page++) await this.nextPage(current);
       if (!current()) return;
     } else {
-      const retained = previous.filter(photo => f.review_status === 'kept' ? !!photo.is_kept
-        : f.review_status === 'rejected' ? !!photo.is_rejected : !photo.is_kept && !photo.is_rejected);
       const page = Math.max(1, Math.ceil(retained.length / f.per_page));
       const offset = (page - 1) * f.per_page;
       this.resetViewScope();
@@ -2250,12 +2293,12 @@ export class GalleryStore {
       this.loading.set(true);
       this.reviewRepairsInFlight++;
       try {
-        const params = buildApiParams({ ...f, page }, this.currentAlbum()?.is_smart ?? false, this.config()?.search_threshold_default);
+        const params = this.listingParams({ ...f, page });
         const res = await this.pageRead(this.api.get<PhotosResponse>('/photos', params));
         if (!current()) return;
         this.photos.set([...retained.slice(0, offset), ...normalisePhotoFlagsAll(res.photos)]);
         this.filters.update(current => ({ ...current, page }));
-        this.total.set(res.total);
+        this.setTotals(res);
         this.hasMore.set(res.has_more);
         this.hiddenSummary.set(res.hidden_summary ?? { total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
         void this.fetchKeeperHints(res.photos.map(photo => photo.path));
