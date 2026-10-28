@@ -5567,6 +5567,53 @@ describe('GalleryComponent', () => {
       return event;
     }
 
+    describe('suggested stack scope', () => {
+      function dialogForSuggestions(): MatDialog {
+        const dialog = (gallery as unknown as { dialog: MatDialog }).dialog;
+        vi.spyOn(dialog, 'openDialogs', 'get').mockReturnValue([]);
+        vi.spyOn(dialog, 'open').mockReturnValue({} as ReturnType<MatDialog['open']>);
+        return dialog;
+      }
+
+      beforeEach(() => {
+        mockStore.filterPayload.mockImplementation(() => GalleryStore.prototype.filterPayload.call(mockStore));
+      });
+
+      it.each([
+        { similar_to: '/visible/source.jpg' },
+        { semanticQuery: 'photos of mountains' },
+      ])('withholds discovery and refuses direct launch for %j', async search => {
+        mockStore.filters.set({ ...DEFAULT_FILTERS, ...search });
+        mockStore.canScopeSelectionToView.set(false);
+        host.detectChanges();
+        expect(mockStore.filterPayload()).toBeNull();
+        expect(host.nativeElement.querySelector('[data-stack-suggestions]')).toBeNull();
+        const dialog = dialogForSuggestions();
+        await (gallery as unknown as { openStackSuggestions(): Promise<void> }).openStackSuggestions();
+        expect(dialog.open).not.toHaveBeenCalled();
+      });
+
+      it('opens discovery from the rendered toolbar with the ordinary view filters', async () => {
+        const filters = mockStore.filterPayload();
+        expect(filters).not.toBeNull();
+        const dialog = dialogForSuggestions();
+        const button = host.nativeElement.querySelector('[data-stack-suggestions]') as HTMLButtonElement;
+        expect(button).not.toBeNull();
+        button.click();
+        await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledOnce());
+        expect(dialog.open).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ data: { filters } }));
+      });
+
+      it('refuses discovery when the view becomes unsupported while the dialog loads', async () => {
+        const dialog = dialogForSuggestions();
+        const opening = (gallery as unknown as { openStackSuggestions(): Promise<void> }).openStackSuggestions();
+        mockStore.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'photos of mountains' });
+        mockStore.canScopeSelectionToView.set(false);
+        await opening;
+        expect(dialog.open).not.toHaveBeenCalled();
+      });
+    });
+
     describe('search delay', () => {
       it('filters 400 ms after the last keystroke, not before', () => {
         type('cat');

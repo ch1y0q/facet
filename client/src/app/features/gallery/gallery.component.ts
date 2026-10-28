@@ -180,7 +180,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
           [matTooltip]="(store.collapseStacks() ? I18N.stacks.expand_all : I18N.stacks.collapse) | translate"
           [attr.aria-label]="(store.collapseStacks() ? I18N.stacks.expand_all : I18N.stacks.collapse) | translate"><mat-icon>{{ store.collapseStacks() ? 'unfold_more' : 'unfold_less' }}</mat-icon></button>
       }
-      @if (!pinned()) {
+      @if (store.canScopeSelectionToView()) {
         <button mat-icon-button data-stack-suggestions (click)="openStackSuggestions()"
           [matTooltip]="I18N.stacks.suggestions | translate" [attr.aria-label]="I18N.stacks.suggestions | translate">
           <mat-icon>auto_awesome_motion</mat-icon>
@@ -2178,6 +2178,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   protected async openStackSuggestions(): Promise<void> {
     const filters = this.store.filterPayload();
+    if (!filters) return;
     const session = this.stacks.context();
     const scope = JSON.stringify(filters);
     const { StackSuggestionsDialogComponent } = await import('./stack-suggestions-dialog.component');
