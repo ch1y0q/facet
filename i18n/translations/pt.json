@@ -2955,6 +2955,15 @@
     "stack": "Pilha de fotos"
   },
   "stacks": {
+    "suggestions": "Pilhas sugeridas",
+    "suggestions_hint": "Sugestões de duplicados e sequências detetados nestes filtros. A ocultação automática é ignorada para revisão. Pilhas existentes e séries bracket/panorama são excluídas. São mostradas até 20 sugestões; restrinja os filtros para outras fotos. Dispensar só vale enquanto este diálogo estiver aberto.",
+    "suggestions_empty": "Nenhuma pilha sugerida nesta vista",
+    "suggestion_burst": "Sequência",
+    "suggestion_duplicate": "Duplicados",
+    "suggestion_review": "Rever e escolher capa",
+    "suggestion_dismiss": "Dispensar por agora",
+    "suggestions_error": "Não foi possível carregar as sugestões. Tente novamente.",
+    "suggestions_reload": "Recarregar sugestões",
     "previous": "Foto anterior da pilha",
     "next": "Foto seguinte da pilha",
     "browse_position": "{position} de {count}",

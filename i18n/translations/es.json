@@ -2955,6 +2955,15 @@
     "stack": "Pila de fotos"
   },
   "stacks": {
+    "suggestions": "Pilas sugeridas",
+    "suggestions_hint": "Sugerencias de duplicados y ráfagas detectados con estos filtros. Se omite su ocultación automática para revisarlas. Se excluyen pilas existentes y series bracket/panorama. Se muestran hasta 20 sugerencias; limita los filtros para otras fotos. Descartar solo dura mientras este diálogo está abierto.",
+    "suggestions_empty": "No hay pilas sugeridas en esta vista",
+    "suggestion_burst": "Ráfaga",
+    "suggestion_duplicate": "Duplicados",
+    "suggestion_review": "Revisar y elegir portada",
+    "suggestion_dismiss": "Descartar por ahora",
+    "suggestions_error": "No se pudieron cargar las sugerencias. Inténtalo de nuevo.",
+    "suggestions_reload": "Recargar sugerencias",
     "previous": "Foto anterior de la pila",
     "next": "Foto siguiente de la pila",
     "browse_position": "{position} de {count}",
