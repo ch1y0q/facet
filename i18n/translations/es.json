@@ -2753,7 +2753,10 @@
       "receipt": "Recibos",
       "meme": "Memes",
       "slide": "Diapositivas"
-    }
+    },
+    "candidates": "{count} candidato",
+    "candidates_plural": "{count} candidatos",
+    "empty_kind": "No hay candidatos de este tipo. Prueba «Todos los tipos» en el menú de filtros."
   },
   "social_export": {
     "presets": {

@@ -2768,6 +2768,9 @@ export const I18N = {
       meme: "junk.kinds.meme",
       slide: "junk.kinds.slide",
     },
+    candidates: "junk.candidates",
+    candidates_plural: "junk.candidates_plural",
+    empty_kind: "junk.empty_kind",
   },
   social_export: {
     presets: {

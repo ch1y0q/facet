@@ -844,6 +844,7 @@ Uma fila de revisão rápida para o "lixo" não fotográfico que se acumula em u
 Abra-a pelo botão de navegação **Limpeza** (a rota `/junk`, somente edição). A página reutiliza a grade da galeria e exibe cada candidato sinalizado:
 
 - **Chips de filtro por tipo** — "Todos os tipos" mais um chip por tipo detectado com sua contagem (de `GET /api/filter_options/junk_kinds`). Clique para restringir a fila a um único tipo.
+- **Contagem de candidatos** — a barra sempre mostra quantos candidatos o filtro de tipo atual contém, diminuindo em tempo real a cada manutenção ou rejeição. Um filtro de tipo sem resultados remete a **Todos os tipos** em vez de sugerir um novo escaneamento.
 - **Manter** (por foto) — limpa o rótulo de lixo para que a foto saia da fila **permanentemente**: ela é marcada como avaliada-limpa (`not_junk`) e nunca mais é sinalizada por um `--detect-junk` posterior.
 - **Rejeitar** (por foto) — marca a foto como rejeitada usando o mesmo mecanismo de rejeição de todo o resto (nada é excluído do disco).
 - **Rejeitar tudo** — uma rejeição em lote de todos os candidatos atualmente carregados, atrás de um diálogo de confirmação.

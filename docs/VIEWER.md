@@ -912,6 +912,7 @@ A fast review queue for the non-photo "junk" that piles up in a hobbyist library
 Open it from the **Junk Sweep** nav button (the `/junk` route, edition-only). The page reuses the gallery grid and shows every flagged candidate:
 
 - **Kind filter chips** — "All kinds" plus one chip per detected kind with its count (from `GET /api/filter_options/junk_kinds`). Click to narrow the queue to one kind.
+- **Candidate count** — the toolbar always shows how many candidates the current kind filter holds, counting down live as you keep or reject. A kind filter that comes up empty points back to **All kinds** instead of suggesting a rescan.
 - **Keep** (per photo) — clears the junk label so the photo leaves the queue **permanently**: it is marked evaluated-clean (`not_junk`) and is never re-flagged by a later `--detect-junk`.
 - **Reject** (per photo) — flags the photo as rejected using the same reject plumbing as everywhere else (nothing is deleted from disk).
 - **Reject all shown** — a bulk reject of every candidate currently loaded, behind a confirmation dialog.
