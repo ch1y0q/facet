@@ -7,7 +7,7 @@ All notable changes to Facet are documented in this file.
 ### Added
 
 - **Scores placed in the library.** Photo detail, the gallery side panel and the card score badge show where each score sits in the whole library: a sparkline of its distribution with this photo's bar lit, and "Top X% of the library" with the library range on hover or focus. Scores with no better end (ISO, aperture, face count…) show the range only.
-- **The running version in the user menu.** The menu ends with "Facet 1.25.0", and an image built with `--build-arg FACET_BUILD=<branch>@<commit>` adds that line beneath it, so two installs of one release built from different branches can be told apart. `/api/config` carries both as `version` and `build`.
+- **The running version in the user menu**, plus the `FACET_BUILD` build line when an image is built with it.
 
 ### Changed
 
