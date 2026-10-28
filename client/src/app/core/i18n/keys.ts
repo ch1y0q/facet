@@ -2969,6 +2969,13 @@ export const I18N = {
     stack: "organization_history.stack",
   },
   stacks: {
+    suggestions: "stacks.suggestions",
+    suggestions_hint: "stacks.suggestions_hint",
+    suggestions_empty: "stacks.suggestions_empty",
+    suggestion_burst: "stacks.suggestion_burst",
+    suggestion_duplicate: "stacks.suggestion_duplicate",
+    suggestion_review: "stacks.suggestion_review",
+    suggestion_dismiss: "stacks.suggestion_dismiss",
     previous: "stacks.previous",
     next: "stacks.next",
     browse_position: "stacks.browse_position",

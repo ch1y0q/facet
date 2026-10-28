@@ -256,6 +256,8 @@ Le pile sono private del proprietario (installazione in modalità singolo utente
 
 Le esportazioni complete del database della galleria escludono le pile di origine e gli album dinamici i cui filtri indicano una pila privata. Sono esclusi anche gli album dinamici con filtri illeggibili (JSON non valido, valori diversi da un oggetto, annidamento eccessivo o oltre 1 MiB); gli album ordinari restano. Gli aggiornamenti incrementali non copiano album o pile di origine e conservano quelli della destinazione.
 
+**Pile suggerite** usa duplicati e raffiche già rilevati nei filtri correnti, senza nasconderne automaticamente i membri. Gli altri filtri e permessi restano validi. Rivedi apre l’editor con foto esplicite e copertina modificabile prima della creazione. Nessuna creazione, rifiuto o modifica di file automatica. Sono esclusi gruppi con foto corrispondenti già impilate e serie bracket/panorama. Proposte sovrapposte escluse interamente, con priorità ai duplicati. Si esaminano fino a 40 gruppi e si mostrano al massimo 20 proposte e 2000 foto (1000 per gruppo); restringi i filtri per altre foto. Ignorare vale solo mentre questa finestra resta aperta. Nessun suggerimento nelle liste esatte fissate. Gli utenti in sola lettura possono ispezionare ma non creare pile.
+
 ### Schede foto
 
 - Miniatura con badge del punteggio — passaci sopra per vedere dove si colloca il punteggio nella tua libreria («Top 18% della libreria»)
@@ -1519,6 +1521,7 @@ I tipi TypeScript del client sono generati da questo schema in `client/src/app/c
 | `DELETE /api/photo/capture_date?path=` | `[Edizione]` Scarta una data di scatto corretta e rilegge quella del file (o cancella la data se il file non ne ha); restituisce `{date_taken, date_manually_set}`. `409` se la data del file non è supportata (la data manuale viene mantenuta) o la foto è cambiata nel frattempo, `404` se il file non è leggibile |
 | `GET /api/stacks/by-photo` | Legge pila privata per percorso foto esatto; solo membri consentiti |
 | `GET /api/stacks/{stack_id}` | Legge pila privata per UUID; visibilità parziale è sola lettura |
+| `POST /api/stacks/suggestions` | [Autenticato] Ricerca senza scritture. Corpo `{filters}`: filtri galleria esclusi chiusura pile e occultamento raffiche/duplicati. Restituisce `{suggestions: [{key, kind, paths, cover_path}]}`, massimo 20 suggerimenti / 2000 percorsi. Filtro sconosciuto: 422. Verifica accesso album e visibilità. |
 | `POST /api/stacks` | [Edizione] Crea con 2–1000 percorsi espliciti e cover_path; restituisce stack e undo.entry_id |
 | `PUT /api/stacks/{stack_id}` | [Edizione] Sostituisce paths/ordine e cover_path facoltativo con expected_revision; 0/1 membro scioglie |
 | `DELETE /api/stacks/{stack_id}` | [Edizione] Scioglie con expected_revision nella query; rifiuta revisione obsoleta/visibilità parziale |

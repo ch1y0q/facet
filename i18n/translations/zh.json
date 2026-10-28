@@ -2955,6 +2955,13 @@
     "stack": "照片堆叠"
   },
   "stacks": {
+    "suggestions": "建议堆栈",
+    "suggestions_hint": "根据当前筛选范围内已检测的重复照片和连拍提供建议，供检查时不隐藏其成员。跳过现有堆栈及包围曝光或全景组。最多显示 20 条建议；缩小筛选范围可检查其他照片。忽略仅在本次对话框打开期间有效。",
+    "suggestions_empty": "此视图中没有建议堆栈",
+    "suggestion_burst": "连拍",
+    "suggestion_duplicate": "重复照片",
+    "suggestion_review": "检查并选择封面",
+    "suggestion_dismiss": "暂时忽略",
     "previous": "上一张堆叠照片",
     "next": "下一张堆叠照片",
     "browse_position": "第 {position} 张，共 {count} 张",

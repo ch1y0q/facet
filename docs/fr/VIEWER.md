@@ -256,6 +256,8 @@ Les piles sont privées au propriétaire (l'installation en mode mono-utilisateu
 
 Les exports complets de la base de la visionneuse excluent les piles source et les albums intelligents dont les filtres désignent une pile privée. Les albums intelligents aux filtres illisibles (JSON invalide, valeur autre qu’un objet, imbrication excessive ou plus de 1 Mio) sont également exclus ; les albums ordinaires restent présents. Les mises à jour incrémentales ne copient ni albums ni piles source et préservent ceux créés sur la destination.
 
+**Piles suggérées** recherche les doublons et rafales déjà détectés dans les filtres courants, sans masquer leurs membres automatiquement. Les autres filtres et droits restent appliqués. Réviser ouvre l’éditeur avec les photos explicites et une couverture modifiable avant **Créer une pile**. Aucune création, aucun rejet ni changement de fichier automatique. Les groupes avec des membres correspondants déjà empilés et les séries bracket/panorama sont exclus. Les propositions qui se chevauchent sont ignorées en entier, priorité aux doublons. Jusqu’à 40 groupes sont examinés, 20 propositions et 2000 photos renvoyées (1000 par groupe) ; affinez les filtres pour d’autres photos. Ignorer ne dure que pendant cette ouverture du dialogue. Les listes épinglées exactes n’offrent pas de suggestions. En lecture seule, inspection possible mais pas de création.
+
 ### Cartes de photo
 
 - Vignette avec badge de score — survolez-le pour voir où se situe le score dans votre photothèque (« Top 18 % de la photothèque »)
@@ -1521,6 +1523,7 @@ Les types TypeScript du client sont générés à partir de ce schéma dans `cli
 | `DELETE /api/photo/capture_date?path=` | `[Édition]` Abandonne une date de prise de vue corrigée et relit celle du fichier (ou efface la date si le fichier n’en a pas) ; renvoie `{date_taken, date_manually_set}`. `409` quand la date du fichier n’est pas prise en charge (la date manuelle est conservée) ou que la photo a changé entre-temps, `404` quand le fichier est illisible |
 | `GET /api/stacks/by-photo` | Lire la pile privée par chemin exact ; membres autorisés seulement |
 | `GET /api/stacks/{stack_id}` | Lire la pile privée par UUID ; visibilité partielle en lecture seule |
+| `POST /api/stacks/suggestions` | [Authentifié] Recherche sans écriture. Corps `{filters}`, filtres galerie sauf repli des piles et masquage rafales/doublons. Retour `{suggestions: [{key, kind, paths, cover_path}]}`, au plus 20 suggestions / 2000 chemins. Clé inconnue : 422. Accès album et visibilité vérifiés. |
 | `POST /api/stacks` | [Édition] Créer avec 2–1000 chemins explicites et cover_path ; renvoie stack et undo.entry_id |
 | `PUT /api/stacks/{stack_id}` | [Édition] Remplacer paths/ordre et cover_path facultatif avec expected_revision ; 0/1 membre dissout |
 | `DELETE /api/stacks/{stack_id}` | [Édition] Dissoudre avec expected_revision en requête ; refuse révision périmée ou visibilité partielle |

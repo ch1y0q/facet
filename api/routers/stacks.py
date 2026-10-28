@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from api.auth import CurrentUser, is_multi_user_enabled, require_authenticated, require_edition
 from api.database import get_db
 from api.db_helpers import after_commit, get_visibility_clause, is_locked_error, retry_on_locked
-from api.models.stacks import CreateStack, PhotoStack, StackMutation, UpdateStack
+from api.models.stacks import (CreateStack, PhotoStack, StackMutation, UpdateStack,
+                               StackSuggestionsRequest, StackSuggestionsResponse)
 from db import stacks
 from db.maintenance import evict_derived_stats_cache
 
@@ -79,3 +80,22 @@ def update_stack(stack_id: str, body: UpdateStack, user: CurrentUser = Depends(r
 @retry_on_locked()
 def delete_stack(stack_id: str, expected_revision: int = Query(gt=0), user: CurrentUser = Depends(require_edition)):
     return _mutate(user, stacks.delete_stack, stack_id, expected_revision)
+
+
+@router.post('/api/stacks/suggestions', response_model=StackSuggestionsResponse)
+def stack_suggestions(body: StackSuggestionsRequest, response: Response,
+                      user: CurrentUser = Depends(require_authenticated)):
+    """Scoped, bounded suggestions only; no writes, filesystem reads or cached private rows."""
+    from pydantic import ValidationError
+    from api.routers.gallery import gallery_scope_sql, _raise_422_for_invalid_gallery_params
+    from db.stack_suggestions import suggestions
+
+    response.headers['Cache-Control'] = 'no-store'
+    filters = {**body.filters, 'collapse_stacks': 'false', 'hide_bursts': 'false', 'hide_duplicates': 'false'}
+    with get_db() as conn, conn:
+        conn.execute('BEGIN')
+        try:
+            source, where, params = gallery_scope_sql(conn, filters, user.user_id)
+        except ValidationError as exc:
+            _raise_422_for_invalid_gallery_params(exc, logger, 'Invalid stack suggestion filters: %s')
+        return dict(suggestions=suggestions(conn, stack_owner(user.user_id), source, where, params))
