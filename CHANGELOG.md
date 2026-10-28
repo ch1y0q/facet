@@ -11,11 +11,14 @@ All notable changes to Facet are documented in this file.
 
 ### Changed
 
+- **Gallery sort is an icon button with a menu.** The desktop and mobile sort selects become a button showing the current sort's icon (tooltip `Sort by: <current sort>`), opening a grouped menu where every sort has a decorative icon or short model label, including relevance and My Taste, and the current one is checked. The direction toggle sits right beside it, followed by the filters button, and on small screens the scan button moves to the far right of the bottom bar.
+- **The tooltip-mode menu shows the current choice.** The tooltip-mode and side-panel activation menus tick the mode in force, the way the sort menu does, and screen readers announce them as radio choices.
 - **The side panel is the default tooltip mode.** It now uses photo detail's layout, with the metrics in the same icon tabs (EXIF, Quality, Composition, Technical, Histogram), and both remember the same open tab. The **Hover** and **Click** bubbles are reduced to a glance: category, aggregate and its rank, four key scores and one EXIF line.
 
 ### Fixed
 
 - **The side panel no longer flickers open and closed.** A filter drawer animation event arriving after the drawer had already changed state flipped it back, in a loop.
+- **The Content sort group heading is translated.** It showed the raw key `sort_groups.content` in every language.
 
 ## [1.25.0] "Hyperfocale" — 2026-10-27
 

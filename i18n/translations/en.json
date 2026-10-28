@@ -458,6 +458,7 @@
     "exposure": "Exposure",
     "composition": "Composition",
     "subject_saliency": "Subject Saliency",
+    "content": "Content",
     "camera": "Camera"
   },
   "sort_options": {
@@ -1059,6 +1060,7 @@
     },
     "all_photos": "All Photos",
     "sort": "Sort by",
+    "sort_current": "Sort by: {label}",
     "sort_aggregate": "Aggregate",
     "sort_aesthetic": "Aesthetic",
     "sort_date": "Date",

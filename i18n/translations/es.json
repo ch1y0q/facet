@@ -458,6 +458,7 @@
     "exposure": "Exposición",
     "composition": "Composición",
     "subject_saliency": "Saliencia del sujeto",
+    "content": "Contenido",
     "camera": "Cámara"
   },
   "sort_options": {
@@ -1059,6 +1060,7 @@
     },
     "all_photos": "Todas las fotos",
     "sort": "Ordenar por",
+    "sort_current": "Ordenar por: {label}",
     "sort_aggregate": "Global",
     "sort_aesthetic": "Estética",
     "sort_date": "Fecha",

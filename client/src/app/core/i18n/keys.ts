@@ -472,6 +472,7 @@ export const I18N = {
     exposure: "sort_groups.exposure",
     composition: "sort_groups.composition",
     subject_saliency: "sort_groups.subject_saliency",
+    content: "sort_groups.content",
     camera: "sort_groups.camera",
   },
   sort_options: {
@@ -1073,6 +1074,7 @@ export const I18N = {
     },
     all_photos: "gallery.all_photos",
     sort: "gallery.sort",
+    sort_current: "gallery.sort_current",
     sort_aggregate: "gallery.sort_aggregate",
     sort_aesthetic: "gallery.sort_aesthetic",
     sort_date: "gallery.sort_date",
