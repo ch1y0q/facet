@@ -16,7 +16,7 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
-import { KeyboardMappingService } from '../../core/services/keyboard-mapping.service';
+import { KeyboardMappingService, KEYMAP_STORAGE_KEY } from '../../core/services/keyboard-mapping.service';
 import { AssistantChangesService, AssistantChangeBatch } from '../../core/agent/assistant-changes.service';
 
 // Mock Leaflet via vi.doMock + dynamic import: the component pulls in shared/leaflet
@@ -1111,7 +1111,7 @@ describe('PhotoDetailComponent', () => {
 
     afterEach(() => {
       TestBed.inject(KeyboardMappingService).resetAll();
-      localStorage.removeItem('facet_keymap');
+      localStorage.removeItem(KEYMAP_STORAGE_KEY);
     });
 
     function press(init: KeyboardEventInit, target?: HTMLElement): KeyboardEvent {

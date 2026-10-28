@@ -853,15 +853,13 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     if (!this.auth.isEdition() || !this.store.config()?.features?.show_rating_controls) return;
     const p = this.photo();
     if (!p) return;
-    const key = event.key.toLowerCase();
-    const map = this.keymap.keymap();
     if (event.key >= '1' && event.key <= '5') {
       event.preventDefault();
       void this.setRating(p.path, Number(event.key));
-    } else if (key === map.favourite) {
+    } else if (this.keymap.matches(event, 'favourite')) {
       event.preventDefault();
       void this.toggleFavorite(p.path);
-    } else if (event.key === '0' || key === map.reject) {
+    } else if (event.key === '0' || this.keymap.matches(event, 'reject')) {
       event.preventDefault();
       void this.toggleRejected(p.path);
     }
@@ -986,7 +984,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
 
   @HostListener('document:keydown', ['$event'])
   protected onReviewKey(event: KeyboardEvent): void {
-    if (this.dialog.openDialogs.length || isTypingContext(event) || event.ctrlKey || event.metaKey || event.altKey || event.key.toLowerCase() !== this.keymap.key('keep') || !this.auth.isEdition()) return;
+    if (this.dialog.openDialogs.length || isTypingContext(event) || event.ctrlKey || event.metaKey || event.altKey || !this.keymap.matches(event, 'keep') || !this.auth.isEdition()) return;
     event.preventDefault();
     void this.reviewPhoto('kept');
   }

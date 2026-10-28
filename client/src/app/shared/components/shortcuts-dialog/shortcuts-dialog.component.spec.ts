@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { I18nService } from '../../../core/services/i18n.service';
-import { DEFAULT_KEYMAP } from '../../../core/services/keyboard-mapping.service';
+import { DEFAULT_KEYMAP, KEYMAP_STORAGE_KEY } from '../../../core/services/keyboard-mapping.service';
 import { ShortcutsDialogComponent } from './shortcuts-dialog.component';
 
 describe('ShortcutsDialogComponent', () => {
@@ -45,7 +45,7 @@ describe('ShortcutsDialogComponent', () => {
   });
 
   it('lists the keys in effect, not the defaults, once the user remapped one', () => {
-    localStorage.setItem('facet_keymap', JSON.stringify({ ...DEFAULT_KEYMAP, reject: 'r' }));
+    localStorage.setItem(KEYMAP_STORAGE_KEY, JSON.stringify({ ...DEFAULT_KEYMAP, reject: 'r' }));
     try {
       for (const section of ['shortcuts.section_gallery', 'shortcuts.section_detail']) {
         expect(rowsBySection()[section]).toEqual(expect.arrayContaining([
@@ -53,7 +53,7 @@ describe('ShortcutsDialogComponent', () => {
         ]));
       }
     } finally {
-      localStorage.removeItem('facet_keymap');
+      localStorage.removeItem(KEYMAP_STORAGE_KEY);
     }
   });
 });

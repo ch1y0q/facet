@@ -3,18 +3,8 @@ import { MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { i18nKeys } from '../../../core/i18n/keys';
-import { galleryShortcutSection, photoShortcutSection } from '../../../features/gallery/gallery-shortcuts';
+import { galleryShortcutSection, photoShortcutSection, ShortcutSection } from '../../../features/gallery/gallery-shortcuts';
 import { KeyboardMappingService } from '../../../core/services/keyboard-mapping.service';
-
-interface ShortcutRow {
-  keys: string[];
-  labelKey: string;
-}
-
-interface ShortcutSection {
-  titleKey: string;
-  rows: ShortcutRow[];
-}
 
 /** Keyboard shortcuts reference, opened globally with '?'. */
 @Component({

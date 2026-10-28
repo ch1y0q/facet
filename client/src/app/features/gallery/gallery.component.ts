@@ -2626,9 +2626,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (this.parked || this.store.slideshowActive()) return;
     if (isPageShortcutBlocked(event)) return;
 
-    const key = event.key.toLowerCase();
-    const map = this.keymap.keymap();
-    if (key === map.focusSearch) {
+    if (this.keymap.matches(event, 'focusSearch')) {
       const search = this.toolbarSearch()?.nativeElement;
       if (!search) return;
       event.preventDefault();
@@ -2642,12 +2640,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
       afterNextRender(() => this.filterSidebar()?.focusSearch(), { injector: this.injector });
       return;
     }
-    if (key === map.toggleSidebar) {
+    if (this.keymap.matches(event, 'toggleSidebar')) {
       event.preventDefault();
       this.store.setFilterDrawerOpen(!this.store.filterDrawerOpen());
       return;
     }
-    if (key === map.swapLayout) {
+    if (this.keymap.matches(event, 'swapLayout')) {
       event.preventDefault();
       this.store.setGalleryMode(this.effectiveGalleryMode() === 'grid' ? 'mosaic' : 'grid');
     }
@@ -2911,27 +2909,24 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (!this.auth.isEdition() || !this.store.config()?.features?.show_rating_controls) return;
     const photo = photos[index];
     if (!photo) return;
-    const map = this.keymap.keymap();
-    const key = event.key.toLowerCase();
-
     let advance = false;
     if (event.key >= '1' && event.key <= '5') {
       this.store.setRating(photo.path, Number(event.key));
       advance = true;
-    } else if (key === map.keep) {
+    } else if (this.keymap.matches(event, 'keep')) {
       event.preventDefault();
       void this.reviewSingle(photo.path, 'kept').then(result => {
         if (result) this.focusAfterDecision(photos, index);
       });
       return;
-    } else if (event.key === '0' || key === map.reject) {
+    } else if (event.key === '0' || this.keymap.matches(event, 'reject')) {
       if (this.store.filters().review_status) {
         void this.store.toggleRejected(photo.path).then(() => this.focusAfterDecision(photos, index));
       } else {
         this.store.toggleRejected(photo.path);
         advance = true;
       }
-    } else if (key === map.favourite) {
+    } else if (this.keymap.matches(event, 'favourite')) {
       this.store.toggleFavorite(photo.path);
     } else {
       return;

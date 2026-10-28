@@ -3,7 +3,7 @@ import { signal } from '@angular/core';
 import { MatDialog, MatDialogState } from '@angular/material/dialog';
 import { I18nService } from '../../../core/services/i18n.service';
 import { I18N } from '../../../core/i18n/keys';
-import { DEFAULT_KEYMAP, KeyboardMappingService } from '../../../core/services/keyboard-mapping.service';
+import { DEFAULT_KEYMAP, KeyboardMappingService, KEYMAP_STORAGE_KEY } from '../../../core/services/keyboard-mapping.service';
 import { KeyboardMappingDialogComponent } from './keyboard-mapping-dialog.component';
 
 describe('KeyboardMappingDialogComponent', () => {
@@ -13,7 +13,7 @@ describe('KeyboardMappingDialogComponent', () => {
   function render(): HTMLElement {
     // The builder shares one jsdom window across spec files: never inherit a
     // mapping a previous file left behind.
-    localStorage.removeItem('facet_keymap');
+    localStorage.removeItem(KEYMAP_STORAGE_KEY);
     TestBed.configureTestingModule({
       imports: [KeyboardMappingDialogComponent],
       providers: [
@@ -37,7 +37,7 @@ describe('KeyboardMappingDialogComponent', () => {
     fixture.detectChanges();
   };
 
-  afterEach(() => localStorage.removeItem('facet_keymap'));
+  afterEach(() => localStorage.removeItem(KEYMAP_STORAGE_KEY));
 
   it('lists every remappable action with its current key', () => {
     const root = render();
@@ -56,8 +56,8 @@ describe('KeyboardMappingDialogComponent', () => {
     expect(actionButtons(root)[0].textContent).toContain(I18N.shortcuts.press_key);
     press('z');
     expect(actionButtons(root)[0].textContent!.trim()).toBe('Z');
-    expect(service.key('favourite')).toBe('z');
-    expect(JSON.parse(localStorage.getItem('facet_keymap')!).favourite).toBe('z');
+    expect(service.keymap().favourite).toBe('z');
+    expect(JSON.parse(localStorage.getItem(KEYMAP_STORAGE_KEY)!).favourite).toBe('z');
   });
 
   it('stores an uppercase keystroke lowercased', () => {
@@ -65,7 +65,7 @@ describe('KeyboardMappingDialogComponent', () => {
     const service = TestBed.inject(KeyboardMappingService);
     actionButtons(root)[1].click();
     press('R');
-    expect(service.key('reject')).toBe('r');
+    expect(service.keymap().reject).toBe('r');
   });
 
   it('backs out of capture on Escape and keeps the old binding', () => {
@@ -74,7 +74,7 @@ describe('KeyboardMappingDialogComponent', () => {
     actionButtons(root)[0].click();
     press('Escape');
     expect(actionButtons(root)[0].textContent!.trim()).toBe(DEFAULT_KEYMAP.favourite.toUpperCase());
-    expect(service.key('favourite')).toBe(DEFAULT_KEYMAP.favourite);
+    expect(service.keymap().favourite).toBe(DEFAULT_KEYMAP.favourite);
   });
 
   it('stays armed through keys it cannot use, such as arrows and modifiers', () => {
@@ -93,7 +93,7 @@ describe('KeyboardMappingDialogComponent', () => {
     actionButtons(root)[0].click();
     press(key);
     expect(root.querySelector('[role="status"]')!.textContent).toContain(I18N.shortcuts.key_reserved);
-    expect(service.key('favourite')).toBe(DEFAULT_KEYMAP.favourite);
+    expect(service.keymap().favourite).toBe(DEFAULT_KEYMAP.favourite);
   });
 
   it('lets Tab move focus on, cancelling capture without remapping', () => {
@@ -121,8 +121,8 @@ describe('KeyboardMappingDialogComponent', () => {
     actionButtons(root)[0].click();
     press('x');
     expect(root.textContent).toContain(I18N.shortcuts.key_in_use);
-    expect(service.key('favourite')).toBe(DEFAULT_KEYMAP.favourite);
-    expect(service.key('reject')).toBe(DEFAULT_KEYMAP.reject);
+    expect(service.keymap().favourite).toBe(DEFAULT_KEYMAP.favourite);
+    expect(service.keymap().reject).toBe(DEFAULT_KEYMAP.reject);
   });
 
   it('enforces clashes against the live map, and frees a key when its holder moves', () => {
@@ -131,19 +131,19 @@ describe('KeyboardMappingDialogComponent', () => {
     // favourite <- q: no default holds q, allowed.
     actionButtons(root)[0].click();
     press('q');
-    expect(service.key('favourite')).toBe('q');
+    expect(service.keymap().favourite).toBe('q');
     // reject <- q: favourite now holds q, refused.
     actionButtons(root)[1].click();
     press('q');
     expect(root.textContent).toContain(I18N.shortcuts.key_in_use);
-    expect(service.key('reject')).toBe(DEFAULT_KEYMAP.reject);
+    expect(service.keymap().reject).toBe(DEFAULT_KEYMAP.reject);
     // favourite <- w releases q; swap layout then takes q.
     actionButtons(root)[0].click();
     press('w');
-    expect(service.key('favourite')).toBe('w');
+    expect(service.keymap().favourite).toBe('w');
     actionButtons(root)[5].click();
     press('q');
-    expect(service.key('swapLayout')).toBe('q');
+    expect(service.keymap().swapLayout).toBe('q');
   });
 
   it('reset all restores every default', () => {
@@ -167,7 +167,7 @@ describe('KeyboardMappingDialogComponent', () => {
 
   describe('inside a real dialog', () => {
     it('backs out of capture on Escape without closing the dialog', () => {
-      localStorage.removeItem('facet_keymap');
+      localStorage.removeItem(KEYMAP_STORAGE_KEY);
       TestBed.configureTestingModule({
         providers: [{ provide: I18nService, useValue: { translations: signal({}), t: (key: string) => key } }],
       });

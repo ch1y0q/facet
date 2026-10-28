@@ -1,4 +1,5 @@
 import { Injectable, signal } from '@angular/core';
+import { I18N } from '../i18n/keys';
 
 /** The user-customisable keyboard actions. Each entry maps an action id to
  *  the (lowercased) primary key that triggers it on the gallery and photo
@@ -21,10 +22,23 @@ export const DEFAULT_KEYMAP: KeymapConfig = {
   swapLayout: 'v',
 };
 
-const STORAGE_KEY = 'facet_keymap';
+/** The remappable actions, labelled with the same strings the keyboard
+ *  reference tables use, so the settings dialog and the reference can never
+ *  name an action differently. */
+export const KEYMAP_ACTIONS: { id: keyof KeymapConfig; labelKey: string }[] = [
+  { id: 'favourite', labelKey: I18N.shortcuts.favorite },
+  { id: 'reject', labelKey: I18N.shortcuts.reject },
+  { id: 'keep', labelKey: I18N.review.shortcut },
+  { id: 'focusSearch', labelKey: I18N.shortcuts.focus_search },
+  { id: 'toggleSidebar', labelKey: I18N.shortcuts.toggle_filters },
+  { id: 'swapLayout', labelKey: I18N.shortcuts.toggle_layout },
+];
 
-/** Keys no action may take: the digits drive rating (and the 0 reject
- *  alias), Space selects the focused photo, ? opens the shortcut reference. */
+export const KEYMAP_STORAGE_KEY = 'facet_keymap';
+
+/** Keys no action may take: 1–5 rate and 0 rejects, and 6–9 are held back
+ *  with them so no digit ever triggers an action; Space selects the focused
+ *  photo and ? opens the shortcut reference. */
 const RESERVED_KEYS = new Set(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ' ', '?']);
 
 /** The stored form of a pressed key — lowercased, one character, not
@@ -41,10 +55,10 @@ export function assignableKey(key: string): string | null {
  *  taken by another saved key, nothing short of the full defaults is safe. */
 function load(): KeymapConfig {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(KEYMAP_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_KEYMAP };
     const saved = JSON.parse(raw) as Partial<Record<keyof KeymapConfig, unknown>>;
-    const actions = Object.keys(DEFAULT_KEYMAP) as (keyof KeymapConfig)[];
+    const actions = KEYMAP_ACTIONS.map(a => a.id);
     const keys = actions.map(action => {
       const v = saved[action];
       return typeof v === 'string' ? assignableKey(v) : null;
@@ -73,7 +87,7 @@ export class KeyboardMappingService {
     const k = assignableKey(key);
     if (!k) return 'reserved';
     const map = this.keymap();
-    if ((Object.keys(map) as (keyof KeymapConfig)[]).some(a => a !== action && map[a] === k)) return 'in_use';
+    if (KEYMAP_ACTIONS.some(a => a.id !== action && map[a.id] === k)) return 'in_use';
     this.save({ ...map, [action]: k });
     return null;
   }
@@ -84,11 +98,11 @@ export class KeyboardMappingService {
 
   private save(map: KeymapConfig): void {
     this.keymap.set(map);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(map)); } catch { /* session-only */ }
+    try { localStorage.setItem(KEYMAP_STORAGE_KEY, JSON.stringify(map)); } catch { /* session-only */ }
   }
 
-  /** The key for an action, from the current mapping. */
-  key(action: keyof KeymapConfig): string {
-    return this.keymap()[action];
+  /** Whether `event` is the key currently mapped to `action`. */
+  matches(event: KeyboardEvent, action: keyof KeymapConfig): boolean {
+    return event.key.toLowerCase() === this.keymap()[action];
   }
 }

@@ -8,7 +8,7 @@ import { GalleryReuseStrategy } from '../../core/gallery-reuse.strategy';
 import { ActivatedRoute, Event as RouterEvent, NavigationEnd, NavigationStart, provideRouter, RouteReuseStrategy, Router, RouterOutlet } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { PhotoCardComponent } from '../../shared/components/photo-card/photo-card.component';
-import { KeyboardMappingService } from '../../core/services/keyboard-mapping.service';
+import { KeyboardMappingService, KEYMAP_STORAGE_KEY } from '../../core/services/keyboard-mapping.service';
 import { GalleryPhotoMenuComponent } from './gallery-photo-menu.component';
 import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -378,7 +378,7 @@ describe('GalleryComponent', () => {
       const keymap = () => TestBed.inject(KeyboardMappingService);
       afterEach(() => {
         keymap().resetAll();
-        localStorage.removeItem('facet_keymap');
+        localStorage.removeItem(KEYMAP_STORAGE_KEY);
       });
 
       it('rejects with the user-mapped key instead of X', () => {
@@ -5572,7 +5572,7 @@ describe('GalleryComponent', () => {
       afterEach(() => {
         vi.unstubAllGlobals();
         TestBed.inject(KeyboardMappingService).resetAll();
-        localStorage.removeItem('facet_keymap');
+        localStorage.removeItem(KEYMAP_STORAGE_KEY);
       });
 
       it('/ focuses and selects the toolbar search', () => {

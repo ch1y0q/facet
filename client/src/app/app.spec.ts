@@ -19,7 +19,7 @@ import { ScanService } from './core/services/scan.service';
 import { By } from '@angular/platform-browser';
 import { MatTooltip } from '@angular/material/tooltip';
 import { MatMenuTrigger } from '@angular/material/menu';
-import { KeyboardMappingService } from './core/services/keyboard-mapping.service';
+import { KeyboardMappingService, KEYMAP_STORAGE_KEY } from './core/services/keyboard-mapping.service';
 
 function createApp(routerUrl = '/', extraProviders: Provider[] = []) {
   const filtersSignal = signal<GalleryFilters>({ ...DEFAULT_FILTERS });
@@ -80,7 +80,7 @@ describe('App', () => {
   describe('help dialog shortcuts', () => {
     afterEach(() => {
       TestBed.inject(KeyboardMappingService).resetAll();
-      localStorage.removeItem('facet_keymap');
+      localStorage.removeItem(KEYMAP_STORAGE_KEY);
     });
 
     it('lists the remapped reject key on a gallery route, not the default', () => {

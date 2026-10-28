@@ -5,19 +5,7 @@ import { MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { i18nKeys, I18N } from '../../../core/i18n/keys';
-import { KeymapConfig, KeyboardMappingService } from '../../../core/services/keyboard-mapping.service';
-
-/** The remappable actions, labelled with the same strings the keyboard
- *  reference tables use, so the settings dialog and the reference can never
- *  name an action differently. */
-const KEYMAP_ACTIONS: { id: keyof KeymapConfig; labelKey: string }[] = [
-  { id: 'favourite', labelKey: I18N.shortcuts.favorite },
-  { id: 'reject', labelKey: I18N.shortcuts.reject },
-  { id: 'keep', labelKey: I18N.review.shortcut },
-  { id: 'focusSearch', labelKey: I18N.shortcuts.focus_search },
-  { id: 'toggleSidebar', labelKey: I18N.shortcuts.toggle_filters },
-  { id: 'swapLayout', labelKey: I18N.shortcuts.toggle_layout },
-];
+import { KEYMAP_ACTIONS, KeymapConfig, KeyboardMappingService } from '../../../core/services/keyboard-mapping.service';
 
 /** Lets the user reassign the primary key of each gallery and photo-page
  *  action. Click a row to enter capture mode, press the new key; Esc or Tab

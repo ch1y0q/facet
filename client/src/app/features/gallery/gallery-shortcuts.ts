@@ -1,18 +1,18 @@
 import { I18N } from '../../core/i18n/keys';
-import { DEFAULT_KEYMAP, KeymapConfig } from '../../core/services/keyboard-mapping.service';
+import { KeymapConfig } from '../../core/services/keyboard-mapping.service';
 
 /** The gallery's and photo page's keyboard references. One builder per page
  *  feeds the `?` shortcuts dialog and, for the gallery, the help dialog the
  *  user menu opens on the gallery routes, so they can never list different
  *  keys — and both show the keys the user actually remapped, not the
  *  defaults. */
-export interface GalleryShortcutRow { keys: string[]; labelKey: string; }
+export interface ShortcutRow { keys: string[]; labelKey: string; }
 
-export interface GalleryShortcutSection { titleKey: string; rows: GalleryShortcutRow[]; }
+export interface ShortcutSection { titleKey: string; rows: ShortcutRow[]; }
 
 const label = (key: string): string => key.toUpperCase();
 
-export function galleryShortcutSection(map: KeymapConfig = DEFAULT_KEYMAP): GalleryShortcutSection {
+export function galleryShortcutSection(map: KeymapConfig): ShortcutSection {
   return {
     titleKey: I18N.shortcuts.section_gallery,
     rows: [
@@ -33,7 +33,7 @@ export function galleryShortcutSection(map: KeymapConfig = DEFAULT_KEYMAP): Gall
   };
 }
 
-export function photoShortcutSection(map: KeymapConfig = DEFAULT_KEYMAP): GalleryShortcutSection {
+export function photoShortcutSection(map: KeymapConfig): ShortcutSection {
   return {
     titleKey: I18N.shortcuts.section_detail,
     rows: [
