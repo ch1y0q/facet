@@ -1019,8 +1019,7 @@
     "map": "Karte",
     "capsules": "Kapseln",
     "junk_sweep": "Aufräumen",
-    "help": "Hilfe",
-    "reset_filters": "Alle Filter zurücksetzen"
+    "help": "Hilfe"
   },
   "auth": {
     "logout": "Abmelden",
@@ -1040,6 +1039,11 @@
       "show_all": "Alle anzeigen",
       "restore": "Filter wiederherstellen",
       "showing_all": "Alle Fotos werden angezeigt – einschließlich Blinzler, Serien und Duplikate"
+    },
+    "filters_notice": {
+      "message": "{count} Filter aktiv",
+      "message_plural": "{count} Filter aktiv",
+      "reset": "Alle Filter zurücksetzen"
     },
     "render_migration": {
       "message": "{n} RAW-Fotos zeigen noch eine Miniatur aus der vorherigen Darstellung.",

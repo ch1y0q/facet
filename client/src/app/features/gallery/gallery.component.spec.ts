@@ -1614,6 +1614,91 @@ describe('GalleryComponent', () => {
       mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
       expect(stack(render())).toBeNull();
     });
+
+    describe('active-filters notice', () => {
+      const activate = (filters: Partial<GalleryFilters>) => {
+        const next = { ...DEFAULT_FILTERS, ...filters };
+        mockStore.filters.set(next);
+        mockStore.activeFilterCount.set(Object.keys(filters).length);
+      };
+      const renderFixture = () => {
+        const fixture = TestBed.createComponent(GalleryComponent);
+        fixture.detectChanges();
+        return fixture;
+      };
+      const reset = (html: HTMLElement) => button(html, I18N.gallery.filters_notice.reset);
+
+      beforeEach(() => {
+        mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
+        mockStore.filters.set({ ...DEFAULT_FILTERS });
+        mockStore.activeFilterCount.set(0);
+        mockStore.currentAlbum.set(null);
+        mockStore.resetFilters.mockClear();
+      });
+
+      afterEach(() => {
+        mockStore.activeFilterCount.set(0);
+        mockStore.currentAlbum.set(null);
+      });
+
+      it('is absent while no filter is active', () => {
+        const html = renderFixture().nativeElement as HTMLElement;
+        expect(stack(html)).toBeNull();
+        expect(reset(html)).toBeUndefined();
+      });
+
+      it('shows the count, singular then plural, when a filter is active', () => {
+        activate({ camera: 'Canon' });
+        const fixture = renderFixture();
+        const html = fixture.nativeElement as HTMLElement;
+        expect(stack(html)!.textContent).toContain(I18N.gallery.filters_notice.message);
+        expect(stack(html)!.textContent).not.toContain(I18N.gallery.filters_notice.message_plural);
+        activate({ camera: 'Canon', tag: 'beach' });
+        fixture.detectChanges();
+        expect(stack(html)!.textContent).toContain(I18N.gallery.filters_notice.message_plural);
+      });
+
+      it('resets every filter from its action', () => {
+        activate({ camera: 'Canon' });
+        const html = renderFixture().nativeElement as HTMLElement;
+        reset(html)!.click();
+        expect(mockStore.resetFilters).toHaveBeenCalledOnce();
+      });
+
+      it('closes without resetting, and returns when the set of active filters changes', () => {
+        activate({ camera: 'Canon' });
+        const fixture = renderFixture();
+        const html = fixture.nativeElement as HTMLElement;
+        closeFor(html, I18N.gallery.filters_notice.message).click();
+        fixture.detectChanges();
+        expect(stack(html)).toBeNull();
+        expect(mockStore.resetFilters).not.toHaveBeenCalled();
+        activate({ camera: 'Canon', tag: 'beach' });
+        fixture.detectChanges();
+        expect(stack(html)).toBeTruthy();
+      });
+
+      it('stays closed when only a filter value changes', () => {
+        activate({ camera: 'Canon' });
+        const fixture = renderFixture();
+        const html = fixture.nativeElement as HTMLElement;
+        closeFor(html, I18N.gallery.filters_notice.message).click();
+        activate({ camera: 'Nikon' });
+        fixture.detectChanges();
+        expect(stack(html)).toBeNull();
+      });
+
+      it('is not offered inside an album, whose saved filters are always active', () => {
+        activate({ camera: 'Canon' });
+        const fixture = renderFixture();
+        const html = fixture.nativeElement as HTMLElement;
+        expect(stack(html)).toBeTruthy();
+        // ngOnInit clears the album, so it is opened after the first render, as the album route does.
+        mockStore.currentAlbum.set({ id: 3, name: 'Trip', is_smart: true });
+        fixture.detectChanges();
+        expect(stack(html)).toBeNull();
+      });
+    });
   });
 
   describe('docked details panel (tooltip_mode = panel)', () => {

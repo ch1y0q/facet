@@ -1034,7 +1034,6 @@ export const I18N = {
     capsules: "nav.capsules",
     junk_sweep: "nav.junk_sweep",
     help: "nav.help",
-    reset_filters: "nav.reset_filters",
   },
   auth: {
     logout: "auth.logout",
@@ -1054,6 +1053,11 @@ export const I18N = {
       show_all: "gallery.hidden_banner.show_all",
       restore: "gallery.hidden_banner.restore",
       showing_all: "gallery.hidden_banner.showing_all",
+    },
+    filters_notice: {
+      message: "gallery.filters_notice.message",
+      message_plural: "gallery.filters_notice.message_plural",
+      reset: "gallery.filters_notice.reset",
     },
     render_migration: {
       message: "gallery.render_migration.message",

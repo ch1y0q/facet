@@ -864,23 +864,19 @@ describe('App', () => {
       expect(bar.classList.contains('!border-b-2')).toBe(edition);
     });
 
-    it('lists Card actions, the shell-level Help and Reset all filters, and calls their handlers', () => {
+    it('lists Card actions then the shell-level Help, and calls their handlers', () => {
       const { fixture, root } = render(false);
-      const app = fixture.componentInstance as unknown as { openCardActionsDialog: () => void; openHelpDialog: () => void; resetAllFilters: () => void };
+      const app = fixture.componentInstance as unknown as { openCardActionsDialog: () => void; openHelpDialog: () => void };
       const openCardActions = vi.spyOn(app, 'openCardActionsDialog').mockImplementation(() => undefined);
-      const resetFilters = vi.spyOn(app, 'resetAllFilters').mockImplementation(() => undefined);
       const openHelp = vi.spyOn(app, 'openHelpDialog').mockImplementation(() => undefined);
       const items = openUserMenu(fixture, root);
       const labels = items.map(i => i.textContent!.replace(/\s+/g, ' ').trim());
-      expect(labels.at(-3)).toContain(I18N.gallery.card_actions.title);
-      expect(labels.at(-2)).toContain(I18N.nav.help);
-      expect(labels.at(-1)).toContain(I18N.nav.reset_filters);
-      items.at(-3)!.click();
-      expect(openCardActions).toHaveBeenCalledOnce();
+      expect(labels.at(-2)).toContain(I18N.gallery.card_actions.title);
+      expect(labels.at(-1)).toContain(I18N.nav.help);
       items.at(-2)!.click();
-      expect(openHelp).toHaveBeenCalledOnce();
+      expect(openCardActions).toHaveBeenCalledOnce();
       items.at(-1)!.click();
-      expect(resetFilters).toHaveBeenCalledOnce();
+      expect(openHelp).toHaveBeenCalledOnce();
     });
 
     it('puts Logout last in the menu', () => {

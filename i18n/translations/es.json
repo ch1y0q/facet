@@ -1019,8 +1019,7 @@
     "map": "Mapa",
     "capsules": "Cápsulas",
     "junk_sweep": "Limpieza",
-    "help": "Ayuda",
-    "reset_filters": "Restablecer todos los filtros"
+    "help": "Ayuda"
   },
   "auth": {
     "logout": "Cerrar sesión",
@@ -1040,6 +1039,11 @@
       "show_all": "Mostrar todas",
       "restore": "Restaurar filtros",
       "showing_all": "Se muestran todas las fotos, incluidos parpadeos, ráfagas y duplicados"
+    },
+    "filters_notice": {
+      "message": "{count} filtro activo",
+      "message_plural": "{count} filtros activos",
+      "reset": "Restablecer todos los filtros"
     },
     "render_migration": {
       "message": "{n} fotos RAW aún muestran una miniatura del renderizado anterior.",

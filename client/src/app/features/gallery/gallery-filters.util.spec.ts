@@ -19,6 +19,7 @@ import {
   exclusiveHidePatch,
   reviewStatusPatch,
   setScopePatch,
+  activeFilterKeys,
   countActiveFilters,
   loadDisplayOptionsFromStorage,
   saveDisplayOptionsToStorage,
@@ -30,6 +31,22 @@ import {
 function filters(overrides: Partial<GalleryFilters> = {}): GalleryFilters {
   return { ...DEFAULT_FILTERS, ...overrides };
 }
+
+describe('activeFilterKeys', () => {
+  it('is empty for defaults', () => {
+    expect(activeFilterKeys(DEFAULT_FILTERS)).toEqual([]);
+  });
+  it('names string and flag filters in a stable order, whatever order they were set in', () => {
+    const a = activeFilterKeys(filters({ is_monochrome: true, tag: 'beach', camera: 'Canon' }));
+    const b = activeFilterKeys(filters({ camera: 'Nikon', tag: 'x', is_monochrome: true }));
+    expect(a).toEqual(['camera', 'tag', 'is_monochrome']);
+    expect(b).toEqual(a);
+  });
+  it('agrees with countActiveFilters', () => {
+    const f = filters({ camera: 'Canon', favorites_only: true, semanticQuery: 'dog' });
+    expect(activeFilterKeys(f)).toHaveLength(countActiveFilters(f));
+  });
+});
 
 describe('countActiveFilters', () => {
   it('returns 0 for defaults', () => {

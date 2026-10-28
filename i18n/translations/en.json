@@ -1019,8 +1019,7 @@
     "map": "Map",
     "capsules": "Capsules",
     "junk_sweep": "Junk Sweep",
-    "help": "Help",
-    "reset_filters": "Reset all filters"
+    "help": "Help"
   },
   "auth": {
     "logout": "Log out",
@@ -1040,6 +1039,11 @@
       "show_all": "Show all",
       "restore": "Restore filters",
       "showing_all": "Showing every photo — blinks, bursts and duplicates included"
+    },
+    "filters_notice": {
+      "message": "{count} filter active",
+      "message_plural": "{count} filters active",
+      "reset": "Reset all filters"
     },
     "render_migration": {
       "message": "{n} RAW photos still show a thumbnail from the previous rendering.",

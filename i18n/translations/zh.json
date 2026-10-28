@@ -1019,8 +1019,7 @@
     "map": "地图",
     "capsules": "照片胶囊",
     "junk_sweep": "废片清理",
-    "help": "帮助",
-    "reset_filters": "重置全部筛选"
+    "help": "帮助"
   },
   "auth": {
     "logout": "退出登录",
@@ -1040,6 +1039,11 @@
       "show_all": "显示全部",
       "restore": "恢复筛选条件",
       "showing_all": "正在显示所有照片，包括闭眼照片、连拍照片和重复照片"
+    },
+    "filters_notice": {
+      "message": "已启用 {count} 个筛选",
+      "message_plural": "已启用 {count} 个筛选",
+      "reset": "重置全部筛选"
     },
     "render_migration": {
       "message": "仍有 {n} 张 RAW 照片显示上一次渲染的缩略图。",
