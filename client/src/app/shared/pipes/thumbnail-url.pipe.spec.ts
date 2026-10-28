@@ -40,6 +40,23 @@ describe('ThumbnailUrlPipe', () => {
   });
 });
 
+describe('explicit thumbnail preview revisions', () => {
+  it('encodes revisions while retaining stored-thumbnail offline caching and sharp-render bypass', () => {
+    const pipe = new ThumbnailUrlPipe();
+    const path = '/photos/a b.jpg';
+    const revised = new URL(pipe.transform(path, 160, 'load+1&2'), 'http://facet.test');
+    expect(revised.searchParams.get('path')).toBe(path);
+    expect(revised.searchParams.get('preview')).toBe('load+1&2');
+    expect(revised.searchParams.get('ngsw-bypass')).toBeNull();
+    const sharp = new URL(pipe.transform(path, 1920, 'load+1&2'), 'http://facet.test');
+    expect(sharp.searchParams.get('preview')).toBe('load+1&2');
+    expect(sharp.searchParams.get('v')).toBe('2');
+    expect(sharp.searchParams.get('ngsw-bypass')).toBe('1');
+    expect(pipe.transform(path, 160, null)).toBe(pipe.transform(path, 160));
+    expect(pipe.transform(path, 160)).not.toContain('ngsw-bypass');
+  });
+});
+
 describe('ImageUrlPipe', () => {
   let pipe: ImageUrlPipe;
 

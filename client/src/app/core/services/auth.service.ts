@@ -92,6 +92,9 @@ export class AuthService {
   readonly loginPasswordRequired = computed(() => this.status()?.login_password_required ?? false);
   readonly isSuperadmin = computed(() => this.status()?.user_role === 'superadmin');
   readonly isMultiUser = computed(() => this.status()?.multi_user ?? false);
+  /** Who may administer the installation, as `require_scan_access` decides: the
+   *  superadmin in multi-user mode, edition access otherwise. */
+  readonly isInstallAdmin = computed(() => this.isMultiUser() ? this.isSuperadmin() : this.isEdition());
   readonly features = computed(() => this.status()?.features ?? {});
   readonly downloadProfiles = computed(() => this.status()?.download_profiles ?? []);
 

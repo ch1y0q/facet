@@ -2955,6 +2955,15 @@
     "stack": "Pila di foto"
   },
   "stacks": {
+    "suggestions": "Pile suggerite",
+    "suggestions_hint": "Suggerimenti da duplicati e raffiche rilevati con questi filtri, ignorandone la selezione automatica del solo rappresentante. Pile esistenti e serie bracket/panorama escluse. Sono mostrati fino a 20 suggerimenti: restringi i filtri per altre foto. Ignorare vale solo finché questa finestra resta aperta.",
+    "suggestions_empty": "Nessuna pila suggerita in questa vista",
+    "suggestion_burst": "Raffica",
+    "suggestion_duplicate": "Duplicati",
+    "suggestion_review": "Rivedi e scegli la copertina",
+    "suggestion_dismiss": "Ignora per ora",
+    "suggestions_error": "Impossibile caricare i suggerimenti. Riprova.",
+    "suggestions_reload": "Ricarica i suggerimenti",
     "previous": "Foto precedente della pila",
     "next": "Foto successiva della pila",
     "browse_position": "{position} di {count}",
@@ -2990,5 +2999,29 @@
     "badge_filtered": "Apri pila: {count} corrispondenze su {total} membri consentiti",
     "stack_id": "ID pila",
     "position": "Posizione"
+  },
+  "immich_diagnostics": {
+    "title": "Diagnostica Immich",
+    "read_only": "Solo lettura. Foto, valutazioni e pile restano invariate.",
+    "configuration": "Configurazione",
+    "configured": "Server e chiave configurati",
+    "not_configured": "Configura prima server e chiave API.",
+    "mapping_rules": "Regole dei percorsi",
+    "mapping_sample": "Percorsi coperti (campione)",
+    "sample_hint": "Massimo {limit} foto indicizzate. La copertura non conferma risorse remote. Senza regole i percorsi restano invariati.",
+    "last_push": "Ultimo aggiornamento registrato dello stato di sincronizzazione",
+    "unknown": "Non registrato",
+    "version": "Versione server: {version}",
+    "stack_version_ok": "Versione compatibile con le pile; permessi e corrispondenze non verificati.",
+    "stack_version_old": "Lo scambio di pile richiede Immich 3 o successivo.",
+    "not_checked": "Connessione non verificata.",
+    "connected": "Server raggiungibile; chiave accettata per leggere il conto.",
+    "access_denied": "Accesso negato. Verifica chiave e permesso user.read.",
+    "unreachable": "Connessione non riuscita. Verifica server, indirizzo e TLS.",
+    "invalid_response": "Risposta server non supportata.",
+    "invalid_config": "Correggi la configurazione Immich sul server.",
+    "failed": "Diagnostica non disponibile. Riprova o verifica accesso amministratore.",
+    "refresh": "Aggiorna stato",
+    "test": "Verifica connessione"
   }
 }

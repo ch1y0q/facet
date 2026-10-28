@@ -2955,6 +2955,15 @@
     "stack": "Fotostapel"
   },
   "stacks": {
+    "suggestions": "Vorgeschlagene Stapel",
+    "suggestions_hint": "Vorschläge aus erkannten Duplikaten und Serien innerhalb dieser Filter. Deren automatisches Ausblenden wird zur Prüfung aufgehoben. Bestehende Stapel und Belichtungs-/Panoramaserien werden übersprungen. Höchstens 20 Vorschläge; Filter für weitere Fotos eingrenzen. Ausblenden gilt nur für diesen geöffneten Dialog.",
+    "suggestions_empty": "Keine Stapelvorschläge in dieser Ansicht",
+    "suggestion_burst": "Serie",
+    "suggestion_duplicate": "Duplikate",
+    "suggestion_review": "Prüfen und Titelbild wählen",
+    "suggestion_dismiss": "Vorerst ausblenden",
+    "suggestions_error": "Vorschläge konnten nicht geladen werden. Bitte erneut versuchen.",
+    "suggestions_reload": "Vorschläge neu laden",
     "previous": "Vorheriges Stapelfoto",
     "next": "Nächstes Stapelfoto",
     "browse_position": "{position} von {count}",
@@ -2990,5 +2999,29 @@
     "badge_filtered": "Stapel öffnen: {count} passende von {total} erlaubten Mitgliedern",
     "stack_id": "Stapel-ID",
     "position": "Position"
+  },
+  "immich_diagnostics": {
+    "title": "Immich-Diagnose",
+    "read_only": "Nur Leseprüfungen. Fotos, Bewertungen und Stapel bleiben unverändert.",
+    "configuration": "Konfiguration",
+    "configured": "Server und Schlüssel konfiguriert",
+    "not_configured": "Zuerst Server und API-Schlüssel konfigurieren.",
+    "mapping_rules": "Pfadzuordnungsregeln",
+    "mapping_sample": "Abgedeckte Pfade (Stichprobe)",
+    "sample_hint": "Höchstens {limit} erfasste Fotos. Abdeckung bestätigt keine entfernten Treffer. Ohne Regeln bleiben Pfade unverändert.",
+    "last_push": "Letzte aufgezeichnete Aktualisierung des Synchronisationsstatus",
+    "unknown": "Nicht aufgezeichnet",
+    "version": "Serverversion: {version}",
+    "stack_version_ok": "Version unterstützt Stapel; Rechte und Dateizuordnungen wurden nicht geprüft.",
+    "stack_version_old": "Stapelübertragung benötigt Immich 3 oder neuer.",
+    "not_checked": "Verbindung nicht getestet.",
+    "connected": "Server erreichbar; Schlüssel für Kontolesen akzeptiert.",
+    "access_denied": "Zugriff verweigert. Schlüssel und user.read prüfen.",
+    "unreachable": "Verbindung fehlgeschlagen. Server, Adresse und TLS prüfen.",
+    "invalid_response": "Nicht unterstützte Serverantwort.",
+    "invalid_config": "Immich-Konfiguration auf dem Server korrigieren.",
+    "failed": "Diagnose nicht verfügbar. Erneut versuchen oder Administratorzugriff prüfen.",
+    "refresh": "Status aktualisieren",
+    "test": "Verbindung testen"
   }
 }
