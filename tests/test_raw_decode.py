@@ -505,7 +505,7 @@ class TestEverySurfaceAgrees:
         raw_file.write_bytes(b'raw')
         seen = {}
 
-        def _record(path, mtime, quality, sequence_kind):
+        def _record(path, mtime, quality, sequence_kind, revision):
             seen['sequence_kind'] = sequence_kind
             return b'jpeg-payload'
 
@@ -514,7 +514,8 @@ class TestEverySurfaceAgrees:
                             lambda p: str(raw_file))
         monkeypatch.setattr('api.routers.thumbnails.get_db',
                             lambda: _StubRowDb({'path': str(raw_file),
-                                                'sequence_kind': 'bracket'}))
+                                                'sequence_kind': 'bracket',
+                                                'preview_revision': None}))
 
         response = TestClient(create_app()).get('/image', params={'path': str(raw_file)})
 

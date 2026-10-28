@@ -305,6 +305,8 @@ def attach_user_marks(conn, groups, user_id):
     ``photos`` columns otherwise), never taken from the memoised enrichment: a mark the user or an assistant
     set a moment ago must show on the next page fetch. 0/1 ints and a 0-5 rating, like the gallery rows.
     """
+    from db.preview_versions import attach_preview_versions
+    attach_preview_versions(conn, [p for g in groups for p in g.get('photos') or []])
     paths = [p['path'] for g in groups for p in g.get('photos') or [] if p.get('path')]
     if not paths:
         return

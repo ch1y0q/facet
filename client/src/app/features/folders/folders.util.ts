@@ -1,4 +1,5 @@
 export interface FolderItem {
+  preview_revision?: string | null;
   name: string;
   path: string;
   photo_count: number;

@@ -8,6 +8,7 @@ import { Album } from '../../core/services/album.service';
 import { i18nKeys } from '../../core/i18n/keys';
 
 export type SheetAction =
+  | { kind: 'refresh' }
   | { kind: 'stack' }
   | { kind: 'favorite' }
   | { kind: 'reject' }
@@ -59,6 +60,9 @@ export interface GalleryActionsSheetData {
 
       @if (data.viewScoped) { <p class="px-4 py-2 text-sm">{{ I18N.stacks.folded_scope | translate }}</p> }
       @if (data.isEdition) {
+        <button mat-button [disabled]="data.viewScoped || data.count > 100" (click)="pick({ kind: 'refresh' })">
+          <mat-icon>refresh</mat-icon>{{ I18N.photo_refresh.title | translate }}
+        </button>
         <button class="flex items-center gap-3 w-full px-4 py-3 text-sm text-left hover:bg-white/10 cursor-pointer disabled:opacity-40" (click)="pick({ kind: 'stack' })" [disabled]="!data.canStack">
           <mat-icon aria-hidden="true">photo_library</mat-icon>{{ I18N.stacks.create | translate }}
         </button>

@@ -22,7 +22,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { GalleryStore } from './gallery.store';
 import { registerOverlayForLifetime } from '../../core/agent/page-context.service';
 import { Photo } from '../../shared/models/photo.model';
-import { ImageUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
+import { ImageUrlPipe, imageUrl, thumbnailUrl } from '../../shared/pipes/thumbnail-url.pipe';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { i18nKeys } from '../../core/i18n/keys';
 
@@ -104,12 +104,12 @@ interface Slide {
             @for (photo of slide.photos; track photo.path; let i = $index) {
               <div class="flex-1 min-w-0 h-full overflow-hidden">
                 <img
-                  [src]="photo.path | imageUrl"
+                  [src]="photo.path | imageUrl:false:photo.preview_revision"
                   [alt]="photo.filename"
                   class="w-full h-full object-cover"
                   [style.transform]="layerAImgTransforms()[i]"
                   [style.transition]="layerAImgTransitions()[i]"
-                  (error)="onImageError($event, photo.path)"
+                  (error)="onImageError($event, photo.path, photo.preview_revision)"
                 />
               </div>
             }
@@ -129,12 +129,12 @@ interface Slide {
             @for (photo of slide.photos; track photo.path; let i = $index) {
               <div class="flex-1 min-w-0 h-full overflow-hidden">
                 <img
-                  [src]="photo.path | imageUrl"
+                  [src]="photo.path | imageUrl:false:photo.preview_revision"
                   [alt]="photo.filename"
                   class="w-full h-full object-cover"
                   [style.transform]="layerBImgTransforms()[i]"
                   [style.transition]="layerBImgTransitions()[i]"
-                  (error)="onImageError($event, photo.path)"
+                  (error)="onImageError($event, photo.path, photo.preview_revision)"
                 />
               </div>
             }
@@ -631,9 +631,9 @@ export class SlideshowComponent implements OnDestroy {
             const thumb = new Image();
             thumb.onload = () => resolve();
             thumb.onerror = () => resolve();
-            thumb.src = `/thumbnail?${new URLSearchParams({ path: photo.path })}`;
+            thumb.src = thumbnailUrl(photo.path, undefined, photo.preview_revision);
           };
-          img.src = `/image?${new URLSearchParams({ path: photo.path })}`;
+          img.src = imageUrl(photo.path, false, photo.preview_revision);
         }),
     );
 
@@ -862,9 +862,9 @@ export class SlideshowComponent implements OnDestroy {
   }
 
   /** Fallback to thumbnail when full image fails to load (e.g. RAW without rawpy). */
-  onImageError(event: Event, path: string): void {
+  onImageError(event: Event, path: string, revision?: string | null): void {
     const img = event.target as HTMLImageElement;
-    const thumbUrl = `/thumbnail?${new URLSearchParams({ path })}`;
+    const thumbUrl = thumbnailUrl(path, undefined, revision);
     if (!img.src.includes('/thumbnail?')) {
       img.src = thumbUrl;
     }

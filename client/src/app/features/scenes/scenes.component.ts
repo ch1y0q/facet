@@ -23,6 +23,7 @@ import { SceneDatePipe, MomentLabelPipe, MomentUncertainPipe } from './scenes.pi
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 
 interface ScenePhoto {
+  preview_revision?: string | null;
   path: string;
   filename: string;
   aggregate: number | null;
@@ -129,8 +130,8 @@ interface ScenesResponse {
               @for (photo of scene.photos; track photo.path) {
                 <div class="group relative w-full aspect-[4/3] rounded-xl overflow-hidden border-2"
                      [ngClass]="photo.path === scene.best_path ? 'border-green-500' : 'border-white/20'">
-                  <img [src]="photo.path | thumbnailUrl:320"
-                       [appLoupe]="photo.path | imageUrl:true"
+                  <img [src]="photo.path | thumbnailUrl:320:photo.preview_revision"
+                       [appLoupe]="photo.path | imageUrl:true:photo.preview_revision"
                        [loupeActive]="loupeActive()"
                        [loupeZoom]="loupeZoom()"
                        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"

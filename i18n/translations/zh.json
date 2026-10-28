@@ -1,4 +1,20 @@
 {
+  "photo_refresh": {
+    "limit": "请选择 1 至 100 张照片。",
+    "reasons": {
+      "unavailable": "源文件不可用",
+      "changed": "照片已更改，请重新刷新",
+      "busy": "照片库忙，请稍后重试",
+      "failed": "无法读取此照片"
+    },
+    "title": "刷新元数据和预览",
+    "description": "读取可用的源元数据并重建预览。手动注释、评分、人脸和 AI 分数保持不变，绝不修改原文件。如果图像内容已更改，请另行重新扫描以更新分数或人脸检测。",
+    "one": "已选择 1 张照片",
+    "many": "已选择 {count} 张照片",
+    "start": "刷新",
+    "completed": "已刷新：{count}",
+    "failed": "部分照片无法刷新。重试将只处理剩余的照片。"
+  },
   "ui": {
     "title": "Facet",
     "filters": {
@@ -1331,7 +1347,11 @@
     "faces_need_names": "未命名的人脸",
     "faces_need_names_hint": "包括未分配的人脸和未命名的人物组。点击 + 分配人脸，或在“人物”中为分组命名。不包括未检测到人脸的照片。",
     "faces_need_names_readonly_hint": "包含未分配的人脸和尚未命名的人物组。拥有编辑权限的用户可以分配人脸或为组命名。不包含未检测到人脸的照片。",
-    "help_none": "此页面暂无帮助内容。"
+    "help_none": "此页面暂无帮助内容。",
+    "notices": {
+      "collapsed": "{count} 条通知",
+      "collapsed_plural": "{count} 条通知"
+    }
   },
   "composition_patterns": {
     "none": "无",

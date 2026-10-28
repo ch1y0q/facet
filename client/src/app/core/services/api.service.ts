@@ -55,8 +55,8 @@ export class ApiService {
   }
 
   /** Build thumbnail URL */
-  thumbnailUrl(path: string, size?: number): string {
-    return thumbnailUrl(path, size);
+  thumbnailUrl(path: string, size?: number, revision?: string | null): string {
+    return thumbnailUrl(path, size, revision);
   }
 
   /** Build face thumbnail URL */
@@ -70,8 +70,8 @@ export class ApiService {
   }
 
   /** Build full image URL */
-  imageUrl(path: string): string {
-    return `/image?path=${encodeURIComponent(path)}`;
+  imageUrl(path: string, revision?: string | null): string {
+    return `/image?path=${encodeURIComponent(path)}` + (revision ? `&preview=${encodeURIComponent(revision)}` : '');
   }
 
   /** Build download URL with type and optional profile/token */

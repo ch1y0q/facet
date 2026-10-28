@@ -40,6 +40,7 @@ interface CategoryWeights {
 }
 
 interface PreviewPhoto {
+  preview_revision?: string | null;
   path: string;
   filename: string;
   aggregate: number;
@@ -222,7 +223,7 @@ class SignalErrorMatcher {
           <div class="grid grid-cols-3 md:grid-cols-6 gap-3">
             @for (photo of previewPhotos(); track photo.path; let i = $index) {
               <div class="relative rounded-lg overflow-hidden bg-[var(--mat-sys-surface-container)]">
-                <img [src]="photo.path | thumbnailUrl:320" [alt]="photo.filename" class="w-full object-contain bg-[var(--mat-sys-surface-container)]" />
+                <img [src]="photo.path | thumbnailUrl:320:photo.preview_revision" [alt]="photo.filename" class="w-full object-contain bg-[var(--mat-sys-surface-container)]" />
                 <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5">
                   <span class="text-xs font-mono text-white">#{{ i + 1 }}</span>
                   <span class="text-xs font-mono text-gray-300 ml-2">{{ (photo.new_score ?? photo.aggregate) | fixed:1 }}</span>

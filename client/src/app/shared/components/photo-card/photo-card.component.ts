@@ -154,7 +154,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
            [class.md:h-full]="hideDetails()"
            [class.h-full]="mosaicMode()">
         <img
-          [src]="photo().path | thumbnailUrl:thumbSize()"
+          [src]="photo().path | thumbnailUrl:thumbSize():photo().preview_revision"
           [alt]="photo().caption || photo().filename"
           loading="lazy"
           decoding="async"
