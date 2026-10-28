@@ -458,6 +458,7 @@
     "exposure": "Exposition",
     "composition": "Composition",
     "subject_saliency": "Saillance du sujet",
+    "content": "Contenu",
     "camera": "Appareil"
   },
   "sort_options": {

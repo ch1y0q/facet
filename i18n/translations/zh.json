@@ -458,6 +458,7 @@
     "exposure": "曝光",
     "composition": "构图",
     "subject_saliency": "主体显著性",
+    "content": "内容",
     "camera": "相机"
   },
   "sort_options": {

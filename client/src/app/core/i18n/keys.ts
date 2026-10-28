@@ -472,6 +472,7 @@ export const I18N = {
     exposure: "sort_groups.exposure",
     composition: "sort_groups.composition",
     subject_saliency: "sort_groups.subject_saliency",
+    content: "sort_groups.content",
     camera: "sort_groups.camera",
   },
   sort_options: {

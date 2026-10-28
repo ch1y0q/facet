@@ -10,7 +10,7 @@ All notable changes to Facet are documented in this file.
 
 ### Changed
 
-- **Icons in gallery sort choices.** Desktop and mobile sort menus pair each translated option with a decorative icon, including relevance and My Taste.
+- **Icons in gallery sort choices.** Desktop and mobile sort menus pair each translated option with a decorative icon, including relevance and My Taste. The Content group heading is translated in all seven languages.
 - **The side panel is the default tooltip mode.** It now uses photo detail's layout, with the metrics in the same icon tabs (EXIF, Quality, Composition, Technical, Histogram), and both remember the same open tab. The **Hover** and **Click** bubbles are reduced to a glance: category, aggregate and its rank, four key scores and one EXIF line.
 
 ### Fixed

@@ -458,6 +458,7 @@
     "exposure": "Exposure",
     "composition": "Composition",
     "subject_saliency": "Subject Saliency",
+    "content": "Content",
     "camera": "Camera"
   },
   "sort_options": {
