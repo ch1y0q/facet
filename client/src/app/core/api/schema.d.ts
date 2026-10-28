@@ -5849,6 +5849,8 @@ export interface components {
             include_sequence_siblings?: boolean;
             /** Paths */
             paths?: string[] | null;
+            /** Preview Digest */
+            preview_digest?: string | null;
             /** Target Dir */
             target_dir?: string | null;
         };
@@ -5879,6 +5881,8 @@ export interface components {
             moved?: number | null;
             /** Not Visible */
             not_visible: number;
+            /** Preview Digest */
+            preview_digest?: string | null;
             /** Sequence Siblings */
             sequence_siblings: number;
             /** Skipped */

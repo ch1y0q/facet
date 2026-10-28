@@ -2341,40 +2341,48 @@ export class GalleryComponent implements OnInit, OnDestroy {
     const viewScoped = !explicit && this.viewScoped();
     const paths = explicit ? [...explicitPaths] : [...this.selectedPaths()];
     if (!viewScoped && !paths.length) return;
-    // Taken before the dialog: the reload after a cull may drop these rows.
-    const culled = explicit ? this.store.photos().filter(p => paths.includes(p.path)) : [];
-    const { CullDialogComponent } = await import('./cull-dialog.component');
-    const ref = this.dialog.open(CullDialogComponent, {
-      width: '32rem',
-      data: {
-        paths,
-        // Same trade as the export: the filter travels instead of the paths,
-        // and the server's 10,000 ceiling (412) applies to it just the same.
-        filters: viewScoped ? this.store.filterPayload() : null,
-        exclude: viewScoped ? [...this.excludedPaths()] : [],
-        count: explicit ? paths.length : this.selectionCount(),
-        trashAvailable: this.store.config()?.cull?.trash_available ?? false,
-        allowTrash: this.store.config()?.cull?.allow_trash ?? false,
-      },
+    const filterScope = JSON.stringify(this.store.filterPayload());
+    const { current, dispose } = this.staleness.create(this.destroyRef, {
+      track: 'status', valid: () => JSON.stringify(this.store.filterPayload()) === filterScope,
     });
-    const applied = await firstValueFrom(ref.afterClosed());
-    if (applied) {
-      // Reload first: clearing the selection hands focus back to the marked
-      // card, and the rows the cull has just moved away are still standing in
-      // the list until this returns.
-      if (!explicit) {
+    try {
+      // Taken before the dialog: the reload after a cull may drop these rows.
+      const culled = explicit ? this.store.photos().filter(p => paths.includes(p.path)) : [];
+      const { CullDialogComponent } = await import('./cull-dialog.component');
+      if (!current()) return;
+      const ref = this.dialog.open(CullDialogComponent, {
+        closeOnNavigation: false,
+        width: '32rem',
+        data: {
+          paths,
+          // Same trade as the export: the filter travels instead of the paths,
+          // and the server's 10,000 ceiling (412) applies to it just the same.
+          filters: viewScoped ? this.store.filterPayload() : null,
+          exclude: viewScoped ? [...this.excludedPaths()] : [],
+          count: explicit ? paths.length : this.selectionCount(),
+          trashAvailable: this.store.config()?.cull?.trash_available ?? false,
+          allowTrash: this.store.config()?.cull?.allow_trash ?? false,
+        },
+      });
+      const applied = await firstValueFrom(ref.afterClosed());
+      if (applied && current()) {
+        // Reload first: clearing the selection hands focus back to the marked
+        // card, and the rows the cull has just moved away are still standing in
+        // the list until this returns.
+        if (!explicit) {
+          await this.store.reloadPhotos();
+          if (current()) this.clearSelection();
+          return;
+        }
+        // loadPhotos() drops a whole-view selection (a view selection names the
+        // view, and the reload is what the store reads as "the view changed"),
+        // so what the user built is captured first and put back after it.
+        const wasViewScoped = this.viewScoped();
+        const kept = wasViewScoped ? new Set(this.excludedPaths()) : new Set(this.selectedPaths());
         await this.store.reloadPhotos();
-        this.clearSelection();
-        return;
+        if (current()) this.restoreSelectionWithout(wasViewScoped, kept, culled);
       }
-      // loadPhotos() drops a whole-view selection (a view selection names the
-      // view, and the reload is what the store reads as "the view changed"),
-      // so what the user built is captured first and put back after it.
-      const wasViewScoped = this.viewScoped();
-      const kept = wasViewScoped ? new Set(this.excludedPaths()) : new Set(this.selectedPaths());
-      await this.store.reloadPhotos();
-      this.restoreSelectionWithout(wasViewScoped, kept, culled);
-    }
+    } finally { dispose(); }
   }
 
   /** After a cull of explicit paths only those photos leave the selection; the

@@ -18,6 +18,8 @@ modified — only ``.xmp`` sidecars are written, or copies/symlinks created.
 """
 
 from contextlib import contextmanager
+import hashlib
+import json
 import logging
 import os
 import shutil
@@ -163,6 +165,10 @@ class CullApplyRequest(_PathsOrFiltersRequest):
     # sequence_group_id), not a same-stem disk lookup.
     include_sequence_siblings: bool = False
     dry_run: bool = True
+    # Optional optimistic precondition: clients can bind Apply to a dry-run's
+    # resolved files/options. This is not a filesystem identity or lock token.
+    preview_digest: Optional[str] = Field(default=None, min_length=64, max_length=64,
+                                          pattern=r'^[a-f0-9]{64}$')
 
 
 # POST /api/photo/delete's request. Deliberately does NOT subclass
@@ -1126,6 +1132,28 @@ def _require_trash_available():
     return send2trash
 
 
+def _check_cull_preview(body: CullApplyRequest, files: list[str], target_dir: Optional[str] = None) -> str:
+    """Check the current resolved operation before its first filesystem write.
+
+    A digest binds names and action settings, not file bytes or identities;
+    filesystem changes after this preflight are still handled per file.
+    """
+    operation = {
+        'action': body.action, 'files': sorted(files), 'target_dir': target_dir,
+        'include_companions': body.include_companions,
+        'include_sequence_siblings': body.include_sequence_siblings,
+    }
+    hasher = hashlib.sha256()
+    encoder = json.JSONEncoder(sort_keys=True, ensure_ascii=True, separators=(',', ':'))
+    for chunk in encoder.iterencode(operation):
+        hasher.update(chunk.encode('utf-8'))
+    digest = hasher.hexdigest()
+    if body.preview_digest is not None and body.preview_digest != digest:
+        raise HTTPException(status_code=409,
+                            detail='Culling preview changed. Preview again before applying.')
+    return digest
+
+
 @router.post("/api/cull/apply", response_model=CullApplyResponse, response_model_exclude_unset=True)
 def api_cull_apply(
     body: CullApplyRequest,
@@ -1206,8 +1234,11 @@ def api_cull_apply(
     items, skipped = _resolve_cull_files(action_paths, body.include_companions)
     files = [f for _, fs in items for f in fs]
 
+    preview_digest = None
+
     def respond(dry_run, errors, **verb):
         return {
+            **({'preview_digest': preview_digest} if dry_run else {}),
             "action": body.action,
             "dry_run": dry_run,
             **verb,
@@ -1221,6 +1252,7 @@ def api_cull_apply(
 
     if body.action == "copy_keeps":
         safe_target = _validate_target_dir_required(body.target_dir)
+        preview_digest = _check_cull_preview(body, files, safe_target)
         if body.dry_run:
             return respond(True, [], would_copy=files)
         copied, errors, _ = _copy_files_into(files, safe_target)
@@ -1228,6 +1260,7 @@ def api_cull_apply(
 
     if body.action == "move_rejects":
         safe_target = _validate_target_dir_required(body.target_dir)
+        preview_digest = _check_cull_preview(body, files, safe_target)
         if body.dry_run:
             return respond(True, [], would_move=files)
         moved, errors, succeeded = _move_into(files, safe_target)
@@ -1236,6 +1269,7 @@ def api_cull_apply(
 
     # trash_rejects
     send2trash = _require_trash_available()
+    preview_digest = _check_cull_preview(body, files)
     if body.dry_run:
         return respond(True, [], would_trash=files)
     trashed = errors = 0
