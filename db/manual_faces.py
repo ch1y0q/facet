@@ -15,9 +15,9 @@ def same_image(first, second):
     return frame_same_image(first, second)
 
 
-def is_current(path, stored, conn=None, face_id=None):
+def is_current(path, stored, conn=None, face_id=None, *, verify_pixels=False):
     from utils.manual_face_frame import is_current as frame_is_current
-    return frame_is_current(path, stored, conn, face_id)
+    return frame_is_current(path, stored, conn, face_id, verify_pixels=verify_pixels)
 
 
 def region_response(row, current):

@@ -1,4 +1,20 @@
 {
+  "photo_refresh": {
+    "limit": "Select between 1 and 100 photos.",
+    "reasons": {
+      "unavailable": "Source unavailable",
+      "changed": "Photo changed; refresh again",
+      "busy": "Library busy; retry later",
+      "failed": "Could not read this photo"
+    },
+    "title": "Refresh metadata and preview",
+    "description": "Read available source metadata and rebuild the preview. Manual annotations, ratings, faces and AI scores stay unchanged. Originals are never written. Rescan separately if changed pixels need new scores or face detection.",
+    "one": "1 selected photo",
+    "many": "{count} selected photos",
+    "start": "Refresh",
+    "completed": "Refreshed: {count}",
+    "failed": "Some photos could not be refreshed. Try again to refresh only the remaining photos."
+  },
   "ui": {
     "title": "Facet",
     "filters": {
@@ -1331,7 +1347,11 @@
     "faces_need_names": "Faces without names",
     "faces_need_names_hint": "Includes unassigned faces and unnamed person groups. Use + to assign a face, or name a group in People. Photos with no detected faces are excluded.",
     "faces_need_names_readonly_hint": "Includes unassigned faces and unnamed person groups. Someone with edition access can assign faces or name groups. Photos with no detected faces are excluded.",
-    "help_none": "This page has no help text yet."
+    "help_none": "This page has no help text yet.",
+    "notices": {
+      "collapsed": "{count} notice",
+      "collapsed_plural": "{count} notices"
+    }
   },
   "composition_patterns": {
     "none": "None",
@@ -2958,6 +2978,15 @@
     "stack": "Photo stack"
   },
   "stacks": {
+    "suggestions": "Suggested stacks",
+    "suggestions_hint": "Suggestions use detected duplicates and bursts within these filters. Automatic burst/duplicate hiding is bypassed for review. Existing stacks and bracket/panorama sets are skipped. Up to 20 suggestions are shown; narrow your filters for other photos. Dismissal lasts only while this dialog is open.",
+    "suggestions_empty": "No stack suggestions in this view",
+    "suggestion_burst": "Burst",
+    "suggestion_duplicate": "Duplicates",
+    "suggestion_review": "Review and choose cover",
+    "suggestion_dismiss": "Dismiss for now",
+    "suggestions_error": "Could not load suggestions. Try again.",
+    "suggestions_reload": "Reload suggestions",
     "previous": "Previous stack photo",
     "next": "Next stack photo",
     "browse_position": "{position} of {count}",
@@ -2993,5 +3022,29 @@
     "badge_filtered": "Open stack: {count} matching of {total} permitted members",
     "stack_id": "Stack ID",
     "position": "Position"
+  },
+  "immich_diagnostics": {
+    "title": "Immich diagnostics",
+    "read_only": "Read-only checks. Photos, ratings and stacks stay unchanged.",
+    "configuration": "Configuration",
+    "configured": "Server and key configured",
+    "not_configured": "Configure the server and API key first.",
+    "mapping_rules": "Path mapping rules",
+    "mapping_sample": "Paths covered (sample)",
+    "sample_hint": "Sample of at most {limit} indexed photos. Coverage does not prove remote matches. Without rules, paths stay unchanged.",
+    "last_push": "Last recorded sync-state update",
+    "unknown": "Not recorded",
+    "version": "Server version: {version}",
+    "stack_version_ok": "Version supports stacks; stack permissions and asset matches are not tested.",
+    "stack_version_old": "Stack exchange requires Immich 3 or later.",
+    "not_checked": "Connection not tested.",
+    "connected": "Server reachable; key accepted for account reads.",
+    "access_denied": "Access refused. Check the key and user.read permission.",
+    "unreachable": "Connection failed. Check the server, address and TLS.",
+    "invalid_response": "Unsupported server response.",
+    "invalid_config": "Correct the Immich configuration on the server.",
+    "failed": "Could not load diagnostics. Retry or check administrator access.",
+    "refresh": "Refresh status",
+    "test": "Test connection"
   }
 }

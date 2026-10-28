@@ -62,10 +62,10 @@ export interface CompareSelectedData {
         @for (photo of panes(); track photo.path) {
           <div class="relative w-full h-full min-h-0 rounded overflow-hidden">
             <app-synced-zoom class="w-full h-full min-h-0"
-                             [src]="photo.path | thumbnailUrl:renderedEdge"
-                             [placeholderSrc]="photo.path | thumbnailUrl:storedEdge"
+                             [src]="photo.path | thumbnailUrl:renderedEdge:photo.preview_revision"
+                             [placeholderSrc]="photo.path | thumbnailUrl:storedEdge:photo.preview_revision"
                              [frameKey]="photo.path"
-                             [fullResSrc]="photo.path | imageUrl:true"
+                             [fullResSrc]="photo.path | imageUrl:true:photo.preview_revision"
                              [zoom]="zoom()"
                              (zoomChange)="zoom.set($event)"
                              [alt]="photo.filename" />

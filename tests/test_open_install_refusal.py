@@ -166,6 +166,7 @@ EXPECTED_EDITION_ROUTES = frozenset({
     ('POST', '/api/photo/unassign_person'),
     ('POST', '/api/photos/batch_favorite'),
     ('POST', '/api/photos/batch_gps'),
+    ('POST', '/api/photos/refresh'),
     ('POST', '/api/photos/batch_manual_tags'),
     ('POST', '/api/photos/capture_date/preview'),
     ('POST', '/api/photos/capture_date/apply'),

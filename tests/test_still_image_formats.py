@@ -553,7 +553,7 @@ class TestImageEndpointConversion:
 
         mock_conn = mock.MagicMock()
         mock_conn.execute.return_value.fetchone.return_value = {
-            "path": "/library/photo", "sequence_kind": None,
+            "path": "/library/photo", "sequence_kind": None, "preview_revision": None,
         }
 
         @contextmanager

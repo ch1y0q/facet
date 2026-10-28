@@ -58,7 +58,8 @@ def _expect_image(resp, expected: bytes, what: str) -> None:
 
 
 _SCHEMA = """
-    CREATE TABLE photos (path TEXT PRIMARY KEY, thumbnail BLOB, sequence_kind TEXT);
+    CREATE TABLE photos (path TEXT PRIMARY KEY, thumbnail BLOB, sequence_kind TEXT,
+                         preview_revision TEXT);
     CREATE TABLE persons (id INTEGER PRIMARY KEY, face_thumbnail BLOB,
                           representative_face_id INTEGER);
     CREATE TABLE faces (id INTEGER PRIMARY KEY, photo_path TEXT, person_id INTEGER,
@@ -208,7 +209,7 @@ class TestMultiUserIsolation:
             render.assert_not_called()
             _expect_image(client.get("/thumbnail", params={"path": ALICE_PHOTO, "size": 1920}),
                           ALICE_THUMB, "/thumbnail alice 1920 fallback")
-            render.assert_called_once_with(ALICE_PHOTO, None)
+            render.assert_called_once_with(ALICE_PHOTO, None, None)
 
 
 # --- fixture integrity ------------------------------------------------------

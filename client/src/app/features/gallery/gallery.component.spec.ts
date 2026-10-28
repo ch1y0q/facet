@@ -5010,6 +5010,237 @@ describe('GalleryComponent', () => {
     });
   });
 
+  describe('notice stack auto-collapse (rendered)', () => {
+    let fixture: ComponentFixture<GalleryComponent>;
+
+    function render(): HTMLElement {
+      mockI18n.t.mockImplementation((key: string, vars?: Record<string, unknown>) => (vars ? `${key} ${JSON.stringify(vars)}` : key));
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    const stack = (host: HTMLElement): HTMLElement | null => host.querySelector('[data-gallery-notices]');
+    const pill = (host: HTMLElement): HTMLElement | null => host.querySelector('[data-gallery-notices-pill]');
+    const card = (host: HTMLElement): HTMLElement | null => host.querySelector('[data-review-progress]');
+
+    let matchesSpy: { mockRestore(): void } | null = null;
+
+    /** jsdom has no input modality, so :focus-visible never matches: treat the
+     *  focused element as keyboard-focused, which is what these specs simulate. */
+    function keyboardModality(): void {
+      const matches = Element.prototype.matches;
+      matchesSpy = vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, selector: string) {
+        return selector === ':focus-visible' ? this === document.activeElement : matches.call(this, selector);
+      });
+    }
+
+    function collapseAfterFullWindow(): void {
+      vi.advanceTimersByTime(6000);
+      fixture.detectChanges();
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      matchesSpy?.mockRestore();
+      matchesSpy = null;
+      fixture.destroy();
+      sessionStorage.removeItem(NOTICE_DISMISSALS_KEY);
+    });
+
+    it('folds into a count pill after the window, and the pill expands again on click', () => {
+      const host = render();
+      expect(card(host)).not.toBeNull();
+      expect(pill(host)).toBeNull();
+
+      collapseAfterFullWindow();
+      expect(card(host)).toBeNull();
+      expect(pill(host)).not.toBeNull();
+
+      pill(host)!.click();
+      fixture.detectChanges();
+      expect(card(host)).not.toBeNull();
+      expect(pill(host)).toBeNull();
+    });
+
+    it('renders the fold from the timer itself, without waiting for a change detection pass', async () => {
+      const host = render();
+      vi.advanceTimersByTime(6000);
+      expect(pill(host)).not.toBeNull();
+      // Nothing is left pending, so the fixture settles while the stack stays folded.
+      await fixture.whenStable();
+      expect(pill(host)).not.toBeNull();
+    });
+
+    it('keeps the scroll-to-top button outside the collapse', () => {
+      const host = render();
+      (fixture.componentInstance as unknown as { showScrollTop: WritableSignal<boolean> }).showScrollTop.set(true);
+      fixture.detectChanges();
+      collapseAfterFullWindow();
+      expect(pill(host)).not.toBeNull();
+      expect(stack(host)!.querySelector('button[aria-label="gallery.scroll_to_top"]')).not.toBeNull();
+    });
+
+    it('leaves the stack alone while the pointer rests on it', () => {
+      const host = render();
+      stack(host)!.dispatchEvent(new Event('pointerenter', { bubbles: false }));
+      fixture.detectChanges();
+      vi.advanceTimersByTime(60000);
+      fixture.detectChanges();
+      expect(card(host)).not.toBeNull();
+
+      stack(host)!.dispatchEvent(new Event('pointerleave', { bubbles: false }));
+      fixture.detectChanges();
+      vi.advanceTimersByTime(6000);
+      fixture.detectChanges();
+      expect(pill(host)).not.toBeNull();
+    });
+
+    it('re-expands with a fresh window when another notice joins', () => {
+      const host = render();
+      vi.advanceTimersByTime(4000);
+      // A second notice joins before the window closes.
+      mockStore.filters.set({ ...DEFAULT_FILTERS, tag: 'beach' });
+      mockStore.activeFilterCount.set(1);
+      fixture.detectChanges();
+      expect(card(host)).not.toBeNull();
+      expect(pill(host)).toBeNull();
+
+      // The fresh window covers the full span from the new card's arrival.
+      vi.advanceTimersByTime(5900);
+      fixture.detectChanges();
+      expect(card(host)).not.toBeNull();
+      vi.advanceTimersByTime(100);
+      fixture.detectChanges();
+      expect(pill(host)).not.toBeNull();
+    });
+
+    it('counts the folded cards in the pill label', () => {
+      mockStore.filters.set({ ...DEFAULT_FILTERS, tag: 'beach' });
+      mockStore.activeFilterCount.set(1);
+      const host = render();
+      collapseAfterFullWindow();
+      expect(pill(host)!.textContent).toContain('gallery.notices.collapsed_plural');
+      expect(pill(host)!.textContent).toContain('"count":2');
+    });
+
+    it('starts expanded again once every notice is gone', () => {
+      const host = render();
+      collapseAfterFullWindow();
+      expect(pill(host)).not.toBeNull();
+
+      mockStore.reviewProgress.set(null);
+      fixture.detectChanges();
+      expect(stack(host)).toBeNull();
+
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      fixture.detectChanges();
+      expect(card(host)).not.toBeNull();
+      expect(pill(host)).toBeNull();
+    });
+
+    it('folds again after a stack that vanished under the pointer comes back', () => {
+      const host = render();
+      stack(host)!.dispatchEvent(new Event('pointerenter', { bubbles: false }));
+      // The last card leaves while the pointer rests on it: no pointerleave ever fires.
+      mockStore.reviewProgress.set(null);
+      fixture.detectChanges();
+      expect(stack(host)).toBeNull();
+
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      fixture.detectChanges();
+      collapseAfterFullWindow();
+      expect(pill(host)).not.toBeNull();
+    });
+
+    it('waits while the mobile drawer covers the stack and starts afresh when it closes', () => {
+      const host = render();
+      vi.advanceTimersByTime(3000);
+      mockStore.filterDrawerOpen.set(true);
+      fixture.detectChanges();
+      expect(stack(host)).toBeNull();
+      // Returning from a photo behind the open drawer must not start the countdown either.
+      outletMock.detachEvents.next(fixture.componentInstance);
+      outletMock.attachEvents.next(fixture.componentInstance);
+      vi.advanceTimersByTime(60000);
+
+      mockStore.filterDrawerOpen.set(false);
+      fixture.detectChanges();
+      expect(card(host)).not.toBeNull();
+      vi.advanceTimersByTime(5900);
+      fixture.detectChanges();
+      expect(card(host)).not.toBeNull();
+      vi.advanceTimersByTime(100);
+      fixture.detectChanges();
+      expect(pill(host)).not.toBeNull();
+    });
+
+    it('re-expands for a card that joined while the drawer covered the folded stack', () => {
+      const host = render();
+      collapseAfterFullWindow();
+      expect(pill(host)).not.toBeNull();
+      mockStore.filterDrawerOpen.set(true);
+      fixture.detectChanges();
+      mockStore.filters.set({ ...DEFAULT_FILTERS, tag: 'beach' });
+      mockStore.activeFilterCount.set(1);
+      fixture.detectChanges();
+
+      mockStore.filterDrawerOpen.set(false);
+      fixture.detectChanges();
+      expect(card(host)).not.toBeNull();
+      expect(pill(host)).toBeNull();
+    });
+
+    it('grants a fresh window when a card is dismissed', () => {
+      mockStore.filters.set({ ...DEFAULT_FILTERS, tag: 'beach' });
+      mockStore.activeFilterCount.set(1);
+      const host = render();
+      vi.advanceTimersByTime(4000);
+      card(host)!.querySelector<HTMLElement>('[data-notice-close]')!.click();
+      fixture.detectChanges();
+      expect(card(host)).toBeNull();
+      vi.advanceTimersByTime(5900);
+      fixture.detectChanges();
+      expect(pill(host)).toBeNull();
+      vi.advanceTimersByTime(100);
+      fixture.detectChanges();
+      expect(pill(host)).not.toBeNull();
+    });
+
+    it('stays open while keyboard focus is on a card, and re-arms when focus leaves', () => {
+      keyboardModality();
+      const host = render();
+      const close = card(host)!.querySelector<HTMLElement>('[data-notice-close]')!;
+      close.focus();
+      vi.advanceTimersByTime(60000);
+      fixture.detectChanges();
+      expect(card(host)).not.toBeNull();
+
+      close.blur();
+      fixture.detectChanges();
+      collapseAfterFullWindow();
+      expect(pill(host)).not.toBeNull();
+    });
+
+    it('hands keyboard focus from the pill to the first card, named by its visible count', () => {
+      keyboardModality();
+      const host = render();
+      collapseAfterFullWindow();
+      const button = pill(host)!;
+      expect(button.hasAttribute('aria-expanded')).toBe(false);
+      expect(button.hasAttribute('aria-label')).toBe(false);
+      button.focus();
+      button.click();
+      TestBed.tick();
+      expect(document.activeElement).toBe(card(host)!.querySelector('[data-notice-close]'));
+    });
+  });
+
   describe('kept alive behind an open photo (rendered)', () => {
     const photos = Array.from({ length: 3 }, (_, n) => ({
       path: `/p${n}.jpg`, filename: `p${n}.jpg`, image_width: 4000, image_height: 3000,
@@ -5566,6 +5797,53 @@ describe('GalleryComponent', () => {
       target.dispatchEvent(event);
       return event;
     }
+
+    describe('suggested stack scope', () => {
+      function dialogForSuggestions(): MatDialog {
+        const dialog = (gallery as unknown as { dialog: MatDialog }).dialog;
+        vi.spyOn(dialog, 'openDialogs', 'get').mockReturnValue([]);
+        vi.spyOn(dialog, 'open').mockReturnValue({} as ReturnType<MatDialog['open']>);
+        return dialog;
+      }
+
+      beforeEach(() => {
+        mockStore.filterPayload.mockImplementation(() => GalleryStore.prototype.filterPayload.call(mockStore));
+      });
+
+      it.each([
+        { similar_to: '/visible/source.jpg' },
+        { semanticQuery: 'photos of mountains' },
+      ])('withholds discovery and refuses direct launch for %j', async search => {
+        mockStore.filters.set({ ...DEFAULT_FILTERS, ...search });
+        mockStore.canScopeSelectionToView.set(false);
+        host.detectChanges();
+        expect(mockStore.filterPayload()).toBeNull();
+        expect(host.nativeElement.querySelector('[data-stack-suggestions]')).toBeNull();
+        const dialog = dialogForSuggestions();
+        await (gallery as unknown as { openStackSuggestions(): Promise<void> }).openStackSuggestions();
+        expect(dialog.open).not.toHaveBeenCalled();
+      });
+
+      it('opens discovery from the rendered toolbar with the ordinary view filters', async () => {
+        const filters = mockStore.filterPayload();
+        expect(filters).not.toBeNull();
+        const dialog = dialogForSuggestions();
+        const button = host.nativeElement.querySelector('[data-stack-suggestions]') as HTMLButtonElement;
+        expect(button).not.toBeNull();
+        button.click();
+        await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledOnce());
+        expect(dialog.open).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ data: { filters } }));
+      });
+
+      it('refuses discovery when the view becomes unsupported while the dialog loads', async () => {
+        const dialog = dialogForSuggestions();
+        const opening = (gallery as unknown as { openStackSuggestions(): Promise<void> }).openStackSuggestions();
+        mockStore.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'photos of mountains' });
+        mockStore.canScopeSelectionToView.set(false);
+        await opening;
+        expect(dialog.open).not.toHaveBeenCalled();
+      });
+    });
 
     describe('search delay', () => {
       it('filters 400 ms after the last keystroke, not before', () => {

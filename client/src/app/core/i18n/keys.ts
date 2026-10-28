@@ -13,6 +13,22 @@
 // A call is rewritten to a live namespace access and runs at construction, after init.
 
 export const I18N = {
+  photo_refresh: {
+    limit: "photo_refresh.limit",
+    reasons: {
+      unavailable: "photo_refresh.reasons.unavailable",
+      changed: "photo_refresh.reasons.changed",
+      busy: "photo_refresh.reasons.busy",
+      failed: "photo_refresh.reasons.failed",
+    },
+    title: "photo_refresh.title",
+    description: "photo_refresh.description",
+    one: "photo_refresh.one",
+    many: "photo_refresh.many",
+    start: "photo_refresh.start",
+    completed: "photo_refresh.completed",
+    failed: "photo_refresh.failed",
+  },
   ui: {
     title: "ui.title",
     filters: {
@@ -1346,6 +1362,10 @@ export const I18N = {
     faces_need_names_hint: "gallery.faces_need_names_hint",
     faces_need_names_readonly_hint: "gallery.faces_need_names_readonly_hint",
     help_none: "gallery.help_none",
+    notices: {
+      collapsed: "gallery.notices.collapsed",
+      collapsed_plural: "gallery.notices.collapsed_plural",
+    },
   },
   composition_patterns: {
     none: "composition_patterns.none",
@@ -2972,6 +2992,15 @@ export const I18N = {
     stack: "organization_history.stack",
   },
   stacks: {
+    suggestions: "stacks.suggestions",
+    suggestions_hint: "stacks.suggestions_hint",
+    suggestions_empty: "stacks.suggestions_empty",
+    suggestion_burst: "stacks.suggestion_burst",
+    suggestion_duplicate: "stacks.suggestion_duplicate",
+    suggestion_review: "stacks.suggestion_review",
+    suggestion_dismiss: "stacks.suggestion_dismiss",
+    suggestions_error: "stacks.suggestions_error",
+    suggestions_reload: "stacks.suggestions_reload",
     previous: "stacks.previous",
     next: "stacks.next",
     browse_position: "stacks.browse_position",
@@ -3007,6 +3036,30 @@ export const I18N = {
     badge_filtered: "stacks.badge_filtered",
     stack_id: "stacks.stack_id",
     position: "stacks.position",
+  },
+  immich_diagnostics: {
+    title: "immich_diagnostics.title",
+    read_only: "immich_diagnostics.read_only",
+    configuration: "immich_diagnostics.configuration",
+    configured: "immich_diagnostics.configured",
+    not_configured: "immich_diagnostics.not_configured",
+    mapping_rules: "immich_diagnostics.mapping_rules",
+    mapping_sample: "immich_diagnostics.mapping_sample",
+    sample_hint: "immich_diagnostics.sample_hint",
+    last_push: "immich_diagnostics.last_push",
+    unknown: "immich_diagnostics.unknown",
+    version: "immich_diagnostics.version",
+    stack_version_ok: "immich_diagnostics.stack_version_ok",
+    stack_version_old: "immich_diagnostics.stack_version_old",
+    not_checked: "immich_diagnostics.not_checked",
+    connected: "immich_diagnostics.connected",
+    access_denied: "immich_diagnostics.access_denied",
+    unreachable: "immich_diagnostics.unreachable",
+    invalid_response: "immich_diagnostics.invalid_response",
+    invalid_config: "immich_diagnostics.invalid_config",
+    failed: "immich_diagnostics.failed",
+    refresh: "immich_diagnostics.refresh",
+    test: "immich_diagnostics.test",
   },
 } as const;
 

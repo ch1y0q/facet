@@ -217,7 +217,7 @@ import { MetricScoreRowComponent } from '../metric-score-row/metric-score-row.co
       <mat-tab [aria-label]="'tooltip.histogram' | translate">
         <ng-template mat-tab-label><mat-icon aria-hidden="true" [matTooltip]="'tooltip.histogram' | translate">equalizer</mat-icon></ng-template>
         <div class="pt-3">
-          <app-histogram [path]="p.path" [src]="p.path | thumbnailUrl:histogramSrcSize()" [monochrome]="!!p.is_monochrome"
+          <app-histogram [path]="p.path" [src]="p.path | thumbnailUrl:histogramSrcSize():p.preview_revision" [monochrome]="!!p.is_monochrome"
                          [height]="histogramHeight()" [showModeToggle]="true"
                          [surface]="histogramSurface()"
                          [defaultMode]="histogramDefaultMode()"
