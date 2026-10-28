@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { DestroyRef, Injectable, inject } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { firstValueFrom } from 'rxjs';
@@ -9,6 +9,7 @@ import { I18nService } from './i18n.service';
 import { ApiService } from './api.service';
 import { I18N } from '../i18n/keys';
 import { AuthService } from './auth.service';
+import { StalenessGuardFactory } from './staleness-guard.service';
 
 /** `POST /api/photo/delete` response — per-path, see `api.routers.export.api_photo_delete`. */
 export interface PhotoDeleteResponse {
@@ -65,6 +66,34 @@ export class PhotoActionsService {
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
       return null;
     }
+  }
+
+  private readonly staleness = inject(StalenessGuardFactory);
+  private readonly destroyRef = inject(DestroyRef);
+  private refreshOpening = false;
+  protected loadRefreshDialog() { return import('../../features/photo-detail/photo-refresh-dialog.component'); }
+
+  async refreshPhotos(paths: string[]): Promise<string[]> {
+    if (!this.auth.isEdition() || this.refreshOpening || this.dialog.openDialogs.length) return [];
+    if (!paths.length || paths.length > 100) {
+      this.snackBar.open(this.i18n.t(I18N.photo_refresh.limit), '', { duration: 4000 });
+      return [];
+    }
+    this.refreshOpening = true;
+    const owner = this.auth.identity();
+    const { current, dispose } = this.staleness.create(this.destroyRef);
+    try {
+      const { PhotoRefreshDialogComponent } = await this.loadRefreshDialog();
+      if (!current() || this.dialog.openDialogs.length) return [];
+      const ref = this.dialog.open(PhotoRefreshDialogComponent, {
+        width: '95vw', maxWidth: '520px', closeOnNavigation: false, data: [...paths],
+      });
+      const completed = ref.componentInstance.completed;
+      const refreshed: string[] = await firstValueFrom(ref.afterClosed()) ?? completed();
+      if (owner !== this.auth.identity() || !this.auth.isEdition()) return [];
+      if (refreshed.length) await this.store.refreshPaths(refreshed);
+      return refreshed;
+    } finally { this.refreshOpening = false; dispose(); }
   }
 
   embedMetadata(photo: Photo): void {

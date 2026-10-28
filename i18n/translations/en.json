@@ -1,4 +1,20 @@
 {
+  "photo_refresh": {
+    "limit": "Select between 1 and 100 explicit photos.",
+    "reasons": {
+      "unavailable": "Source unavailable",
+      "changed": "Photo changed; refresh again",
+      "busy": "Library busy; retry later",
+      "failed": "Could not read this photo"
+    },
+    "title": "Refresh metadata and preview",
+    "description": "Read available source metadata and rebuild the preview. Manual annotations, ratings, faces and AI scores stay unchanged. Originals are never written. Rescan separately if changed pixels need new scores or face detection.",
+    "one": "1 selected photo",
+    "many": "{count} selected photos",
+    "start": "Refresh",
+    "completed": "Refreshed: {count}",
+    "failed": "Some photos could not be refreshed. Try again to refresh only the remaining photos."
+  },
   "ui": {
     "title": "Facet",
     "filters": {

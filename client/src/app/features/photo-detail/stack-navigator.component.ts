@@ -45,7 +45,7 @@ import { GalleryStore } from '../gallery/gallery.store';
               [attr.aria-current]="member.path === path() ? 'true' : null"
               [attr.aria-label]="I18N.stacks.open_member | translate:{ path: member.path }"
               (click)="openMember(member.path)">
-              <img [src]="member.path | thumbnailUrl:96" alt="" loading="lazy" decoding="async" class="w-14 h-12 object-cover" />
+              <img [src]="member.path | thumbnailUrl:96:member.preview_revision" alt="" loading="lazy" decoding="async" class="w-14 h-12 object-cover" />
             </button>
           }
         </div>

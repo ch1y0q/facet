@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Refresh selected photo previews and metadata.** Rebuild previews and read available source EXIF without rerunning AI or writing originals. Manual annotations stay intact; per-photo cache versions refresh gallery and detail images, and failed photos can be retried separately.
+
 ## [1.26.0] "Histogramme" — 2026-10-28
 
 ### Added

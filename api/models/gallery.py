@@ -45,6 +45,7 @@ class Photo(BaseModel):
     """
 
     path: str
+    preview_revision: Optional[str] = None
     filename: Optional[str] = None
     date_taken: Optional[str] = None
     camera_model: Optional[str] = None

@@ -88,6 +88,10 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
           <mat-icon>arrow_back</mat-icon>
         </button>
         <span class="flex-1 truncate font-medium">{{ p.filename }}</span>
+        @if (auth.isEdition()) {
+          <button mat-icon-button (click)="refreshPhoto(p)" [matTooltip]="I18N.photo_refresh.title | translate" [attr.aria-label]="I18N.photo_refresh.title | translate"><mat-icon>refresh</mat-icon></button>
+        }
+
 
         @if (store.config()?.features?.show_similar_button) {
           <button mat-icon-button [matMenuTriggerFor]="similarMenu"
@@ -206,7 +210,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
           (touchstart)="onTouchStart($event)"
           (touchend)="onTouchEnd()">
           <img
-            [src]="p.path | thumbnailUrl:640"
+            [src]="p.path | thumbnailUrl:640:p.preview_revision"
             [alt]="p.filename"
             class="w-full lg:max-w-full lg:max-h-full object-contain transition-opacity duration-300 pointer-events-none select-none"
             [class.opacity-0]="fullImageLoaded()"
@@ -1282,6 +1286,16 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
         .then(res => this.explainerCategories.set(res.categories.map(c => c.name)))
         .catch(() => this.explainerCategories.set([]));
     }
+  }
+
+  protected async refreshPhoto(p: Photo): Promise<void> {
+    const { current, dispose } = this.staleness.create(this.destroyRef, { valid: () => this.photo()?.path === p.path });
+    try {
+      const refreshed = await this.photoActions.refreshPhotos([p.path]);
+      if (!current() || !refreshed.includes(p.path)) return;
+      const photo = await this.fetchPhoto(p.path);
+      if (current()) { this.fullImageLoaded.set(false); this.photo.set(photo); }
+    } finally { dispose(); }
   }
 
   protected openAddPerson(photo: Photo): void {

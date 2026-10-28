@@ -1,3 +1,4 @@
+import { provideRouter, Router } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { of, Subject } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
@@ -12,10 +13,10 @@ const mockPhoto: any = { path: '/photos/test.jpg' };
 
 describe('PhotoActionsService', () => {
   let service: PhotoActionsService;
-  let mockDialog: { open: Mock };
+  let mockDialog: { open: Mock; openDialogs: unknown[] };
   let mockSnackBar: { open: Mock };
   let mockI18n: { t: Mock };
-  let mockStore: { config: Mock; persons: Mock; assignFace: Mock; createPerson: Mock };
+  let mockStore: { config: Mock; persons: Mock; assignFace: Mock; createPerson: Mock; refreshPaths: Mock };
 
   // Every entry point here reaches its dialog through a dynamic `import()`, so the
   // first test to touch one pays for loading that lazy chunk inside its own
@@ -31,11 +32,13 @@ describe('PhotoActionsService', () => {
 
   beforeEach(() => {
     mockDialog = {
+      openDialogs: [],
       open: vi.fn(() => ({ afterClosed: () => of(null) })),
     };
     mockSnackBar = { open: vi.fn() };
     mockI18n = { t: vi.fn((key: string) => key) };
     mockStore = {
+      refreshPaths: vi.fn().mockResolvedValue(undefined),
       config: vi.fn(() => ({ features: { show_vlm_critique: false } })),
       persons: vi.fn(() => [
         { id: 1, name: 'Alice', face_count: 5 },
@@ -47,7 +50,8 @@ describe('PhotoActionsService', () => {
 
     TestBed.configureTestingModule({
       providers: [
-        { provide: AuthService, useValue: { identity: () => '1|test' } },
+        provideRouter([]),
+        { provide: AuthService, useValue: { identity: () => '1|test', isEdition: () => true } },
         PhotoActionsService,
         { provide: MatDialog, useValue: mockDialog },
         { provide: MatSnackBar, useValue: mockSnackBar },
@@ -56,6 +60,31 @@ describe('PhotoActionsService', () => {
       ],
     });
     service = TestBed.inject(PhotoActionsService);
+  });
+
+  describe('refreshPhotos', () => {
+    it('suppresses a lazy launch after real router navigation', async () => {
+      const loaded = await import('../../features/photo-detail/photo-refresh-dialog.component');
+      let finish!: (module: typeof loaded) => void;
+      vi.spyOn(service as unknown as { loadRefreshDialog(): Promise<typeof loaded> }, 'loadRefreshDialog')
+        .mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+      const pending = service.refreshPhotos(['/a.jpg']);
+      await TestBed.inject(Router).navigateByUrl('/?other=1');
+      finish(loaded);
+      expect(await pending).toEqual([]);
+      expect(mockDialog.open).not.toHaveBeenCalled();
+    });
+
+    it('refreshes only returned paths and refuses duplicate launches', async () => {
+      const done = new Subject<string[]>();
+      mockDialog.open.mockReturnValue({ afterClosed: () => done, componentInstance: { completed: () => [] } });
+      const pending = service.refreshPhotos(['/a.jpg', '/b.jpg']);
+      await vi.waitFor(() => expect(mockDialog.open).toHaveBeenCalledTimes(1));
+      expect(await service.refreshPhotos(['/c.jpg'])).toEqual([]);
+      done.next(['/a.jpg']); done.complete();
+      expect(await pending).toEqual(['/a.jpg']);
+      expect(mockStore.refreshPaths).toHaveBeenCalledExactlyOnceWith(['/a.jpg']);
+    });
   });
 
   describe('openCritique', () => {
@@ -185,4 +214,39 @@ describe('PhotoActionsService', () => {
       expect(mockDialog.open.mock.calls[1][1]).not.toHaveProperty('data');
     });
   });
+});
+
+
+describe('photo refresh dismissal with a real Material dialog', () => {
+  it.each(['not started', 'partial'])(
+    'returns completed paths after Escape when %s and the component is disposed', async mode => {
+      const { provideHttpClient } = await import('@angular/common/http');
+      const { provideHttpClientTesting, HttpTestingController } = await import('@angular/common/http/testing');
+      const { MatDialogState } = await import('@angular/material/dialog');
+      TestBed.configureTestingModule({ providers: [
+        provideRouter([]), provideHttpClient(), provideHttpClientTesting(),
+        { provide: AuthService, useValue: { identity: () => 'alice', isEdition: () => true } },
+        { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
+        { provide: GalleryStore, useValue: { refreshPaths: vi.fn().mockResolvedValue(undefined) } },
+      ] });
+      const service = TestBed.inject(PhotoActionsService);
+      const dialog = TestBed.inject(MatDialog);
+      const http = TestBed.inject(HttpTestingController);
+      const pending = service.refreshPhotos(['/a.jpg', '/b.jpg']);
+      await vi.waitFor(() => expect(dialog.openDialogs).toHaveLength(1));
+      const ref = dialog.openDialogs[0];
+      await vi.waitFor(() => expect(ref.getState()).toBe(MatDialogState.OPEN));
+      if (mode === 'partial') {
+        const run = ref.componentInstance.run();
+        http.expectOne('/api/photos/refresh').flush({ refreshed: ['/a.jpg'], failed: [{ path: '/b.jpg', reason: 'failed' }] });
+        await run;
+      }
+      document.querySelector('mat-dialog-container h2')!.dispatchEvent(new KeyboardEvent('keydown',
+        { key: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
+      expect(await pending).toEqual(mode === 'partial' ? ['/a.jpg'] : []);
+      expect(ref.componentInstance).toBeNull();
+      expect(TestBed.inject(GalleryStore).refreshPaths).toHaveBeenCalledTimes(mode === 'partial' ? 1 : 0);
+      http.verify();
+    },
+  );
 });

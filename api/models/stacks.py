@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 
 class StackMember(BaseModel):
+    preview_revision: str | None = None
     path: str
     position: int
 

@@ -137,9 +137,11 @@ class MapCluster(BaseModel):
     lng: float
     count: int
     representative_path: Optional[str] = None
+    preview_revision: Optional[str] = None
 
 
 class MapPhotoPoint(BaseModel):
+    preview_revision: Optional[str] = None
     path: str
     lat: float
     lng: float
@@ -180,6 +182,7 @@ class TimelineDateEntry(BaseModel):
     date: Optional[str] = None
     count: int
     hero_photo_path: Optional[str] = None
+    preview_revision: Optional[str] = None
 
 
 class TimelineDatesResponse(BaseModel):
@@ -190,6 +193,7 @@ class TimelineYearEntry(BaseModel):
     year: str
     count: int
     hero_photo_path: Optional[str] = None
+    preview_revision: Optional[str] = None
 
 
 class TimelineYearsResponse(BaseModel):
@@ -200,6 +204,7 @@ class TimelineMonthEntry(BaseModel):
     month: str
     count: int
     hero_photo_path: Optional[str] = None
+    preview_revision: Optional[str] = None
 
 
 class TimelineMonthsResponse(BaseModel):

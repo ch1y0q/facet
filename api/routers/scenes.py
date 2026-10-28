@@ -339,6 +339,10 @@ def api_scenes(
     total = len(scenes)
     total_pages, start = paginate(total, page, per_page)
     page_scenes = scenes[start:start + per_page]
+    if not summary:
+        from db.preview_versions import attach_preview_versions
+        with get_db() as conn:
+            attach_preview_versions(conn, [photo for scene in page_scenes for photo in scene['photos']])
     if summary:
         page_scenes = [{k: v for k, v in s.items() if k != 'photos'} for s in page_scenes]
     return {

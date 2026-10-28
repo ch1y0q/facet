@@ -1,4 +1,20 @@
 {
+  "photo_refresh": {
+    "limit": "Sélectionnez entre 1 et 100 photos explicites.",
+    "reasons": {
+      "unavailable": "Source indisponible",
+      "changed": "Photo modifiée ; actualisez à nouveau",
+      "busy": "Bibliothèque occupée ; réessayez plus tard",
+      "failed": "Impossible de lire cette photo"
+    },
+    "title": "Actualiser les métadonnées et l’aperçu",
+    "description": "Lire les métadonnées disponibles et recréer l’aperçu. Les annotations manuelles, notes, visages et scores IA restent inchangés. Les originaux ne sont jamais modifiés. Relancez une analyse pour recalculer les scores ou détecter les visages après une modification de l’image.",
+    "one": "1 photo sélectionnée",
+    "many": "{count} photos sélectionnées",
+    "start": "Actualiser",
+    "completed": "Actualisées : {count}",
+    "failed": "Certaines photos n’ont pas pu être actualisées. Réessayez pour traiter uniquement les photos restantes."
+  },
   "ui": {
     "title": "Facet",
     "filters": {

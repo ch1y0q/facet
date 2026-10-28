@@ -109,7 +109,7 @@ _FULL_IMAGE_CACHE_SIZE = 5
 
 @lru_cache(maxsize=_FULL_IMAGE_CACHE_SIZE)
 def _convert_raw_cached(file_path: str, mtime: float, quality: int = 96,
-                        sequence_kind: Optional[str] = None) -> bytes:
+                        sequence_kind: Optional[str] = None, revision: Optional[str] = None) -> bytes:
     """Convert a RAW file to JPEG bytes, cached by path+mtime+quality+sequence kind.
 
     The sequence kind is part of the key because it selects the rendering: a
@@ -149,13 +149,13 @@ def _encode_nonraw_jpeg(file_path: str, quality: int) -> bytes:
 
 
 @lru_cache(maxsize=32)
-def _convert_nonraw_cached(file_path: str, mtime: float, quality: int = 96) -> bytes:
+def _convert_nonraw_cached(file_path: str, mtime: float, quality: int = 96, revision: Optional[str] = None) -> bytes:
     """Keep the existing HEIF/TIFF full-image cache and admission behavior."""
     return _encode_nonraw_jpeg(file_path, quality)
 
 
 @lru_cache(maxsize=_FULL_IMAGE_CACHE_SIZE)
-def _convert_jpegxl_cached(file_path: str, mtime: float, quality: int) -> bytes:
+def _convert_jpegxl_cached(file_path: str, mtime: float, quality: int, revision: Optional[str] = None) -> bytes:
     """Only new JXL full conversions join the sharp-preview resource budget."""
     with _image_render_budget(file_path):
         return _encode_nonraw_jpeg(file_path, quality)
@@ -174,12 +174,12 @@ def _do_resize(thumbnail_bytes: bytes, size: int) -> bytes:
     return buf.getvalue()
 
 
-_resize_cache: dict[tuple[str, int], bytes] = {}
+_resize_cache: dict[tuple[str, int, bytes], bytes] = {}
 
 
 def _get_or_resize(photo_path: str, thumbnail_bytes: bytes, size: int) -> bytes:
-    """Resize a thumbnail with (path, size) caching. Caller provides bytes to avoid double-fetch."""
-    key = (photo_path, size)
+    """Resize a thumbnail with (path, size, content) caching. Caller provides bytes to avoid double-fetch."""
+    key = (photo_path, size, hashlib.sha256(thumbnail_bytes).digest())
     cached = _resize_cache.get(key)
     if cached is not None:
         return cached
@@ -196,7 +196,7 @@ def _get_or_resize(photo_path: str, thumbnail_bytes: bytes, size: int) -> bytes:
 
 @lru_cache(maxsize=32)
 def _render_from_original_cached(file_path: str, mtime: float,
-                                 sequence_kind: Optional[str]) -> bytes:
+                                 sequence_kind: Optional[str], revision: Optional[str] = None) -> bytes:
     from api.raw_processing import load_viewer_image
     from utils import image_transforms
 
@@ -224,11 +224,11 @@ _no_signal_renders: dict[tuple, bool] = {}
 _no_signal_lock = threading.Lock()
 
 
-def _known_no_signal(key: tuple[str, float, Optional[str]]) -> bool:
+def _known_no_signal(key: tuple[str, float, Optional[str], Optional[str]]) -> bool:
     return key in _no_signal_renders
 
 
-def _remember_no_signal(key: tuple[str, float, Optional[str]]) -> None:
+def _remember_no_signal(key: tuple[str, float, Optional[str], Optional[str]]) -> None:
     with _no_signal_lock:
         if len(_no_signal_renders) >= _NO_SIGNAL_CACHE_SIZE:
             _no_signal_renders.pop(next(iter(_no_signal_renders)), None)
@@ -262,7 +262,7 @@ def _coalesced_image(key: tuple, render: Callable[[], Optional[bytes]]) -> Optio
             del _render_inflight[key]
 
 
-def _coalesced_render(key: tuple[str, float, Optional[str]]) -> Optional[bytes]:
+def _coalesced_render(key: tuple[str, float, Optional[str], Optional[str]]) -> Optional[bytes]:
     def render():
         try:
             return None if _known_no_signal(key) else _render_from_original_cached(*key)
@@ -272,24 +272,24 @@ def _coalesced_render(key: tuple[str, float, Optional[str]]) -> Optional[bytes]:
     return _coalesced_image(key, render)
 
 
-def _coalesced_jpegxl_conversion(file_path: str, mtime: float, quality: int) -> bytes:
+def _coalesced_jpegxl_conversion(file_path: str, mtime: float, quality: int, revision: Optional[str] = None) -> bytes:
     # Tag full-size keys so they can never join a 1920 px render of this file.
     result = _coalesced_image(
-        ('jxl-full', file_path, mtime, quality),
-        lambda: _convert_jpegxl_cached(file_path, mtime, quality),
+        ('jxl-full', file_path, mtime, quality, revision),
+        lambda: _convert_jpegxl_cached(file_path, mtime, quality, revision),
     )
     assert result is not None
     return result
 
 
-def _render_from_original(path: str, sequence_kind: Optional[str]) -> Optional[bytes]:
+def _render_from_original(path: str, sequence_kind: Optional[str], revision: Optional[str] = None) -> Optional[bytes]:
     """None when the original can't be rendered."""
     try:
         disk = resolve_photo_disk_path(path)
     except HTTPException:
         return None
     try:
-        key = (disk, os.path.getmtime(disk), sequence_kind)
+        key = (disk, os.path.getmtime(disk), sequence_kind, revision)
         if _known_no_signal(key):
             return None
         return _coalesced_render(key)
@@ -317,7 +317,7 @@ def get_thumbnail(
     vis_sql, vis_params = get_visibility_clause(user.user_id if user else None)
     with get_db() as conn:
         row = conn.execute(
-            f"SELECT thumbnail, sequence_kind FROM photos WHERE path = ? AND {vis_sql}",
+            f"SELECT thumbnail, sequence_kind, preview_revision FROM photos WHERE path = ? AND {vis_sql}",
             [path, *vis_params],
         ).fetchone()
 
@@ -327,7 +327,7 @@ def get_thumbnail(
         resized = _get_or_resize(path, row['thumbnail'], size)
         return _cached_image_response(resized, request)
     if size and size > _STORED_THUMBNAIL_SIZE:
-        rendered = _render_from_original(path, row['sequence_kind'])
+        rendered = _render_from_original(path, row['sequence_kind'], row['preview_revision'])
         if rendered is not None:
             # Kept at the one-year default like /image and the stored thumbnail:
             # the bytes depend on (mtime, sequence_kind) and the client's `v=`
@@ -506,7 +506,7 @@ def image(
     vis_sql, vis_params = get_visibility_clause(user.user_id if user else None)
     with get_db() as conn:
         row = conn.execute(
-            f"SELECT path, sequence_kind FROM photos WHERE path = ? AND {vis_sql}",
+            f"SELECT path, sequence_kind, preview_revision FROM photos WHERE path = ? AND {vis_sql}",
             [path, *vis_params],
         ).fetchone()
     if not row:
@@ -527,7 +527,7 @@ def image(
         try:
             mtime = os.path.getmtime(real_disk)
             quality = _get_image_jpeg_quality()
-            jpeg_bytes = _convert_raw_cached(real_disk, mtime, quality, row['sequence_kind'])
+            jpeg_bytes = _convert_raw_cached(real_disk, mtime, quality, row['sequence_kind'], row['preview_revision'])
             return _cached_image_response(jpeg_bytes, request)
         except (OSError, ValueError, RuntimeError):
             logger.exception("Failed to convert RAW file: %s", real_disk)
@@ -540,7 +540,7 @@ def image(
         try:
             mtime = os.path.getmtime(real_disk)
             quality = _get_image_jpeg_quality()
-            jpeg_bytes = _convert_nonraw_cached(real_disk, mtime, quality)
+            jpeg_bytes = _convert_nonraw_cached(real_disk, mtime, quality, row['preview_revision'])
             return _cached_image_response(jpeg_bytes, request)
         except Exception:
             logger.exception("Failed to convert HEIF file: %s", real_disk)
@@ -559,6 +559,8 @@ def image(
             if want_fallback:
                 return _stored_thumbnail_response(path, request, vary_accept=True)
             return Response(content="Not found", status_code=404, headers={'Vary': 'Accept'})
+        if row['preview_revision']:
+            original.headers['etag'] = '"' + hashlib.sha256((original.headers['etag'] + row['preview_revision']).encode()).hexdigest() + '"'
         if request.headers.get('if-none-match') == original.headers['etag']:
             return Response(status_code=304,
                             headers={'ETag': original.headers['etag'], 'Vary': 'Accept'})
@@ -570,8 +572,8 @@ def image(
         try:
             mtime = os.path.getmtime(real_disk)
             quality = _get_image_jpeg_quality()
-            jpeg_bytes = (_coalesced_jpegxl_conversion(real_disk, mtime, quality)
-                          if is_jxl else _convert_nonraw_cached(real_disk, mtime, quality))
+            jpeg_bytes = (_coalesced_jpegxl_conversion(real_disk, mtime, quality, row['preview_revision'])
+                          if is_jxl else _convert_nonraw_cached(real_disk, mtime, quality, row['preview_revision']))
             response = _cached_image_response(jpeg_bytes, request)
             if is_jxl:
                 response.headers['Vary'] = 'Accept'
@@ -582,4 +584,11 @@ def image(
                 return _stored_thumbnail_response(path, request, vary_accept=is_jxl)
             return Response(content="Failed to convert TIFF/JPEG XL file", status_code=500)
 
-    return FileResponse(real_disk, media_type=_BROWSER_IMAGE_MEDIA_TYPES.get(Path(real_disk).suffix.lower()))
+    try:
+        original = FileResponse(real_disk, media_type=_BROWSER_IMAGE_MEDIA_TYPES.get(Path(real_disk).suffix.lower()),
+                                stat_result=os.stat(real_disk))
+    except OSError:
+        return _stored_thumbnail_response(path, request) if want_fallback else Response(status_code=404)
+    if row['preview_revision']:
+        original.headers['etag'] = '"' + hashlib.sha256((original.headers['etag'] + row['preview_revision']).encode()).hexdigest() + '"'
+    return original

@@ -1,4 +1,20 @@
 {
+  "photo_refresh": {
+    "limit": "Selecione entre 1 e 100 fotos explícitas.",
+    "reasons": {
+      "unavailable": "Origem indisponível",
+      "changed": "Foto alterada; atualize novamente",
+      "busy": "Biblioteca ocupada; tente mais tarde",
+      "failed": "Não foi possível ler esta foto"
+    },
+    "title": "Atualizar metadados e pré-visualização",
+    "description": "Lê os metadados disponíveis e recria a pré-visualização. As anotações manuais, classificações, rostos e pontuações de IA não mudam. Os originais não são modificados. Faça nova análise para atualizar pontuações e rostos após alterações nos píxeis.",
+    "one": "1 foto selecionada",
+    "many": "{count} fotos selecionadas",
+    "start": "Atualizar",
+    "completed": "Atualizadas: {count}",
+    "failed": "Não foi possível atualizar algumas fotos. Tente novamente para atualizar apenas as restantes."
+  },
   "ui": {
     "title": "Facet",
     "filters": {

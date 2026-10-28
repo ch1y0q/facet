@@ -168,6 +168,7 @@ class FolderEntry(BaseModel):
     path: str
     photo_count: int
     cover_photo_path: Optional[str] = None
+    preview_revision: Optional[str] = None
 
 
 class FoldersResponse(BaseModel):

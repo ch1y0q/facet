@@ -6,6 +6,7 @@ export interface KeeperHint {
 }
 
 export interface Photo {
+  preview_revision?: string | null;
   path: string;
   filename: string;
   // Scores

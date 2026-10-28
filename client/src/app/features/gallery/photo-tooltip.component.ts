@@ -90,7 +90,7 @@ export class CategoryLabelPipe implements PipeTransform {
                than stretched and letterboxed, so the box is the picture and the
                rounded corners show on every orientation. -->
           <img
-            [src]="p.path | thumbnailUrl:640"
+            [src]="p.path | thumbnailUrl:640:p.preview_revision"
             [alt]="p.filename"
             class="rounded-md shrink-0 max-w-full w-auto h-auto"
             [class.self-center]="docked()"

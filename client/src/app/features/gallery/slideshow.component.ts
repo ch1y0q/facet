@@ -104,7 +104,7 @@ interface Slide {
             @for (photo of slide.photos; track photo.path; let i = $index) {
               <div class="flex-1 min-w-0 h-full overflow-hidden">
                 <img
-                  [src]="photo.path | imageUrl"
+                  [src]="photo.path | imageUrl:false:photo.preview_revision"
                   [alt]="photo.filename"
                   class="w-full h-full object-cover"
                   [style.transform]="layerAImgTransforms()[i]"
@@ -129,7 +129,7 @@ interface Slide {
             @for (photo of slide.photos; track photo.path; let i = $index) {
               <div class="flex-1 min-w-0 h-full overflow-hidden">
                 <img
-                  [src]="photo.path | imageUrl"
+                  [src]="photo.path | imageUrl:false:photo.preview_revision"
                   [alt]="photo.filename"
                   class="w-full h-full object-cover"
                   [style.transform]="layerBImgTransforms()[i]"

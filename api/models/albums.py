@@ -22,6 +22,7 @@ class Album(BaseModel):
     name: str
     description: Optional[str] = None
     cover_photo_path: Optional[str] = None
+    preview_revision: Optional[str] = None
     is_smart: bool
     smart_filter_json: Optional[str] = None
     created_at: Optional[str] = None
@@ -95,6 +96,7 @@ class Capsule(BaseModel):
     title_params: dict[str, str] = {}
     subtitle: str
     cover_photo_path: Optional[str] = None
+    preview_revision: Optional[str] = None
     photo_count: int
     icon: str
 

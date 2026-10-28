@@ -1,4 +1,20 @@
 {
+  "photo_refresh": {
+    "limit": "Wählen Sie zwischen 1 und 100 explizite Fotos.",
+    "reasons": {
+      "unavailable": "Quelle nicht verfügbar",
+      "changed": "Foto geändert; erneut aktualisieren",
+      "busy": "Bibliothek beschäftigt; später erneut versuchen",
+      "failed": "Foto konnte nicht gelesen werden"
+    },
+    "title": "Metadaten und Vorschau aktualisieren",
+    "description": "Verfügbare Quelldaten lesen und die Vorschau erneuern. Manuelle Angaben, Bewertungen, Gesichter und KI-Werte bleiben unverändert. Originale werden nicht verändert. Geänderte Bildinhalte erfordern einen erneuten Scan für neue Bewertungen oder Gesichtserkennung.",
+    "one": "1 ausgewähltes Foto",
+    "many": "{count} ausgewählte Fotos",
+    "start": "Aktualisieren",
+    "completed": "Aktualisiert: {count}",
+    "failed": "Einige Fotos konnten nicht aktualisiert werden. Versuchen Sie es erneut, um nur die verbleibenden Fotos zu aktualisieren."
+  },
   "ui": {
     "title": "Facet",
     "filters": {
