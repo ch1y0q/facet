@@ -1,9 +1,9 @@
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { Provider, signal } from '@angular/core';
 import { NEVER, Subject, of } from 'rxjs';
 import { App } from './app';
-import { GalleryStore, GalleryFilters, DEFAULT_FILTERS } from './features/gallery/gallery.store';
+import { GalleryStore, GalleryFilters, DEFAULT_FILTERS, ViewerConfig } from './features/gallery/gallery.store';
 import { AuthService } from './core/services/auth.service';
 import { ApiService } from './core/services/api.service';
 import { I18nService } from './core/services/i18n.service';
@@ -18,6 +18,7 @@ import { I18N } from './core/i18n/keys';
 import { ScanService } from './core/services/scan.service';
 import { By } from '@angular/platform-browser';
 import { MatTooltip } from '@angular/material/tooltip';
+import { MatMenuTrigger } from '@angular/material/menu';
 
 function createApp(routerUrl = '/', extraProviders: Provider[] = []) {
   const filtersSignal = signal<GalleryFilters>({ ...DEFAULT_FILTERS });
@@ -654,7 +655,6 @@ describe('App', () => {
       return { fixture, root, buttons, store, openLauncher };
     }
 
-    const isSortField = (el: Element | null) => !!el && el.tagName === 'MAT-FORM-FIELD' && !!el.textContent?.includes(I18N.gallery.sort);
 
     it('announces matching photo totals in the gallery header and exact item totals for pinned lists', () => {
       const { fixture, root, store } = render(false);
@@ -675,11 +675,13 @@ describe('App', () => {
       for (const cls of TONAL) expect(desktop[0].classList.contains(cls)).toBe(true);
     });
 
-    it('renders the mobile-bar copy right after the mobile Sort field', () => {
+    it('renders the mobile-bar copy pushed to the far right of the bar', () => {
       const { buttons } = render(true);
       const mobile = buttons.filter((b) => !b.classList.contains('lg:!inline-flex'));
       expect(mobile).toHaveLength(1);
-      expect(isSortField(mobile[0].previousElementSibling)).toBe(true);
+      expect(mobile[0].nextElementSibling).toBeNull();
+      expect(mobile[0].previousElementSibling?.getAttribute('aria-label')).toBe(I18N.slideshow.start);
+      expect(mobile[0].classList.contains('ml-auto')).toBe(true);
       expect(mobile[0].closest('.lg\\:hidden')).not.toBeNull();
       for (const cls of TONAL) expect(mobile[0].classList.contains(cls)).toBe(true);
     });
@@ -730,15 +732,15 @@ describe('App', () => {
   });
 
   describe('filter bar while an assistant-pinned list is shown', () => {
-    function render() {
+    function render(config: { features?: { show_my_taste?: boolean }; sort_options_grouped?: ViewerConfig['sort_options_grouped'] } | null = null) {
       const store = {
-        filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null),
+        filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(config),
         types: signal([]), total: signal(0), photoTotal: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), reloadPhotos: vi.fn(), loadConfig: vi.fn(),
         viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(true), hiddenFiltersStash: signal(null),
         reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(),
         collapseStacks: signal(true), toggleStackCollapse: vi.fn(),
         slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(),
-        resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(),
+        setUserSort: vi.fn(() => Promise.resolve()), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(),
       };
       TestBed.configureTestingModule({
         providers: [
@@ -746,7 +748,7 @@ describe('App', () => {
           { provide: GalleryStore, useValue: store },
           { provide: ScanService, useValue: { canLaunch: signal(true), openLauncher: vi.fn() } },
           { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(true), isReadOnlyInstall: signal(false), features: signal({}), user: signal(null), logout: vi.fn(), isEdition: signal(false), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(false), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
-          { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string) => k), translations: signal({}) } },
+          { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string, vars?: Record<string, string | number>) => vars ? `${k}(${Object.values(vars).join(',')})` : k), translations: signal({}) } },
           { provide: StatsFiltersService, useValue: { filterCategory: signal(''), dateFrom: signal(''), dateTo: signal('') } },
           { provide: CompareFiltersService, useValue: { selectedCategory: signal('') } },
           { provide: MatDialog, useValue: { open: vi.fn() } },
@@ -759,9 +761,18 @@ describe('App', () => {
       return { fixture, root: fixture.nativeElement as HTMLElement, store };
     }
 
-    const sortFields = (root: HTMLElement) => Array.from(root.querySelectorAll('mat-form-field'))
-      .filter(el => el.textContent?.includes(I18N.gallery.sort));
+    const sortButtons = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="menu"]'))
+      .filter(el => el.getAttribute('aria-label')?.startsWith(`${I18N.gallery.sort_current}(`));
+    const sortLabel = (key: string) => `${I18N.gallery.sort_current}(${key})`;
     const byLabel = (root: HTMLElement, key: string) => root.querySelectorAll(`button[aria-label="${key}"]`);
+    const menuItems = () => Array.from(document.querySelectorAll<HTMLElement>('.mat-mdc-menu-panel [role="menuitemradio"]'));
+    const iconOf = (el: Element) => el.querySelector('mat-icon')?.textContent?.trim();
+    const openMenu = async (fixture: ComponentFixture<App>, button: HTMLButtonElement) => {
+      button.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    };
 
     it('offers stack expansion in the mobile bar to read-only users and hides it for exact pinned lists', () => {
       const { fixture, root, store } = render();
@@ -781,20 +792,168 @@ describe('App', () => {
       expect(root.querySelector('[data-stack-collapse-mobile]')).not.toBeNull();
     });
 
-    it('shows the sort field, sort direction and filter toggle (header and mobile bar) otherwise', () => {
+    it('shows the sort button, sort direction and filter toggle (header and mobile bar) otherwise', () => {
       const { root } = render();
-      expect(sortFields(root)).toHaveLength(2);
+      expect(sortButtons(root)).toHaveLength(2);
       expect(byLabel(root, I18N.gallery.sort_desc)).toHaveLength(2);
       expect(byLabel(root, I18N.gallery.filters)).toHaveLength(1);
       expect(byLabel(root, I18N.ui.buttons.filters)).toHaveLength(1);
       expect(byLabel(root, I18N.ui.filters.search)).toHaveLength(1);
     });
 
+    it('puts the direction toggle, then the filter toggle, right after the sort button in both layouts', () => {
+      const { root } = render();
+      const [desktop, mobile] = sortButtons(root);
+      for (const [button, filtersLabel] of [[desktop, I18N.gallery.filters], [mobile, I18N.ui.buttons.filters]] as const) {
+        expect(button.nextElementSibling?.getAttribute('aria-label')).toBe(I18N.gallery.sort_desc);
+        expect(button.nextElementSibling?.nextElementSibling?.getAttribute('aria-label')).toBe(filtersLabel);
+      }
+    });
+
+    it('shows the current sort icon and labels the button "Sort by: <current label>"', () => {
+      const { fixture, root, store } = render();
+      for (const button of sortButtons(root)) {
+        expect(iconOf(button)).toBe('leaderboard');
+        expect(button.getAttribute('aria-label')).toBe(sortLabel(I18N.gallery.sort_aggregate));
+      }
+      store.filters.update(filters => ({ ...filters, sort: 'aesthetic_iaa' }));
+      fixture.detectChanges();
+      for (const button of sortButtons(root)) {
+        expect(iconOf(button)).toBe('IAA');
+        expect(button.querySelector('mat-icon')?.classList.contains('!font-sans')).toBe(true);
+        expect(button.getAttribute('aria-label')).toBe(sortLabel('sort_options.aesthetic_iaa'));
+      }
+    });
+
+    it.each(['constructor', 'toString', '__proto__'])('keeps an unknown %s sort label a string rather than reading Object.prototype', sort => {
+      const { fixture, root, store } = render();
+      store.filters.update(filters => ({ ...filters, sort }));
+      fixture.detectChanges();
+      for (const button of sortButtons(root)) {
+        expect(button.getAttribute('aria-label')).toBe(sortLabel(`sort_options.${sort}`));
+      }
+    });
+
+    it('gives current model labels the same width as their menu markers in both layouts', () => {
+      const { fixture, root, store } = render();
+      store.filters.update(filters => ({ ...filters, sort: 'deqa_score' }));
+      fixture.detectChanges();
+      for (const button of sortButtons(root)) {
+        const icon = button.querySelector('mat-icon')!;
+        expect(icon.textContent?.trim()).toBe('DeQA');
+        expect(icon.classList.contains('!w-8')).toBe(true);
+        expect(icon.classList.contains('text-center')).toBe(true);
+        expect(icon.classList.contains('-mx-1')).toBe(true);
+        expect(icon.getAttribute('aria-hidden')).toBe('true');
+        expect(button.getAttribute('aria-label')).toBe(sortLabel('sort_options.deqa_score'));
+      }
+    });
+
+    it('lists the fallback sorts with icons, marks the current one and runs the saved-sort handler on click', async () => {
+      const { fixture, root, store } = render();
+      await openMenu(fixture, sortButtons(root)[0]);
+      const items = menuItems();
+      expect(items.map(item => item.textContent?.replace(iconOf(item) ?? '', '').replace('check', '').trim())).toEqual([
+        I18N.gallery.sort_aggregate, I18N.gallery.sort_aesthetic, I18N.gallery.sort_date,
+      ]);
+      expect(items.map(item => iconOf(item))).toEqual(['leaderboard', 'auto_awesome', 'event']);
+      expect(items.map(item => item.getAttribute('aria-checked'))).toEqual(['true', 'false', 'false']);
+      expect(items.map(item => !!Array.from(item.querySelectorAll('mat-icon')).find(i => i.textContent?.trim() === 'check'))).toEqual([true, false, false]);
+      items[2].click();
+      expect(store.setUserSort).toHaveBeenLastCalledWith('date_taken');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(menuItems()).toHaveLength(0);
+    });
+
+    it('labels a sort the menu does not list with its own label, never a raw sort_options key', () => {
+      const { fixture, root, store } = render();
+      for (const [sort, labelKey] of [
+        ['top_picks_score', I18N.photo_types.top_picks],
+        ['learned_score', I18N.gallery.sort_my_taste],
+        ['relevance', I18N.gallery.sort_relevance],
+      ] as const) {
+        store.filters.update(filters => ({ ...filters, sort }));
+        fixture.detectChanges();
+        for (const button of sortButtons(root)) expect(button.getAttribute('aria-label')).toBe(sortLabel(labelKey));
+      }
+    });
+
+    it('moves the check to the current sort', async () => {
+      const { fixture, root, store } = render();
+      store.filters.update(filters => ({ ...filters, sort: 'aesthetic' }));
+      fixture.detectChanges();
+      await openMenu(fixture, sortButtons(root)[1]);
+      expect(menuItems().map(item => item.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false']);
+    });
+
+    it('does not reload when the already-current sort is picked again', async () => {
+      const { fixture, root, store } = render();
+      await openMenu(fixture, sortButtons(root)[0]);
+      menuItems()[0].click();
+      expect(store.setUserSort).not.toHaveBeenCalled();
+    });
+
+    it('lists configured groups under non-interactive headers, with conditional sorts and model labels', async () => {
+      const { fixture, root, store } = render({
+        features: { show_my_taste: true },
+        sort_options_grouped: {
+          General: [
+            { column: 'date_taken', label: 'Date Taken' },
+            { column: 'aesthetic_iaa', label: 'Aesthetic IAA' },
+            { column: 'qrealign_score', label: 'Q-ReAlign' },
+          ],
+          'Face Metrics': [{ column: 'future_metric', label: 'Future metric' }],
+        },
+      });
+      store.filters.update(filters => ({ ...filters, semanticQuery: 'sunset' }));
+      fixture.detectChanges();
+      await openMenu(fixture, sortButtons(root)[1]);
+      const items = menuItems();
+      expect(items.map(item => iconOf(item))).toEqual(['search', 'psychology', 'event', 'IAA', 'Q-R', 'sort']);
+      const panel = items[0].closest('.mat-mdc-menu-panel')!;
+      const groups = Array.from(panel.querySelectorAll('[role="group"]'));
+      const headers = groups.map(group => document.getElementById(group.getAttribute('aria-labelledby')!)?.textContent?.trim());
+      expect(headers).toEqual(['sort_groups.general', 'sort_groups.face_metrics']);
+      expect(groups.map(group => group.querySelectorAll('[role="menuitemradio"]').length)).toEqual([3, 1]);
+      for (const item of items) expect(item.querySelector('mat-icon')?.getAttribute('aria-hidden')).toBe('true');
+      items[3].click();
+      expect(store.setUserSort).toHaveBeenLastCalledWith('aesthetic_iaa');
+    });
+
+    it('offers the tooltip modes as one shared radio menu with the current mode checked', async () => {
+      const { fixture, root, store } = render();
+      store.filters.update(filters => ({ ...filters, tooltip_mode: 'click' }));
+      fixture.detectChanges();
+      const triggers = Array.from(byLabel(root, I18N.gallery.tooltip_mode.label)) as HTMLButtonElement[];
+      expect(triggers).toHaveLength(2);
+      const menus = fixture.debugElement.queryAll(By.directive(MatMenuTrigger))
+        .filter(d => triggers.includes(d.nativeElement as HTMLButtonElement))
+        .map(d => d.injector.get(MatMenuTrigger).menu);
+      expect(menus[0]).toBe(menus[1]);
+      await openMenu(fixture, triggers[1]);
+      const items = menuItems();
+      expect(items.map(item => item.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false']);
+      expect(items.map(item => item.textContent?.includes('check'))).toEqual([false, true, false]);
+      items[2].click();
+      expect(store.updateFilter).toHaveBeenCalledWith('tooltip_mode', 'off');
+    });
+
+    it('is one shared menu for both triggers', () => {
+      const { fixture, root } = render();
+      const buttons = sortButtons(root);
+      const menus = fixture.debugElement.queryAll(By.directive(MatMenuTrigger))
+        .filter(d => buttons.includes(d.nativeElement as HTMLButtonElement))
+        .map(d => d.injector.get(MatMenuTrigger).menu);
+      expect(menus).toHaveLength(2);
+      expect(menus[0]).toBe(menus[1]);
+    });
+
     it('hides them all while pinned, and brings them back when the pin clears', () => {
       const { fixture, root, store } = render();
       store.pinnedPaths.set(['/a.jpg']);
       fixture.detectChanges();
-      expect(sortFields(root)).toHaveLength(0);
+      expect(sortButtons(root)).toHaveLength(0);
       expect(byLabel(root, I18N.gallery.sort_desc)).toHaveLength(0);
       expect(byLabel(root, I18N.gallery.filters)).toHaveLength(0);
       expect(byLabel(root, I18N.ui.buttons.filters)).toHaveLength(0);
@@ -804,7 +963,7 @@ describe('App', () => {
       expect(byLabel(root, I18N.gallery.tooltip_mode.label).length).toBeGreaterThan(0);
       store.pinnedPaths.set(null);
       fixture.detectChanges();
-      expect(sortFields(root)).toHaveLength(2);
+      expect(sortButtons(root)).toHaveLength(2);
       expect(byLabel(root, I18N.gallery.filters)).toHaveLength(1);
       expect(store.setFilterDrawerOpen).not.toHaveBeenCalled();
     });

@@ -458,6 +458,7 @@
     "exposure": "曝光",
     "composition": "构图",
     "subject_saliency": "主体显著性",
+    "content": "内容",
     "camera": "相机"
   },
   "sort_options": {
@@ -1054,6 +1055,7 @@
     },
     "all_photos": "全部照片",
     "sort": "排序方式",
+    "sort_current": "排序方式：{label}",
     "sort_aggregate": "综合评分",
     "sort_aesthetic": "美观度",
     "sort_date": "日期",
