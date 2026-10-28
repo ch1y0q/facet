@@ -44,7 +44,7 @@ cycler==0.12.1
 datasets==5.1.0
 dill==0.4.1
 distlib==0.4.4
-dnspython==2.8.0
+dnspython==2.9.0
 einops==0.8.2
 ExifRead==3.5.1
 execnet==2.1.2
