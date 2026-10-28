@@ -6,6 +6,7 @@ import { MATERIAL_ANIMATIONS } from '@angular/material/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import { MatMenuTrigger } from '@angular/material/menu';
 import { I18nService } from '../../../core/services/i18n.service';
+import { KeyboardMappingService, KEYMAP_STORAGE_KEY } from '../../../core/services/keyboard-mapping.service';
 import { PhotoCardComponent } from './photo-card.component';
 import { CardActionsConfig } from './card-actions';
 import type { Photo } from '../../models/photo.model';
@@ -945,6 +946,19 @@ describe('PhotoCardComponent current-photo marker', () => {
     fixture.componentRef.setInput('isEditionMode', false);
     fixture.detectChanges();
     expect(hint()).toBeUndefined();
+  });
+
+  it('names the favourite and reject keys the user mapped in the focused-card hint', () => {
+    localStorage.removeItem(KEYMAP_STORAGE_KEY);
+    const fixture = createCard({ isActive: true, gridHasActiveCard: true });
+    const mapping = TestBed.inject(KeyboardMappingService);
+    mapping.setKey('favourite', 'z');
+    fixture.componentRef.setInput('isEditionMode', true);
+    fixture.componentRef.setInput('config', { features: { show_rating_controls: true } });
+    fixture.detectChanges();
+    expect(TestBed.inject(I18nService).t).toHaveBeenCalledWith('photoCard.key_hint', { favourite: 'Z', reject: 'X' });
+    mapping.resetAll();
+    localStorage.removeItem(KEYMAP_STORAGE_KEY);
   });
 
   it.each([

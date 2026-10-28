@@ -2690,6 +2690,12 @@ export const I18N = {
     toggle_layout: "shortcuts.toggle_layout",
     comp_left_wins: "shortcuts.comp_left_wins",
     comp_right_wins: "shortcuts.comp_right_wins",
+    keymap_hint: "shortcuts.keymap_hint",
+    press_key: "shortcuts.press_key",
+    reset_keys: "shortcuts.reset_keys",
+    key_in_use: "shortcuts.key_in_use",
+    key_reserved: "shortcuts.key_reserved",
+    keymap_title: "shortcuts.keymap_title",
   },
   pwa: {
     update_available: "pwa.update_available",

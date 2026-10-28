@@ -205,7 +205,7 @@
     "sequence_set": "Abrir bracket/panorama",
     "stack_set": "Abrir pilha de fotos",
     "open_detail": "Abrir página da foto",
-    "key_hint": "1-5 avaliar · F favorita · X rejeitar · Espaço selecionar · Enter abrir"
+    "key_hint": "1-5 avaliar · {favourite} favorita · {reject} rejeitar · Espaço selecionar · Enter abrir"
   },
   "notifications": {
     "copied": "Copiado!",
@@ -2675,7 +2675,13 @@
     "toggle_filters": "Mostrar / ocultar a barra de filtros",
     "toggle_layout": "Alternar grade / mosaico",
     "comp_left_wins": "Foto da esquerda vence",
-    "comp_right_wins": "Foto da direita vence"
+    "comp_right_wins": "Foto da direita vence",
+    "keymap_hint": "Clique numa ação e pressione a nova tecla.",
+    "press_key": "Pressione uma tecla…",
+    "reset_keys": "Restaurar tudo",
+    "key_in_use": "Essa tecla já está em uso",
+    "key_reserved": "Essa tecla é reservada",
+    "keymap_title": "Personalizar atalhos"
   },
   "pwa": {
     "update_available": "Uma nova versão está disponível",

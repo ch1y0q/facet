@@ -230,7 +230,7 @@ Use **Review status → Needs review** in the gallery to work through undecided 
 
 Choose **Keep** for a photo you want to retain, or **Reject** for one you do not. Both decisions remove the photo from Needs review after saving. Kept photos remain in the normal library and can be found with the **Kept** status filter. Keep is independent of favorites and star ratings.
 
-Keep and **Reset decision** are available in photo detail, the gallery context menu and bulk actions. Press **K** to keep the current photo. In photo detail the Keep button is a toggle: pressing it on a kept photo resets the decision. Reset decision clears Keep and Reject and returns the photo to Needs review without changing its stars or favorite flag. Use Undo to reverse a gallery action.
+Keep and **Reset decision** are available in photo detail, the gallery context menu and bulk actions. Press **K** (remappable, see [Keyboard Shortcuts](#keyboard-shortcuts-gallery)) to keep the current photo. In photo detail the Keep button is a toggle: pressing it on a kept photo resets the decision. Reset decision clears Keep and Reject and returns the photo to Needs review without changing its stars or favorite flag. Use Undo to reverse a gallery action.
 
 Decisions survive reloads, viewer restarts and rescans. On multi-user installs they belong to the current user. Confirming a culling group also marks its chosen keepers as Kept. Existing ratings, favorites and previously reviewed groups are not automatically converted into Keep decisions.
 
@@ -1032,6 +1032,7 @@ Single-key gallery and photo shortcuts stay inactive while focus is in a text fi
 | `Double-click` | Open photo |
 | `Shift+F10` / `Menu` | Open the context menu of the focused photo card (right-click does the same) |
 | `1`–`5` | Rate the focused photo 1–5 stars (edition mode; auto-advances to the next photo) |
+| `K` | Keep the focused photo (edition mode) |
 | `F` | Favourite / unfavourite the focused photo (edition mode) |
 | `X` or `0` | Reject / un-reject the focused photo (edition mode; auto-advances) |
 | `/` | Focus the toolbar search (shown from 1360 px wide); below that width, opens the filter sidebar and focuses its search field |
@@ -1039,9 +1040,11 @@ Single-key gallery and photo shortcuts stay inactive while focus is in a text fi
 | `V` | Switch between grid and mosaic layout |
 | `?` | Show the keyboard shortcuts reference (works on every page; the gallery shortcuts are also listed in user menu → Help) |
 
+The rating, review and view shortcuts — favourite, reject, keep, search focus, the filter sidebar and the grid/mosaic switch — are remappable per browser, so `K`, `F`, `X`, `/`, `B` and `V` above are the defaults: user menu → **Customize shortcuts** opens a dialog where you click an action and press its new key (`Esc` or `Tab` cancels). Digits, `Space` and `?` stay reserved, and a key another action already holds is refused; **Reset all** restores the built-in keys. The mapping is stored in `localStorage`, so it follows the browser rather than the account; the photo page answers the same keys, and the `?` reference, the Help dialog's gallery table and the focused-card hint always show the keys in effect. A saved key that is reserved, or that two actions share, falls back to that action's built-in key; the other saved keys are kept unless that built-in key is already taken, in which case every key resets.
+
 The current photo — the one star-rating, favorite and reject shortcuts act on — is marked with a 4px outline around its card; every other card dims to 50% opacity. Nothing is marked until the cursor has actually moved onto a photo in the results, so a gallery you have not navigated yet stays at full strength. Clicking a photo moves the marker onto it, so a shortcut typed right after a click lands on the photo you clicked, not on wherever the arrow keys last left it. Coming back from a photo (Back or Escape) leaves the marker on the last photo you viewed there, so the shortcuts carry on from there. The focused-card shortcut hint appears only in edition mode with `viewer.features.show_rating_controls` enabled.
 
-**On the photo page**, `1`–`5`, `F` and `X` (or `0`) rate, favourite and reject the open photo, under the same conditions as the rating buttons: edition mode, with `viewer.features.show_rating_controls` on. Unlike the gallery, they never advance to another photo; use `←` `→` for that. The `?` reference lists them under *Photo view*.
+**On the photo page**, `1`–`5`, the favourite key and the reject key (`F` and `X` by default; `0` also rejects) rate, favourite and reject the open photo, under the same conditions as the rating buttons: edition mode, with `viewer.features.show_rating_controls` on. Unlike the gallery, they never advance to another photo; use `←` `→` for that. The `?` reference lists them under *Photo view*.
 
 ## Undo
 

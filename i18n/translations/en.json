@@ -205,7 +205,7 @@
     "sequence_set": "Open bracket/panorama set",
     "stack_set": "Open photo stack",
     "open_detail": "Open photo page",
-    "key_hint": "1-5 rate · F fav · X reject · Space select · Enter open"
+    "key_hint": "1-5 rate · {favourite} fav · {reject} reject · Space select · Enter open"
   },
   "notifications": {
     "copied": "Copied!",
@@ -2675,7 +2675,13 @@
     "toggle_filters": "Show / hide the filter sidebar",
     "toggle_layout": "Switch grid / mosaic",
     "comp_left_wins": "Left photo wins",
-    "comp_right_wins": "Right photo wins"
+    "comp_right_wins": "Right photo wins",
+    "keymap_hint": "Click an action, then press the new key.",
+    "press_key": "Press a key…",
+    "reset_keys": "Reset all",
+    "key_in_use": "That key is already assigned",
+    "key_reserved": "That key is reserved",
+    "keymap_title": "Customize shortcuts"
   },
   "pwa": {
     "update_available": "A new version is available",

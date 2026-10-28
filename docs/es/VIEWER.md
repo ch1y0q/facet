@@ -229,7 +229,7 @@ En la galería, selecciona **Estado de revisión → Por revisar** para recorrer
 
 **Conservar** y **Rechazar** retiran la foto de esta vista después de guardar. Las fotos conservadas siguen en la biblioteca normal y aparecen con el filtro **Conservadas**. La decisión es independiente de favoritos y estrellas.
 
-Conservar y **Restablecer decisión** están disponibles en el detalle, el menú contextual y las acciones en lote. **K** conserva la foto actual. En el detalle, el botón Conservar es un conmutador: pulsarlo en una foto ya conservada restablece la decisión. Restablecer borra Conservar y Rechazar sin cambiar estrellas ni favoritos. Las acciones de galería permiten Deshacer.
+Conservar y **Restablecer decisión** están disponibles en el detalle, el menú contextual y las acciones en lote. **K** (reasignable, véase [Atajos de teclado](#atajos-de-teclado-galería)) conserva la foto actual. En el detalle, el botón Conservar es un conmutador: pulsarlo en una foto ya conservada restablece la decisión. Restablecer borra Conservar y Rechazar sin cambiar estrellas ni favoritos. Las acciones de galería permiten Deshacer.
 
 Las decisiones sobreviven a recargas, reinicios y nuevos análisis, y son propias de cada usuario. Confirmar un grupo de selección también marca sus fotos elegidas como conservadas. Las valoraciones, favoritos y grupos revisados anteriores no se convierten automáticamente.
 
@@ -964,6 +964,7 @@ Los atajos de una sola tecla de la galería y las fotos permanecen inactivos cua
 | `Double-click` | Abrir la foto |
 | `Shift+F10` / `Menu` | Abrir el menú contextual de la tarjeta de foto con el foco (el clic derecho hace lo mismo) |
 | `1`–`5` | Puntuar la foto enfocada con 1–5 estrellas (modo edición; avanza a la siguiente) |
+| `K` | Conservar la foto enfocada (modo edición) |
 | `F` | Marcar / desmarcar como favorita la foto enfocada (modo edición) |
 | `X` o `0` | Rechazar / anular el rechazo de la foto enfocada (modo edición; avanza) |
 | `/` | Enfocar la búsqueda de la barra de herramientas (visible desde 1360 px de ancho); por debajo, abre la barra lateral de filtros y enfoca su campo de búsqueda |
@@ -971,9 +972,11 @@ Los atajos de una sola tecla de la galería y las fotos permanecen inactivos cua
 | `V` | Cambiar entre cuadrícula y mosaico |
 | `?` | Mostrar la referencia de atajos de teclado (funciona en todas las páginas; los atajos de la galería también aparecen en menú de usuario → Ayuda) |
 
+Los atajos de valoración, de mantener y de vista — favorito, rechazar, mantener, enfocar la búsqueda, la barra lateral y cuadrícula/mosaico — se pueden reasignar por navegador, así que `K`, `F`, `X`, `/`, `B` y `V` de arriba son las teclas por defecto: el menú de usuario → **Personalizar atajos** abre un diálogo donde haces clic en una acción y pulsas su nueva tecla (`Esc` o `Tab` cancela). Los dígitos, `Espacio` y `?` quedan reservados, y una tecla que otra acción ya ocupa se rechaza; **Restablecer todo** devuelve las teclas integradas. La asignación se guarda en `localStorage`, así que sigue al navegador y no a la cuenta; la página de foto responde a las mismas teclas, y la referencia `?` , la tabla de la galería del diálogo de ayuda y la indicación de la tarjeta enfocada muestran siempre las teclas vigentes. Una tecla guardada que esté reservada, o que compartan dos acciones, vuelve a la tecla predeterminada de esa acción; las demás teclas guardadas se conservan, salvo que esa tecla predeterminada ya esté ocupada, en cuyo caso se restablecen todas.
+
 La foto actual — aquella sobre la que actúan los atajos de valoración, favorito y descarte — está marcada con un contorno de 4px alrededor de su tarjeta; el resto de las tarjetas baja al 50% de opacidad. Nada queda marcado hasta que el cursor se ha movido realmente sobre una foto de los resultados, así que una galería que aún no has recorrido permanece a intensidad completa. Al hacer clic en una foto, el marcador se mueve a ella, de modo que un atajo pulsado justo después de un clic se aplica a la foto en la que hiciste clic, no a la que dejaron las flechas. Al volver de una foto (Atrás o Esc) el marcador se queda en la última foto que viste, de modo que los atajos continúan desde ahí. La indicación de atajos de la tarjeta enfocada solo aparece en modo edición con `viewer.features.show_rating_controls` activado.
 
-**En la página de la foto**, `1`–`5`, `F` y `X` (o `0`) puntúan, marcan como favorita y rechazan la foto abierta, en las mismas condiciones que los botones de puntuación: modo edición, con `viewer.features.show_rating_controls` activado. A diferencia de la galería, nunca avanzan a otra foto; para eso, usa `←` `→`. La referencia `?` los lista en *Vista de foto*.
+**En la página de la foto**, `1`–`5`, la tecla de favorito y la de rechazo (`F` y `X` por defecto; `0` también rechaza) puntúan, marcan como favorita y rechazan la foto abierta, en las mismas condiciones que los botones de puntuación: modo edición, con `viewer.features.show_rating_controls` activado. A diferencia de la galería, nunca avanzan a otra foto; para eso, usa `←` `→`. La referencia `?` los lista en *Vista de foto*.
 
 ## Deshacer
 

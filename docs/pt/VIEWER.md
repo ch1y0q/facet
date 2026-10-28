@@ -229,7 +229,7 @@ Na galeria, escolha **Estado de revisão → Por rever** para percorrer fotos se
 
 **Manter** e **Rejeitar** retiram a foto dessa visualização após salvar. As fotos mantidas continuam na biblioteca normal e aparecem com o filtro **Mantidas**. Favoritos e estrelas permanecem independentes.
 
-Manter e **Redefinir decisão** estão disponíveis nos detalhes, no menu de contexto e nas ações em lote. **K** mantém a foto atual. Nos detalhes, o botão Manter é uma alternância: acioná-lo em uma foto já mantida redefine a decisão. Redefinir limpa Manter e Rejeitar sem alterar estrelas ou favoritos. As ações da galeria podem ser desfeitas.
+Manter e **Redefinir decisão** estão disponíveis nos detalhes, no menu de contexto e nas ações em lote. **K** (remapeável, veja [Atalhos de Teclado](#atalhos-de-teclado-galeria)) mantém a foto atual. Nos detalhes, o botão Manter é uma alternância: acioná-lo em uma foto já mantida redefine a decisão. Redefinir limpa Manter e Rejeitar sem alterar estrelas ou favoritos. As ações da galeria podem ser desfeitas.
 
 As decisões persistem após recarregar, reiniciar e analisar novamente, e são individuais por usuário. Confirmar um grupo de seleção também marca suas fotos escolhidas como mantidas. Avaliações, favoritos e grupos já revisados não são convertidos automaticamente.
 
@@ -964,6 +964,7 @@ Os atalhos de uma só tecla da galeria e das fotos ficam inativos quando o foco 
 | `Double-click` | Abre a foto |
 | `Shift+F10` / `Menu` | Abre o menu de contexto do cartão de foto com foco (o clique direito faz o mesmo) |
 | `1`–`5` | Avaliar a foto em foco com 1–5 estrelas (modo edição; avança para a próxima) |
+| `K` | Manter a foto em foco (modo edição) |
 | `F` | Favoritar / desfavoritar a foto em foco (modo edição) |
 | `X` ou `0` | Rejeitar / cancelar a rejeição da foto em foco (modo edição; avança) |
 | `/` | Foca a busca da barra de ferramentas (visível a partir de 1360 px de largura); abaixo disso, abre a barra lateral de filtros e foca o seu campo de busca |
@@ -971,9 +972,11 @@ Os atalhos de uma só tecla da galeria e das fotos ficam inativos quando o foco 
 | `V` | Alternar entre grade e mosaico |
 | `?` | Mostra a referência de atalhos de teclado (funciona em todas as páginas; os atalhos da galeria também estão listados em menu do usuário → Ajuda) |
 
+Os atalhos de avaliação, de manter e de vista — favorito, rejeitar, manter, focar a busca, a barra lateral e grade/mosaico — podem ser remapeados por navegador, então `K`, `F`, `X`, `/`, `B` e `V` acima são as teclas padrão: o menu do usuário → **Personalizar atalhos** abre um diálogo onde você clica numa ação e pressiona a nova tecla (`Esc` ou `Tab` cancela). Dígitos, `Espaço` e `?` permanecem reservados, e uma tecla que outra ação já usa é recusada; **Restaurar tudo** devolve as teclas originais. O mapeamento fica em `localStorage`, então acompanha o navegador e não a conta; a página de foto responde às mesmas teclas, e a referência `?` , a tabela da galeria do diálogo de ajuda e a dica do cartão focado mostram sempre as teclas em vigor. Uma tecla salva que seja reservada, ou compartilhada por duas ações, volta à tecla padrão dessa ação; as demais teclas salvas são mantidas, a menos que essa tecla padrão já esteja ocupada, caso em que todas as teclas são redefinidas.
+
 A foto atual — aquela sobre a qual agem os atalhos de avaliação, favorito e rejeição — é marcada com um contorno de 4px em volta do seu cartão; todos os outros cartões passam a 50% de opacidade. Nada fica marcado até o cursor se mover de fato para uma foto dos resultados, por isso uma galeria que você ainda não percorreu permanece em intensidade total. Clicar numa foto move o marcador para ela, de modo que um atalho digitado logo após um clique se aplica à foto clicada, não àquela onde as setas o tinham deixado. Ao voltar de uma foto (Voltar ou Esc) o marcador permanece na última foto que você viu, de modo que os atalhos continuam a partir dali. A dica de atalhos no cartão focado só aparece no modo de edição com `viewer.features.show_rating_controls` ativado.
 
-**Na página da foto**, `1`–`5`, `F` e `X` (ou `0`) avaliam, favoritam e rejeitam a foto aberta, nas mesmas condições dos botões de avaliação: modo edição, com `viewer.features.show_rating_controls` ativado. Ao contrário da galeria, nunca avançam para outra foto; para isso, use `←` `→`. A referência `?` lista-os em *Visualização da foto*.
+**Na página da foto**, `1`–`5`, a tecla de favorito e a de rejeição (`F` e `X` por padrão; `0` também rejeita) avaliam, favoritam e rejeitam a foto aberta, nas mesmas condições dos botões de avaliação: modo edição, com `viewer.features.show_rating_controls` ativado. Ao contrário da galeria, nunca avançam para outra foto; para isso, use `←` `→`. A referência `?` lista-os em *Visualização da foto*.
 
 ## Desfazer
 

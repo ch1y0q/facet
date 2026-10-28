@@ -1,5 +1,5 @@
 import { i18nKeys } from '../../../core/i18n/keys';
-import { Component, computed, effect, input, output, signal, untracked, viewChildren, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal, untracked, viewChildren, ChangeDetectionStrategy } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
@@ -16,6 +16,7 @@ import { ScoreClassPipe, SortScorePipe, sortScoreColumn } from '../../pipes/scor
 import { SortPersonsPipe } from '../../pipes/sort-persons.pipe';
 import { closeOverlayDirectives } from '../../utils/overlays';
 import { MetricDistribution, topPercentOf } from '../../utils/metric-distribution';
+import { KeyboardMappingService } from '../../../core/services/keyboard-mapping.service';
 
 interface AppConfig {
   quality_thresholds?: { excellent: number; great: number; good: number };
@@ -397,7 +398,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
           <div class="absolute bottom-1.5 left-1.5 z-20 px-1.5 py-0.5 rounded-md
                       bg-black/60 text-white/90 text-[10px] leading-4 pointer-events-none
                       hidden md:block whitespace-nowrap" aria-hidden="true">
-            {{ 'photoCard.key_hint' | translate }}
+            {{ 'photoCard.key_hint' | translate: keyHintVars() }}
           </div>
         }
       </div>
@@ -484,6 +485,12 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
 })
 export class PhotoCardComponent {
   protected readonly I18N = i18nKeys();
+  private readonly keymap = inject(KeyboardMappingService).keymap;
+  /** The remappable keys the focused-card hint names, as the user set them. */
+  protected readonly keyHintVars = computed(() => ({
+    favourite: this.keymap().favourite.toUpperCase(),
+    reject: this.keymap().reject.toUpperCase(),
+  }));
   // Data
   readonly photo = input.required<Photo>();
   readonly config = input<AppConfig | null>(null);

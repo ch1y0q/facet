@@ -329,6 +329,10 @@
             <mat-icon>tune</mat-icon>
             {{ I18N.gallery.card_actions.title | translate }}
           </button>
+          <button mat-menu-item (click)="openKeymapDialog()">
+            <mat-icon>keyboard</mat-icon>
+            {{ I18N.shortcuts.keymap_title | translate }}
+          </button>
           <button mat-menu-item (click)="openHelpDialog()">
             <mat-icon>help_outline</mat-icon>
             {{ I18N.nav.help | translate }}

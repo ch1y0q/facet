@@ -229,7 +229,7 @@ Nella galleria scegli **Stato revisione → Da esaminare** per scorrere le foto 
 
 **Conserva** e **Rifiuta** rimuovono la foto da questa vista dopo il salvataggio. Le foto conservate restano nella libreria normale e sono disponibili con il filtro **Conservate**. Preferiti e stelle rimangono indipendenti.
 
-Conserva e **Reimposta decisione** sono disponibili nel dettaglio, nel menu contestuale e nelle azioni multiple. **K** conserva la foto corrente. Nel dettaglio il pulsante Conserva è un interruttore: premuto su una foto già conservata reimposta la decisione. Reimpostare cancella Conserva e Rifiuta senza modificare stelle o preferiti. Le azioni della galleria possono essere annullate.
+Conserva e **Reimposta decisione** sono disponibili nel dettaglio, nel menu contestuale e nelle azioni multiple. **K** (rimappabile, vedi [Scorciatoie da tastiera](#scorciatoie-da-tastiera-galleria)) conserva la foto corrente. Nel dettaglio il pulsante Conserva è un interruttore: premuto su una foto già conservata reimposta la decisione. Reimpostare cancella Conserva e Rifiuta senza modificare stelle o preferiti. Le azioni della galleria possono essere annullate.
 
 Le decisioni sopravvivono a ricaricamenti, riavvii e nuove scansioni e sono personali per ogni utente. Confermare un gruppo di selezione contrassegna anche le foto scelte come conservate. Le vecchie valutazioni, i preferiti e i gruppi già esaminati non vengono convertiti automaticamente.
 
@@ -965,6 +965,7 @@ Le scorciatoie a tasto singolo della galleria e delle foto restano inattive quan
 | `Double-click` | Apri la foto |
 | `Shift+F10` / `Menu` | Apri il menu contestuale della scheda foto con il focus (il clic destro fa lo stesso) |
 | `1`–`5` | Vota da 1 a 5 stelle la foto a fuoco (modalità modifica; passa alla successiva) |
+| `K` | Conserva la foto a fuoco (modalità modifica) |
 | `F` | Aggiungi / togli dai preferiti la foto a fuoco (modalità modifica) |
 | `X` o `0` | Scarta / annulla lo scarto della foto a fuoco (modalità modifica; passa alla successiva) |
 | `/` | Attiva la ricerca della barra degli strumenti (visibile da 1360 px di larghezza); sotto questa larghezza apre la barra laterale dei filtri e attiva il suo campo di ricerca |
@@ -972,9 +973,11 @@ Le scorciatoie a tasto singolo della galleria e delle foto restano inattive quan
 | `V` | Passa tra layout griglia e mosaico |
 | `?` | Mostra il riferimento delle scorciatoie da tastiera (funziona su ogni pagina; le scorciatoie della galleria sono elencate anche in menu utente → Aiuto) |
 
+Le scorciatoie di valutazione, di mantenimento e di vista — preferito, scarta, mantieni, attiva la ricerca, la barra laterale e griglia/mosaico — si possono rimappare per browser, quindi `K`, `F`, `X`, `/`, `B` e `V` sopra sono i tasti predefiniti: il menu utente → **Personalizza le scorciatoie** apre una finestra in cui clicchi un'azione e premi il nuovo tasto (`Esc` o `Tab` annulla). Le cifre, `Spazio` e `?` restano riservate e un tasto già usato da un'altra azione viene rifiutato; **Ripristina tutto** riporta i tasti predefiniti. La mappa è salvata in `localStorage`, quindi segue il browser e non l'account; la pagina foto risponde agli stessi tasti, e il riferimento `?` , la tabella della galleria nella finestra di aiuto e il suggerimento della scheda a fuoco mostrano sempre i tasti validi. Un tasto salvato riservato, o condiviso da due azioni, torna al tasto predefinito di quell’azione; gli altri tasti salvati restano, a meno che quel tasto predefinito sia già occupato: in quel caso tutti i tasti vengono ripristinati.
+
 La foto corrente — quella su cui agiscono le scorciatoie di valutazione, preferito e scarto — è contrassegnata da un contorno di 4px attorno alla sua scheda; tutte le altre schede si affievoliscono al 50% di opacità. Nulla è contrassegnato finché il cursore non si è effettivamente spostato su una foto tra i risultati, quindi una galleria che non hai ancora esplorato resta a piena intensità. Cliccare su una foto sposta il marcatore su di essa, così una scorciatoia digitata subito dopo un clic si applica alla foto cliccata, non a quella dove le frecce l'avevano lasciata. Tornando da una foto (Indietro o Esc) il marcatore resta sull'ultima foto che hai visto, così le scorciatoie proseguono da lì. Il suggerimento delle scorciatoie sulla scheda attiva appare solo in modalità modifica con `viewer.features.show_rating_controls` abilitato.
 
-**Nella pagina della foto**, `1`–`5`, `F` e `X` (o `0`) valutano, aggiungono ai preferiti e scartano la foto aperta, alle stesse condizioni dei pulsanti di valutazione: modalità modifica, con `viewer.features.show_rating_controls` attivo. A differenza della galleria, non passano mai a un'altra foto; per farlo usa `←` `→`. Il riferimento `?` le elenca sotto *Vista foto*.
+**Nella pagina della foto**, `1`–`5`, il tasto preferito e il tasto scarta (`F` e `X` per impostazione predefinita; anche `0` scarta) valutano, aggiungono ai preferiti e scartano la foto aperta, alle stesse condizioni dei pulsanti di valutazione: modalità modifica, con `viewer.features.show_rating_controls` attivo. A differenza della galleria, non passano mai a un'altra foto; per farlo usa `←` `→`. Il riferimento `?` le elenca sotto *Vista foto*.
 
 ## Annulla
 

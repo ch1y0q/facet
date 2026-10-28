@@ -205,7 +205,7 @@
     "sequence_set": "Belichtungsreihe/Panorama öffnen",
     "stack_set": "Fotostapel öffnen",
     "open_detail": "Fotoseite öffnen",
-    "key_hint": "1-5 bewerten · F fav · X verwerfen · Leertaste auswählen · Eingabe öffnen"
+    "key_hint": "1-5 bewerten · {favourite} fav · {reject} verwerfen · Leertaste auswählen · Eingabe öffnen"
   },
   "notifications": {
     "copied": "Kopiert!",
@@ -2675,7 +2675,13 @@
     "toggle_filters": "Filterleiste ein- / ausblenden",
     "toggle_layout": "Zwischen Raster und Mosaik wechseln",
     "comp_left_wins": "Linkes Foto gewinnt",
-    "comp_right_wins": "Rechtes Foto gewinnt"
+    "comp_right_wins": "Rechtes Foto gewinnt",
+    "keymap_hint": "Klicke eine Aktion an und drücke die neue Taste.",
+    "press_key": "Taste drücken…",
+    "reset_keys": "Alle zurücksetzen",
+    "key_in_use": "Diese Taste ist bereits belegt",
+    "key_reserved": "Diese Taste ist reserviert",
+    "keymap_title": "Tastenkürzel anpassen"
   },
   "pwa": {
     "update_available": "Eine neue Version ist verfügbar",
