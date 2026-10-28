@@ -257,6 +257,8 @@ Stacks are private to their owner (the installation in single-user mode), requir
 
 Full viewer-database exports omit source stacks and smart albums whose filters name a private stack. Smart albums with unreadable filters (invalid or non-object JSON, excessive nesting, or more than 1 MiB) are omitted too; ordinary albums remain. Incremental updates do not copy source albums or stacks and preserve the destination’s own albums and stacks.
 
+**Suggested stacks** in the gallery finds existing duplicate and burst groups within the current filters. It bypasses automatic burst/duplicate hiding so every proposed member can be inspected; other filters and account visibility still apply. Review opens the stack editor with explicit photos and a recommended cover, which you can change before choosing **Stack photos**. No suggestion creates a stack, rejects a photo or changes a file by itself. Groups containing already-stacked matching photos and bracket/panorama frames are skipped. Overlapping proposals are skipped whole, preferring duplicate groups. Up to 40 candidate groups are considered, returning at most 20 proposals and 2000 photos (1000 per group); narrow filters to review other photos. **Dismiss for now** hides a proposal only while this dialog remains open. Exact pinned lists, Similar Photos and semantic-search views do not offer suggestions. Read-only users can inspect proposals but cannot create stacks. Reloading or reopening suggestions fetches the latest stored previews.
+
 ### Photo Cards
 
 - Thumbnail with score badge — hover it to see where the score sits in your library ("Top 18% of the library")
@@ -1588,6 +1590,7 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 | `DELETE /api/photo/capture_date?path=` | `[Edition]` Drop a corrected capture date and re-read the file's own (or clear the date when the file has none); returns `{date_taken, date_manually_set}`. `409` when the file's date is unsupported (the manual date is kept) or the photo changed meanwhile, `404` when the file cannot be read |
 | `GET /api/stacks/by-photo` | Read owner-private stack by exact photo path; permitted members only |
 | `GET /api/stacks/{stack_id}` | Read owner-private stack by UUID; partial visibility is read-only |
+| `POST /api/stacks/suggestions` | Read-only candidate discovery. Body `{filters}` uses gallery filters, bypassing only stack collapse and burst/duplicate hiding. Returns `{suggestions: [{key, kind, paths, cover_path}]}`; maximum 20 suggestions / 2000 paths, no writes. Unknown filter keys return 422; album access and photo visibility are enforced. |
 | `POST /api/stacks` | [Edition] Create from 2–1000 explicit paths and cover_path; returns stack and undo.entry_id |
 | `PUT /api/stacks/{stack_id}` | [Edition] Replace paths/order and optional cover_path with expected_revision; 0/1 members dissolve |
 | `DELETE /api/stacks/{stack_id}` | [Edition] Dissolve with expected_revision query; stale or partially visible stacks refuse |
@@ -1670,6 +1673,7 @@ The `/api/download/options` endpoint detects companion RAW files automatically a
 | Endpoint | Description |
 |----------|-------------|
 | `POST /api/immich/webhook` | Receive an Immich workflow webhook and mirror the pushed rating back immediately; an asset Facet hasn't scored yet is queued for the next `--immich-sync`. Static-token auth (`immich.webhook.token_env`; unset ⇒ 404); never triggers a scan. See [docs/IMMICH.md](IMMICH.md) |
+| `GET /api/immich/diagnostics` | Administrator-only status; `check_connection=true` explicitly tests connectivity with read-only remote requests. |
 
 ### Health
 

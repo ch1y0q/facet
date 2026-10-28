@@ -1,5 +1,9 @@
 """Explicit stack requests and revisioned organization responses."""
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator
+
+from api.models.gallery import gallery_filter_keys
 
 
 class StackMember(BaseModel):
@@ -33,3 +37,25 @@ class StackUndo(BaseModel):
 class StackMutation(BaseModel):
     stack: PhotoStack | None
     undo: StackUndo | None
+
+
+class StackSuggestionsRequest(BaseModel):
+    filters: dict[str, str | int | float | bool] = Field(default_factory=dict)
+
+    @field_validator('filters')
+    @classmethod
+    def known_filters(cls, value):
+        if value.keys() - gallery_filter_keys():
+            raise ValueError('Unknown gallery filter')
+        return value
+
+
+class StackSuggestion(BaseModel):
+    key: str
+    kind: Literal['duplicate', 'burst']
+    paths: list[str]
+    cover_path: str
+
+
+class StackSuggestionsResponse(BaseModel):
+    suggestions: list[StackSuggestion]

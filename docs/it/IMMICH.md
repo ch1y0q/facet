@@ -20,6 +20,7 @@ Il collegamento è solo REST in entrambe le direzioni. Facet non tocca mai il da
 - [Invio dei rifiuti](#invio-dei-rifiuti)
 - [Importare e inviare pile manuali](#importare-e-inviare-pile-manuali)
 - [Il webhook in entrata](#il-webhook-in-entrata)
+- [Diagnostica nel visualizzatore](#diagnostica-nel-visualizzatore)
 - [Riferimento di configurazione](#riferimento-di-configurazione)
 - [Risoluzione dei problemi](#risoluzione-dei-problemi)
 
@@ -248,6 +249,10 @@ Scansiona quelle foto (`python facet.py /mnt/photos`) e spariranno dall'elenco a
 - Servi il viewer via HTTPS se Immich lo raggiunge attraverso qualcosa di meno affidabile di una rete bridge privata — il token viaggia in un'intestazione a ogni invio.
 - Ruota il token cambiando insieme la variabile d'ambiente e l'intestazione del workflow di Immich, poi riavviando il viewer.
 - Il webhook legge le colonne di valutazione globali, quindi in modalità multiutente rispecchia la valutazione condivisa/globale, non la sovrapposizione di un singolo utente. Se in Immich vuoi le valutazioni per utente, lascia disattivato il webhook e usa `--immich-sync --user <nome>` secondo una pianificazione.
+
+## Diagnostica nel visualizzatore
+
+Dal menu utente apri **Diagnostica Immich**. In modalità multiutente serve un superamministratore; in modalità singolo utente serve accesso edizione protetto o modifica locale fidata. **Verifica connessione** legge solo versione e accesso al conto, senza scritture remote. La copertura riguarda al massimo 200 foto indicizzate e non verifica corrispondenze remote. Lo stato registrato può precedere modifiche del server configurato. La versione non conferma i permessi delle pile. Chiavi e percorsi del server non vengono restituiti.
 
 ## Riferimento di configurazione
 

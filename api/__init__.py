@@ -598,6 +598,7 @@ def create_app() -> FastAPI:
     from api.routers.frame import router as frame_router
     from api.routers.webdav import router as webdav_router
     from api.routers.immich import router as immich_router
+    from api.routers.immich_diagnostics import router as immich_diagnostics_router
     from api.routers.updates import router as updates_router
     from api.routers.mcp_tokens import router as mcp_tokens_router
 
@@ -649,6 +650,7 @@ def create_app() -> FastAPI:
     app.include_router(frame_router)
     app.include_router(webdav_router)
     app.include_router(immich_router)
+    app.include_router(immich_diagnostics_router)
     app.include_router(mcp_tokens_router)
 
     # Agent (MCP) endpoint: POST /mcp. Appended here, before the SPA catch-all below.

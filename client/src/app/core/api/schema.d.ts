@@ -2088,6 +2088,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/immich/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Immich Diagnostics
+         * @description Administrator-only local status; network reads require an explicit flag.
+         */
+        get: operations["immich_diagnostics_api_immich_diagnostics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/immich/webhook": {
         parameters: {
             query?: never;
@@ -4360,6 +4380,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stacks/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stack Suggestions
+         * @description Scoped, bounded suggestions only; no writes, filesystem reads or cached private rows.
+         */
+        post: operations["stack_suggestions_api_stacks_suggestions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/stacks/{stack_id}": {
         parameters: {
             query?: never;
@@ -6307,6 +6347,30 @@ export interface components {
             panoramas: number;
             /** Total */
             total: number;
+        };
+        /** ImmichDiagnosticsResponse */
+        ImmichDiagnosticsResponse: {
+            /** Configured */
+            configured: boolean;
+            /**
+             * Connection
+             * @enum {string}
+             */
+            connection: "not_checked" | "not_configured" | "invalid_config" | "connected" | "access_denied" | "unreachable" | "invalid_response";
+            /** Last Push At */
+            last_push_at: string | null;
+            /** Mapped Photos */
+            mapped_photos: number;
+            /** Mapping Rules */
+            mapping_rules: number;
+            /** Sample Limit */
+            sample_limit: number;
+            /** Sampled Photos */
+            sampled_photos: number;
+            /** Stack Version Supported */
+            stack_version_supported: boolean | null;
+            /** Version */
+            version: string | null;
         };
         /**
          * KeeperHint
@@ -8529,6 +8593,32 @@ export interface components {
         StackMutation: {
             stack: components["schemas"]["PhotoStack"] | null;
             undo: components["schemas"]["StackUndo"] | null;
+        };
+        /** StackSuggestion */
+        StackSuggestion: {
+            /** Cover Path */
+            cover_path: string;
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "duplicate" | "burst";
+            /** Paths */
+            paths: string[];
+        };
+        /** StackSuggestionsRequest */
+        StackSuggestionsRequest: {
+            /** Filters */
+            filters?: {
+                [key: string]: string | number | boolean;
+            };
+        };
+        /** StackSuggestionsResponse */
+        StackSuggestionsResponse: {
+            /** Suggestions */
+            suggestions: components["schemas"]["StackSuggestion"][];
         };
         /** StackUndo */
         StackUndo: {
@@ -12105,6 +12195,37 @@ export interface operations {
             };
         };
     };
+    immich_diagnostics_api_immich_diagnostics_get: {
+        parameters: {
+            query?: {
+                check_connection?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImmichDiagnosticsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     immich_webhook_api_immich_webhook_post: {
         parameters: {
             query?: never;
@@ -15529,6 +15650,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PhotoStack"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stack_suggestions_api_stacks_suggestions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StackSuggestionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StackSuggestionsResponse"];
                 };
             };
             /** @description Validation Error */

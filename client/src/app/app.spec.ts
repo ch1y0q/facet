@@ -613,7 +613,7 @@ describe('App', () => {
         providers: [
           { provide: Router, useValue: mockRouter },
           { provide: GalleryStore, useValue: { filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null), types: signal([]), loadTypeCounts: vi.fn(), loadConfig: vi.fn(), viewFilterParams: signal({}), pinnedPaths: signal<string[] | null>(null) } },
-          { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(false), isReadOnlyInstall: signal(isReadOnlyInstall), isEdition: signal(false), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(false), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
+          { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(false), isReadOnlyInstall: signal(isReadOnlyInstall), isEdition: signal(false), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(false), isInstallAdmin: signal(false), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
           { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string) => k), translations: signal({}) } },
           { provide: StatsFiltersService, useValue: { filterCategory: signal(''), dateFrom: signal(''), dateTo: signal('') } },
           { provide: CompareFiltersService, useValue: { selectedCategory: signal('') } },
@@ -658,7 +658,7 @@ describe('App', () => {
           provideRouter([]),
           { provide: GalleryStore, useValue: store },
           { provide: ScanService, useValue: { canLaunch: canLaunchSig, openLauncher } },
-          { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(true), isReadOnlyInstall: signal(false), features: signal({}), user: signal(null), logout: vi.fn(), isEdition: signal(false), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(false), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
+          { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(true), isReadOnlyInstall: signal(false), features: signal({}), user: signal(null), logout: vi.fn(), isEdition: signal(false), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(false), isInstallAdmin: signal(false), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
           { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string) => k), translations: signal({}) } },
           { provide: StatsFiltersService, useValue: { filterCategory: signal(''), dateFrom: signal(''), dateTo: signal('') } },
           { provide: CompareFiltersService, useValue: { selectedCategory: signal('') } },
@@ -765,7 +765,7 @@ describe('App', () => {
           provideRouter([]),
           { provide: GalleryStore, useValue: store },
           { provide: ScanService, useValue: { canLaunch: signal(true), openLauncher: vi.fn() } },
-          { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(true), isReadOnlyInstall: signal(false), features: signal({}), user: signal(null), logout: vi.fn(), isEdition: signal(false), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(false), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
+          { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(true), isReadOnlyInstall: signal(false), features: signal({}), user: signal(null), logout: vi.fn(), isEdition: signal(false), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(false), isInstallAdmin: signal(false), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
           { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string, vars?: Record<string, string | number>) => vars ? `${k}(${Object.values(vars).join(',')})` : k), translations: signal({}) } },
           { provide: StatsFiltersService, useValue: { filterCategory: signal(''), dateFrom: signal(''), dateTo: signal('') } },
           { provide: CompareFiltersService, useValue: { selectedCategory: signal('') } },
@@ -1009,13 +1009,13 @@ describe('App', () => {
     const historyRef = (restored: boolean) => ({
       componentInstance: { whenSettled: () => Promise.resolve(), wasRestored: () => restored }, afterClosed: () => of(undefined),
     });
-    function render(edition: boolean, multiUser = false) {
+    function render(edition: boolean, multiUser = false, superadmin = false) {
       TestBed.configureTestingModule({
         providers: [
           provideRouter([]),
           { provide: GalleryStore, useValue: { filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null), types: signal([]), total: signal(0), photoTotal: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), loadConfig: vi.fn(), viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(false), hiddenFiltersStash: signal(null), collapseStacks: signal(true), toggleStackCollapse: vi.fn(), slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(), reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(), notifyOrganizationRestored: vi.fn() } },
           { provide: ScanService, useValue: { canLaunch: signal(false), openLauncher: vi.fn() } },
-          { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(true), isReadOnlyInstall: signal(false), features: signal({}), user: signal(null), logout: vi.fn(), isEdition: signal(edition), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(multiUser), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
+          { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(true), isReadOnlyInstall: signal(false), features: signal({}), user: signal(null), logout: vi.fn(), isEdition: signal(edition), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(multiUser), isSuperadmin: signal(superadmin), isInstallAdmin: signal(multiUser ? superadmin : edition), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
           { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string) => k), translations: signal({}) } },
           { provide: StatsFiltersService, useValue: { filterCategory: signal(''), dateFrom: signal(''), dateTo: signal('') } },
           { provide: CompareFiltersService, useValue: { selectedCategory: signal('') } },
@@ -1088,6 +1088,24 @@ describe('App', () => {
       expect(openKeymap).toHaveBeenCalledOnce();
       items.at(-1)!.click();
       expect(openHelp).toHaveBeenCalledOnce();
+    });
+
+    it.each([[true, false, false, true], [false, false, false, false],
+      [true, true, false, false], [true, true, true, true]])(
+      'limits diagnostics menu to installation administrators (%s/%s/%s)', (edition, multi, admin, visible) => {
+        const { fixture, root } = render(edition, multi, admin);
+        const items = openUserMenu(fixture, root);
+        expect(items.some(i => i.textContent?.includes(I18N.immich_diagnostics.title))).toBe(visible);
+      },
+    );
+
+    it('does not open a late diagnostics chunk after edition access is lost', async () => {
+      const { fixture } = render(true);
+      const app = fixture.componentInstance as unknown as { openImmichDiagnostics(): Promise<void> };
+      const opening = app.openImmichDiagnostics();
+      (TestBed.inject(AuthService).isEdition as ReturnType<typeof signal<boolean>>).set(false);
+      await opening;
+      expect(TestBed.inject(MatDialog).open).not.toHaveBeenCalled();
     });
 
     it('puts Logout last in the menu', () => {

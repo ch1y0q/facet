@@ -2958,6 +2958,15 @@
     "stack": "Pila de fotos"
   },
   "stacks": {
+    "suggestions": "Pilas sugeridas",
+    "suggestions_hint": "Sugerencias de duplicados y ráfagas detectados con estos filtros. Se omite su ocultación automática para revisarlas. Se excluyen pilas existentes y series bracket/panorama. Se muestran hasta 20 sugerencias; limita los filtros para otras fotos. Descartar solo dura mientras este diálogo está abierto.",
+    "suggestions_empty": "No hay pilas sugeridas en esta vista",
+    "suggestion_burst": "Ráfaga",
+    "suggestion_duplicate": "Duplicados",
+    "suggestion_review": "Revisar y elegir portada",
+    "suggestion_dismiss": "Descartar por ahora",
+    "suggestions_error": "No se pudieron cargar las sugerencias. Inténtalo de nuevo.",
+    "suggestions_reload": "Recargar sugerencias",
     "previous": "Foto anterior de la pila",
     "next": "Foto siguiente de la pila",
     "browse_position": "{position} de {count}",
@@ -2993,5 +3002,29 @@
     "badge_filtered": "Abrir pila: {count} coincidencias de {total} miembros permitidos",
     "stack_id": "ID de pila",
     "position": "Posición"
+  },
+  "immich_diagnostics": {
+    "title": "Diagnóstico de Immich",
+    "read_only": "Solo lectura. Fotos, puntuaciones y pilas no cambian.",
+    "configuration": "Configuración",
+    "configured": "Servidor y clave configurados",
+    "not_configured": "Configura primero el servidor y la clave API.",
+    "mapping_rules": "Reglas de rutas",
+    "mapping_sample": "Rutas cubiertas (muestra)",
+    "sample_hint": "Máximo {limit} fotos indexadas. La cobertura no confirma coincidencias remotas. Sin reglas las rutas no cambian.",
+    "last_push": "Última actualización registrada del estado de sincronización",
+    "unknown": "Sin registro",
+    "version": "Versión del servidor: {version}",
+    "stack_version_ok": "Versión compatible con pilas; permisos y coincidencias no probados.",
+    "stack_version_old": "El intercambio de pilas requiere Immich 3 o posterior.",
+    "not_checked": "Conexión no probada.",
+    "connected": "Servidor accesible; clave aceptada para leer la cuenta.",
+    "access_denied": "Acceso denegado. Comprueba la clave y el permiso user.read.",
+    "unreachable": "Falló la conexión. Comprueba servidor, dirección y TLS.",
+    "invalid_response": "Respuesta del servidor no compatible.",
+    "invalid_config": "Corrige la configuración de Immich en el servidor.",
+    "failed": "Diagnóstico no disponible. Reintenta o comprueba acceso de administrador.",
+    "refresh": "Actualizar estado",
+    "test": "Probar conexión"
   }
 }
