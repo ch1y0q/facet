@@ -20,7 +20,7 @@ jobs:
         include:
           # Slim CPU image — the default `docker compose up` pull target.
           # Shares requirements.lock.txt with the cuda entry: STRIP_TORCH=0
-          # installs torch from the CPU wheel index first (2.13.0+cpu today),
+          # installs torch from the CPU wheel index first (2.13.0+cpu before the pin),
           # which requires sympy>=1.13.3 — so the old sympy==1.13.1 pin made pip
           # replace it with torch 2.6.0 plus 13 CUDA 12.4 nvidia-* wheels. That
           # is what the published `latest` shipped: 8.81 GB of torch 2.6.0+cu124
