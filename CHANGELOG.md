@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **The gallery notice stack folds itself away.** After six seconds without interaction the bottom-right cards collapse into a small count pill so they stop covering the grid; hovering the stack, a new or dismissed card, or a click on the pill unfolds it again with a fresh window. Returning from a photo restarts the countdown; nothing is persisted, the per-tab × dismissals work exactly as before, and the scroll-to-top button stays outside the collapse.
+
 ## [1.26.0] "Histogramme" — 2026-10-28
 
 ### Added

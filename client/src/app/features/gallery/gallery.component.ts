@@ -15,6 +15,7 @@ import {
   Injector,
   TemplateRef,
   ElementRef,
+  NgZone,
   ChangeDetectionStrategy
 } from '@angular/core';
 import { DOCUMENT, NgTemplateOutlet } from '@angular/common';
@@ -586,10 +587,21 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
            surfaced: the grid reads photos.thumbnail, so browsing never regenerates it. -->
       @if (noticeStackVisible()) {
         <div data-gallery-notices class="pointer-events-none absolute z-10 flex flex-col gap-2 w-[min(26rem,calc(100%-1rem))]"
+             (pointerenter)="pauseNoticeCollapse()" (pointerleave)="resumeNoticeCollapse()"
              [style.bottom.px]="noticeBottomPx()" [style.right.px]="noticeRightPx()" [style.maxWidth]="noticeMaxWidth()">
           @if (scrollTopShown()) {
             <ng-container *ngTemplateOutlet="scrollTopFab; context: { $implicit: 'pointer-events-auto self-end' }" />
           }
+          @if (noticesCollapsed()) {
+            <button type="button" data-gallery-notices-pill
+                    class="pointer-events-auto self-end px-3 py-1.5 rounded-full bg-[var(--mat-sys-surface-container-high)] border border-[var(--mat-sys-outline-variant)] shadow-lg flex items-center gap-1.5 text-xs"
+                    (click)="expandNotices()"
+                    [attr.aria-expanded]="false"
+                    [attr.aria-label]="shownNoticeCount() | pluralKey:I18N.gallery.notices.collapsed:I18N.gallery.notices.collapsed_plural | translate:{ count: shownNoticeCount() }">
+              <mat-icon class="!text-base !w-4 !h-4 !leading-4">notifications</mat-icon>
+              <span>{{ shownNoticeCount() | pluralKey:I18N.gallery.notices.collapsed:I18N.gallery.notices.collapsed_plural | translate:{ count: shownNoticeCount() } }}</span>
+            </button>
+          } @else {
           @if (reviewProgressShown()) {
             @if (store.reviewProgress(); as progress) {
               <section data-review-progress [class]="NOTICE_CARD_CLASS" [attr.aria-label]="I18N.gallery.review_progress.title | translate">
@@ -660,6 +672,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
               </span>
               <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'render_migration' }" />
             </div>
+          }
           }
         </div>
       }
@@ -887,6 +900,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly stacks = inject(PhotoStackService);
   private readonly outlet = inject(RouterOutlet, { optional: true });
   private readonly changeDetector = inject(ChangeDetectorRef);
+  private readonly ngZone = inject(NgZone);
   private parked = false;
   private resumeNavigation = 0;
   // Detaching loses the DOM scroll position and focus.
@@ -1253,6 +1267,92 @@ export class GalleryComponent implements OnInit, OnDestroy {
   /** The stack steps aside while the mobile 'over' drawer is open (see the template comment). */
   protected readonly noticeStackVisible = computed(() => !this.overDrawerOpen() && this.noticesShown());
 
+  /** How many cards are up right now — the collapsed pill's count. */
+  protected readonly shownNoticeCount = computed(() =>
+    [this.reviewProgressShown(), this.reviewBookmarkShown(), this.hiddenNoticeShown(), this.restoreNoticeShown(),
+     this.activeFiltersNoticeShown(), this.showRenderMigrationBanner()].filter(Boolean).length);
+
+  /** Auto-collapse: after a few seconds the stack folds into a count pill so it
+   *  stops covering the grid. Hovering the stack, a new or dismissed card, or a
+   *  click on the pill expand it again and restart the countdown. Session-only:
+   *  nothing is persisted, and parking the gallery pauses the countdown. */
+  private static readonly NOTICE_COLLAPSE_MS = 6000;
+  private noticeCollapseTimer: ReturnType<typeof setTimeout> | null = null;
+  private noticeHovering = false;
+  private noticeSignatureSeen = '';
+  protected readonly noticesCollapsed = signal(false);
+
+  /** Which cards are up right now. Any change in this set is fresh activity:
+   *  it re-expands the stack and grants a new full window. */
+  private readonly noticesSignature = computed(() =>
+    [this.reviewProgressShown() && 'review_progress', this.reviewBookmarkShown() && 'review_bookmark',
+     this.hiddenNoticeShown() && 'hidden', this.restoreNoticeShown() && 'restore_hidden',
+     this.activeFiltersNoticeShown() && 'active_filters', this.showRenderMigrationBanner() && 'render_migration']
+      .filter(Boolean).join(','));
+
+  private disarmNoticeCollapse(): void {
+    if (this.noticeCollapseTimer !== null) {
+      clearTimeout(this.noticeCollapseTimer);
+      this.noticeCollapseTimer = null;
+    }
+  }
+
+  /** Restart the collapse countdown, unless the pointer rests on the stack. The
+   *  timer runs outside Angular's zone: a pending 6 s timeout would keep the
+   *  application unstable (and every test's whenStable waiting), and the
+   *  single fold transition runs its own change detection when it fires. */
+  protected armNoticeCollapse(): void {
+    this.disarmNoticeCollapse();
+    if (this.noticeHovering || !this.noticesShown()) return;
+    this.noticeCollapseTimer = this.ngZone.runOutsideAngular(() => setTimeout(() => {
+      this.noticeCollapseTimer = null;
+      this.noticesCollapsed.set(true);
+      this.changeDetector.detectChanges();
+    }, GalleryComponent.NOTICE_COLLAPSE_MS));
+  }
+
+  protected pauseNoticeCollapse(): void {
+    this.noticeHovering = true;
+    this.disarmNoticeCollapse();
+  }
+
+  /** The pointer left the stack: restart the countdown from now. */
+  protected resumeNoticeCollapse(): void {
+    this.noticeHovering = false;
+    this.armNoticeCollapse();
+  }
+
+  protected expandNotices(): void {
+    this.noticesCollapsed.set(false);
+    this.armNoticeCollapse();
+  }
+
+  /** Fold/unfold the stack as its card set changes: the first cards arm the
+   *  countdown, a new or dismissed card re-expands with a fresh window, an
+   *  emptied stack resets so the next arrival starts expanded. The mobile
+   *  'over' drawer hides the stack entirely, so the countdown waits. */
+  private readonly noticeCollapseLifecycle = effect(() => {
+    const signature = this.noticesSignature();
+    const drawerOpen = this.overDrawerOpen();
+    untracked(() => {
+      const previous = this.noticeSignatureSeen;
+      this.noticeSignatureSeen = signature;
+      if (!signature) {
+        this.disarmNoticeCollapse();
+        this.noticesCollapsed.set(false);
+        return;
+      }
+      if (drawerOpen) {
+        this.disarmNoticeCollapse();
+        return;
+      }
+      if (signature !== previous) {
+        this.noticesCollapsed.set(false);
+        this.armNoticeCollapse();
+      }
+    });
+  });
+
   /** The active set-scope kind (from photo-detail's "open this set"), or null. */
   readonly setScopeKind = computed(() => {
     const f = this.store.filters();
@@ -1417,6 +1517,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       if (component !== this) return;
       this.parked = true;
       this.store.parkListingReads();
+      this.disarmNoticeCollapse();
       // Pending filter edits would otherwise replace the photo URL.
       this.filterSidebar()?.cancelPendingSearch();
       this.cancelToolbarSearch();
@@ -1437,6 +1538,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
       if (component !== this) return;
       this.parked = false;
       void this.store.resumeListingReads();
+      // Returning from a photo restarts the notice countdown: the reviewer is
+      // looking again, so the stack earns a fresh window before folding.
+      if (!this.noticesCollapsed()) this.armNoticeCollapse();
       this.setGalleryChrome(true);
       this.tooltipPhoto.set(null);
       // A resize while parked measured the detached drawer as 0 and zeroed the content margin.
@@ -1638,6 +1742,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.cancelToolbarSearch();
+    this.disarmNoticeCollapse();
     this.setGalleryChrome(false);
     this.saveViewSnapshot();
     this.resizeObserver?.disconnect();

@@ -5010,6 +5010,126 @@ describe('GalleryComponent', () => {
     });
   });
 
+  describe('notice stack auto-collapse (rendered)', () => {
+    let fixture: ComponentFixture<GalleryComponent>;
+
+    function render(): HTMLElement {
+      mockI18n.t.mockImplementation((key: string, vars?: Record<string, unknown>) => (vars ? `${key} ${JSON.stringify(vars)}` : key));
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    const stack = (host: HTMLElement): HTMLElement | null => host.querySelector('[data-gallery-notices]');
+    const pill = (host: HTMLElement): HTMLElement | null => host.querySelector('[data-gallery-notices-pill]');
+    const card = (host: HTMLElement): HTMLElement | null => host.querySelector('[data-review-progress]');
+
+    function collapseAfterFullWindow(): void {
+      vi.advanceTimersByTime(6000);
+      fixture.detectChanges();
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+      fixture.destroy();
+      sessionStorage.removeItem(NOTICE_DISMISSALS_KEY);
+    });
+
+    it('folds into a count pill after the window, and the pill expands again on click', () => {
+      vi.useFakeTimers();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      const host = render();
+      expect(card(host)).not.toBeNull();
+      expect(pill(host)).toBeNull();
+
+      collapseAfterFullWindow();
+      expect(card(host)).toBeNull();
+      expect(pill(host)).not.toBeNull();
+
+      pill(host)!.click();
+      fixture.detectChanges();
+      expect(card(host)).not.toBeNull();
+      expect(pill(host)).toBeNull();
+    });
+
+    it('keeps the scroll-to-top button outside the collapse', () => {
+      vi.useFakeTimers();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      const host = render();
+      (fixture.componentInstance as unknown as { showScrollTop: WritableSignal<boolean> }).showScrollTop.set(true);
+      fixture.detectChanges();
+      collapseAfterFullWindow();
+      expect(pill(host)).not.toBeNull();
+      expect(stack(host)!.querySelector('button[aria-label="gallery.scroll_to_top"]')).not.toBeNull();
+    });
+
+    it('leaves the stack alone while the pointer rests on it', () => {
+      vi.useFakeTimers();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      const host = render();
+      stack(host)!.dispatchEvent(new Event('pointerenter', { bubbles: false }));
+      fixture.detectChanges();
+      vi.advanceTimersByTime(60000);
+      fixture.detectChanges();
+      expect(card(host)).not.toBeNull();
+
+      stack(host)!.dispatchEvent(new Event('pointerleave', { bubbles: false }));
+      fixture.detectChanges();
+      vi.advanceTimersByTime(6000);
+      fixture.detectChanges();
+      expect(pill(host)).not.toBeNull();
+    });
+
+    it('re-expands with a fresh window when another notice joins', () => {
+      vi.useFakeTimers();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      const host = render();
+      vi.advanceTimersByTime(4000);
+      // A second notice joins before the window closes.
+      mockStore.filters.set({ ...DEFAULT_FILTERS, tag: 'beach' });
+      mockStore.activeFilterCount.set(1);
+      fixture.detectChanges();
+      expect(card(host)).not.toBeNull();
+      expect(pill(host)).toBeNull();
+
+      // The fresh window covers the full span from the new card's arrival.
+      vi.advanceTimersByTime(5900);
+      fixture.detectChanges();
+      expect(card(host)).not.toBeNull();
+      vi.advanceTimersByTime(100);
+      fixture.detectChanges();
+      expect(pill(host)).not.toBeNull();
+    });
+
+    it('counts the folded cards in the pill label', () => {
+      vi.useFakeTimers();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      mockStore.filters.set({ ...DEFAULT_FILTERS, tag: 'beach' });
+      mockStore.activeFilterCount.set(1);
+      const host = render();
+      collapseAfterFullWindow();
+      expect(pill(host)!.textContent).toContain('gallery.notices.collapsed_plural');
+      expect(pill(host)!.textContent).toContain('"count":2');
+    });
+
+    it('starts expanded again once every notice is gone', () => {
+      vi.useFakeTimers();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      const host = render();
+      collapseAfterFullWindow();
+      expect(pill(host)).not.toBeNull();
+
+      mockStore.reviewProgress.set(null);
+      fixture.detectChanges();
+      expect(stack(host)).toBeNull();
+
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      fixture.detectChanges();
+      expect(card(host)).not.toBeNull();
+      expect(pill(host)).toBeNull();
+    });
+  });
+
   describe('kept alive behind an open photo (rendered)', () => {
     const photos = Array.from({ length: 3 }, (_, n) => ({
       path: `/p${n}.jpg`, filename: `p${n}.jpg`, image_width: 4000, image_height: 3000,
