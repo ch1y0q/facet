@@ -21,6 +21,9 @@ from api.agent.internal_client import ROUTE_ALLOWLIST
 from api.agent.tools_write import WRITE_TOOL_LEVELS
 from tests.conftest import _TEST_DB_FILE, AGENT_DIR, intercept_internal_call
 
+# Reads client, i18n or docs files: runs on every pull request (see ci.yml).
+pytestmark = pytest.mark.cross_file
+
 ROWS = [
     {"path": AGENT_DIR + f"w{i}.jpg", "filename": f"w{i}.jpg", "aggregate": 5.0 + i,
      "star_rating": 1, "is_favorite": 0, "is_rejected": 0} for i in range(4)
