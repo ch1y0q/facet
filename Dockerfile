@@ -262,6 +262,11 @@ ENV HOME=/home/facet
 # licensing.mode regardless of the mounted scoring_config.json.
 ENV FACET_LICENSING_MODE=${FACET_LICENSING}
 
+# The source this image was built from (for example "local/test@dc6cb38b"), shown
+# beside the release version in the viewer's user menu. Empty for a plain build.
+ARG FACET_BUILD=
+ENV FACET_BUILD=${FACET_BUILD}
+
 EXPOSE 5000
 
 # Entrypoint fixes ownership of the writable bind mounts (created root-owned by

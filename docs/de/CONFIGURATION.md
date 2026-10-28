@@ -1111,6 +1111,8 @@ Gruppiert ähnliche Fotos, die in schneller Folge aufgenommen wurden.
 
 Sagt der Person, die die Installation betreut, dass ein neueres Facet veröffentlicht wurde. Nicht zu verwechseln mit dem „Eine neue Version ist verfügbar – Neu laden“ des Browsers, das die Seite auf ein bereits heruntergeladenes Bundle umstellt; hier geht es um eine Version, die noch niemand installiert hat.
 
+Die laufende Version steht immer unten im Benutzermenü, für alle Betrachter. Ein mit `--build-arg FACET_BUILD=<Branch>@<Commit>` gebautes Image zeigt zusätzlich diese Zeile, damit zwei Installationen derselben Version aus verschiedenen Branches unterscheidbar sind (`/api/config` liefert beides als `version` und `build`, aber nur an Aufrufer, die die Bibliothek lesen dürfen: Bei einer passwortgeschützten Installation erhält ein nicht angemeldeter Besucher keins von beiden).
+
 Bewusst zurückhaltend. Die Prüfung läuft serverseitig und ihr Ergebnis wird zwischengespeichert, sodass eine Installation GitHub höchstens einmal pro `interval_days` fragt, wie viele Menschen auch immer den Viewer offen haben. Die Anfrage trägt nichts weiter mit sich — kein Token, keine Kennungen, nichts aus der Bibliothek. Ein Fehlschlag bleibt stumm: ein nicht erreichbares GitHub erscheint als „kein Update bekannt“, nie als Fehler. Nur Edition-Nutzer werden informiert, denn das Aktualisieren ist Sache des Betreibers, und jeder Browser zeigt den Hinweis höchstens einmal pro Woche.
 
 `enabled` auf `false` setzen unterbindet die ausgehende Anfrage vollständig.

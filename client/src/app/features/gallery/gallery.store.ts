@@ -158,6 +158,10 @@ export interface SortOption {
 
 export interface ViewerConfig {
   place_search_enabled?: boolean;
+  /** Release version of the running server (pyproject). */
+  version?: string;
+  /** Source the server image was built from (branch@commit), when recorded. */
+  build?: string | null;
   pagination: { default_per_page: number };
   defaults: {
     type: string;

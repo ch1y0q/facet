@@ -72,7 +72,8 @@
     "switch_language": "Switch language",
     "theme": "Theme",
     "dark_mode": "Dark mode",
-    "light_mode": "Light mode"
+    "light_mode": "Light mode",
+    "version": "Facet {version}"
   },
   "dialog": {
     "cancel": "Cancel",
@@ -2624,6 +2625,9 @@
     "selected": "selected",
     "copy_keeps": "Copy keeps to folder",
     "move_rejects": "Move rejects to folder",
+    "trash_all_rejects": "Trash all rejects (to OS trash)",
+    "all_rejects_scope": "All rejected photos visible to you across the whole library. Current album, dates and gallery filters are ignored. Files are shared: this uses your rejection decisions and may trash photos other users kept, favourited or rated.",
+    "all_rejects_limit": "Trash all rejects supports up to 10,000 photos at a time. In the gallery, show rejected photos only, narrow by date or album, and use Cull to folder → Trash rejects to process smaller batches. Turn off group-hiding filters to include every rejected frame.",
     "trash_rejects": "Trash rejects (to OS trash)",
     "trash_disabled": "Trashing is disabled — an administrator can enable it via viewer.cull.allow_trash.",
     "trash_missing_pkg": "OS-trash is unavailable on this server — the send2trash package is not installed.",
@@ -2638,6 +2642,7 @@
     "preview": "Preview",
     "apply": "Apply",
     "cancel": "Cancel",
+    "partial_error": "Some files could not be processed. Preview again to review the remaining files.",
     "done": "Cull applied",
     "error": "Cull failed",
     "delete_action": "Delete…",

@@ -1795,6 +1795,7 @@ def api_config(user: Optional[CurrentUser] = Depends(get_optional_user)):
     from api.raw_processing import get_cull_styles
     from api.routers.search import search_threshold_default
     from api.place_search import endpoint as place_search_endpoint
+    from utils.version import build_label, current_version
     from api.types import QUALITY_LEVELS, TYPE_LABELS, available_sort_options, populated_gated_cols, unavailable_columns
 
     features = dict(VIEWER_CONFIG.get('features', {}))
@@ -1854,6 +1855,11 @@ def api_config(user: Optional[CurrentUser] = Depends(get_optional_user)):
         'edition_authenticated': is_edition_authenticated(user),
         'render_migration': _render_migration_status(),
     }
+    # The exact release and build tell a visitor which known issues apply, so a
+    # locked install names them only to a caller who can already read the library.
+    if user is not None and user.is_authenticated:
+        config['version'] = current_version()
+        config['build'] = build_label() or None
     try:
         config['face_merge_threshold'] = server_scoring_config().get_face_clustering_settings()['merge_threshold']
     except ValueError:

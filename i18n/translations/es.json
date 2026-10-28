@@ -72,7 +72,8 @@
     "switch_language": "Cambiar idioma",
     "theme": "Tema",
     "dark_mode": "Modo oscuro",
-    "light_mode": "Modo claro"
+    "light_mode": "Modo claro",
+    "version": "Facet {version}"
   },
   "dialog": {
     "cancel": "Cancelar",
@@ -2624,6 +2625,9 @@
     "selected": "seleccionados",
     "copy_keeps": "Copiar los conservados a una carpeta",
     "move_rejects": "Mover los descartados a una carpeta",
+    "trash_all_rejects": "Enviar todos los descartados a la papelera",
+    "all_rejects_scope": "Todas las fotos descartadas visibles para tu cuenta en la biblioteca. Se ignoran el álbum, las fechas y los filtros actuales. Los archivos son compartidos: se usan tus decisiones de rechazo y se pueden enviar a la papelera fotos conservadas, marcadas como favoritas o puntuadas por otros usuarios.",
+    "all_rejects_limit": "Esta acción admite hasta 10.000 fotos a la vez. En la galería, muestra solo las fotos rechazadas, limita por fecha o álbum y usa la selección a una carpeta con la acción de papelera para procesar lotes más pequeños. Desactiva los filtros que ocultan grupos para incluir cada fotograma rechazado.",
     "trash_rejects": "Enviar descartados a la papelera",
     "trash_disabled": "La papelera está deshabilitada — un administrador puede habilitarla mediante viewer.cull.allow_trash.",
     "trash_missing_pkg": "La papelera no está disponible en este servidor — el paquete send2trash no está instalado.",
@@ -2638,6 +2642,7 @@
     "preview": "Vista previa",
     "apply": "Aplicar",
     "cancel": "Cancelar",
+    "partial_error": "No se pudieron procesar algunos archivos. Genera otra vista previa para revisar los archivos restantes.",
     "done": "Descarte aplicado",
     "error": "Error al descartar",
     "delete_action": "Eliminar…",

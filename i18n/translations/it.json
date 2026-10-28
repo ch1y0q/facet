@@ -72,7 +72,8 @@
     "switch_language": "Cambia lingua",
     "theme": "Tema",
     "dark_mode": "Modalità scura",
-    "light_mode": "Modalità chiara"
+    "light_mode": "Modalità chiara",
+    "version": "Facet {version}"
   },
   "dialog": {
     "cancel": "Annulla",
@@ -2624,6 +2625,9 @@
     "selected": "selezionati",
     "copy_keeps": "Copia i mantenuti in una cartella",
     "move_rejects": "Sposta gli scartati in una cartella",
+    "trash_all_rejects": "Cestina tutte le foto scartate",
+    "all_rejects_scope": "Tutte le foto scartate visibili al tuo account nell’intera libreria. Album, date e filtri attuali vengono ignorati. I file sono condivisi: contano le tue decisioni di scarto e potresti cestinare foto conservate, preferite o valutate da altri utenti.",
+    "all_rejects_limit": "Questa azione supporta al massimo 10.000 foto alla volta. Nella galleria, mostra solo le foto scartate, restringi per data o album e usa la selezione verso una cartella con l’azione cestino per elaborare gruppi più piccoli. Disattiva i filtri che nascondono i gruppi per includere ogni fotogramma scartato.",
     "trash_rejects": "Cestina gli scartati",
     "trash_disabled": "Il cestino è disabilitato — un amministratore può abilitarlo tramite viewer.cull.allow_trash.",
     "trash_missing_pkg": "Il cestino non è disponibile su questo server — il pacchetto send2trash non è installato.",
@@ -2638,6 +2642,7 @@
     "preview": "Anteprima",
     "apply": "Applica",
     "cancel": "Annulla",
+    "partial_error": "Non è stato possibile elaborare alcuni file. Crea una nuova anteprima per controllare i file rimanenti.",
     "done": "Scarto applicato",
     "error": "Scarto non riuscito",
     "delete_action": "Elimina…",

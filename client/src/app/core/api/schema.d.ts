@@ -5849,6 +5849,8 @@ export interface components {
             include_sequence_siblings?: boolean;
             /** Paths */
             paths?: string[] | null;
+            /** Preview Digest */
+            preview_digest?: string | null;
             /** Target Dir */
             target_dir?: string | null;
         };
@@ -5879,6 +5881,8 @@ export interface components {
             moved?: number | null;
             /** Not Visible */
             not_visible: number;
+            /** Preview Digest */
+            preview_digest?: string | null;
             /** Sequence Siblings */
             sequence_siblings: number;
             /** Skipped */
@@ -8907,6 +8911,8 @@ export interface components {
             badges: {
                 [key: string]: unknown;
             };
+            /** Build */
+            build?: string | null;
             /** Clipping */
             clipping: {
                 [key: string]: unknown;
@@ -8985,6 +8991,8 @@ export interface components {
              * @default []
              */
             unavailable_metrics?: string[];
+            /** Version */
+            version?: string | null;
         };
         /** WeightSnapshotItem */
         WeightSnapshotItem: {
