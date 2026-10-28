@@ -251,6 +251,7 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
           hide_blinks: 0,
           hide_bursts: 0,
           hide_duplicates: 0,
+          collapse_stacks: 0,
         }),
       );
       if (gen !== this.loadGeneration) return;

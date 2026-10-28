@@ -5,6 +5,7 @@
   "burst_only",
   "camera",
   "category",
+  "collapse_stacks",
   "color_temp",
   "composition_pattern",
   "date_from",
@@ -132,6 +133,7 @@
   "show_rejected",
   "sort",
   "sort_direction",
+  "stack_id",
   "tag",
   "top_picks_filter",
   "type"

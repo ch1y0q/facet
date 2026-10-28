@@ -203,6 +203,7 @@
     "duplicate_set": "Abrir grupo de duplicatas",
     "burst_set": "Abrir grupo de rajada",
     "sequence_set": "Abrir bracket/panorama",
+    "stack_set": "Abrir pilha de fotos",
     "open_detail": "Abrir página da foto",
     "key_hint": "1-5 avaliar · {favourite} favorita · {reject} rejeitar · Espaço selecionar · Enter abrir"
   },
@@ -2856,7 +2857,11 @@
       "set_favorite": "Favoritos alterados",
       "set_rating": "Avaliação",
       "set_rejected": "Rejeição",
-      "start_scan": "Análise iniciada"
+      "start_scan": "Análise iniciada",
+      "create_photo_stack": "Pilha de fotos criada",
+      "update_photo_stack": "Pilha de fotos atualizada",
+      "unstack_photos": "Fotos desempilhadas",
+      "undo_photo_stack": "Alteração da pilha desfeita"
     },
     "ui": {
       "ui_navigate": "Página aberta",
@@ -2946,6 +2951,44 @@
     "unknown": "Desconhecido",
     "photo_count": "Fotos: {count}",
     "field": "Campo",
-    "entry_action": "{action} · {kind} · {date} · #{id}"
+    "entry_action": "{action} · {kind} · {date} · #{id}",
+    "stack": "Pilha de fotos"
+  },
+  "stacks": {
+    "previous": "Foto anterior da pilha",
+    "next": "Foto seguinte da pilha",
+    "browse_position": "{position} de {count}",
+    "manage": "Gerir pilha",
+    "title": "Pilha de fotos",
+    "create": "Empilhar fotos",
+    "hint": "Os originais e as decisões são preservados. Escolha uma capa e guarde. A ordem inicial é cronológica.",
+    "member_count": "{count} membro",
+    "member_count_plural": "{count} membros",
+    "open_member": "Abrir {path}",
+    "cover_for": "Usar {path} como capa",
+    "cover": "Capa",
+    "move_up": "Mover {path} para antes",
+    "move_down": "Mover {path} para depois",
+    "remove": "Remover {path} da pilha",
+    "add_selected": "Adicionar {count} foto selecionada",
+    "add_selected_plural": "Adicionar {count} fotos selecionadas",
+    "select_all": "Selecionar os {count} membros",
+    "unstack": "Desempilhar",
+    "read_only": "Pode ver os membros permitidos. A edição exige acesso a todos os membros.",
+    "dissolve_hint": "Guardar menos de dois membros dissolve a pilha. As fotos são preservadas.",
+    "error": "O pedido falhou. O rascunho foi preservado; tente novamente.",
+    "conflict": "A pilha mudou, está indisponível ou uma foto já pertence a uma pilha. Recarregue os membros. Abra as pilhas existentes pelo distintivo e remova membros antes de reagrupar.",
+    "unavailable": "Esta pilha ou um membro está indisponível.",
+    "reload": "Recarregar membros",
+    "saved": "Pilha de fotos atualizada",
+    "expand_all": "Expandir todas as pilhas",
+    "collapse": "Recolher pilhas",
+    "totals": "{photos} fotos correspondentes · {items} itens apresentados",
+    "folded_scope": "As ações de toda a vista incluem os membros recolhidos. Uma miniatura selecionada sozinha afeta apenas essa foto.",
+    "explicit_only": "Selecione explicitamente 2 a 1000 fotos para criar uma pilha.",
+    "badge": "Abrir pilha: {count} membros",
+    "badge_filtered": "Abrir pilha: {count} correspondentes de {total} membros permitidos",
+    "stack_id": "ID da pilha",
+    "position": "Posição"
   }
 }

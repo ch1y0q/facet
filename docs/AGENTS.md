@@ -2,7 +2,7 @@
 
 > 🌐 **English** · [Français](fr/AGENTS.md) · [Deutsch](de/AGENTS.md) · [Italiano](it/AGENTS.md) · [Español](es/AGENTS.md) · [Português](pt/AGENTS.md) · [简体中文](zh/AGENTS.md)
 
-Facet can act as a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server, so an MCP-capable AI assistant can search and inspect your library with the same filters the gallery uses. It exposes thirteen read tools that change nothing in your library and fifteen `ui_*` tools that move the browser tab you already have open (page, filters, selection) and never write library data. Tokens that are allowed to can also [change things](#changing-things) (ratings, flags, tags, albums, culling and deletion) and work the [darkroom](#darkroom-culling-groups).
+Facet can act as a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server, so an MCP-capable AI assistant can search and inspect your library with the same filters the gallery uses. It exposes fourteen read tools that change nothing in your library and fifteen `ui_*` tools that move the browser tab you already have open (page, filters, selection) and never write library data. Tokens that are allowed to can also [change things](#changing-things) (ratings, flags, tags, albums, culling and deletion) and work the [darkroom](#darkroom-culling-groups).
 
 ## Enable it
 
@@ -45,13 +45,14 @@ A token dies automatically when its owner's credentials change: the viewer or ed
 
 ## Tools
 
-The thirteen data tools are read-only:
+The fourteen data tools are read-only:
 
 | Tool | What it does |
 |------|--------------|
 | `search_photos` | Filter and sort the library like the gallery, with the viewer's default hide toggles (blinks, bursts, duplicates, brackets, panoramas, rejected) applied unless the filter sets them (reports `hidden_summary`). Shown in your open tab by default (see below); `fields` adds any photo column |
 | `semantic_search` | Find photos by meaning, or by words in captions with `scope: "text"` The rows it returns are pinned in the tab. `filters` narrow the search like the gallery's, and each row carries its `similarity`. |
 | `get_photo` | Full detail of one photo by its path (the histogram is left out); or `target: "selection"` (with `tab_id`) for the one selected photo |
+| `get_photo_stack` | Read the local stack for an exact path, or null |
 | `get_thumbnail` | Look at one photo: its thumbnail as an image part (`size` 160 to 640, default 512). A smaller size is used when the JPEG would exceed `viewer.mcp.max_image_bytes`; `too_large` when none fits; or `target: "selection"` (with `tab_id`) for the one selected photo |
 | `contact_sheet` | Look at 1 to 16 photos as one numbered grid image (`columns` 2 to 4, longest edge 1024). The text part lists `legend` (tile number to path, in request order) and `unavailable` (tiles left blank because the photo is missing or not visible); or `target: "selection"` for the selected photos (at most 16) |
 | `possible_faces` | Faces that look like one recognised person: cosine similarity to the person's centroid, best first, same embedding model only. `scope` is `unassigned` (default), `other_persons` or `all`; `min_similarity` defaults to 0.30; `limit` up to 100. A scan above 192000 faces is refused (`too_large`): narrow it with `scope`, `path_prefix`, `date_from` or `date_to`. The photos are shown in your tab. `candidates` is the count of faces in scope you can see, before the embedding-dimension check; `faces_scanned` is the number of rows actually scored. |
@@ -180,6 +181,10 @@ Write tools sit next to the read tools in the same `/mcp` list. Each one goes th
 | `batch_set_rejected` | `edition` | Reject many photos | 1000 paths, or `filters` |
 | `add_tags` | `edition` | Add manual tags (kept apart from the AI tags) | 10 tags; 1000 paths, or `filters` |
 | `remove_tags` | `edition` | Remove manual tags | 10 tags; 1000 paths, or `filters` |
+| `create_photo_stack` | `edition` | Create an explicit local stack; returns Undo entry | 2–1000 paths |
+| `update_photo_stack` | `edition` | Replace explicit members/order and optional cover; stale revision refuses | 1000 paths |
+| `unstack_photos` | `edition` | Dissolve a stack; originals stay intact |  |
+| `undo_photo_stack` | `edition` | Undo an available stack entry only; later changes refuse |  |
 | `create_album` | `edition` | Create an album (not idempotent: twice makes two albums): empty, or from `filters` / `target: "view"` as a smart album that follows those filters, or from `paths` / `target: "selection"` as a fixed album filled in the same call (`added`, `skipped`). Smart albums show the viewer's own hide toggles and read 0 photos in `list_albums`. `filters` that hold no effective filter (`{}`, or only display toggles set to off) are refused as `invalid_input`: omit `filters` for an empty album | |
 | `album_add_photos` | `edition` | Add photos to an album (already present ones are ignored) | 1000 paths |
 | `album_remove_photos` | `edition` | Remove photos from an album; the photos are untouched | 1000 paths |
@@ -192,9 +197,15 @@ Write tools sit next to the read tools in the same `/mcp` list. Each one goes th
 | `cull_apply` | `edition` | Copy the keepers, or move or trash the rejects ([preview then confirm](#destructive-actions-preview-then-confirm)) | 10000 paths, or `filters` |
 | `delete_photos` | `edition` | Trash the files and delete their library rows ([preview then confirm](#destructive-actions-preview-then-confirm)) | 1000 paths |
 
+### Local manual stacks
+
+`get_photo_stack(path)` reads the caller's local stack or null; partial visibility returns only permitted members and makes organization read-only. `create_photo_stack(paths, cover_path)` needs 2–1000 explicit unstacked photos. `update_photo_stack(stack_id, paths, expected_revision, cover_path?)` replaces explicit order/membership; 0/1 members dissolve the group. `unstack_photos(stack_id, expected_revision)` dissolves it. These three tools require `edition`, a UUID and current revision for existing stacks; never retry a create blindly. Successful mutations return `undo.entry_id`; `undo_photo_stack(entry_id)` is edition-only, checks that history entry is a stack and refuses later edits or visibility loss. Paths are at most 4096 characters. No files/review decisions or remote Immich state change; global credentials stay CLI-only. `stack_truncated: true` on a large successful mutation means the stack is only a UUID/revision/member_count summary; `undo.entry_id` remains available. It is not a complete editable member list.
+
+`search_photos` and gallery context distinguish `total` displayed items from `photo_total` matching originals. Use `photo_total` for a filter write's `expected_count`. Whole-view selections and `target:view` include folded matching members: show the real photo count and whole-view scope before applying. Selecting one collapsed tile selects only its displayed photo. `user_activity` includes `stack` create/update/unstack/undo. Server-only `stack_id`/`collapse_stacks` are not tab-filter keys.
+
 - **The `user` tools need an edition token on a single-password install**, which has no middle level (see [Permission levels](#permission-levels)).
 - **Set semantics.** The per-photo tools read the current state and write only a difference, so repeating a call is harmless; each path reports `changed` or `already`. They run one path at a time and stop at the first `library_busy`, `outcome_unknown` or `forbidden_level`, reporting `affected`, the per-path `results` and `not_attempted`. The batch tools set the same state.
-- **Choosing the photos.** The batch, tag and `cull_apply` tools take EITHER `paths` OR `filters` (the `search_photos` filter object), plus an optional `exclude` list. A `filters` target must come with `expected_count`, the match count of the filters before `exclude` is applied (`search_photos` `total`). Facet counts the filters again first and writes nothing when the numbers differ (`invalid_input`, with `actual_count`). The viewer's default hide toggles (including rejected photos) apply to `filters` exactly as in `search_photos`, so its `total` is the `expected_count`. Rejected photos are therefore hidden from a `filters` target: for `move_rejects` and `trash_rejects`, pass `show_rejected` (or `hide_rejected: false`) to BOTH `search_photos` and `cull_apply`; `copy_keeps` needs nothing extra.
+- **Choosing the photos.** The batch, tag and `cull_apply` tools take EITHER `paths` OR `filters` (the `search_photos` filter object), plus an optional `exclude` list. A `filters` target must come with `expected_count`, the match count of the filters before `exclude` is applied (`search_photos` `photo_total`). Facet counts the filters again first and writes nothing when the numbers differ (`invalid_input`, with `actual_count`). The viewer's default hide toggles (including rejected photos) apply to `filters` exactly as in `search_photos`, so its `photo_total` is the `expected_count`. Rejected photos are therefore hidden from a `filters` target: for `move_rejects` and `trash_rejects`, pass `show_rejected` (or `hide_rejected: false`) to BOTH `search_photos` and `cull_apply`; `copy_keeps` needs nothing extra.
 - **Whose state.** Ratings, favourites and rejections are the token owner's own.
 - **Skipped files.** When `cull_apply` or `delete_photos` reports a non-empty `skipped` list, the result also carries a `skipped_reason`: those library paths have no readable file on disk (missing, moved, or outside the scan directories), and nothing was done for them.
 - **The photos the user selected.** Where a tool takes `paths`, `target: "selection"` uses the selection of the open tab instead (`tab_id` picks the tab). A selection that changed between the preview and the confirm answers `invalid_input` with `selection_changed`, a selection too big for the tab's reply answers `too_large`, and `delete_photos` re-reads the selection when you confirm. `get_photo`, `get_thumbnail` (exactly one selected photo) and `contact_sheet` (at most 16) also take `target: "selection"`, from any page. `junk_reject` takes it only while the tab is on the gallery page (`invalid_input` otherwise).

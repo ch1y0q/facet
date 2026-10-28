@@ -84,6 +84,10 @@ def counting(monkeypatch):
 
 class TestGrantMatrix:
     ARGS = {
+        "create_photo_stack": {"paths": [P[0]] , "cover_path": P[0]},
+        "update_photo_stack": {"stack_id": "invalid", "paths": [], "expected_revision": 1},
+        "unstack_photos": {"stack_id": "invalid", "expected_revision": 1},
+        "undo_photo_stack": {"entry_id": 0},
         "set_rating": {"paths": [P[0]], "rating": 2}, "set_favorite": {"paths": [P[0]], "value": True},
         "set_rejected": {"paths": [P[0]], "value": True},
         "batch_set_rating": {"paths": [P[0]], "rating": 2}, "batch_set_favorite": {"paths": [P[0]]},
@@ -324,6 +328,23 @@ class TestBatchTools:
         assert env.call(token, "junk_clear", {"paths": [P[4]]})["data"]["affected"] == 1
         assert photo_col(P[4], "junk_kind") == "not_junk"
         assert env.call(token, "junk_clear", {"paths": [P[0]] * 51})["error"] == "too_large"
+
+    def test_junk_list_shows_every_stacked_junk_frame(self, edition, photos):
+        env, token = edition
+        conn = sqlite3.connect(_TEST_DB_FILE.name)
+        conn.execute("UPDATE photos SET junk_kind = 'blurry' WHERE path = ?", (P[3],))
+        conn.commit()
+        conn.close()
+        assert env.call(token, "create_photo_stack", {"paths": [P[3], P[4]], "cover_path": P[4]})["ok"]
+        try:
+            listed = env.call(token, "junk_list", {"kind": "blurry"})
+            assert sorted(r["path"] for r in listed["data"]["rows"]) == sorted([P[3], P[4]])
+        finally:
+            conn = sqlite3.connect(_TEST_DB_FILE.name)
+            conn.execute("DELETE FROM photo_stacks WHERE id IN "
+                         "(SELECT stack_id FROM photo_stack_members WHERE photo_path = ?)", (P[4],))
+            conn.commit()
+            conn.close()
 
 
 def test_user_floor_message_names_edition_on_a_single_password_install(agent_app, photos):

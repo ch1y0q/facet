@@ -124,7 +124,7 @@ def _async_conn_factory(db_path: str):
     return factory
 
 
-async def _get_cached_count_async_passthrough(conn, where_str, sql_params, from_clause="photos"):
+async def _get_cached_count_async_passthrough(conn, where_str, sql_params, from_clause="photos", *, token=None):
     """Test stub for get_cached_count_async: runs COUNT directly, no cache."""
     cur = await conn.execute(f"SELECT COUNT(*) FROM {from_clause}{where_str}", sql_params)
     row = await cur.fetchone()

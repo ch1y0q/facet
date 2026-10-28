@@ -1507,6 +1507,11 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
 
         from db.organization_history import init_schema as init_organization_history
         init_organization_history(conn)
+        from db.immich_stacks import init_schema as init_immich_stacks
+        init_immich_stacks(conn)
+
+        from db.stacks import init_schema as init_stacks
+        init_stacks(conn)
 
         # Create photos_vec virtual table for vector search (requires sqlite-vec).
         # After the sweep so detect_embedding_dim can see clip_embedding.

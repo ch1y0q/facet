@@ -203,6 +203,7 @@
     "duplicate_set": "Open duplicate group",
     "burst_set": "Open burst group",
     "sequence_set": "Open bracket/panorama set",
+    "stack_set": "Open photo stack",
     "open_detail": "Open photo page",
     "key_hint": "1-5 rate · {favourite} fav · {reject} reject · Space select · Enter open"
   },
@@ -2856,7 +2857,11 @@
       "set_favorite": "Changed a favorite",
       "set_rating": "Rated",
       "set_rejected": "Rejected",
-      "start_scan": "Started a scan"
+      "start_scan": "Started a scan",
+      "create_photo_stack": "Created a photo stack",
+      "update_photo_stack": "Updated a photo stack",
+      "unstack_photos": "Unstacked photos",
+      "undo_photo_stack": "Undid a photo stack change"
     },
     "ui": {
       "ui_navigate": "Opened a page",
@@ -2946,6 +2951,44 @@
     "unknown": "Unknown",
     "photo_count": "Photos: {count}",
     "field": "Field",
-    "entry_action": "{action} · {kind} · {date} · #{id}"
+    "entry_action": "{action} · {kind} · {date} · #{id}",
+    "stack": "Photo stack"
+  },
+  "stacks": {
+    "previous": "Previous stack photo",
+    "next": "Next stack photo",
+    "browse_position": "{position} of {count}",
+    "manage": "Manage stack",
+    "title": "Photo stack",
+    "create": "Stack photos",
+    "hint": "Stacking keeps each original and its review decisions. Choose a cover, then save. Initial order is chronological.",
+    "member_count": "{count} member",
+    "member_count_plural": "{count} members",
+    "open_member": "Open {path}",
+    "cover_for": "Use {path} as cover",
+    "cover": "Cover",
+    "move_up": "Move {path} earlier",
+    "move_down": "Move {path} later",
+    "remove": "Remove {path} from stack",
+    "add_selected": "Add {count} selected photo",
+    "add_selected_plural": "Add {count} selected photos",
+    "select_all": "Select all {count} members",
+    "unstack": "Unstack",
+    "read_only": "You can browse permitted members. Editing requires edition access to every member.",
+    "dissolve_hint": "Saving fewer than two members dissolves this stack. Photos are retained.",
+    "error": "The request failed. Your draft is retained; try again.",
+    "conflict": "The stack changed, is unavailable, or a selected photo already belongs to a stack. Reload to review current membership. Open existing stacks from their badges; remove members before regrouping.",
+    "unavailable": "This stack or a member is unavailable.",
+    "reload": "Reload membership",
+    "saved": "Photo stack updated",
+    "expand_all": "Expand all stacks",
+    "collapse": "Collapse stacks",
+    "totals": "{photos} matching photos · {items} displayed items",
+    "folded_scope": "Whole-view actions include folded stack members. A selected tile alone acts only on that photo.",
+    "explicit_only": "Select 2–1000 explicit photos to create a stack.",
+    "badge": "Open stack: {count} members",
+    "badge_filtered": "Open stack: {count} matching of {total} permitted members",
+    "stack_id": "Stack ID",
+    "position": "Position"
   }
 }

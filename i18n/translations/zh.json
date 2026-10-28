@@ -203,6 +203,7 @@
     "duplicate_set": "查看重复照片组",
     "burst_set": "查看连拍组",
     "sequence_set": "查看包围曝光/全景组",
+    "stack_set": "打开照片堆叠",
     "open_detail": "打开照片页",
     "key_hint": "1-5 评分 · {favourite} 收藏 · {reject} 淘汰 · 空格 选择 · 回车 打开"
   },
@@ -2856,7 +2857,11 @@
       "set_favorite": "已更改收藏",
       "set_rating": "已评分",
       "set_rejected": "已拒绝",
-      "start_scan": "已开始扫描"
+      "start_scan": "已开始扫描",
+      "create_photo_stack": "已创建照片堆叠",
+      "update_photo_stack": "已更新照片堆叠",
+      "unstack_photos": "已取消照片堆叠",
+      "undo_photo_stack": "已撤销照片堆叠更改"
     },
     "ui": {
       "ui_navigate": "已打开页面",
@@ -2946,6 +2951,44 @@
     "unknown": "未知",
     "photo_count": "照片数量：{count}",
     "field": "字段",
-    "entry_action": "{action} · {kind} · {date} · #{id}"
+    "entry_action": "{action} · {kind} · {date} · #{id}",
+    "stack": "照片堆叠"
+  },
+  "stacks": {
+    "previous": "上一张堆叠照片",
+    "next": "下一张堆叠照片",
+    "browse_position": "第 {position} 张，共 {count} 张",
+    "manage": "管理堆叠",
+    "title": "照片堆叠",
+    "create": "堆叠照片",
+    "hint": "堆叠保留每张原片及其审核决定。选择封面后保存。初始顺序按拍摄时间排列。",
+    "member_count": "{count} 个成员",
+    "member_count_plural": "{count} 个成员",
+    "open_member": "打开 {path}",
+    "cover_for": "将 {path} 设为封面",
+    "cover": "封面",
+    "move_up": "将 {path} 前移",
+    "move_down": "将 {path} 后移",
+    "remove": "从堆叠中移除 {path}",
+    "add_selected": "添加 {count} 张已选照片",
+    "add_selected_plural": "添加 {count} 张已选照片",
+    "select_all": "选择全部 {count} 个成员",
+    "unstack": "取消堆叠",
+    "read_only": "可以浏览有权限的成员。编辑需要拥有全部成员的编辑权限。",
+    "dissolve_hint": "保存时成员少于两张将解散堆叠，照片仍会保留。",
+    "error": "请求失败。草稿已保留，请重试。",
+    "conflict": "堆叠已更改、不可用，或所选照片已属于其他堆叠。请重新加载成员。通过徽章打开现有堆叠，移除成员后再重新分组。",
+    "unavailable": "此堆叠或成员不可用。",
+    "reload": "重新加载成员",
+    "saved": "照片堆叠已更新",
+    "expand_all": "展开所有堆叠",
+    "collapse": "折叠堆叠",
+    "totals": "{photos} 张匹配照片 · 显示 {items} 个项目",
+    "folded_scope": "针对整个视图的操作包括折叠的成员。单独选择一个缩略图仅操作该张照片。",
+    "explicit_only": "请明确选择 2–1000 张照片以创建堆叠。",
+    "badge": "打开堆叠：{count} 个成员",
+    "badge_filtered": "打开堆叠：{total} 个可访问成员中有 {count} 个匹配",
+    "stack_id": "堆叠 ID",
+    "position": "位置"
   }
 }

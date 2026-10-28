@@ -1820,6 +1820,7 @@ no cambia nada.
       "rejected": true,
       "sequence_kind": true,
       "sequence_override_pending": true,
+      "stack": true,
       "keeper_hint": true,
       "best_of_burst": true,
       "clipping_highlight": true,
@@ -1842,6 +1843,7 @@ no cambia nada.
 | `badges.rejected` | `true` | Insignia de pulgar abajo en una foto rechazada (modo edición) |
 | `badges.sequence_kind` | `true` | Insignia del conjunto (ráfaga/horquillado/panorama/duplicado), dibujada a la izquierda de la insignia de rechazo, visible solo mientras la opción de ocultar contrae la serie |
 | `badges.sequence_override_pending` | `true` | Insignia de reloj para una corrección de panorama pendiente de la próxima detección |
+| `badges.stack` | `true` | Insignia de capas con el número de miembros en cada tarjeta de una pila de fotos manual (con las pilas plegadas, la portada visible); al pulsarla abre la pila. Desactivada solo oculta la insignia: el botón de tarjeta «Abrir pila de fotos» sigue funcionando |
 | `badges.keeper_hint` | `true` | Flecha «existe una toma mejor en este grupo» del modelo de selección aprendido |
 | `badges.best_of_burst` | `true` | Insignia «Mejor» en la foto principal de una ráfaga. Solo se muestra con `hide_bursts` desactivado: de lo contrario toda foto de ráfaga en pantalla ya es la principal |
 | `badges.clipping_highlight` | `true` | Insignia para una foto cuyas altas luces superan `clipping.badge_percent` |

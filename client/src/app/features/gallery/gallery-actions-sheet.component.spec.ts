@@ -32,6 +32,15 @@ describe('GalleryActionsSheetComponent', () => {
     (Array.from(el.querySelectorAll('button')) as HTMLButtonElement[])
       .find(b => b.textContent?.includes(I18N.gallery.selection.edit_tags));
 
+  it('offers Stack only for an explicit bounded selection and discloses folded scope', () => {
+    const find = (el: HTMLElement) => Array.from(el.querySelectorAll('button')).find(button => button.textContent?.includes(I18N.stacks.create));
+    expect(find(render({ canStack: false, viewScoped: true }))?.disabled).toBe(true);
+    const el = render({ canStack: true });
+    find(el)!.click(); expect(dismiss).toHaveBeenCalledWith({ kind: 'stack' });
+    expect(find(render({ isEdition: false }))).toBeUndefined();
+    expect(render({ viewScoped: true }).textContent).toContain(I18N.stacks.folded_scope);
+  });
+
   it('offers the edit-tags entry to an edition user', () => {
     expect(entry(render({ isEdition: true }))).toBeDefined();
   });

@@ -18,6 +18,7 @@ A ligação é somente REST nas duas direções. O Facet nunca toca no banco de 
 - [Passo 3 — mapear os caminhos](#passo-3--mapear-os-caminhos)
 - [Passo 4 — testar, depois enviar](#passo-4--testar-depois-enviar)
 - [Enviando rejeições](#enviando-rejeições)
+- [Importar e enviar pilhas manuais](#importar-e-enviar-pilhas-manuais)
 - [O webhook de entrada](#o-webhook-de-entrada)
 - [Referência de configuração](#referência-de-configuração)
 - [Solução de Problemas](#solução-de-problemas)
@@ -68,7 +69,7 @@ Se, em vez disso, você fizer upload para o Immich normalmente (backup automáti
 
 No Immich: **clique no seu avatar → Account Settings → API Keys → New API Key**.
 
-O Immich ≥ 3.0 permite restringir o escopo de uma chave em vez de conceder tudo a ela. O Facet precisa de exatamente seis escopos:
+O Immich ≥ 3.0 permite restringir uma chave. Estrelas/favoritos usam os escopos abaixo; pilhas manuais exigem as permissões adicionais descritas adiante:
 
 | Escopo | O que o Facet faz com ele |
 |-------|-------------------------|
@@ -164,6 +165,16 @@ Com `push.rejected` ativado:
 - `push.ratings: false` suprime isso. `-1` é uma gravação de avaliação, então uma configuração que desativou o envio de avaliações não tem uma reintroduzida às escondidas.
 
 Deixe desativado se outras pessoas (ou o seu telefone) olham para a biblioteca do Immich: um `-1` fica visível lá, e "rejeitada no Facet" é um julgamento de trabalho que você talvez não queira divulgar.
+
+## Importar e enviar pilhas manuais
+
+Pilhas usam **plano e aplicação explícitos pela CLI local**, com `--config`, `--db`, `--user` existentes. Multiusuário exige um usuário existente explícito. A chave global Immich não é exposta na web, assistentes/MCP ou webhook de upload para pilhas. Sincronização de estrelas/favoritos permanece igual. Immich **≥ 3.0** é obrigatório, com verificações de capacidade. Adicione `user.read` e `stack.read` a `asset.read`, mais `stack.create` e `asset.update` para enviar. A v1 não requer `stack.update` nem `stack.delete`.
+
+A prévia não grava em nenhum lado nem migra o banco. Confira seu resumo SHA-256 antes de aplicar. `--stack-id UUID`, repetível, limita as pilhas do lado de origem. `--stack-plan-out` cria atomicamente um JSON privado novo (POSIX `0600`), sem sobrescrever. Limites: **1000 grupos, 1000 membros/grupo, 20000 membros totais e 16 MiB**; restrinja com `--stack-id`. No Windows, escolha uma pasta de saída cuja ACL restrinja o acesso à sua conta; os bits de permissões POSIX não garantem a privacidade dos ficheiros Windows.
+
+Cada membro importado deve corresponder unicamente a uma foto indexada, visível, disponível e do proprietário remoto. O envio também verifica todos os membros antes de criar um grupo remoto inteiramente não empilhado. Um membro ausente/ambíguo ignora o grupo inteiro, nunca importa subconjuntos. Membros e capa idênticos podem adotar o vínculo durável ao aplicar. Sobreposição parcial, capa/membros diferentes e desempilhamento divergente são conflitos/grupos ignorados; nenhuma pilha local ou remota existente é atualizada. Ordem além da capa não é transferida. Não há sincronização bidirecional automática, consultas periódicas ou propagação de desempilhamento.
+
+Planos, vínculos e recibos privados são limitados a servidor, conta remota, proprietário local e impressão do mapa de caminhos; mudanças invalidam a reutilização. Recibos guardam resultados e IDs remotos sem credenciais. Aplicar revalida cada grupo antes e relê membros/capa após gravar. Resposta de criação perdida exige reconciliação antes de tentar novamente; envios incertos nunca são repetidos às cegas. Cancelar para entre grupos; uma aplicação explícita posterior reconcilia os recibos. Immich não tem compare-and-swap para criar pilhas: outro cliente pode agir após a última verificação. A pós-validação não garante atomicidade distribuída nem reversão automática. Testes usam um servidor HTTP local simulado e não certificam uma instalação Immich real.
 
 ## O webhook de entrada
 

@@ -27,6 +27,7 @@ _PLAIN_REFS = {
     ('albums', 'cover_photo_path'), ('album_photos', 'photo_path'),
     ('album_client_picks', 'photo_path'), ('rating_provenance', 'photo_path'),
     ('face_reextract_snapshot', 'photo_path'),
+    ('photo_stacks', 'cover_path'), ('photo_stack_members', 'photo_path'),
 }
 _NON_ASSET_PATHS = {
     ('photos', 'path'), ('photos_fts', 'path'), ('scan_failures', 'path'),
@@ -36,6 +37,11 @@ _NON_ASSET_PATHS = {
 # Historical payload JSON and the global revision clock are not asset links.
 # Keep the exact column inventory so future additions still require review.
 _AUXILIARY_COLUMNS = {
+    'photo_stacks': {'id', 'owner', 'cover_path', 'revision'},
+    'immich_stack_links': {'scope', 'local_stack_id', 'remote_stack_id', 'local_fingerprint', 'remote_fingerprint'},
+    'immich_stack_send_claims': {'admission_scope', 'asset_id', 'operation_id'},
+    'immich_stack_receipts': {'scope', 'admission_scope', 'operation_id', 'status', 'local_stack_id', 'remote_stack_id', 'asset_ids', 'updated_at'},
+    'photo_stack_members': {'stack_id', 'owner', 'photo_path', 'position'},
     'organization_clock': {'id', 'revision'},
     'organization_history': {'id', 'owner', 'kind', 'scope', 'created_at', 'payload', 'part', 'parts', 'reverted'},
 }

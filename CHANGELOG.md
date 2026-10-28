@@ -6,6 +6,8 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
+- **Manual photo stacks.** Group explicit photos behind a chosen cover, reorder or change membership, browse permitted members directly in the viewer with an ordered thumbnail strip, previous/next buttons and position counter, manage the stack separately and Undo organization changes without changing originals or review decisions. Gallery counts and whole-view selections include folded matching photos; stacks remain owner-private and survive rescans and relinking. Local assistant tools use the same permission and revision checks. A stack's cover carries a member-count badge on the card's bottom row (`viewer.badges.stack`) and an "Open photo stack" button in Customize card buttons.
+- **Previewed Immich stack import and push.** Local CLI plans require a reviewed digest before apply, create only fully mapped conflict-free groups, adopt exact matches and reconcile uncertain sends before retry. Existing stacks are never overwritten; no automatic sync or unstack propagation is added.
 - **Trash rejected photos from Culling.** Preview all rejected files, including hidden frames, and confirm moving them to the system trash without selecting photos individually. Apply rechecks the previewed file set and settings; changed previews are refused before writes, and partial failures require another preview. Oversized scopes explain the 10,000-photo limit and how to process smaller gallery batches. Navigation during Apply keeps its outcome visible; the dialog warns that shared files can be kept by other users.
 - **Scores placed in the library.** Photo detail, the gallery side panel and the card score badge show where each score sits in the whole library: a sparkline of its distribution with this photo's bar lit, and "Top X% of the library" with the library range on hover or focus. Scores with no better end (ISO, aperture, face count…) show the range only.
 - **Gallery and photo-page shortcuts are remappable.** User menu → Customize shortcuts opens a dialog where clicking an action and pressing a key reassigns it — favourite, reject, keep, search focus, the filter sidebar toggle and the grid/mosaic switch, stored per browser in `localStorage`. Every digit stays reserved (1–5 rate, 0 rejects), as do Space (selection) and `?` (the reference), and a key another action already holds is refused. The `?` shortcuts dialog, the Help dialog's gallery table and the focused-card hint always show the keys in effect.
@@ -20,6 +22,8 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Keep keyboard arrows inside the visible photo stack.** Left/Right now follow the same members and boundaries as the stack buttons even when an exact photo list is active, without adding photos to that list. Handled arrow keys no longer trigger default browser movement.
+- **Refresh stack browsing after a history restore.** Reload membership for the open photo and discard older replies so restored or dissolved stacks do not leave stale navigation controls.
 - **The side panel no longer flickers open and closed.** A filter drawer animation event arriving after the drawer had already changed state flipped it back, in a loop.
 - **The Content sort group heading is translated.** It showed the raw key `sort_groups.content` in every language.
 

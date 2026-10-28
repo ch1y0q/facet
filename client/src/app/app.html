@@ -198,7 +198,7 @@
 
       <!-- Gallery: photo count + active filters + filter toggle (right side, lg+ only) -->
       @if (auth.isAuthenticated() && isGalleryRoute()) {
-        <span class="!hidden min-[1360px]:!inline text-sm opacity-70">{{ I18N.gallery.photo_count | translate:{ count: store.total() } }}</span>
+        <span class="!hidden min-[1360px]:!inline text-sm opacity-70">{{ I18N.gallery.photo_count | translate:{ count: pinned() ? store.total() : store.photoTotal() } }}</span>
 
         @if (!pinned()) {
           @let sortTooltip = I18N.gallery.sort_current | translate:{ label: (currentSortLabelKey() | translate) };
@@ -543,6 +543,12 @@
             matBadgeSize="small"
           >
             <mat-icon [style.color]="store.filterDrawerOpen() ? 'var(--mat-sys-primary)' : ''">filter_alt</mat-icon>
+          </button>
+          <button mat-icon-button class="!w-9 !h-9 shrink-0" data-stack-collapse-mobile
+                  (click)="store.toggleStackCollapse()"
+                  [matTooltip]="(store.collapseStacks() ? I18N.stacks.expand_all : I18N.stacks.collapse) | translate"
+                  [attr.aria-label]="(store.collapseStacks() ? I18N.stacks.expand_all : I18N.stacks.collapse) | translate">
+            <mat-icon>{{ store.collapseStacks() ? 'unfold_more' : 'unfold_less' }}</mat-icon>
           </button>
         }
 
