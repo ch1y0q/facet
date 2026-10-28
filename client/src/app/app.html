@@ -205,23 +205,27 @@
             <mat-label>{{ I18N.gallery.sort | translate }}</mat-label>
             <mat-select panelWidth="auto" panelClass="nowrap-panel" [value]="store.filters().sort" (selectionChange)="onSortChange($event.value)">
               @if (store.filters().semanticQuery) {
-                <mat-option value="relevance"><mat-icon aria-hidden="true">{{ 'relevance' | sortIcon }}</mat-icon>{{ I18N.gallery.sort_relevance | translate }}</mat-option>
+                <mat-option value="relevance"><mat-icon aria-hidden="true" class="!w-8 text-center">{{ ('relevance' | sortIcon).text }}</mat-icon>{{ I18N.gallery.sort_relevance | translate }}</mat-option>
               }
               @if (store.config()?.features?.show_my_taste) {
-                <mat-option value="learned_score"><mat-icon aria-hidden="true">{{ 'learned_score' | sortIcon }}</mat-icon>{{ I18N.gallery.sort_my_taste | translate }}</mat-option>
+                <mat-option value="learned_score"><mat-icon aria-hidden="true" class="!w-8 text-center">{{ ('learned_score' | sortIcon).text }}</mat-icon>{{ I18N.gallery.sort_my_taste | translate }}</mat-option>
               }
               @if (sortGroups(); as groups) {
                 @for (group of groups; track group[0]) {
                   <mat-optgroup [label]="('sort_groups.' + (group[0] | sortGroupKey)) | translate">
                     @for (opt of group[1]; track opt.column) {
-                      <mat-option [value]="opt.column"><mat-icon aria-hidden="true">{{ opt.column | sortIcon }}</mat-icon>{{ 'sort_options.' + opt.column | translate }}</mat-option>
+                      <mat-option [value]="opt.column">
+                        @let optionIcon = opt.column | sortIcon;
+                        <mat-icon aria-hidden="true" class="!w-8 text-center" [class.!font-sans]="optionIcon.model" [class.!text-[11px]]="optionIcon.model" [class.!font-semibold]="optionIcon.model" [class.!leading-6]="optionIcon.model">{{ optionIcon.text }}</mat-icon>
+                        {{ 'sort_options.' + opt.column | translate }}
+                      </mat-option>
                     }
                   </mat-optgroup>
                 }
               } @else {
-                <mat-option value="aggregate"><mat-icon aria-hidden="true">{{ 'aggregate' | sortIcon }}</mat-icon>{{ I18N.gallery.sort_aggregate | translate }}</mat-option>
-                <mat-option value="aesthetic"><mat-icon aria-hidden="true">{{ 'aesthetic' | sortIcon }}</mat-icon>{{ I18N.gallery.sort_aesthetic | translate }}</mat-option>
-                <mat-option value="date_taken"><mat-icon aria-hidden="true">{{ 'date_taken' | sortIcon }}</mat-icon>{{ I18N.gallery.sort_date | translate }}</mat-option>
+                <mat-option value="aggregate"><mat-icon aria-hidden="true" class="!w-8 text-center">{{ ('aggregate' | sortIcon).text }}</mat-icon>{{ I18N.gallery.sort_aggregate | translate }}</mat-option>
+                <mat-option value="aesthetic"><mat-icon aria-hidden="true" class="!w-8 text-center">{{ ('aesthetic' | sortIcon).text }}</mat-icon>{{ I18N.gallery.sort_aesthetic | translate }}</mat-option>
+                <mat-option value="date_taken"><mat-icon aria-hidden="true" class="!w-8 text-center">{{ ('date_taken' | sortIcon).text }}</mat-icon>{{ I18N.gallery.sort_date | translate }}</mat-option>
               }
             </mat-select>
           </mat-form-field>
@@ -579,23 +583,27 @@
             <mat-label>{{ I18N.gallery.sort | translate }}</mat-label>
             <mat-select panelWidth="auto" panelClass="nowrap-panel" [value]="store.filters().sort" (selectionChange)="onSortChange($event.value)">
               @if (store.filters().semanticQuery) {
-                <mat-option value="relevance"><mat-icon aria-hidden="true">{{ 'relevance' | sortIcon }}</mat-icon>{{ I18N.gallery.sort_relevance | translate }}</mat-option>
+                <mat-option value="relevance"><mat-icon aria-hidden="true" class="!w-8 text-center">{{ ('relevance' | sortIcon).text }}</mat-icon>{{ I18N.gallery.sort_relevance | translate }}</mat-option>
               }
               @if (store.config()?.features?.show_my_taste) {
-                <mat-option value="learned_score"><mat-icon aria-hidden="true">{{ 'learned_score' | sortIcon }}</mat-icon>{{ I18N.gallery.sort_my_taste | translate }}</mat-option>
+                <mat-option value="learned_score"><mat-icon aria-hidden="true" class="!w-8 text-center">{{ ('learned_score' | sortIcon).text }}</mat-icon>{{ I18N.gallery.sort_my_taste | translate }}</mat-option>
               }
               @if (sortGroups(); as groups) {
                 @for (group of groups; track group[0]) {
                   <mat-optgroup [label]="('sort_groups.' + (group[0] | sortGroupKey)) | translate">
                     @for (opt of group[1]; track opt.column) {
-                      <mat-option [value]="opt.column"><mat-icon aria-hidden="true">{{ opt.column | sortIcon }}</mat-icon>{{ 'sort_options.' + opt.column | translate }}</mat-option>
+                      <mat-option [value]="opt.column">
+                        @let optionIcon = opt.column | sortIcon;
+                        <mat-icon aria-hidden="true" class="!w-8 text-center" [class.!font-sans]="optionIcon.model" [class.!text-[11px]]="optionIcon.model" [class.!font-semibold]="optionIcon.model" [class.!leading-6]="optionIcon.model">{{ optionIcon.text }}</mat-icon>
+                        {{ 'sort_options.' + opt.column | translate }}
+                      </mat-option>
                     }
                   </mat-optgroup>
                 }
               } @else {
-                <mat-option value="aggregate"><mat-icon aria-hidden="true">{{ 'aggregate' | sortIcon }}</mat-icon>{{ I18N.gallery.sort_aggregate | translate }}</mat-option>
-                <mat-option value="aesthetic"><mat-icon aria-hidden="true">{{ 'aesthetic' | sortIcon }}</mat-icon>{{ I18N.gallery.sort_aesthetic | translate }}</mat-option>
-                <mat-option value="date_taken"><mat-icon aria-hidden="true">{{ 'date_taken' | sortIcon }}</mat-icon>{{ I18N.gallery.sort_date | translate }}</mat-option>
+                <mat-option value="aggregate"><mat-icon aria-hidden="true" class="!w-8 text-center">{{ ('aggregate' | sortIcon).text }}</mat-icon>{{ I18N.gallery.sort_aggregate | translate }}</mat-option>
+                <mat-option value="aesthetic"><mat-icon aria-hidden="true" class="!w-8 text-center">{{ ('aesthetic' | sortIcon).text }}</mat-icon>{{ I18N.gallery.sort_aesthetic | translate }}</mat-option>
+                <mat-option value="date_taken"><mat-icon aria-hidden="true" class="!w-8 text-center">{{ ('date_taken' | sortIcon).text }}</mat-icon>{{ I18N.gallery.sort_date | translate }}</mat-option>
               }
             </mat-select>
           </mat-form-field>

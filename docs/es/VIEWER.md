@@ -189,7 +189,7 @@ Filtra por los patrones detectados por SAMP-Net (el modelo emite exactamente est
 
 ## Ordenación
 
-Las opciones de ordenación tienen iconos decorativos en la cabecera de escritorio y la barra móvil. Las etiquetas traducidas siguen siendo su identificación principal.
+Las opciones de ordenación tienen iconos decorativos distintos en la cabecera de escritorio y la barra móvil. Los modelos de puntuación alternativos usan etiquetas breves (IAA, 2.5, Q-R, DeQA, LIQE e IQA). Las etiquetas traducidas siguen siendo su identificación principal.
 
 **Ordenación recordada.** La galería se abre con la última ordenación elegida en el selector de ordenación, y esa elección prevalece sobre `viewer.defaults.sort`. Se recuerda en `localStorage` por navegador, no por cuenta de usuario. Solo se recuerda una elección hecha en el selector de ordenación: una ordenación que llega en un enlace compartido o un marcador, o que aplica un asistente, cambia la vista sin recordarse, y el `sort` propio de un enlace sigue prevaleciendo sobre la recordada. Elegir de nuevo la ordenación predeterminada configurada olvida la elección, igual que restablecer los filtros. **Relevancia** nunca se recuerda, porque necesita una consulta de búsqueda.
 

@@ -787,6 +787,12 @@ describe('App', () => {
         features: { show_my_taste: true },
         sort_options_grouped: { General: [
           { column: 'date_taken', label: 'Date Taken' },
+          { column: 'aesthetic_iaa', label: 'Aesthetic IAA' },
+          { column: 'aesthetic_v25', label: 'Aesthetic v2.5' },
+          { column: 'qrealign_score', label: 'Q-ReAlign' },
+          { column: 'deqa_score', label: 'DeQA' },
+          { column: 'liqe_score', label: 'LIQE' },
+          { column: 'face_quality_iqa', label: 'Face IQA' },
           { column: 'future_metric', label: 'Future metric' },
         ] },
       });
@@ -795,12 +801,20 @@ describe('App', () => {
       const selects = fixture.debugElement.queryAll(By.directive(MatSelect)).map(el => el.componentInstance as MatSelect);
       for (const select of selects) {
         const options = select.options.toArray();
-        expect(options.map(option => option.value)).toEqual(['relevance', 'learned_score', 'date_taken', 'future_metric']);
+        expect(options.map(option => option.value)).toEqual(['relevance', 'learned_score', 'date_taken', 'aesthetic_iaa', 'aesthetic_v25', 'qrealign_score', 'deqa_score', 'liqe_score', 'face_quality_iqa', 'future_metric']);
         expect(options.map(option => option._getHostElement().querySelector('mat-icon')?.textContent?.trim()))
-          .toEqual(['search', 'psychology', 'event', 'sort']);
+          .toEqual(['search', 'psychology', 'event', 'IAA', '2.5', 'Q-R', 'DeQA', 'LIQE', 'IQA', 'sort']);
         expect(options.map(option => option.viewValue)).toEqual([
-          I18N.gallery.sort_relevance, I18N.gallery.sort_my_taste, 'sort_options.date_taken', 'sort_options.future_metric',
+          I18N.gallery.sort_relevance, I18N.gallery.sort_my_taste, 'sort_options.date_taken',
+          'sort_options.aesthetic_iaa', 'sort_options.aesthetic_v25', 'sort_options.qrealign_score',
+          'sort_options.deqa_score', 'sort_options.liqe_score', 'sort_options.face_quality_iqa', 'sort_options.future_metric',
         ]);
+        for (const option of options) {
+          const icon = option._getHostElement().querySelector('mat-icon')!;
+          expect(icon.getAttribute('aria-hidden')).toBe('true');
+          expect(icon.classList.contains('!font-sans')).toBe(['IAA', '2.5', 'Q-R', 'DeQA', 'LIQE', 'IQA'].includes(icon.textContent?.trim() ?? ''));
+          expect(option.viewValue).not.toBe(icon.textContent?.trim());
+        }
         options[2]._getHostElement().click();
         expect(store.setUserSort).toHaveBeenLastCalledWith('date_taken');
       }
