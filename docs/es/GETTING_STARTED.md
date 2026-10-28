@@ -73,11 +73,11 @@ navegador:
   Multiusuario: necesitas el rol de superadministrador.
 - Añade la carpeta a `viewer.scan_directories` para que el lanzador tenga algo que elegir.
 
-Un botón **Escanear fotos nuevas** aparece entonces en la cabecera, justo después del selector
-**Ordenar** (en la barra inferior en pantallas pequeñas), no solo en la galería vacía. Reglas completas: [Activador de escaneo](VIEWER.md#activador-de-escaneo). El primer
+Un botón **Escanear fotos nuevas** aparece entonces al final de la cabecera, justo antes del menú
+de cuenta (en el extremo derecho de la barra inferior en pantallas pequeñas), no solo en la galería vacía. Reglas completas: [Activador de escaneo](VIEWER.md#activador-de-escaneo). El primer
 escaneo descarga los modelos de IA una sola vez ([Primera ejecución](INSTALLATION.md#primera-ejecución-qué-esperar)).
 
-![Botón de escaneo en la cabecera, tras el selector Ordenar](../screenshots/getting-started-scan-button.jpg)
+![Botón de escaneo al final de la cabecera](../screenshots/getting-started-scan-button.jpg)
 
 ### Paso 2: Encontrar duplicados, ráfagas y fotos parecidas
 

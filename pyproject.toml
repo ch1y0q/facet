@@ -198,6 +198,7 @@ filterwarnings = [
     "ignore::DeprecationWarning:pkg_resources",
 ]
 markers = [
+    "cross_file: checks a client, i18n or docs file against the server; the only Python tests a pull request touching nothing else runs",
     "raw_brand_samples: real-file coverage for non-Canon RAW brands (decodes 20-30MB fixtures; skips cleanly when fixtures are absent)",
 ]
 

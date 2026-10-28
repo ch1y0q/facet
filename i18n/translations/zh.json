@@ -459,6 +459,7 @@
     "exposure": "曝光",
     "composition": "构图",
     "subject_saliency": "主体显著性",
+    "content": "内容",
     "camera": "相机"
   },
   "sort_options": {
@@ -1041,6 +1042,11 @@
       "restore": "恢复筛选条件",
       "showing_all": "正在显示所有照片，包括闭眼照片、连拍照片和重复照片"
     },
+    "filters_notice": {
+      "message": "已启用 {count} 个筛选",
+      "message_plural": "已启用 {count} 个筛选",
+      "reset": "重置全部筛选"
+    },
     "render_migration": {
       "message": "仍有 {n} 张 RAW 照片显示上一次渲染的缩略图。",
       "command_hint": "运行 {command} 可一次性刷新全部缩略图。"
@@ -1055,6 +1061,7 @@
     },
     "all_photos": "全部照片",
     "sort": "排序方式",
+    "sort_current": "排序方式：{label}",
     "sort_aggregate": "综合评分",
     "sort_aesthetic": "美观度",
     "sort_date": "日期",

@@ -47,6 +47,9 @@ import pytest
 from api.config import VIEWER_CONFIG
 from api.db_helpers import PHOTO_BASE_COLS, PHOTO_OPTIONAL_COLS
 
+# Reads client, i18n or docs files: runs on every pull request (see ci.yml).
+pytestmark = pytest.mark.cross_file
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLIENT_SRC = REPO_ROOT / 'client' / 'src' / 'app'
 

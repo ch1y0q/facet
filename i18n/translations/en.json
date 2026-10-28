@@ -459,6 +459,7 @@
     "exposure": "Exposure",
     "composition": "Composition",
     "subject_saliency": "Subject Saliency",
+    "content": "Content",
     "camera": "Camera"
   },
   "sort_options": {
@@ -1041,6 +1042,11 @@
       "restore": "Restore filters",
       "showing_all": "Showing every photo — blinks, bursts and duplicates included"
     },
+    "filters_notice": {
+      "message": "{count} filter active",
+      "message_plural": "{count} filters active",
+      "reset": "Reset all filters"
+    },
     "render_migration": {
       "message": "{n} RAW photos still show a thumbnail from the previous rendering.",
       "command_hint": "Run {command} to refresh them all at once."
@@ -1055,6 +1061,7 @@
     },
     "all_photos": "All Photos",
     "sort": "Sort by",
+    "sort_current": "Sort by: {label}",
     "sort_aggregate": "Aggregate",
     "sort_aesthetic": "Aesthetic",
     "sort_date": "Date",

@@ -9,9 +9,12 @@ All notable changes to Facet are documented in this file.
 - **Manual photo stacks.** Group explicit photos behind a chosen cover, reorder or change membership, browse permitted members directly in the viewer with an ordered thumbnail strip, previous/next buttons and position counter, manage the stack separately and Undo organization changes without changing originals or review decisions. Gallery counts and whole-view selections include folded matching photos; stacks remain owner-private and survive rescans and relinking. Local assistant tools use the same permission and revision checks. A stack's cover carries a member-count badge on the card's bottom row (`viewer.badges.stack`) and an "Open photo stack" button in Customize card buttons.
 - **Previewed Immich stack import and push.** Local CLI plans require a reviewed digest before apply, create only fully mapped conflict-free groups, adopt exact matches and reconcile uncertain sends before retry. Existing stacks are never overwritten; no automatic sync or unstack propagation is added.
 - **Scores placed in the library.** Photo detail, the gallery side panel and the card score badge show where each score sits in the whole library: a sparkline of its distribution with this photo's bar lit, and "Top X% of the library" with the library range on hover or focus. Scores with no better end (ISO, aperture, face count…) show the range only.
+- **Reset all filters from a notice.** While any gallery filter is on, a card in the floating notice stack (bottom right, beside the hidden-photos card) says how many are active and offers **Reset all filters**, the same reset as the sidebar button. Its × hides it for the tab until the set of active filters changes; it is not shown in an album view.
 
 ### Changed
 
+- **Gallery sort is an icon button with a menu.** The desktop and mobile sort selects become a button showing the current sort's icon (tooltip `Sort by: <current sort>`), opening a grouped menu where every sort has a decorative icon or short model label, including relevance and My Taste, and the current one is checked. The direction toggle sits right beside it, followed by the filters button, and on small screens the scan button moves to the far right of the bottom bar.
+- **The tooltip-mode menu shows the current choice.** The tooltip-mode and side-panel activation menus tick the mode in force, the way the sort menu does, and screen readers announce them as radio choices.
 - **The side panel is the default tooltip mode.** It now uses photo detail's layout, with the metrics in the same icon tabs (EXIF, Quality, Composition, Technical, Histogram), and both remember the same open tab. The **Hover** and **Click** bubbles are reduced to a glance: category, aggregate and its rank, four key scores and one EXIF line.
 
 ### Fixed
@@ -19,6 +22,7 @@ All notable changes to Facet are documented in this file.
 - **Keep keyboard arrows inside the visible photo stack.** Left/Right now follow the same members and boundaries as the stack buttons even when an exact photo list is active, without adding photos to that list. Handled arrow keys no longer trigger default browser movement.
 - **Refresh stack browsing after a history restore.** Reload membership for the open photo and discard older replies so restored or dissolved stacks do not leave stale navigation controls.
 - **The side panel no longer flickers open and closed.** A filter drawer animation event arriving after the drawer had already changed state flipped it back, in a loop.
+- **The Content sort group heading is translated.** It showed the raw key `sort_groups.content` in every language.
 
 ## [1.25.0] "Hyperfocale" — 2026-10-27
 

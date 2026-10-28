@@ -20,6 +20,9 @@ from api.agent.tools_write import WRITE_TOOL_LEVELS
 from api.agent.ui_tools import UI_TOOLS, render_client_json
 from tests import test_agent_write
 
+# Reads client, i18n or docs files: runs on every pull request (see ci.yml).
+pytestmark = pytest.mark.cross_file
+
 DOCS = Path(__file__).resolve().parent.parent / "docs"
 ROUTES = {**ROUTE_ALLOWLIST, **CULLING_ROUTES}
 LEVELS = ("readonly", "user", "edition")
