@@ -4,21 +4,6 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
-### Added
-
-- **Suggested photo stacks.** Review existing duplicate and burst groups within the current gallery filters one at a time: the focused frame is shown large and becomes the cover, `S` stacks, `X` skips, with progress and Undo. Skips are remembered per account until the group's photos change. Suggestions preserve photo decisions and files.
-- **Stack from the darkroom.** In `/culling`, `S` (or the header button) stacks the open group with the focused frame as cover, without touching culling decisions.
-- **Immich diagnostics in the user menu.** Administrators can inspect a bounded path-mapping sample and explicitly test read-only connectivity without exposing API keys or modifying remote photos.
-- **Refresh selected photo previews and metadata.** Rebuild previews and read available source EXIF without rerunning AI or writing originals. Manual annotations stay intact; per-photo cache versions refresh gallery and detail images, and failed photos can be retried separately.
-- **The gallery notice stack folds itself away.** After six seconds without interaction the bottom-right cards collapse into a small count pill so they stop covering the grid; hovering the stack, a new or dismissed card, or a click on the pill unfolds it again with a fresh window. Keyboard focus on a card holds it open, a pill reached from the keyboard hands focus to the first card, and the countdown waits while the mobile filter drawer covers the stack. Returning from a photo restarts the countdown; nothing is persisted, the per-tab × dismissals work exactly as before, and the scroll-to-top button stays outside the collapse.
-- **The junk sweep shows its size.** The toolbar displays the candidate count for the current kind filter, counting down live as photos are kept or rejected, and a kind filter that comes up empty points back to **All kinds** instead of suggesting a rescan.
-
-### Fixed
-
-- **Suggested stack availability.** Similar Photos and semantic-search views no longer offer suggestions that their search scope cannot represent.
-- **TOPIQ scores 3:2 photos on Apple Silicon** (#377). On MPS, every photo whose bounded inference size had a side that was not a multiple of 32 (a 3:2 frame is scored at 1024×682) failed the quality pass, so a scan of a typical camera's JPEGs stored nothing. On MPS, TOPIQ's input is now centre-cropped to multiples of 32 (at most 31 px per axis); the other PyIQA models, and every model on CPU and CUDA, see the same pixels as before.
-- **Screen readers hear location search results and the culling skeleton** (#302). In the location editor, Enter in the address field runs the online search, the field is described by the privacy notice, the results list is named and the number of places found is announced. The culling page's loading skeleton announces "Loading" as text rather than an unread label.
-
 ## [1.26.0] "Histogramme" — 2026-10-28
 
 ### Added
@@ -31,6 +16,13 @@ All notable changes to Facet are documented in this file.
 - **The running version in the user menu**, plus the `FACET_BUILD` build line when an image is built with it.
 - **Reset all filters from a notice.** While any gallery filter is on, a card in the floating notice stack (bottom right, beside the hidden-photos card) says how many are active and offers **Reset all filters**, the same reset as the sidebar button. Its × hides it for the tab until the set of active filters changes; it is not shown in an album view.
 
+- **Suggested photo stacks.** Editors review existing duplicate and burst groups within the current gallery filters one at a time: the focused frame is shown large and becomes the cover, `S` stacks, `X` skips, with progress and Undo. Skips are remembered per account until the group's photos change. The preview zooms with the wheel or a pinch and pans by dragging, as in photo detail; editing a suggestion's members down to a single photo offers **Skip this stack**. Suggestions preserve photo decisions and files.
+- **Stack from the darkroom.** In `/culling`, `S` (or the header button) stacks the open group with the focused frame as cover, without touching culling decisions.
+- **Immich diagnostics in the user menu.** Administrators can inspect a bounded path-mapping sample and explicitly test read-only connectivity without exposing API keys or modifying remote photos.
+- **Refresh selected photo previews and metadata.** Rebuild previews and read available source EXIF without rerunning AI or writing originals. Manual annotations stay intact; per-photo cache versions refresh gallery and detail images, and failed photos can be retried separately.
+- **The gallery notice stack folds itself away.** After six seconds without interaction the bottom-right cards collapse into a small count pill so they stop covering the grid; hovering the stack, a new or dismissed card, or a click on the pill unfolds it again with a fresh window. Keyboard focus on a card holds it open, a pill reached from the keyboard hands focus to the first card, and the countdown waits while the mobile filter drawer covers the stack. Returning from a photo restarts the countdown; nothing is persisted, the per-tab × dismissals work exactly as before, and the scroll-to-top button stays outside the collapse.
+- **The junk sweep shows its size.** The toolbar displays the candidate count for the current kind filter, counting down live as photos are kept or rejected, and a kind filter that comes up empty points back to **All kinds** instead of suggesting a rescan.
+
 ### Changed
 
 - **Gallery sort is an icon button with a menu.** The desktop and mobile sort selects become a button showing the current sort's icon (tooltip `Sort by: <current sort>`), opening a grouped menu where every sort has a decorative icon or short model label, including relevance and My Taste, and the current one is checked. The direction toggle sits right beside it, followed by the filters button, and on small screens the scan button moves to the far right of the bottom bar.
@@ -42,6 +34,9 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Suggested stack availability.** Similar Photos and semantic-search views no longer offer suggestions that their search scope cannot represent.
+- **TOPIQ scores 3:2 photos on Apple Silicon** (#377). On MPS, every photo whose bounded inference size had a side that was not a multiple of 32 (a 3:2 frame is scored at 1024×682) failed the quality pass, so a scan of a typical camera's JPEGs stored nothing. On MPS, TOPIQ's input is now centre-cropped to multiples of 32 (at most 31 px per axis); the other PyIQA models, and every model on CPU and CUDA, see the same pixels as before.
+- **Screen readers hear location search results and the culling skeleton** (#302). In the location editor, Enter in the address field runs the online search, the field is described by the privacy notice, the results list is named and the number of places found is announced. The culling page's loading skeleton announces "Loading" as text rather than an unread label.
 - **Keep keyboard arrows inside the visible photo stack.** Left/Right now follow the same members and boundaries as the stack buttons even when an exact photo list is active, without adding photos to that list. Handled arrow keys no longer trigger default browser movement.
 - **Refresh stack browsing after a history restore.** Reload membership for the open photo and discard older replies so restored or dissolved stacks do not leave stale navigation controls.
 - **The side panel no longer flickers open and closed.** A filter drawer animation event arriving after the drawer had already changed state flipped it back, in a loop.
