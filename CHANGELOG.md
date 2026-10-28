@@ -4,6 +4,8 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+## [1.26.0] "Histogramme" — 2026-10-28
+
 ### Added
 
 - **Manual photo stacks.** Group explicit photos behind a chosen cover, reorder or change membership, browse permitted members directly in the viewer with an ordered thumbnail strip, previous/next buttons and position counter, manage the stack separately and Undo organization changes without changing originals or review decisions. Gallery counts and whole-view selections include folded matching photos; stacks remain owner-private and survive rescans and relinking. Local assistant tools use the same permission and revision checks. A stack's cover carries a member-count badge on the card's bottom row (`viewer.badges.stack`) and an "Open photo stack" button in Customize card buttons.
