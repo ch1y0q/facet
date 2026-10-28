@@ -128,7 +128,7 @@ class ViewerConfigResponse(BaseModel):
     edition_enabled: bool
     edition_authenticated: bool
     render_migration: RenderMigrationStatus
-    version: str
+    version: Optional[str] = None
     build: Optional[str] = None
 
 

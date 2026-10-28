@@ -1850,13 +1850,16 @@ def api_config(user: Optional[CurrentUser] = Depends(get_optional_user)):
         'search_threshold_default': search_threshold_default(),
         'place_search_enabled': bool(place_search_endpoint()),
         'translation_target_language': _FULL_CONFIG.get('translation', {}).get('target_language', ''),
-        'version': current_version(),
-        'build': build_label() or None,
         'is_multi_user': is_multi_user_enabled(),
         'edition_enabled': is_edition_enabled(),
         'edition_authenticated': is_edition_authenticated(user),
         'render_migration': _render_migration_status(),
     }
+    # The exact release and build tell a visitor which known issues apply, so a
+    # locked install names them only to a caller who can already read the library.
+    if user is not None and user.is_authenticated:
+        config['version'] = current_version()
+        config['build'] = build_label() or None
     try:
         config['face_merge_threshold'] = server_scoring_config().get_face_clustering_settings()['merge_threshold']
     except ValueError:

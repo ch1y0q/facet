@@ -8988,7 +8988,7 @@ export interface components {
              */
             unavailable_metrics?: string[];
             /** Version */
-            version: string;
+            version?: string | null;
         };
         /** WeightSnapshotItem */
         WeightSnapshotItem: {
