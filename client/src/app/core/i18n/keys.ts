@@ -87,6 +87,7 @@ export const I18N = {
     theme: "ui.theme",
     dark_mode: "ui.dark_mode",
     light_mode: "ui.light_mode",
+    version: "ui.version",
   },
   dialog: {
     cancel: "dialog.cancel",

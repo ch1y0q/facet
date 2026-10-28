@@ -333,6 +333,15 @@
             <mat-icon>help_outline</mat-icon>
             {{ I18N.nav.help | translate }}
           </button>
+          @if (store.config()?.version; as version) {
+            <mat-divider />
+            <div class="px-4 py-2 text-xs opacity-60">
+              {{ I18N.ui.version | translate: { version: version } }}
+              @if (store.config()?.build; as build) {
+                <div class="font-mono break-all">{{ build }}</div>
+              }
+            </div>
+          }
           @if (auth.isMultiUser() || auth.loginPasswordRequired()) {
             <mat-divider />
             <button mat-menu-item (click)="logout()">

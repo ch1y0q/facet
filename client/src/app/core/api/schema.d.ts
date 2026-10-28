@@ -8911,6 +8911,8 @@ export interface components {
             badges: {
                 [key: string]: unknown;
             };
+            /** Build */
+            build?: string | null;
             /** Clipping */
             clipping: {
                 [key: string]: unknown;
@@ -8989,6 +8991,8 @@ export interface components {
              * @default []
              */
             unavailable_metrics?: string[];
+            /** Version */
+            version?: string | null;
         };
         /** WeightSnapshotItem */
         WeightSnapshotItem: {

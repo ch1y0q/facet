@@ -1079,6 +1079,8 @@ Tells whoever administers the install when a newer Facet has been released. Not 
 thing as the browser's "a new version is available — Reload", which swaps the page onto a
 bundle it has already downloaded; this one is about a release nobody has installed yet.
 
+The running version is always shown at the bottom of the user menu, for everyone who can open the viewer. An image built with `--build-arg FACET_BUILD=<branch>@<commit>` also shows that line, so two installs of the same release built from different branches can be told apart (`/api/config` carries both as `version` and `build`, but only to a caller who can read the library: on a password-protected install a visitor who has not signed in gets neither).
+
 Deliberately narrow. The check runs on the server and its result is cached, so an install
 asks GitHub at most once per `interval_days` however many people are looking at the viewer.
 The request carries nothing but itself — no token, no identifiers, nothing about the

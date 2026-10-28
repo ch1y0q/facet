@@ -72,7 +72,8 @@
     "switch_language": "切换语言",
     "theme": "主题",
     "dark_mode": "深色模式",
-    "light_mode": "浅色模式"
+    "light_mode": "浅色模式",
+    "version": "Facet {version}"
   },
   "dialog": {
     "cancel": "取消",

@@ -72,7 +72,8 @@
     "switch_language": "Cambia lingua",
     "theme": "Tema",
     "dark_mode": "Modalità scura",
-    "light_mode": "Modalità chiara"
+    "light_mode": "Modalità chiara",
+    "version": "Facet {version}"
   },
   "dialog": {
     "cancel": "Annulla",
