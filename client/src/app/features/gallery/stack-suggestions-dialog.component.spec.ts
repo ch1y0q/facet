@@ -43,7 +43,7 @@ describe('suggested stack review through HTTP and router', () => {
     fixture = TestBed.createComponent(StackSuggestionsDialogComponent); fixture.detectChanges();
   });
   afterEach(() => {
-    try { fixture?.destroy(); http?.verify(); } finally { TestBed.resetTestingModule(); }
+    try { fixture?.destroy(); http?.verify(); } finally { TestBed.resetTestingModule(); vi.restoreAllMocks(); }
   });
 
   async function loaded() {
@@ -62,6 +62,33 @@ describe('suggested stack review through HTTP and router', () => {
     const reload = fixture.componentInstance.load(); await loaded(); await reload;
     expect(fixture.componentInstance.candidates()).toEqual([]);
     expect(open).not.toHaveBeenCalled();
+  });
+
+  it('refreshes only suggestion image URLs on successful load/reopen and keeps them stable on rerender', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(42);
+    await loaded();
+    const images = () => [...fixture.nativeElement.querySelectorAll('img')]
+      .map((img: HTMLImageElement) => img.getAttribute('src')!);
+    const first = images();
+    expect(first).toHaveLength(2);
+    for (const src of first) {
+      const url = new URL(src, 'http://facet.test');
+      expect(url.searchParams.get('ngsw-bypass')).toBeNull();
+      expect(url.searchParams.get('preview')).toBe(fixture.componentInstance.previewToken());
+    }
+    fixture.detectChanges();
+    expect(images()).toEqual(first);
+    const reload = fixture.componentInstance.load(); await loaded(); await reload;
+    const second = images();
+    expect(second).not.toEqual(first);
+    expect(second.map(src => new URL(src, 'http://facet.test').searchParams.get('path')))
+      .toEqual(first.map(src => new URL(src, 'http://facet.test').searchParams.get('path')));
+    fixture.destroy();
+    fixture = TestBed.createComponent(StackSuggestionsDialogComponent); fixture.detectChanges();
+    await loaded();
+    expect(images()).not.toEqual(second);
+    http.expectNone('/api/photos/by_paths');
+    http.expectNone('/api/stacks');
   });
 
   it('opens the existing editor with exact reviewed membership and recommended cover', async () => {

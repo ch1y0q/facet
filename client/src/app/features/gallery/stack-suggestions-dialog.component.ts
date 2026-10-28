@@ -18,6 +18,10 @@ import { StackDialogComponent } from './stack-dialog.component';
 
 type Suggestion = components['schemas']['StackSuggestion'];
 
+// Each successful load chooses fresh preview URLs only for this dialog.
+let previewSequence = 0;
+function nextPreviewToken(): string { return `${Date.now().toString(36)}-${++previewSequence}`; }
+
 @Component({
   selector: 'app-stack-suggestions-dialog',
   imports: [MatDialogModule, MatButtonModule, TranslatePipe, ThumbnailUrlPipe, FilenamePipe, PluralKeyPipe],
@@ -37,7 +41,7 @@ type Suggestion = components['schemas']['StackSuggestion'];
           <p>{{ candidate.paths.length | pluralKey:I18N.stacks.member_count:I18N.stacks.member_count_plural | translate:{ count: candidate.paths.length } }}</p>
           <div class="flex gap-2 overflow-x-auto my-2">
             @for (path of candidate.paths; track path) {
-              <img [src]="path | thumbnailUrl:160" [alt]="path | filename" loading="lazy" decoding="async" class="w-20 h-20 object-contain shrink-0" />
+              <img [src]="path | thumbnailUrl:160:previewToken()" [alt]="path | filename" loading="lazy" decoding="async" class="w-20 h-20 object-contain shrink-0" />
             }
           </div>
           <button mat-flat-button (click)="review(candidate)" [disabled]="!auth.isEdition() || reviewing()">{{ I18N.stacks.suggestion_review | translate }}</button>
@@ -69,6 +73,7 @@ export class StackSuggestionsDialogComponent {
   private sequence = 0;
   private readonly dismissed = new Set<string>();
   readonly candidates = signal<Suggestion[]>([]);
+  readonly previewToken = signal('');
   readonly loading = signal(false);
   readonly failed = signal(false);
   readonly reviewing = signal(false);
@@ -101,8 +106,10 @@ export class StackSuggestionsDialogComponent {
     try {
       const result = await firstValueFrom(this.api.post<components['schemas']['StackSuggestionsResponse']>(
         '/stacks/suggestions', { filters: this.data.filters }).pipe(takeUntilDestroyed(this.destroyRef)));
-      if (this.current() && sequence === this.sequence)
+      if (this.current() && sequence === this.sequence) {
+        this.previewToken.set(nextPreviewToken());
         this.candidates.set(result.suggestions.filter(candidate => !this.dismissed.has(candidate.key)));
+      }
     } catch {
       if (this.current() && sequence === this.sequence) this.failed.set(true);
     } finally {
