@@ -12,13 +12,14 @@ permissions:
 jobs:
   changes:
     name: Detect changed areas
-    # Only a pull request that changes a .py file runs the full Python suites
-    # (~45 min on Linux, plus Windows). Any other pull request still runs the
+    # A pull request runs the full Python suites (~45 min on Linux, plus
+    # Windows) unless it changes only client/, i18n/, docs/, .claude/, the
+    # READMEs or the CHANGELOG. Such a pull request still runs the
     # Python tests that check NON-Python files against the server (client
     # interfaces and schema.d.ts, the agent UI schema and smart-album fixture,
     # keys.ts and the i18n bundles, the AGENTS / THIRD_PARTY_MODELS docs) and
     # the gen:api staleness check: about a minute. The Angular tests run only
-    # when client/ or the i18n bundles (a spec imports them) change; an API
+    # when client/, the i18n bundles (a spec imports them) or this workflow change; an API
     # change reaches them through the regenerated client/.../schema.d.ts.
     # Pushes to master always run everything.
     runs-on: ubuntu-latest
@@ -45,13 +46,17 @@ jobs:
           fi
           changed=$(git diff --name-only HEAD^1 HEAD)
           echo "$changed"
-          if echo "$changed" | grep -qE '\.py$'; then
+          # An allowlist, not "a .py changed": the full suite also reads
+          # config/scoring_config.default.json, the Lua plugin, tests/fixtures,
+          # install.sh, the requirements and pyproject, so any path outside the
+          # areas below runs it.
+          if echo "$changed" | grep -qvE '^(client/|i18n/|docs/|\.claude/|README[^/]*\.md$|CHANGELOG\.md$)'; then
             echo "scope=full" >> "$GITHUB_OUTPUT"
           else
-            echo "No .py file changed: running only the cross-file Python checks."
+            echo "Only client, i18n and docs changed: running only the cross-file Python checks."
             echo "scope=cross-file" >> "$GITHUB_OUTPUT"
           fi
-          if echo "$changed" | grep -qE '^(client|i18n)/'; then
+          if echo "$changed" | grep -qE '^(client|i18n)/|^\.github/workflows/ci\.yml$'; then
             echo "client=true" >> "$GITHUB_OUTPUT"
           else
             echo "Nothing under client/ or i18n/ changed: skipping the Angular tests."
