@@ -26,7 +26,12 @@ export interface StackDialogData {
   activePath?: string | null;
   /** Explicit selection only. A whole-view selection must never be materialized implicitly. */
   selectedPaths?: string[];
+  /** Opened from a stack suggestion: too few members left offers to skip the suggestion instead. */
+  skippable?: boolean;
 }
+
+/** Editor result asking the suggestion review to skip the group it was opened on. */
+export const SKIP_SUGGESTION = 'skip';
 
 const MUTATION_FAILURE: Record<number, 'conflict' | 'unavailable'> = { 409: 'conflict', 404: 'unavailable', 403: 'unavailable' };
 
@@ -83,6 +88,9 @@ function captureDateKey(date: string | null | undefined): string {
     <mat-dialog-actions align="end">
       <button mat-button (click)="close()" [disabled]="saving()">{{ I18N.dialog.close | translate }}</button>
       @if (ready()) {
+        @if (skippable()) {
+          <button mat-button (click)="skipSuggestion()" [disabled]="saving()">{{ I18N.stacks.suggestion_skip_group | translate }}</button>
+        }
         @if (stack()) {
           <button mat-button (click)="selectMembers()" [disabled]="saving()">{{ I18N.stacks.select_all | translate:{ count: memberCount() } }}</button>
         }
@@ -119,6 +127,8 @@ export class StackDialogComponent implements OnInit {
   readonly editable = computed(() => this.auth.isEdition() && (!this.data.stackId || this.stack()?.editable === true));
   readonly memberCount = computed(() => this.stack()?.members.length ?? this.paths().length);
   readonly additions = computed(() => (this.data.selectedPaths ?? []).filter(path => !this.paths().includes(path)));
+  readonly skippable = computed(() => this.data.skippable === true && this.editable() && !this.stack()
+    && this.paths().length < STACK_MIN_MEMBERS);
   readonly valid = computed(() => this.paths().length <= STACK_MAX_MEMBERS && (this.stack() !== null || this.paths().length >= STACK_MIN_MEMBERS));
   readonly dirty = computed(() => {
     const previous = this.stack();
@@ -142,6 +152,7 @@ export class StackDialogComponent implements OnInit {
     this.closing = true; this.paths.set([]); this.stack.set(null); this.ready.set(false); this.dialog.close();
   }
   close(): void { if (!this.saving()) this.dialog.close(); }
+  skipSuggestion(): void { if (this.skippable() && !this.saving()) this.dialog.close(SKIP_SUGGESTION); }
 
   async load(): Promise<void> {
     if (!this.current() || this.saving()) return;

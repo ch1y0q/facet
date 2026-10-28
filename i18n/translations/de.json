@@ -2983,6 +2983,7 @@
     "suggestion_duplicate": "Duplikate",
     "suggestion_edit_members": "Mitglieder bearbeiten",
     "suggestion_skip": "Überspringen",
+    "suggestion_skip_group": "Diesen Stapel überspringen",
     "suggestions_error": "Vorschläge konnten nicht geladen werden. Bitte erneut versuchen.",
     "suggestions_reload": "Vorschläge neu laden",
     "previous": "Vorheriges Stapelfoto",

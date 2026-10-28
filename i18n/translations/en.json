@@ -2983,6 +2983,7 @@
     "suggestion_duplicate": "Duplicates",
     "suggestion_edit_members": "Edit members",
     "suggestion_skip": "Skip",
+    "suggestion_skip_group": "Skip this stack",
     "suggestions_error": "Could not load suggestions. Try again.",
     "suggestions_reload": "Reload suggestions",
     "previous": "Previous stack photo",

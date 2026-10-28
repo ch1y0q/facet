@@ -2983,6 +2983,7 @@
     "suggestion_duplicate": "Duplicados",
     "suggestion_edit_members": "Editar miembros",
     "suggestion_skip": "Omitir",
+    "suggestion_skip_group": "Omitir esta pila",
     "suggestions_error": "No se pudieron cargar las sugerencias. Inténtalo de nuevo.",
     "suggestions_reload": "Recargar sugerencias",
     "previous": "Foto anterior de la pila",

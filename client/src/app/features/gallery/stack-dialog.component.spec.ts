@@ -10,7 +10,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { UndoService } from '../../core/services/undo.service';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { GalleryStore } from './gallery.store';
-import { StackDialogComponent, StackDialogData } from './stack-dialog.component';
+import { SKIP_SUGGESTION, StackDialogComponent, StackDialogData } from './stack-dialog.component';
 
 const stack = { id: 's1', revision: 7, cover_path: '/a.jpg', editable: true,
   members: [{ path: '/b.jpg', position: 0 }, { path: '/a.jpg', position: 1 }] };
@@ -115,6 +115,27 @@ describe('StackDialog HTTP workflow', () => {
     const req = http.expectOne('/api/stacks/s1'); expect(req.request.method).toBe('PUT');
     req.flush({ stack: null, undo: { entry_id: 2 } }); await saving; expect(close).toHaveBeenCalled();
     http.expectNone(request => /delete|reject/.test(request.url));
+  });
+  it('offers to skip a suggestion only once its draft is too small to create', async () => {
+    const draft = async (data: StackDialogData) => {
+      create(data);
+      const loading = component.load();
+      http.expectOne('/api/photos/by_paths').flush({ photos: [
+        { path: '/a.jpg', date_taken: '2025-01-01', filename: 'a.jpg' },
+        { path: '/b.jpg', date_taken: '2025-01-02', filename: 'b.jpg' },
+      ], missing: [], total: 2 }); await loading;
+    };
+    await draft({ paths: ['/a.jpg', '/b.jpg'], activePath: '/a.jpg', skippable: true });
+    expect(component.skippable()).toBe(false);
+    component.remove('/b.jpg');
+    expect(component.skippable()).toBe(true);
+    component.skipSuggestion();
+    expect(close).toHaveBeenCalledWith(SKIP_SUGGESTION);
+    http.expectNone('/api/stacks');
+    TestBed.resetTestingModule();
+    await draft({ paths: ['/a.jpg', '/b.jpg'], activePath: '/a.jpg' });
+    component.remove('/b.jpg');
+    expect(component.skippable()).toBe(false);
   });
   it('can save a draft with no members to dissolve without an invalid empty cover', async () => {
     create(); await load(); component.remove('/a.jpg'); component.remove('/b.jpg');

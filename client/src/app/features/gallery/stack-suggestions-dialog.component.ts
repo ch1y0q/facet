@@ -17,9 +17,10 @@ import { FilenamePipe } from '../../shared/pipes/filename.pipe';
 import { PluralKeyPipe } from '../../shared/pipes/plural-key.pipe';
 import { RENDERED_THUMBNAIL_EDGE, ThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
 import { isTypingContext } from '../../shared/utils/keyboard';
+import { ZoomPanDirective } from '../../shared/directives/zoom-pan.directive';
 import { GalleryStore } from './gallery.store';
 import { StackActionsService } from './stack-actions.service';
-import { StackDialogComponent } from './stack-dialog.component';
+import { SKIP_SUGGESTION, StackDialogComponent } from './stack-dialog.component';
 
 type Suggestion = components['schemas']['StackSuggestion'];
 
@@ -31,7 +32,7 @@ function nextPreviewToken(): string { return `${Date.now().toString(36)}-${++pre
 @Component({
   selector: 'app-stack-suggestions-dialog',
   imports: [MatDialogModule, MatButtonModule, MatIconModule, MatProgressBarModule,
-    TranslatePipe, ThumbnailUrlPipe, FilenamePipe, PluralKeyPipe],
+    TranslatePipe, ThumbnailUrlPipe, FilenamePipe, PluralKeyPipe, ZoomPanDirective],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'flex flex-col h-full' },
   template: `
@@ -53,9 +54,11 @@ function nextPreviewToken(): string { return `${Date.now().toString(36)}-${++pre
         <mat-progress-bar mode="determinate" aria-hidden="true"
                           [value]="100 * handled() / total()" />
         @if (focusedPath(); as path) {
-          <div class="relative flex-1 min-h-[40vh] bg-[var(--mat-sys-surface-container)] rounded">
+          <div [appZoomPan]="path" #zoom="zoomPan"
+               class="relative flex-1 min-h-[40vh] bg-[var(--mat-sys-surface-container)] rounded overflow-hidden cursor-grab">
             <img [src]="path | thumbnailUrl:renderedEdge:previewToken()" [alt]="path | filename"
-                 decoding="async" class="absolute inset-0 w-full h-full object-contain" />
+                 decoding="async" class="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+                 [style.transform]="zoom.transform()" />
             <span class="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/70 text-white text-xs">
               {{ I18N.stacks.cover | translate }} · {{ path | filename }}
             </span>
@@ -239,17 +242,23 @@ export class StackSuggestionsDialogComponent {
     if (!this.current() || !this.auth.isEdition() || this.busy()
       || !this.candidates().includes(candidate)) return;
     this.busy.set(true);
+    let skipped = false;
     try {
       const ref = this.dialogs.open(StackDialogComponent, { width: '900px', maxWidth: '96vw', data: {
-        paths: [...candidate.paths], activePath: this.focusedPath() ?? candidate.cover_path,
+        paths: [...candidate.paths], activePath: this.focusedPath() ?? candidate.cover_path, skippable: true,
       } });
       this.editor = ref;
-      await firstValueFrom(ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef)));
+      skipped = await firstValueFrom(ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef))) === SKIP_SUGGESTION;
     } catch {
       if (this.current()) this.failed.set(true);
     } finally {
       this.editor = null;
-      if (this.current()) { this.busy.set(false); await this.load(); }
+      if (this.current()) {
+        this.busy.set(false);
+        // The whole suggested group is skipped, as the Skip button would, not the members left in the editor.
+        if (skipped) await this.skip();
+        await this.load();
+      }
     }
   }
 }

@@ -20,6 +20,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { StalenessGuardFactory } from '../../core/services/staleness-guard.service';
 import { PhotoActionsService } from '../../core/services/photo-actions.service';
 import { PhotoDetailBase } from '../../shared/directives/photo-detail-base.directive';
+import { ZoomPanDirective } from '../../shared/directives/zoom-pan.directive';
 import { FixedPipe } from '../../shared/pipes/fixed.pipe';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { ThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
@@ -58,6 +59,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
   selector: 'app-photo-detail',
   imports: [
     StackNavigatorComponent,
+    ZoomPanDirective,
     MetricRankComponent,
     PhotoMetricsTabsComponent,
     MatIconModule,
@@ -200,21 +202,13 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
       <!-- Main content: image + info -->
       <div class="flex flex-col lg:flex-row lg:flex-1 lg:min-h-0 lg:overflow-hidden">
         <!-- Image panel -->
-        <div #imagePanel class="shrink-0 lg:h-auto lg:flex-1 flex items-center justify-center bg-black lg:min-h-0 relative overflow-hidden cursor-grab"
-          [class.cursor-grabbing]="isPanning()"
-          (dblclick)="resetZoom()"
-          (pointerdown)="onPanStart($event)"
-          (pointermove)="onPanMove($event)"
-          (pointerup)="onPanEnd($event)"
-          (pointercancel)="onPanEnd($event)"
-          (touchstart)="onTouchStart($event)"
-          (touchend)="onTouchEnd()">
+        <div appZoomPan #zoom="zoomPan" class="shrink-0 lg:h-auto lg:flex-1 flex items-center justify-center bg-black lg:min-h-0 relative overflow-hidden cursor-grab">
           <img
             [src]="p.path | thumbnailUrl:640:p.preview_revision"
             [alt]="p.filename"
             class="w-full lg:max-w-full lg:max-h-full object-contain transition-opacity duration-300 pointer-events-none select-none"
             [class.opacity-0]="fullImageLoaded()"
-            [style.transform]="zoomTransform()"
+            [style.transform]="zoom.transform()"
           />
           <img
             [src]="fullImageUrl()"
@@ -222,7 +216,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
             class="absolute inset-0 w-full h-full object-contain transition-opacity duration-300 pointer-events-none select-none"
             [class.opacity-0]="!fullImageLoaded()"
             (load)="onFullImageLoad()"
-            [style.transform]="zoomTransform()"
+            [style.transform]="zoom.transform()"
           />
         </div>
 
@@ -555,24 +549,6 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   protected readonly explainerCategories = signal<string[]>([]);
   protected readonly explainerTargetCategory = signal<string | null>(null);
 
-  // Zoom & pan state
-  private readonly imagePanel = viewChild<ElementRef<HTMLDivElement>>('imagePanel');
-  protected readonly zoomScale = signal(1);
-  protected readonly panX = signal(0);
-  protected readonly panY = signal(0);
-  protected readonly isPanning = signal(false);
-  protected readonly zoomTransform = computed(() => {
-    const s = this.zoomScale();
-    const x = this.panX();
-    const y = this.panY();
-    return s === 1 && x === 0 && y === 0 ? '' : `scale(${s}) translate(${x}px, ${y}px)`;
-  });
-  private panStartX = 0;
-  private panStartY = 0;
-  private panOriginX = 0;
-  private panOriginY = 0;
-  private lastPinchDist = 0;
-
   // Download options
   private downloadOptionsEffect = effect(() => {
     const p = this.photo();
@@ -664,24 +640,6 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   private readonly locationMapContainer = viewChild<ElementRef<HTMLDivElement>>('locationMapContainer');
   private locationMap: L.Map | null = null;
   private locationMapTimeout: ReturnType<typeof setTimeout> | null = null;
-
-  // Register wheel and touchmove as non-passive so preventDefault() works. Keyed
-  // on imagePanel() (not afterNextRender()) so the async query-param load path
-  // -- where photo() is still null on first paint and #imagePanel doesn't exist
-  // yet -- re-attaches once the @if-gated element actually appears, instead of
-  // permanently missing the listeners.
-  private zoomListenersEffect = effect((onCleanup) => {
-    const el = this.imagePanel()?.nativeElement;
-    if (!el) return;
-    const wheelHandler = (e: WheelEvent) => this.onWheel(e);
-    const touchMoveHandler = (e: TouchEvent) => this.onTouchMove(e);
-    el.addEventListener('wheel', wheelHandler, { passive: false });
-    el.addEventListener('touchmove', touchMoveHandler, { passive: false });
-    onCleanup(() => {
-      el.removeEventListener('wheel', wheelHandler);
-      el.removeEventListener('touchmove', touchMoveHandler);
-    });
-  });
 
   private locationMapEffect = effect(() => {
     const container = this.locationMapContainer();
@@ -1352,84 +1310,5 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     } finally {
       if (!opened) dispose();
     }
-  }
-
-  // Zoom & pan
-
-  private applyZoom(raw: number): void {
-    const clamped = Math.min(5, Math.max(0.5, raw));
-    if (clamped === 1) { this.panX.set(0); this.panY.set(0); }
-    this.zoomScale.set(clamped);
-  }
-
-  protected onWheel(e: WheelEvent): void {
-    e.preventDefault();
-    this.applyZoom(this.zoomScale() + (e.deltaY > 0 ? -0.15 : 0.15));
-  }
-
-  protected resetZoom(): void {
-    this.zoomScale.set(1);
-    this.panX.set(0);
-    this.panY.set(0);
-  }
-
-  protected onPanStart(e: PointerEvent): void {
-    if (this.zoomScale() <= 1) return;
-    this.isPanning.set(true);
-    this.panStartX = e.clientX;
-    this.panStartY = e.clientY;
-    this.panOriginX = this.panX();
-    this.panOriginY = this.panY();
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-  }
-
-  protected onPanMove(e: PointerEvent): void {
-    if (!this.isPanning()) return;
-    const scale = this.zoomScale();
-    const rawX = this.panOriginX + (e.clientX - this.panStartX) / scale;
-    const rawY = this.panOriginY + (e.clientY - this.panStartY) / scale;
-    // Clamp pan so the image can't be dragged entirely off-screen
-    const el = this.imagePanel()?.nativeElement;
-    if (el) {
-      const limit = Math.max(el.clientWidth, el.clientHeight) / (2 * scale);
-      this.panX.set(Math.max(-limit, Math.min(limit, rawX)));
-      this.panY.set(Math.max(-limit, Math.min(limit, rawY)));
-    } else {
-      this.panX.set(rawX);
-      this.panY.set(rawY);
-    }
-  }
-
-  protected onPanEnd(e: PointerEvent): void {
-    if (!this.isPanning()) return;
-    this.isPanning.set(false);
-    (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
-  }
-
-  protected onTouchStart(e: TouchEvent): void {
-    if (e.touches.length === 2) {
-      this.lastPinchDist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY,
-      );
-    }
-  }
-
-  protected onTouchMove(e: TouchEvent): void {
-    if (e.touches.length === 2) {
-      e.preventDefault();
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY,
-      );
-      if (this.lastPinchDist > 0) {
-        this.applyZoom(this.zoomScale() * (dist / this.lastPinchDist));
-      }
-      this.lastPinchDist = dist;
-    }
-  }
-
-  protected onTouchEnd(): void {
-    this.lastPinchDist = 0;
   }
 }

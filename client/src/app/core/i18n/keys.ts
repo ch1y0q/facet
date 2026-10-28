@@ -2997,6 +2997,7 @@ export const I18N = {
     suggestion_duplicate: "stacks.suggestion_duplicate",
     suggestion_edit_members: "stacks.suggestion_edit_members",
     suggestion_skip: "stacks.suggestion_skip",
+    suggestion_skip_group: "stacks.suggestion_skip_group",
     suggestions_error: "stacks.suggestions_error",
     suggestions_reload: "stacks.suggestions_reload",
     previous: "stacks.previous",

@@ -9,7 +9,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { UndoService, UndoableCommand } from '../../core/services/undo.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { GalleryStore } from './gallery.store';
-import { StackDialogComponent } from './stack-dialog.component';
+import { SKIP_SUGGESTION, StackDialogComponent } from './stack-dialog.component';
 import { StackSuggestionsDialogComponent } from './stack-suggestions-dialog.component';
 import { components } from '../../core/api/schema';
 
@@ -25,14 +25,14 @@ describe('suggested stack review through HTTP and router', () => {
   let filters: ReturnType<typeof signal<Record<string, string>>>;
   let close: ReturnType<typeof vi.fn>;
   let open: ReturnType<typeof vi.fn>;
-  let reviewed: Subject<boolean>;
+  let reviewed: Subject<unknown>;
   let register: ReturnType<typeof vi.fn>;
   let keys: Subject<KeyboardEvent>;
   let refresh: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     owner = signal('alice'); edition = signal(true); filters = signal({ path_prefix: '/photos' });
-    const beforeClosed = new Subject<void>(); reviewed = new Subject<boolean>(); register = vi.fn(); keys = new Subject<KeyboardEvent>(); refresh = vi.fn(async () => undefined);
+    const beforeClosed = new Subject<void>(); reviewed = new Subject<unknown>(); register = vi.fn(); keys = new Subject<KeyboardEvent>(); refresh = vi.fn(async () => undefined);
     close = vi.fn(() => beforeClosed.next()); open = vi.fn(() => ({ afterClosed: () => reviewed, close: vi.fn(() => { reviewed.next(false); reviewed.complete(); }) }));
     TestBed.configureTestingModule({
       imports: [StackSuggestionsDialogComponent],
@@ -199,18 +199,45 @@ describe('suggested stack review through HTTP and router', () => {
     http.expectNone('/api/stacks');
   });
 
+  it('zooms the preview and resets the zoom when the cover changes', async () => {
+    await loaded();
+    const preview = () => fixture.nativeElement.querySelector('img[decoding="async"]:not([loading])') as HTMLImageElement;
+    preview().parentElement!.dispatchEvent(new WheelEvent('wheel', { deltaY: -1, cancelable: true }));
+    fixture.detectChanges();
+    expect(preview().style.transform).toBe('scale(1.15) translate(0px, 0px)');
+    fixture.componentInstance.step(1);
+    await settle();
+    expect(preview().style.transform).toBe('');
+  });
+
   it('opens the existing editor with exact membership and the focused frame as cover', async () => {
     await loaded();
     const item = fixture.componentInstance.candidates()[0];
     fixture.componentInstance.step(1);
     const pending = fixture.componentInstance.review(item);
     expect(open).toHaveBeenCalledWith(StackDialogComponent, expect.objectContaining({ data: {
-      paths: ['/a.jpg', '/b.jpg'], activePath: '/a.jpg',
+      paths: ['/a.jpg', '/b.jpg'], activePath: '/a.jpg', skippable: true,
     } }));
     http.expectNone('/api/stacks');
     reviewed.next(false); reviewed.complete();
     await vi.waitFor(() => expect(fixture.componentInstance.busy()).toBe(false));
     await loaded(); await pending;
+  });
+
+  it('skips the whole suggested group when the editor asks to', async () => {
+    await loaded([candidate, second]);
+    const pending = fixture.componentInstance.review(candidate);
+    expect(open).toHaveBeenCalledWith(StackDialogComponent, expect.objectContaining({
+      data: expect.objectContaining({ skippable: true }),
+    }));
+    reviewed.next(SKIP_SUGGESTION); reviewed.complete();
+    const dismiss = await vi.waitFor(() => http.expectOne('/api/stacks/suggestions/dismissals'));
+    expect(dismiss.request.body).toEqual({ kind: 'duplicate', paths: ['/a.jpg', '/b.jpg'] });
+    dismiss.flush(null, { status: 204, statusText: 'No Content' });
+    http.expectNone('/api/stacks');
+    await vi.waitFor(() => http.expectOne('/api/stacks/suggestions').flush({ suggestions: [second] }));
+    await pending;
+    expect(fixture.componentInstance.candidate()).toBe(second);
   });
 
   it('does not open a write editor for read-only accounts', async () => {

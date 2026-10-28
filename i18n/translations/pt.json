@@ -2983,6 +2983,7 @@
     "suggestion_duplicate": "Duplicados",
     "suggestion_edit_members": "Editar membros",
     "suggestion_skip": "Ignorar",
+    "suggestion_skip_group": "Ignorar esta pilha",
     "suggestions_error": "Não foi possível carregar as sugestões. Tente novamente.",
     "suggestions_reload": "Recarregar sugestões",
     "previous": "Foto anterior da pilha",
