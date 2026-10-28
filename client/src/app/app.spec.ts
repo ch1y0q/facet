@@ -864,7 +864,7 @@ describe('App', () => {
       expect(bar.classList.contains('!border-b-2')).toBe(edition);
     });
 
-    it('lists Card actions then the shell-level Help, and calls their handlers', () => {
+    it('lists Card actions, the shell-level Help and Reset all filters, and calls their handlers', () => {
       const { fixture, root } = render(false);
       const app = fixture.componentInstance as unknown as { openCardActionsDialog: () => void; openHelpDialog: () => void; resetAllFilters: () => void };
       const openCardActions = vi.spyOn(app, 'openCardActionsDialog').mockImplementation(() => undefined);
