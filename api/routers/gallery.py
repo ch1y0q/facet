@@ -1795,6 +1795,7 @@ def api_config(user: Optional[CurrentUser] = Depends(get_optional_user)):
     from api.raw_processing import get_cull_styles
     from api.routers.search import search_threshold_default
     from api.place_search import endpoint as place_search_endpoint
+    from utils.version import build_label, current_version
     from api.types import QUALITY_LEVELS, TYPE_LABELS, available_sort_options, populated_gated_cols, unavailable_columns
 
     features = dict(VIEWER_CONFIG.get('features', {}))
@@ -1849,6 +1850,8 @@ def api_config(user: Optional[CurrentUser] = Depends(get_optional_user)):
         'search_threshold_default': search_threshold_default(),
         'place_search_enabled': bool(place_search_endpoint()),
         'translation_target_language': _FULL_CONFIG.get('translation', {}).get('target_language', ''),
+        'version': current_version(),
+        'build': build_label() or None,
         'is_multi_user': is_multi_user_enabled(),
         'edition_enabled': is_edition_enabled(),
         'edition_authenticated': is_edition_authenticated(user),

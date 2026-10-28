@@ -72,7 +72,8 @@
     "switch_language": "Sprache wechseln",
     "theme": "Farbschema",
     "dark_mode": "Dunkelmodus",
-    "light_mode": "Hellmodus"
+    "light_mode": "Hellmodus",
+    "version": "Facet {version}"
   },
   "dialog": {
     "cancel": "Abbrechen",

@@ -128,6 +128,8 @@ class ViewerConfigResponse(BaseModel):
     edition_enabled: bool
     edition_authenticated: bool
     render_migration: RenderMigrationStatus
+    version: str
+    build: Optional[str] = None
 
 
 class MapCluster(BaseModel):

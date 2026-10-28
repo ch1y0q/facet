@@ -1102,6 +1102,8 @@ Regroupe les photos similaires prises en succession rapide.
 
 Prévient l'administrateur de l'installation qu'une nouvelle version de Facet est parue. À ne pas confondre avec le « Une nouvelle version est disponible — Recharger » du navigateur, qui bascule la page sur un paquet déjà téléchargé : ici il s'agit d'une version que personne n'a encore installée.
 
+La version en cours est toujours affichée en bas du menu utilisateur, pour tous. Une image construite avec `--build-arg FACET_BUILD=<branche>@<commit>` affiche aussi cette ligne, pour distinguer deux installations d'une même version construites depuis des branches différentes (`/api/config` les fournit en `version` et `build`).
+
 Volontairement discret. La vérification a lieu côté serveur et son résultat est mis en cache : une installation n'interroge GitHub qu'une fois tous les `interval_days`, quel que soit le nombre de personnes devant le viewer. La requête ne transporte rien d'autre qu'elle-même — aucun jeton, aucun identifiant, rien de la photothèque. Un échec est silencieux : un GitHub injoignable se traduit par « aucune mise à jour connue », jamais par une erreur. Seuls les utilisateurs en mode édition sont prévenus, car la mise à jour relève de l'exploitant, et chaque navigateur n'affiche l'avis qu'une fois par semaine au maximum.
 
 Passez `enabled` à `false` pour supprimer complètement la requête sortante.
