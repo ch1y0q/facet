@@ -9,8 +9,6 @@ import { firstValueFrom, Observable } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { PhotoStack, PhotoStackService, StackMutation } from '../../core/services/photo-stack.service';
-import { UndoService } from '../../core/services/undo.service';
-import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { i18nKeys } from '../../core/i18n/keys';
 import { ThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
 import { PluralKeyPipe } from '../../shared/pipes/plural-key.pipe';
@@ -18,6 +16,7 @@ import { FilenamePipe } from '../../shared/pipes/filename.pipe';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { Photo } from '../../shared/models/photo.model';
 import { GalleryStore } from './gallery.store';
+import { StackActionsService } from './stack-actions.service';
 import { BY_PATHS_MAX } from './gallery-filters.util';
 import { STACK_MAX_MEMBERS, STACK_MIN_MEMBERS } from './stack-limits';
 
@@ -103,8 +102,7 @@ export class StackDialogComponent implements OnInit {
   private readonly stacks = inject(PhotoStackService);
   private readonly auth = inject(AuthService);
   private readonly store = inject(GalleryStore);
-  private readonly journal = inject(UserActivityJournal);
-  private readonly undo = inject(UndoService);
+  private readonly actions = inject(StackActionsService);
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialogRef<StackDialogComponent>);
   private readonly destroyRef = inject(DestroyRef);
@@ -226,20 +224,10 @@ export class StackDialogComponent implements OnInit {
     this.saving.set(true); this.error.set(null); this.dialog.disableClose = true;
     const paths = [...new Set([...(this.stack()?.members.map(member => member.path) ?? []), ...this.paths()])];
     try {
-      const result = await firstValueFrom(request);
-      if (!this.current() || !this.auth.isEdition()) return;
-      this.journal.record('stack', paths, action);
-      void this.store.refreshPaths(null);
-      const entryId = result.undo?.entry_id;
-      if (entryId !== undefined) {
-        this.undo.register({ labelKey: this.I18N.stacks.saved, undo: async () => {
-          if (!this.session() || !this.auth.isEdition()) throw new Error('Stack session expired');
-          await firstValueFrom(this.stacks.revert(entryId));
-          if (!this.session() || !this.auth.isEdition()) throw new Error('Stack session expired');
-          this.journal.record('stack', paths, 'undo'); await this.store.refreshPaths(null);
-        } });
-      }
-      this.dialog.close(true);
+      const applied = await this.actions.commit(request, {
+        paths, action, labelKey: this.I18N.stacks.saved, session: this.session, live: () => this.current(),
+      });
+      if (applied) this.dialog.close(true);
     } catch (failure) {
       if (this.current()) {
         const status = (failure as { status?: number }).status;

@@ -73,7 +73,7 @@ describe('suggested stack review through HTTP and router', () => {
   it('shows one suggestion at a time with its proposed cover large and progress', async () => {
     await loaded([candidate, second]);
     const text = fixture.nativeElement.textContent as string;
-    expect(text).toContain('stacks.browse_position');
+    expect(text).toContain('stacks.suggestion_progress');
     const pressed = fixture.nativeElement.querySelector('button[aria-pressed="true"] img') as HTMLImageElement;
     expect(new URL(pressed.src).searchParams.get('path')).toBe('/b.jpg');
     expect(fixture.nativeElement.querySelectorAll('button[aria-pressed] img')).toHaveLength(2);
@@ -216,7 +216,7 @@ describe('suggested stack review through HTTP and router', () => {
   it('does not open a write editor for read-only accounts', async () => {
     await loaded(); edition.set(false); fixture.detectChanges();
     const review = [...fixture.nativeElement.querySelectorAll('button')]
-      .find((b: HTMLButtonElement) => b.textContent?.trim() === 'stacks.suggestion_review') as HTMLButtonElement;
+      .find((b: HTMLButtonElement) => b.textContent?.trim() === 'stacks.suggestion_edit_members') as HTMLButtonElement;
     expect(review.disabled).toBe(true);
     await fixture.componentInstance.review(fixture.componentInstance.candidates()[0]);
     expect(open).not.toHaveBeenCalled();

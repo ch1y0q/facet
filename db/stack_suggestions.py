@@ -30,7 +30,8 @@ def suggestions(conn, owner, source, where, params):
     ), skipped AS (
         -- A skip matches only the exact scoped membership it was made on, so a group
         -- that gains or loses a photo is suggested again.
-        SELECT d.kind, CASE d.kind WHEN 'duplicate' THEN s.duplicate_group_id ELSE s.burst_group_id END AS group_id,
+        SELECT d.kind,
+               CAST(CASE d.kind WHEN 'duplicate' THEN s.duplicate_group_id ELSE s.burst_group_id END AS INTEGER) AS group_id,
                d.size, COUNT(*) AS hits
         FROM stack_suggestion_dismissals d JOIN scoped s ON s.path=d.photo_path
         WHERE d.owner=? GROUP BY d.key, 2
@@ -74,7 +75,6 @@ def dismiss(conn, owner, kind, paths):
     key = suggestion_key(kind, paths)
     conn.executemany("""INSERT OR IGNORE INTO stack_suggestion_dismissals(owner,key,kind,size,photo_path)
         VALUES (?,?,?,?,?)""", [(owner, key, kind, len(paths), path) for path in paths])
-    return key
 
 
 def restore(conn, owner, key):

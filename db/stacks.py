@@ -40,6 +40,10 @@ def init_schema(conn: sqlite3.Connection) -> None:
         AFTER DELETE ON photos BEGIN
         DELETE FROM stack_suggestion_dismissals WHERE photo_path=OLD.path;
         END""")
+    conn.execute("""CREATE TRIGGER IF NOT EXISTS organization_stack_suggestion_photos_move
+        AFTER UPDATE OF path ON photos WHEN OLD.path IS NOT NEW.path BEGIN
+        UPDATE stack_suggestion_dismissals SET photo_path=NEW.path WHERE photo_path=OLD.path;
+        END""")
     conn.execute('CREATE INDEX IF NOT EXISTS photo_stacks_owner ON photo_stacks(owner,id)')
     conn.execute('CREATE INDEX IF NOT EXISTS photo_stack_members_path ON photo_stack_members(photo_path)')
     # Explicit cleanup also works for external writers with foreign_keys=OFF.

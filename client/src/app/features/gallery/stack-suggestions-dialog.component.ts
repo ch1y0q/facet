@@ -48,10 +48,10 @@ function nextPreviewToken(): string { return `${Date.now().toString(36)}-${++pre
         <div class="flex items-center gap-3 text-sm">
           <span class="font-medium">{{ (current.kind === 'burst' ? I18N.stacks.suggestion_burst : I18N.stacks.suggestion_duplicate) | translate }}</span>
           <span>{{ current.paths.length | pluralKey:I18N.stacks.member_count:I18N.stacks.member_count_plural | translate:{ count: current.paths.length } }}</span>
-          <span class="ml-auto" role="status">{{ I18N.stacks.browse_position | translate:{ position: handled() + 1, count: handled() + candidates().length } }}</span>
+          <span class="ml-auto" role="status">{{ I18N.stacks.suggestion_progress | translate:{ position: handled() + 1, count: total() } }}</span>
         </div>
         <mat-progress-bar mode="determinate" aria-hidden="true"
-                          [value]="100 * handled() / (handled() + candidates().length)" />
+                          [value]="100 * handled() / total()" />
         @if (focusedPath(); as path) {
           <div class="relative flex-1 min-h-[40vh] bg-black rounded">
             <img [src]="path | thumbnailUrl:renderedEdge:previewToken()" [alt]="path | filename"
@@ -63,7 +63,7 @@ function nextPreviewToken(): string { return `${Date.now().toString(36)}-${++pre
         }
         <div class="flex items-center gap-2">
           <button mat-icon-button (click)="step(-1)" [disabled]="busy()" aria-keyshortcuts="ArrowLeft"
-                  [attr.aria-label]="I18N.stacks.previous | translate"><mat-icon>chevron_left</mat-icon></button>
+                  [attr.aria-label]="I18N.stacks.suggestion_cover_previous | translate"><mat-icon>chevron_left</mat-icon></button>
           <div class="flex gap-2 overflow-x-auto flex-1 py-1">
             @for (path of current.paths; track path; let i = $index) {
               <button type="button" class="shrink-0 rounded outline-2 outline-offset-2 outline-[var(--mat-sys-primary)]"
@@ -76,14 +76,14 @@ function nextPreviewToken(): string { return `${Date.now().toString(36)}-${++pre
             }
           </div>
           <button mat-icon-button (click)="step(1)" [disabled]="busy()" aria-keyshortcuts="ArrowRight"
-                  [attr.aria-label]="I18N.stacks.next | translate"><mat-icon>chevron_right</mat-icon></button>
+                  [attr.aria-label]="I18N.stacks.suggestion_cover_next | translate"><mat-icon>chevron_right</mat-icon></button>
         </div>
       }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       @if (candidate(); as current) {
-        <button mat-button (click)="review(current)" [disabled]="!auth.isEdition() || busy()">{{ I18N.stacks.suggestion_review | translate }}</button>
-        <button mat-button (click)="skip()" aria-keyshortcuts="X" [disabled]="!auth.isEdition() || busy()">{{ I18N.stacks.suggestion_dismiss | translate }}</button>
+        <button mat-button (click)="review(current)" [disabled]="!auth.isEdition() || busy()">{{ I18N.stacks.suggestion_edit_members | translate }}</button>
+        <button mat-button (click)="skip()" aria-keyshortcuts="X" [disabled]="!auth.isEdition() || busy()">{{ I18N.stacks.suggestion_skip | translate }}</button>
         <button mat-flat-button (click)="stack()" aria-keyshortcuts="S" [disabled]="!auth.isEdition() || busy()">{{ I18N.stacks.suggestion_stack | translate }}</button>
       } @else {
         <button mat-button (click)="load()" [disabled]="loading() || busy()">{{ I18N.stacks.suggestions_reload | translate }}</button>
@@ -120,6 +120,7 @@ export class StackSuggestionsDialogComponent {
   readonly focusedPath = computed(() => this.candidate()?.paths[this.focus()] ?? null);
   /** Suggestions stacked or skipped in this dialog, for the progress readout. */
   readonly handled = signal(0);
+  readonly total = computed(() => this.handled() + this.candidates().length);
   readonly previewToken = signal('');
   readonly loading = signal(false);
   readonly failed = signal(false);
@@ -203,7 +204,7 @@ export class StackSuggestionsDialogComponent {
       this.undo.register({
         labelKey: this.I18N.stacks.suggestion_skipped,
         undo: async () => {
-          if (!this.session() || !this.auth.isEdition()) throw new Error('Stack session expired');
+          this.stacks.assertLive(this.session);
           await firstValueFrom(this.stacks.restoreSuggestion(candidate.key));
           this.putBack(candidate);
         },

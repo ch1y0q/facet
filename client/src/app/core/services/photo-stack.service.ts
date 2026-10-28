@@ -8,6 +8,7 @@ import { Photo } from '../../shared/models/photo.model';
 
 export type PhotoStack = components['schemas']['PhotoStack'];
 export type StackMutation = components['schemas']['StackMutation'];
+export type StackSuggestionKind = components['schemas']['StackSuggestionDismissal']['kind'];
 
 /** Manual stacks only organize references; individual photo actions keep their exact scope. */
 @Injectable({ providedIn: 'root' })
@@ -29,6 +30,14 @@ export class PhotoStackService {
     const navigation = this.navigation;
     const url = this.router.url;
     return () => owner === this.auth.identity() && navigation === this.navigation && url === this.router.url;
+  }
+
+  /** A write's epoch and account are still the ones that started it, and the account may still edit. */
+  isLive(session: () => boolean): boolean { return session() && this.auth.isEdition(); }
+
+  /** Guard for deferred work (an Undo outlives the page and the account that made the change). */
+  assertLive(session: () => boolean): void {
+    if (!this.isLive(session)) throw new Error('Stack session expired');
   }
 
   /** Recheck a live exact-list boundary after asynchronous guards and resolvers too. */
@@ -67,7 +76,7 @@ export class PhotoStackService {
   unstack(stack: PhotoStack) {
     return this.api.delete<StackMutation>(`/stacks/${encodeURIComponent(stack.id)}?expected_revision=${stack.revision}`).pipe(tap(this.changed));
   }
-  dismissSuggestion(kind: string, paths: string[]) {
+  dismissSuggestion(kind: StackSuggestionKind, paths: string[]) {
     return this.api.post<void>('/stacks/suggestions/dismissals', { kind, paths });
   }
   restoreSuggestion(key: string) { return this.api.delete<void>(`/stacks/suggestions/dismissals/${key}`); }
