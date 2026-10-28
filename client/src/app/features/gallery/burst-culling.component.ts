@@ -1,6 +1,6 @@
 import { SEQUENCE_KINDS_KEPT_WHOLE } from '../../shared/pipes/sequence-kind.pipe';
 import { Component, DestroyRef, inject, signal, linkedSignal, computed, effect, untracked, viewChild, ElementRef, OnDestroy, HostListener, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
-import { Router, ActivatedRoute } from '@angular/router';
+import { NavigationStart, Router, ActivatedRoute } from '@angular/router';
 import { ViewActionRegistry } from '../../core/agent/view-action-registry.service';
 import { UiToolError } from '../../core/agent/ui-tool.types';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -113,7 +113,7 @@ const DARKROOM_THUMB_SIZE = RENDERED_THUMBNAIL_EDGE;
 const STORED_EDGE = STORED_THUMBNAIL_EDGE;
 /** All rejects, including frames hidden by the gallery defaults. */
 const ALL_REJECTS_SCOPE = {
-  show_rejected: '1', hide_blinks: 'false', hide_bursts: 'false',
+  show_rejected: '1', type: '', hide_blinks: 'false', hide_bursts: 'false',
   hide_duplicates: 'false', hide_brackets: 'false', hide_panoramas: 'false',
 };
 
@@ -468,8 +468,8 @@ interface SceneSummary {
           }
           @if (auth.isEdition() && store.config()?.cull?.trash_available) {
             <button mat-icon-button class="shrink-0" (click)="openTrashRejects()"
-                    [matTooltip]="I18N.cull.trash_rejects | translate"
-                    [attr.aria-label]="I18N.cull.trash_rejects | translate">
+                    [matTooltip]="I18N.cull.trash_all_rejects | translate"
+                    [attr.aria-label]="I18N.cull.trash_all_rejects | translate">
               <mat-icon>delete_sweep</mat-icon>
             </button>
           }
@@ -1479,6 +1479,9 @@ export class BurstCullingComponent implements OnDestroy {
   protected readonly auth = inject(AuthService);
   protected readonly store = inject(GalleryStore);
   private readonly dialog = inject(MatDialog);
+  private readonly destroyRef = inject(DestroyRef);
+  private trashOpening = false;
+  private trashNavigation = 0;
   private readonly sceneDate = new SceneDatePipe();
   /** Data state + API calls; provided per component, so it lives one darkroom visit. */
   protected readonly cull = inject(CullingStore);
@@ -2064,6 +2067,9 @@ export class BurstCullingComponent implements OnDestroy {
   protected readonly darkroomShortcuts = DARKROOM_SHORTCUTS;
 
   constructor() {
+    this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
+      if (event instanceof NavigationStart) this.trashNavigation++;
+    });
     this.pageHelp.setDescription(this.I18N.culling.help_text);
     // The help dialog's My Taste line: how many comparisons the ranker has.
     effect(() => {
@@ -2465,11 +2471,24 @@ export class BurstCullingComponent implements OnDestroy {
 
   /** Trash files while retaining the decisions used to train My Taste. */
   protected async openTrashRejects(): Promise<void> {
-    const { CullDialogComponent } = await import('./cull-dialog.component');
-    this.dialog.open(CullDialogComponent, {
-      width: '32rem',
-      data: { paths: [], filters: ALL_REJECTS_SCOPE, trashAvailable: true, action: 'trash_rejects' },
-    });
+    if (this.trashOpening || this.dialog.openDialogs.length || !this.auth.isEdition()
+      || !this.store.config()?.cull?.trash_available) return;
+    const owner = this.auth.identity();
+    const url = this.router.url;
+    const navigation = this.trashNavigation;
+    this.trashOpening = true;
+    try {
+      const { CullDialogComponent } = await import('./cull-dialog.component');
+      if (this.destroyRef.destroyed || owner !== this.auth.identity() || !this.auth.isEdition()
+        || url !== this.router.url || navigation !== this.trashNavigation
+        || !this.store.config()?.cull?.trash_available || this.dialog.openDialogs.length) return;
+      this.dialog.open(CullDialogComponent, {
+        width: '32rem',
+        data: { paths: [], filters: ALL_REJECTS_SCOPE, trashAvailable: true, action: 'trash_rejects', allRejects: true },
+      });
+    } finally {
+      this.trashOpening = false;
+    }
   }
 
   protected onExcludeRejectedChange(value: boolean): void {
@@ -2747,7 +2766,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.arrowleft', ['$event'])
   protected onArrowLeft(event: Event): void {
-    if (this.dialog.openDialogs.length) return;
+    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
     const group = this.lightboxGroup();
     if (group) {
       event.preventDefault();
@@ -2759,7 +2778,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.arrowright', ['$event'])
   protected onArrowRight(event: Event): void {
-    if (this.dialog.openDialogs.length) return;
+    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
     const group = this.lightboxGroup();
     if (group) {
       event.preventDefault();
@@ -2783,7 +2802,7 @@ export class BurstCullingComponent implements OnDestroy {
    *  loupe; the compare grid has no single frame to aim at and stays centred. */
   @HostListener('document:keydown.z', ['$event'])
   protected onZoomToggle(event: Event): void {
-    if (this.dialog.openDialogs.length) return;
+    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
     if (isTypingContext(event)) return;
     if (!this.lightboxGroup()) {
       this.loupeActive.set(!this.loupeActive());
@@ -2803,7 +2822,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** P toggles focus peaking over the open darkroom's frames. */
   @HostListener('document:keydown.p', ['$event'])
   protected onPeakingKey(event: Event): void {
-    if (this.dialog.openDialogs.length) return;
+    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
     if (!this.lightboxGroup()) return;
     if (isTypingContext(event)) return;
     event.preventDefault();
@@ -2813,7 +2832,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** G cycles the open darkroom's composition grid. */
   @HostListener('document:keydown.g', ['$event'])
   protected onGridKey(event: Event): void {
-    if (this.dialog.openDialogs.length) return;
+    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
     if (!this.lightboxGroup()) return;
     if (isTypingContext(event)) return;
     event.preventDefault();
@@ -2823,7 +2842,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** F toggles true fullscreen on the open darkroom (mirrors the slideshow's F key). */
   @HostListener('document:keydown.f', ['$event'])
   protected onFullscreenToggle(event: Event): void {
-    if (this.dialog.openDialogs.length) return;
+    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
     if (!this.lightboxGroup()) return;
     if (isTypingContext(event)) return;
     event.preventDefault();
@@ -2872,7 +2891,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** True when the event originates from a text/slider control we must not hijack. */
   @HostListener('document:keydown.arrowup', ['$event'])
   protected onArrowUp(event: Event): void {
-    if (this.dialog.openDialogs.length) return;
+    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
     const group = this.lightboxGroup();
     if (group) {
       event.preventDefault();
@@ -2886,7 +2905,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.arrowdown', ['$event'])
   protected onArrowDown(event: Event): void {
-    if (this.dialog.openDialogs.length) return;
+    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
     const group = this.lightboxGroup();
     if (group) {
       event.preventDefault();
@@ -2900,7 +2919,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.enter', ['$event'])
   protected onEnter(event: Event): void {
-    if (this.dialog.openDialogs.length) return;
+    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
     if (this.lightboxGroup()) return;
     if (isTypingContext(event) || isControlActivation(event)) return;
     const group = this.visibleGroups()[this.selectedGroupIndex()];
@@ -2922,7 +2941,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.space', ['$event'])
   protected onSpace(event: Event): void {
-    if (this.dialog.openDialogs.length) return;
+    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
     const group = this.lightboxGroup();
     if (group) {
       // Darkroom: confirm the open group and jump into the next one.
@@ -2950,7 +2969,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** List: confirm the selected group and move the selection to the next one. */
   @HostListener('document:keydown.shift.space', ['$event'])
   protected onShiftSpace(event: Event): void {
-    if (this.dialog.openDialogs.length) return;
+    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
     if (this.lightboxGroup()) return;
     if (isTypingContext(event) || isControlActivation(event)) return;
     const selected = this.visibleGroups()[this.selectedGroupIndex()];
@@ -2968,7 +2987,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.escape', ['$event'])
   protected onEscape(event: Event): void {
-    if (this.dialog.openDialogs.length) return;
+    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
     if (this.cull.autoCullPreview()) {
       event.preventDefault();
       this.cull.cancelAutoCull();

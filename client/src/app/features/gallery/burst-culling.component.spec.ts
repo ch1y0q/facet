@@ -3289,7 +3289,7 @@ describe('BurstCullingComponent modals (rendered)', () => {
   it('opens the all-rejects preview from the toolbar without applying it', async () => {
     vi.spyOn(TestBed.inject(GalleryStore), 'config').mockReturnValue({ cull: { trash_available: true } } as any);
     fixture.detectChanges();
-    const button = fixture.debugElement.query(By.css('button[aria-label="cull.trash_rejects"]'));
+    const button = fixture.debugElement.query(By.css('button[aria-label="cull.trash_all_rejects"]'));
     expect(button).toBeTruthy();
     const open = vi.spyOn(TestBed.inject(MatDialog), 'open').mockReturnValue({} as any);
     const post = TestBed.inject(ApiService).post as Mock;
@@ -3297,26 +3297,61 @@ describe('BurstCullingComponent modals (rendered)', () => {
     (button.nativeElement as HTMLButtonElement).click();
     await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
     expect(open.mock.calls[0][1]?.data).toEqual({
-      paths: [], trashAvailable: true, action: 'trash_rejects',
+      paths: [], trashAvailable: true, action: 'trash_rejects', allRejects: true,
       filters: {
-        show_rejected: '1', hide_blinks: 'false', hide_bursts: 'false',
+        show_rejected: '1', type: '', hide_blinks: 'false', hide_bursts: 'false',
         hide_duplicates: 'false', hide_brackets: 'false', hide_panoramas: 'false',
       },
     });
     expect(post).not.toHaveBeenCalled();
   });
 
+  it.each(['identity', 'permission', 'availability', 'navigation', 'destroy'])(
+    'does not open a stale trash preview after %s changes during lazy import', async change => {
+      const config = vi.spyOn(TestBed.inject(GalleryStore), 'config')
+        .mockReturnValue({ cull: { trash_available: true } } as any);
+      const auth = TestBed.inject(AuthService);
+      const owner = vi.spyOn(auth, 'identity').mockReturnValue('alice');
+      const open = vi.spyOn(TestBed.inject(MatDialog), 'open').mockReturnValue({} as any);
+      const pending = (component as unknown as { openTrashRejects(): Promise<void> }).openTrashRejects();
+      if (change === 'identity') owner.mockReturnValue('bob');
+      else if (change === 'permission') vi.spyOn(auth, 'isEdition').mockReturnValue(false);
+      else if (change === 'availability') config.mockReturnValue({ cull: { trash_available: false } } as any);
+      else if (change === 'navigation') await TestBed.inject(Router).navigateByUrl('/?elsewhere=1');
+      else fixture.destroy();
+      await pending;
+      expect(open).not.toHaveBeenCalled();
+    },
+  );
+
+  it('coalesces repeated trash clicks while the lazy dialog loads', async () => {
+    vi.spyOn(TestBed.inject(GalleryStore), 'config').mockReturnValue({ cull: { trash_available: true } } as any);
+    const open = vi.spyOn(TestBed.inject(MatDialog), 'open').mockReturnValue({} as any);
+    const launch = component as unknown as { openTrashRejects(): Promise<void> };
+    await Promise.all([launch.openTrashRejects(), launch.openTrashRejects()]);
+    expect(open).toHaveBeenCalledOnce();
+  });
+
   it.each([false, undefined])('hides trash rejects when trash availability is %s', available => {
     vi.spyOn(TestBed.inject(GalleryStore), 'config').mockReturnValue({ cull: { trash_available: available } } as any);
     fixture.detectChanges();
-    expect(fixture.debugElement.query(By.css('button[aria-label="cull.trash_rejects"]'))).toBeNull();
+    expect(fixture.debugElement.query(By.css('button[aria-label="cull.trash_all_rejects"]'))).toBeNull();
   });
 
   it('hides trash rejects in read-only mode', () => {
     vi.spyOn(TestBed.inject(GalleryStore), 'config').mockReturnValue({ cull: { trash_available: true } } as any);
     vi.spyOn(TestBed.inject(AuthService), 'isEdition').mockReturnValue(false);
     fixture.detectChanges();
-    expect(fixture.debugElement.query(By.css('button[aria-label="cull.trash_rejects"]'))).toBeNull();
+    expect(fixture.debugElement.query(By.css('button[aria-label="cull.trash_all_rejects"]'))).toBeNull();
+  });
+
+  it('does not let an already-handled Escape close the underlying darkroom', () => {
+    openDarkroom();
+    const group = component.lightboxGroup();
+    const event = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true });
+    event.preventDefault();
+    document.dispatchEvent(event);
+    expect(component.lightboxGroup()).toBe(group);
   });
 
   it('keeps modal keyboard events out of the darkroom and Escape closes only the modal', async () => {

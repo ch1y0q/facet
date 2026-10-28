@@ -11,6 +11,7 @@ disk (no scan dirs in tests -> file-exists check only).
 
 import os
 import sqlite3
+from pathlib import Path
 from contextlib import contextmanager
 from unittest import mock
 
@@ -358,10 +359,14 @@ class TestCullApplyFilterScope:
         )
         conn.commit()
         conn.close()
-        scope = {"show_rejected": "1", "hide_blinks": "false", "hide_bursts": "false",
+        scope = {"show_rejected": "1", "type": "", "hide_blinks": "false", "hide_bursts": "false",
                  "hide_duplicates": "false", "hide_brackets": "false", "hide_panoramas": "false"}
         with (
             mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch.dict(gallery_module.VIEWER_CONFIG, {
+                'defaults': {**gallery_module.VIEWER_CONFIG['defaults'], 'type': 'restricted-default'},
+            }),
+            mock.patch.dict(gallery_module.TYPE_FILTERS, {'restricted-default': {'camera': 'Canon'}}),
             mock.patch(f"{_EXPORT_MODULE}._allowed_export_roots", return_value=[str(tmp_path)]),
         ):
             resp = client.post("/api/cull/apply", json={
@@ -1936,3 +1941,112 @@ class TestPhotoDeleteGate:
             "paths": ["/a.jpg"], "dry_run": True,
         })
         assert resp.status_code in (401, 403)
+
+
+class TestCullPreviewPrecondition:
+    @pytest.mark.parametrize('change', [
+        'new_reject', 'kept_again', 'missing_original', 'new_companion', 'missing_companion',
+    ])
+    def test_scope_or_files_changed_refuses_before_any_trash(self, client, tmp_path, change):
+        rejected = _make_file(tmp_path, 'rejected.jpg')
+        other = _make_file(tmp_path, 'other.jpg')
+        companion = str(tmp_path / 'rejected.xmp')
+        if change == 'missing_companion':
+            with open(companion, 'wb') as handle:
+                handle.write(b'original sidecar')
+        db = _db(tmp_path, [(rejected, 1), (other, 0)])
+        send = mock.Mock(side_effect=os.unlink)
+        request = {
+            'filters': {'show_rejected': '1', 'hide_blinks': 'false',
+                        'hide_bursts': 'false', 'hide_duplicates': 'false',
+                        'hide_brackets': 'false', 'hide_panoramas': 'false'},
+            'action': 'trash_rejects', 'include_companions': 'companion' in change,
+        }
+        with (
+            mock.patch(f'{_EXPORT_MODULE}.get_db', _db_cm(db)),
+            mock.patch(f'{_EXPORT_MODULE}.VIEWER_CONFIG', {'cull': {'allow_trash': True}}),
+            mock.patch.dict('sys.modules', {'send2trash': mock.Mock(send2trash=send)}),
+        ):
+            preview = client.post('/api/cull/apply', json=request)
+            assert preview.status_code == 200
+            digest = preview.json()['preview_digest']
+            assert len(digest) == 64
+            if change in ('new_reject', 'kept_again'):
+                with sqlite3.connect(db) as conn:
+                    conn.execute('UPDATE photos SET is_rejected=? WHERE path=?',
+                                 (1 if change == 'new_reject' else 0,
+                                  other if change == 'new_reject' else rejected))
+            elif change == 'missing_original':
+                os.unlink(rejected)
+            elif change == 'new_companion':
+                with open(companion, 'wb') as handle:
+                    handle.write(b'new sidecar')
+            else:
+                os.unlink(companion)
+            remaining = {path: Path(path).read_bytes()
+                         for path in (rejected, other, companion) if os.path.exists(path)}
+            response = client.post('/api/cull/apply', json={
+                **request, 'dry_run': False, 'preview_digest': digest,
+            })
+        assert response.status_code == 409
+        assert response.json()['detail'] == 'Culling preview changed. Preview again before applying.'
+        send.assert_not_called()
+        assert all(os.path.exists(path) and Path(path).read_bytes() == content
+                   for path, content in remaining.items())
+        assert _remaining_paths(db) == {rejected, other}
+
+    def test_fresh_preview_after_conflict_allows_reviewed_files_and_retains_rows(self, client, tmp_path):
+        rejected = _make_file(tmp_path, 'rejected.jpg')
+        other = _make_file(tmp_path, 'other.jpg')
+        db = _db(tmp_path, [(rejected, 1), (other, 0)])
+        send = mock.Mock(side_effect=os.unlink)
+        request = {'paths': [rejected, other], 'action': 'trash_rejects'}
+        with (
+            mock.patch(f'{_EXPORT_MODULE}.get_db', _db_cm(db)),
+            mock.patch(f'{_EXPORT_MODULE}.VIEWER_CONFIG', {'cull': {'allow_trash': True}}),
+            mock.patch.dict('sys.modules', {'send2trash': mock.Mock(send2trash=send)}),
+        ):
+            first = client.post('/api/cull/apply', json=request).json()['preview_digest']
+            with sqlite3.connect(db) as conn:
+                conn.execute('UPDATE photos SET is_rejected=1 WHERE path=?', (other,))
+            refusal = client.post('/api/cull/apply', json={**request, 'dry_run': False, 'preview_digest': first})
+            assert refusal.status_code == 409
+            send.assert_not_called()
+            fresh = client.post('/api/cull/apply', json=request)
+            assert fresh.status_code == 200
+            assert fresh.json()['preview_digest'] != first
+            result = client.post('/api/cull/apply', json={
+                **request, 'dry_run': False, 'preview_digest': fresh.json()['preview_digest'],
+            })
+        assert result.status_code == 200
+        assert result.json()['trashed'] == 2
+        assert set(call.args[0] for call in send.call_args_list) == {rejected, other}
+        assert not os.path.exists(rejected) and not os.path.exists(other)
+        assert _remaining_paths(db) == {rejected, other}
+
+    def test_changed_move_destination_does_not_write_either_folder(self, client, tmp_path):
+        source = _make_file(tmp_path, 'rejected.jpg')
+        db = _db(tmp_path, [(source, 1)])
+        first = str(tmp_path / 'first')
+        second = str(tmp_path / 'second')
+        request = {'paths': [source], 'action': 'move_rejects', 'target_dir': first}
+        with (
+            mock.patch(f'{_EXPORT_MODULE}.get_db', _db_cm(db)),
+            mock.patch(f'{_EXPORT_MODULE}._allowed_export_roots', return_value=[str(tmp_path)]),
+        ):
+            digest = client.post('/api/cull/apply', json=request).json()['preview_digest']
+            result = client.post('/api/cull/apply', json={
+                **request, 'target_dir': second, 'dry_run': False, 'preview_digest': digest,
+            })
+        assert result.status_code == 409
+        assert os.path.isfile(source)
+        assert not os.path.exists(first) and not os.path.exists(second)
+
+    @pytest.mark.parametrize('digest', ['x' * 64, '../unsafe', 'a' * 65])
+    def test_invalid_digest_is_rejected(self, client, tmp_path, digest):
+        source = _make_file(tmp_path, 'rejected.jpg')
+        response = client.post('/api/cull/apply', json={
+            'paths': [source], 'action': 'trash_rejects', 'dry_run': False, 'preview_digest': digest,
+        })
+        assert response.status_code == 422
+        assert os.path.isfile(source)
