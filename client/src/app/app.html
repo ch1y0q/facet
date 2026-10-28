@@ -405,7 +405,7 @@
             <div class="px-4 py-2 text-xs opacity-60">
               {{ I18N.ui.version | translate: { version: version } }}
               @if (store.config()?.build; as build) {
-                <div class="font-mono">{{ build }}</div>
+                <div class="font-mono break-all">{{ build }}</div>
               }
             </div>
           }
