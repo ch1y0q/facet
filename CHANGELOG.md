@@ -6,7 +6,12 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
+- **Suggested photo stacks.** Review existing duplicate and burst groups within the current gallery filters, choose a cover and explicitly create a stack. Suggestions preserve photo decisions and files; dismissal lasts for the open dialog only.
 - **Immich diagnostics in the user menu.** Administrators can inspect a bounded path-mapping sample and explicitly test read-only connectivity without exposing API keys or modifying remote photos.
+
+### Fixed
+
+- **Suggested stack availability.** Similar Photos and semantic-search views no longer offer suggestions that their search scope cannot represent.
 
 ## [1.26.0] "Histogramme" — 2026-10-28
 

@@ -2955,6 +2955,15 @@
     "stack": "Pile de photos"
   },
   "stacks": {
+    "suggestions": "Piles suggérées",
+    "suggestions_hint": "Suggestions issues des doublons et rafales dans ces filtres. Leur masquage automatique est ignoré pour la révision. Les piles existantes et séries bracket/panorama sont exclues. Au plus 20 suggestions ; affinez les filtres pour d’autres photos. Ignorer ne vaut que pendant cette ouverture.",
+    "suggestions_empty": "Aucune suggestion de pile dans cette vue",
+    "suggestion_burst": "Rafale",
+    "suggestion_duplicate": "Doublons",
+    "suggestion_review": "Réviser et choisir la couverture",
+    "suggestion_dismiss": "Ignorer pour le moment",
+    "suggestions_error": "Impossible de charger les suggestions. Réessayez.",
+    "suggestions_reload": "Recharger les suggestions",
     "previous": "Photo précédente de la pile",
     "next": "Photo suivante de la pile",
     "browse_position": "{position} sur {count}",

@@ -126,6 +126,7 @@ PARAMETERISED_ROUTES = [
 # POST routes with a minimal valid-shaped body naming a photo that does not exist:
 # the handler runs (validation passes) and ends in a 4xx or an empty success.
 POST_ROUTES = [
+    ('/api/stacks/suggestions', {'filters': {}}),
     ('/api/stacks', {'paths': ['/none/a.jpg', '/none/b.jpg'], 'cover_path': '/none/a.jpg'}),
     ('/api/export/sidecar_jobs', {}),
     ('/api/export/sidecar_jobs/not-a-job/cancel', {}),
