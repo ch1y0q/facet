@@ -2513,6 +2513,9 @@
       "online_disabled": "在线搜索已禁用。",
       "online_loading": "正在在线搜索…",
       "online_empty": "未找到地点。请尝试其他查询或输入坐标。",
+      "online_results": "找到 {count} 个地点",
+      "online_results_plural": "找到 {count} 个地点",
+      "online_results_label": "在线结果",
       "online_error": "在线搜索失败或繁忙。请稍后重试，或输入坐标。",
       "preview_hint": "选择位置，然后点击保存以应用到此照片。",
       "search": "搜索已保存地点",
@@ -2750,7 +2753,10 @@
       "receipt": "收据",
       "meme": "表情包",
       "slide": "幻灯片"
-    }
+    },
+    "candidates": "{count} 张候选",
+    "candidates_plural": "{count} 张候选",
+    "empty_kind": "该类型下没有候选。试试筛选菜单中的「所有类型」。"
   },
   "social_export": {
     "presets": {

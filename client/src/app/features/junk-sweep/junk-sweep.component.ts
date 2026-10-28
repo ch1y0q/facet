@@ -14,6 +14,7 @@ import { I18nService } from '../../core/services/i18n.service';
 import { PageHelpService } from '../../core/services/page-help.service';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { PluralKeyPipe } from '../../shared/pipes/plural-key.pipe';
 import { ThumbnailUrlPipe, ImageUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
 import { LoupeDirective } from '../../shared/directives/loupe.directive';
 import { createLoupeState } from '../../shared/utils/loupe-state';
@@ -39,6 +40,7 @@ const ANY_KIND = 'any';
     MatSliderModule,
     MatTooltipModule,
     TranslatePipe,
+    PluralKeyPipe,
     ThumbnailUrlPipe,
     ImageUrlPipe,
     LoupeDirective,
@@ -65,6 +67,12 @@ const ANY_KIND = 'any';
                 [attr.aria-label]="activeKind() === ANY_KIND ? (I18N.junk.all_kinds | translate) : (activeKind() | junkKindLabel)">
           <mat-icon>{{ activeKind() | junkKindIcon }}</mat-icon>
         </button>
+        @if (!(loading() && photos().length === 0)) {
+          <span data-junk-count class="text-sm opacity-70 whitespace-nowrap"
+                role="status" aria-live="polite">
+            {{ total() | pluralKey:I18N.junk.candidates:I18N.junk.candidates_plural | translate:{ count: total() } }}
+          </span>
+        }
         <mat-menu #kindMenu="matMenu">
           <button mat-menu-item (click)="selectKind(ANY_KIND)">
             <mat-icon>{{ ANY_KIND | junkKindIcon }}</mat-icon>
@@ -107,7 +115,9 @@ const ANY_KIND = 'any';
       @if (loading() && photos().length === 0) {
         <div class="flex justify-center py-10"><mat-spinner diameter="32" [attr.aria-label]="I18N.ui.labels.loading | translate" /></div>
       } @else if (photos().length === 0) {
-        <div class="text-white/50 py-10 text-center whitespace-pre-line">{{ I18N.junk.empty | translate }}</div>
+        <!-- A kind filter with no hits is not "no junk in the library": point
+             back to All kinds instead of telling the user to rescan. -->
+        <div class="text-white/50 py-10 text-center whitespace-pre-line">{{ (activeKind() === ANY_KIND ? I18N.junk.empty : I18N.junk.empty_kind) | translate }}</div>
       } @else {
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
           @for (photo of photos(); track photo.path) {
@@ -188,6 +198,7 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
   private page = 1;
   private readonly perPage = 48;
   private loadGeneration = 0;
+  private writesInFlight = 0;
   private requestedKind: string | null = null;
   private kindsLoaded = false;
 
@@ -235,6 +246,9 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
     this.activeKind.set(kind);
     this.page = 1;
     this.photos.set([]);
+    // The previous kind's total must not survive a failed first load of this one.
+    this.total.set(0);
+    this.hasMore.set(false);
     await this.load();
   }
 
@@ -255,7 +269,11 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
         }),
       );
       if (gen !== this.loadGeneration) return;
-      this.photos.update(list => [...list, ...normalisePhotoFlagsAll(data.photos)]);
+      // A refill re-reads page 1, which can repeat a card restored after a failed write.
+      this.photos.update(list => {
+        const shown = new Set(list.map(p => p.path));
+        return [...list, ...normalisePhotoFlagsAll(data.photos).filter(p => !shown.has(p.path))];
+      });
       this.total.set(data.total);
       this.hasMore.set(this.page < data.total_pages);
     } catch {
@@ -275,6 +293,7 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
   /** Keep a candidate: clear its junk label so it leaves the queue permanently. */
   protected async keep(photo: Photo): Promise<void> {
     this.removeLocal(photo);
+    this.writesInFlight++;
     try {
       await firstValueFrom(this.api.post('/photo/clear_junk', { photo_path: photo.path }));
       this.journal.record('junk', [photo.path], { action: 'clear', count: 1 });
@@ -282,12 +301,16 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
     } catch {
       this.restoreLocal(photo);
       this.notifyError();
+    } finally {
+      this.writesInFlight--;
+      await this.refillIfDrained();
     }
   }
 
   /** Reject a candidate via the shared batch_reject plumbing (single path). */
   protected async reject(photo: Photo): Promise<void> {
     this.removeLocal(photo);
+    this.writesInFlight++;
     try {
       await firstValueFrom(this.api.post('/photos/batch_reject', { photo_paths: [photo.path] }));
       this.journal.record('junk', [photo.path], { action: 'reject', count: 1 });
@@ -295,6 +318,9 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
     } catch {
       this.restoreLocal(photo);
       this.notifyError();
+    } finally {
+      this.writesInFlight--;
+      await this.refillIfDrained();
     }
   }
 
@@ -344,6 +370,19 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Re-read the first page once every loaded card is handled while more
+   * remain: handled photos have left the server queue, so page 1 is the next
+   * batch. Without it the page sat empty with no Load more button, beside a
+   * count that still said candidates remain. It waits for the last write in
+   * flight, or page 1 would bring back a card whose write has not landed yet.
+   */
+  private async refillIfDrained(): Promise<void> {
+    if (this.writesInFlight > 0 || this.photos().length > 0 || !this.hasMore() || this.loading()) return;
+    this.page = 1;
+    await this.load();
+  }
+
   private notify(key: string, duration: number, vars?: Record<string, string | number>): void {
     this.snack.open(this.i18n.t(key, vars), this.i18n.t(I18N.common.dismiss), { duration });
   }
@@ -362,6 +401,8 @@ export class JunkSweepComponent implements OnInit, OnDestroy {
   }
 
   private restoreLocal(photo: Photo): void {
+    // A load since the removal may have listed it again, and its total already counts it.
+    if (this.photos().some(p => p.path === photo.path)) return;
     this.photos.update(list => [photo, ...list]);
     this.total.update(t => t + 1);
     if (photo.junk_kind) {

@@ -2527,6 +2527,9 @@ export const I18N = {
       online_disabled: "photo_detail.gps.online_disabled",
       online_loading: "photo_detail.gps.online_loading",
       online_empty: "photo_detail.gps.online_empty",
+      online_results: "photo_detail.gps.online_results",
+      online_results_plural: "photo_detail.gps.online_results_plural",
+      online_results_label: "photo_detail.gps.online_results_label",
       online_error: "photo_detail.gps.online_error",
       preview_hint: "photo_detail.gps.preview_hint",
       search: "photo_detail.gps.search",
@@ -2765,6 +2768,9 @@ export const I18N = {
       meme: "junk.kinds.meme",
       slide: "junk.kinds.slide",
     },
+    candidates: "junk.candidates",
+    candidates_plural: "junk.candidates_plural",
+    empty_kind: "junk.empty_kind",
   },
   social_export: {
     presets: {
