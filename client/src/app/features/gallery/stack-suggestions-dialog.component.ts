@@ -36,7 +36,7 @@ function nextPreviewToken(): string { return `${Date.now().toString(36)}-${++pre
   host: { class: 'flex flex-col h-full' },
   template: `
     <h2 mat-dialog-title>{{ I18N.stacks.suggestions | translate }}</h2>
-    <mat-dialog-content class="flex flex-col gap-3 flex-1 min-h-0 !max-h-none">
+    <mat-dialog-content class="!flex !flex-col gap-3 flex-1 min-h-0 !max-h-none">
       <p class="text-sm">{{ I18N.stacks.suggestions_hint | translate }}</p>
       @if (loading()) { <p role="status">{{ I18N.ui.labels.loading | translate }}</p> }
       @if (failed()) { <p role="alert">{{ I18N.stacks.suggestions_error | translate }}</p> }
@@ -53,7 +53,7 @@ function nextPreviewToken(): string { return `${Date.now().toString(36)}-${++pre
         <mat-progress-bar mode="determinate" aria-hidden="true"
                           [value]="100 * handled() / total()" />
         @if (focusedPath(); as path) {
-          <div class="relative flex-1 min-h-[40vh] bg-black rounded">
+          <div class="relative flex-1 min-h-[40vh] bg-[var(--mat-sys-surface-container)] rounded">
             <img [src]="path | thumbnailUrl:renderedEdge:previewToken()" [alt]="path | filename"
                  decoding="async" class="absolute inset-0 w-full h-full object-contain" />
             <span class="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/70 text-white text-xs">
@@ -64,10 +64,10 @@ function nextPreviewToken(): string { return `${Date.now().toString(36)}-${++pre
         <div class="flex items-center gap-2">
           <button mat-icon-button (click)="step(-1)" [disabled]="busy()" aria-keyshortcuts="ArrowLeft"
                   [attr.aria-label]="I18N.stacks.suggestion_cover_previous | translate"><mat-icon>chevron_left</mat-icon></button>
-          <div class="flex gap-2 overflow-x-auto flex-1 py-1">
+          <div class="flex gap-2 overflow-x-auto flex-1 p-1.5">
             @for (path of current.paths; track path; let i = $index) {
-              <button type="button" class="shrink-0 rounded outline-2 outline-offset-2 outline-[var(--mat-sys-primary)]"
-                      [class.outline]="i === focus()"
+              <button type="button" class="shrink-0 rounded outline-2 outline-offset-2"
+                      [style.outline-color]="i === focus() ? 'var(--mat-sys-primary)' : 'transparent'"
                       [attr.aria-pressed]="i === focus()" (click)="focus.set(i)"
                       [attr.aria-label]="I18N.stacks.cover_for | translate:{ path: (path | filename) }">
                 <img [src]="path | thumbnailUrl:160:previewToken()" alt="" loading="lazy" decoding="async"

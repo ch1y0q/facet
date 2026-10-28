@@ -5799,6 +5799,8 @@ describe('GalleryComponent', () => {
     }
 
     describe('suggested stack scope', () => {
+      const edition = signal(true);
+
       function dialogForSuggestions(): MatDialog {
         const dialog = (gallery as unknown as { dialog: MatDialog }).dialog;
         vi.spyOn(dialog, 'openDialogs', 'get').mockReturnValue([]);
@@ -5808,6 +5810,18 @@ describe('GalleryComponent', () => {
 
       beforeEach(() => {
         mockStore.filterPayload.mockImplementation(() => GalleryStore.prototype.filterPayload.call(mockStore));
+        (mockAuth as { isEdition: unknown }).isEdition = () => edition();
+        edition.set(true);
+        host.detectChanges();
+      });
+
+      it('withholds discovery and refuses direct launch without edition rights', async () => {
+        edition.set(false);
+        host.detectChanges();
+        expect(host.nativeElement.querySelector('[data-stack-suggestions]')).toBeNull();
+        const dialog = dialogForSuggestions();
+        await (gallery as unknown as { openStackSuggestions(): Promise<void> }).openStackSuggestions();
+        expect(dialog.open).not.toHaveBeenCalled();
       });
 
       it.each([
