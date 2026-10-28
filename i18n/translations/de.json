@@ -139,20 +139,16 @@
   "tooltip": {
     "not_computed": "Nicht berechnet",
     "category": "Kategorie",
-    "aggregate": "Gesamtwertung",
-    "quality_section": "Qualität",
     "aesthetic": "Ästhetik",
     "quality_score": "Qualitätswert",
     "face_quality": "Gesichtsqualität",
     "face_sharpness": "Gesichtsschärfe",
     "eye_sharpness": "Augenschärfe",
     "tech_sharpness": "Techn. Schärfe",
-    "composition_section": "Komposition",
     "composition": "Komposition",
     "pattern": "Muster",
     "power_points": "Kraftpunkte",
     "leading_lines": "Führungslinien",
-    "technical_section": "Technik",
     "exposure": "Belichtung",
     "color": "Farbe",
     "contrast": "Kontrast",
@@ -162,7 +158,6 @@
     "noise": "Rauschen",
     "bonus_section": "Bonus",
     "isolation": "Freistellung",
-    "exif_section": "EXIF",
     "camera": "Kamera",
     "lens": "Objektiv",
     "focal": "Brennweite",
@@ -185,7 +180,6 @@
     "qrealign_score": "Q-ReAlign",
     "aesthetic_v25": "Ästhetik V2.5",
     "deqa_score": "DeQA",
-    "saliency_section": "Motiverkennung",
     "subject_sharpness": "Motivschärfe",
     "subject_prominence": "Hervorhebung",
     "subject_placement": "Platzierung",
@@ -201,7 +195,6 @@
     "star_rating": "Bewertung",
     "topiq_score": "TOPIQ",
     "filter_by_person": "Nach {name} filtern",
-    "set_section": "Gruppe",
     "histogram": "Histogramm"
   },
   "photoCard": {
@@ -577,7 +570,8 @@
     "mark_rejected": "Als abgelehnt markieren",
     "unmark_rejected": "Ablehnung aufheben",
     "rejected_badge": "Abgelehnt",
-    "rating_badge": "Bewertung {stars}"
+    "rating_badge": "Bewertung {stars}",
+    "stars_out_of_five": "Mit {stars} von 5 bewertet"
   },
   "similar": {
     "title": "Ähnliche Fotos",
@@ -1212,7 +1206,6 @@
       "find_filter": "Filter suchen…",
       "clear_find_filter": "Filtersuche löschen",
       "no_filters_match": "Keine passenden Filter",
-      "advanced_metrics": "Erweiterte Metriken",
       "refine": "Verfeinern",
       "view": "Ansicht",
       "color_quality": "Farbe & Qualität",
@@ -2466,7 +2459,6 @@
     "gps_clear": "Standort entfernen",
     "social_crop": "Social-Zuschnitt",
     "set": {
-      "title": "Gruppe",
       "ev_span": "EV-Spanne",
       "kind_duplicate": "Duplikat",
       "open_in_gallery": "Diese Gruppe in der Galerie öffnen",
@@ -2524,6 +2516,11 @@
       "batch_error": "Standort konnte nicht angewendet werden. Wählen Sie höchstens 1000 Fotos und erstellen Sie eine neue Vorschau; Auswahl oder gespeicherter Ort könnte sich geändert haben.",
       "batch_limit": "Wählen Sie höchstens 1000 Fotos. Ohne Schutz werden vorhandene Standorte ersetzt. Originaldateien bleiben unverändert.",
       "batch_hint": "Wählen Sie einen Ort und prüfen Sie die Änderungen, bevor Sie die Auswahl speichern."
+    },
+    "distribution": {
+      "top": "Top {pct} % der Bibliothek",
+      "range": "Bereich der Bibliothek {min}–{max}",
+      "top_in_range": "Top {pct} % der Bibliothek · Bereich der Bibliothek {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2548,7 +2545,8 @@
       "success": "Kategorie auf {category} gesetzt.",
       "cleared": "Überschreibung entfernt. Neu berechnen, um die filterbasierte Kategorie anzuwenden.",
       "explainer_toggle": "Warum ist dies keine andere Kategorie?",
-      "target_category_label": "Vergleichen mit"
+      "target_category_label": "Vergleichen mit",
+      "target_category_hint": "Wählen Sie eine Kategorie, um zu sehen, welche ihrer Filter dieses Foto ausschließen und was es aufnehmen würde."
     }
   },
   "download": {
@@ -2871,8 +2869,7 @@
   },
   "capture_date": {
     "title": "Aufnahmedatum korrigieren",
-    "offset": "Versatz in Sekunden (+ später, − früher)",
-    "invalid": "Eine ganze Zahl ungleich null innerhalb von ±366 Tagen; höchstens 1000 Fotos auswählen.",
+    "invalid": "Wähle eine Verschiebung ungleich null von höchstens 366 Tagen; wähle höchstens 1000 Fotos aus.",
     "counts": "{changed} geändert · {skipped} übersprungen",
     "samples": "Die ersten 20 Änderungen. Unbekannte, unvollständige, nicht unterstützte oder überlaufende Datumswerte werden übersprungen.",
     "photo": "Foto",
@@ -2882,8 +2879,27 @@
     "reset_hint": "Die Schaltfläche „Dateidatum verwenden“ entfernt die manuelle Korrektur. Ohne Datum in der Datei wird das Aufnahmedatum unbekannt.",
     "use_file": "Dateidatum verwenden",
     "preview": "Vorschau",
-    "apply": "Korrektur anwenden",
-    "hint": "Verschiebt die gespeicherte Kamera-Uhrzeit ohne Ableitung von Zeitzone oder Sommerzeit. Originale ändern sich erst beim ausdrücklichen Metadatenexport."
+    "apply": "Korrektur anwenden ({count})",
+    "hint": "Verschiebt die gespeicherte Kamera-Uhrzeit ohne Ableitung von Zeitzone oder Sommerzeit. Originale ändern sich erst beim ausdrücklichen Metadatenexport.",
+    "mode_shift": "Verschieben um",
+    "mode_exact": "Genaue Zeit festlegen",
+    "mode": "Korrekturmodus",
+    "direction": "Richtung",
+    "earlier": "Früher",
+    "later": "Später",
+    "days": "Tage",
+    "hours": "Stunden",
+    "minutes": "Minuten",
+    "seconds": "Sekunden",
+    "unit_d": "T",
+    "unit_h": "h",
+    "unit_min": "min",
+    "unit_s": "s",
+    "quick": "Schnellanpassung",
+    "summary_earlier": "{amount} früher",
+    "summary_later": "{amount} später",
+    "exact_label": "Korrektes Datum und Uhrzeit des Referenzfotos",
+    "reference": "Referenzfoto:"
   },
   "organization_history": {
     "title": "Änderungsverlauf",

@@ -655,11 +655,11 @@ describe('App', () => {
 
     const isSortField = (el: Element | null) => !!el && el.tagName === 'MAT-FORM-FIELD' && !!el.textContent?.includes(I18N.gallery.sort);
 
-    it('renders one desktop button right after the header Sort field, in the tonal colour', () => {
+    it('renders one desktop button just before the account menu, in the tonal colour', () => {
       const { buttons } = render(true);
       const desktop = buttons.filter((b) => b.classList.contains('lg:!inline-flex'));
       expect(desktop).toHaveLength(1);
-      expect(isSortField(desktop[0].previousElementSibling)).toBe(true);
+      expect(desktop[0].nextElementSibling?.getAttribute('aria-label')).toBe(I18N.auth.user_menu);
       expect(desktop[0].classList.contains('!hidden')).toBe(true);
       for (const cls of TONAL) expect(desktop[0].classList.contains(cls)).toBe(true);
     });
@@ -799,17 +799,20 @@ describe('App', () => {
   });
 
   describe('header edition underline and user menu', () => {
+    const historyRef = (restored: boolean) => ({
+      componentInstance: { whenSettled: () => Promise.resolve(), wasRestored: () => restored }, afterClosed: () => of(undefined),
+    });
     function render(edition: boolean, multiUser = false) {
       TestBed.configureTestingModule({
         providers: [
           provideRouter([]),
-          { provide: GalleryStore, useValue: { filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null), types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), loadConfig: vi.fn(), viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(false), hiddenFiltersStash: signal(null), slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(), reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn() } },
+          { provide: GalleryStore, useValue: { filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null), types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), loadConfig: vi.fn(), viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(false), hiddenFiltersStash: signal(null), slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(), reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(), notifyOrganizationRestored: vi.fn() } },
           { provide: ScanService, useValue: { canLaunch: signal(false), openLauncher: vi.fn() } },
           { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(true), isReadOnlyInstall: signal(false), features: signal({}), user: signal(null), logout: vi.fn(), isEdition: signal(edition), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(multiUser), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
           { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string) => k), translations: signal({}) } },
           { provide: StatsFiltersService, useValue: { filterCategory: signal(''), dateFrom: signal(''), dateTo: signal('') } },
           { provide: CompareFiltersService, useValue: { selectedCategory: signal('') } },
-          { provide: MatDialog, useValue: { open: vi.fn() } },
+          { provide: MatDialog, useValue: { open: vi.fn(() => historyRef(false)) } },
           { provide: ApiService, useValue: { get: vi.fn(() => NEVER), post: vi.fn(() => NEVER) } },
           { provide: ThemeService, useValue: { theme: signal(''), darkMode: signal(true), THEMES: [], setTheme: vi.fn(), toggleDarkMode: vi.fn(), accentColor: signal('#ff6600'), complementaryColor: signal('#0099ff') } },
         ],
@@ -827,10 +830,37 @@ describe('App', () => {
 
     afterEach(() => document.querySelectorAll('.cdk-overlay-container').forEach(el => el.replaceChildren()));
 
-    it.each([[true], [false]])('draws the amber 2px underline exactly while edition is %s', (edition) => {
+    it.each([[true], [false]])('offers Organization history in the nav exactly while edition is %s', (edition) => {
       const { root } = render(edition);
-      const bar = root.querySelector('mat-toolbar')!;
-      expect(bar.classList.contains('border-amber-400')).toBe(edition);
+      const buttons = root.querySelectorAll(`nav button[aria-label="${I18N.organization_history.title}"]`);
+      expect(buttons.length).toBe(edition ? 2 : 0);
+    });
+
+    it.each([['kept', 1], ['lost', 0]])('opens the history dialog after the lazy load only while edition is %s', async (state, opens) => {
+      const { fixture } = render(true);
+      const app = fixture.componentInstance as unknown as { openOrganizationHistory: () => Promise<void> };
+      const dialog = TestBed.inject(MatDialog);
+      const auth = TestBed.inject(AuthService) as unknown as { isEdition: ReturnType<typeof signal<boolean>> };
+      const opening = app.openOrganizationHistory();
+      if (state === 'lost') auth.isEdition.set(false);
+      await opening;
+      expect(dialog.open).toHaveBeenCalledTimes(opens);
+    });
+
+    it.each([[true, 1], [false, 0]])('tells open views to refetch after the history dialog closes when restored is %s', async (restored, notifies) => {
+      const { root } = render(true);
+      const dialog = TestBed.inject(MatDialog) as unknown as { open: ReturnType<typeof vi.fn> };
+      dialog.open.mockReturnValue(historyRef(restored));
+      root.querySelector<HTMLButtonElement>(`nav button[aria-label="${I18N.organization_history.title}"]`)!.click();
+      await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(1));
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      expect(TestBed.inject(GalleryStore).notifyOrganizationRestored).toHaveBeenCalledTimes(notifies);
+    });
+
+    it.each([[true], [false]])('draws the theme-accent 2px underline exactly while edition is %s', (edition) => {
+      const { root } = render(edition);
+      const bar = root.querySelector<HTMLElement>('mat-toolbar')!;
+      expect(bar.style.borderBottomColor).toBe(edition ? 'var(--facet-accent)' : '');
       expect(bar.classList.contains('!border-b-2')).toBe(edition);
     });
 

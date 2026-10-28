@@ -495,7 +495,7 @@ export const DEFAULT_FILTERS: GalleryFilters = {
   similarity_mode: 'visual',
   min_similarity: '70',
   hide_details: true,
-  tooltip_mode: 'hover',
+  tooltip_mode: 'panel',
   panel_activation: 'both',
   hide_blinks: true,
   hide_bursts: true,
@@ -678,7 +678,7 @@ export function buildSyncParams(
     params['hide_panoramas'] = String(f.hide_panoramas);
   if (f.hide_rejected !== (defaults?.hide_rejected ?? true))
     params['hide_rejected'] = String(f.hide_rejected);
-  if (f.tooltip_mode !== (defaults?.tooltip_mode ?? 'hover'))
+  if (f.tooltip_mode !== (defaults?.tooltip_mode ?? 'panel'))
     params['tooltip_mode'] = f.tooltip_mode;
   if (f.panel_activation !== (defaults?.panel_activation ?? 'both'))
     params['panel_activation'] = f.panel_activation;

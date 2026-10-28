@@ -139,20 +139,16 @@
   "tooltip": {
     "not_computed": "未计算",
     "category": "类别",
-    "aggregate": "综合评分",
-    "quality_section": "画质",
     "aesthetic": "美观度",
     "quality_score": "画质评分",
     "face_quality": "人脸画质",
     "face_sharpness": "人脸清晰度",
     "eye_sharpness": "眼睛清晰度",
     "tech_sharpness": "技术清晰度",
-    "composition_section": "构图",
     "composition": "构图",
     "pattern": "构图模式",
     "power_points": "构图交点",
     "leading_lines": "引导线",
-    "technical_section": "技术指标",
     "exposure": "曝光",
     "color": "色彩",
     "contrast": "对比度",
@@ -162,7 +158,6 @@
     "noise": "噪点",
     "bonus_section": "加分",
     "isolation": "主体突出程度",
-    "exif_section": "EXIF",
     "camera": "相机",
     "lens": "镜头",
     "focal": "焦距",
@@ -188,7 +183,6 @@
     "qrealign_score": "Q-ReAlign",
     "aesthetic_v25": "美学评分 V2.5",
     "deqa_score": "DeQA",
-    "saliency_section": "主体显著性",
     "subject_sharpness": "主体清晰度",
     "subject_prominence": "突出程度",
     "subject_placement": "位置布局",
@@ -201,7 +195,6 @@
     "color_harmony": "色彩和谐度",
     "caption": "照片描述",
     "filter_by_person": "按 {name} 筛选",
-    "set_section": "组",
     "histogram": "直方图"
   },
   "photoCard": {
@@ -577,7 +570,8 @@
     "mark_rejected": "标为淘汰",
     "unmark_rejected": "取消淘汰标记",
     "rejected_badge": "已淘汰",
-    "rating_badge": "已评为 {stars}"
+    "rating_badge": "已评为 {stars}",
+    "stars_out_of_five": "评分 {stars}/5"
   },
   "similar": {
     "title": "相似照片",
@@ -1212,7 +1206,6 @@
       "find_filter": "查找筛选条件…",
       "clear_find_filter": "清空筛选搜索",
       "no_filters_match": "没有匹配的筛选条件",
-      "advanced_metrics": "高级指标",
       "refine": "细化筛选",
       "view": "查看",
       "color_quality": "色彩与画质",
@@ -2466,7 +2459,6 @@
     "location": "位置",
     "social_crop": "社交平台裁切",
     "set": {
-      "title": "组",
       "ev_span": "曝光跨度（EV）",
       "kind_duplicate": "重复照片",
       "open_in_gallery": "在照片库中打开此照片组",
@@ -2524,6 +2516,11 @@
       "batch_error": "无法应用位置。请选择最多 1000 张照片并重新预览；所选照片或已保存地点可能已更改。",
       "batch_limit": "请选择最多 1000 张照片。关闭保护后将替换现有位置。原始文件保持不变。",
       "batch_hint": "选择一个位置，然后预览更改，再保存所选照片。"
+    },
+    "distribution": {
+      "top": "位列图库前 {pct}%",
+      "range": "图库范围 {min}–{max}",
+      "top_in_range": "位列图库前 {pct}% · 图库范围 {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2548,7 +2545,8 @@
       "success": "类别已设为{category}。",
       "cleared": "已清除手动指定。请重新计算，以应用根据筛选条件确定的类别。",
       "explainer_toggle": "为什么没有归入其他类别？",
-      "target_category_label": "对比类别"
+      "target_category_label": "对比类别",
+      "target_category_hint": "选择一个类别，查看哪些筛选条件将此照片排除在外，以及怎样才能归入该类别。"
     }
   },
   "download": {
@@ -2871,8 +2869,7 @@
   },
   "capture_date": {
     "title": "校正拍摄日期",
-    "offset": "偏移秒数（+ 推后，− 提前）",
-    "invalid": "请输入非零整数秒，范围为 ±366 天；最多选择 1000 张照片。",
+    "invalid": "请选择不为零且不超过 366 天的偏移；最多选择 1000 张照片。",
     "counts": "已更改 {changed} 张 · 已跳过 {skipped} 张",
     "samples": "前 20 项更改。未知、不完整、不支持或超出日期范围的时间将被跳过。",
     "photo": "照片",
@@ -2882,8 +2879,27 @@
     "reset_hint": "点击“使用文件日期”按钮可移除手动校正。如果文件没有日期，拍摄日期将变为未知。",
     "use_file": "使用文件日期",
     "preview": "预览",
-    "apply": "应用校正",
-    "hint": "偏移相机记录的本地时间，不推断时区或夏令时。只有明确导出元数据时才会更改原始文件。"
+    "apply": "应用校正（{count}）",
+    "hint": "偏移相机记录的本地时间，不推断时区或夏令时。只有明确导出元数据时才会更改原始文件。",
+    "mode_shift": "偏移",
+    "mode_exact": "设置准确时间",
+    "mode": "校正方式",
+    "direction": "方向",
+    "earlier": "提前",
+    "later": "推后",
+    "days": "天",
+    "hours": "小时",
+    "minutes": "分钟",
+    "seconds": "秒",
+    "unit_d": "天",
+    "unit_h": "小时",
+    "unit_min": "分钟",
+    "unit_s": "秒",
+    "quick": "快速调整",
+    "summary_earlier": "提前 {amount}",
+    "summary_later": "推后 {amount}",
+    "exact_label": "参考照片的正确日期和时间",
+    "reference": "参考照片："
   },
   "organization_history": {
     "title": "整理历史",

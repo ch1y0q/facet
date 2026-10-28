@@ -8,6 +8,7 @@ import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 import type { Photo, PhotoSet } from '../../shared/models/photo.model';
 import { GalleryStore } from './gallery.store';
+import { MetricsTabState } from '../../core/services/metrics-tab-state.service';
 import { makePhoto, makePhotoFull } from '../../../testing/photo.fixture';
 
 /* eslint-disable @angular-eslint/component-selector */
@@ -29,9 +30,15 @@ class TestHostComponent {
 }
 
 describe('PhotoTooltipComponent', () => {
+  // The open metric tab is remembered across tests otherwise.
+  afterEach(() => localStorage.removeItem('facet_photo_detail_tab'));
+
   let fixture: ComponentFixture<TestHostComponent>;
   const mockI18n = { t: (key: string) => key, locale: vi.fn(() => 'en'), translations: vi.fn(() => ({})) };
-  const mockStore = { config: signal<{ populated_scores?: string[] } | null>(null) };
+  const mockStore = {
+    config: signal<{ populated_scores?: string[] } | null>(null),
+    metricRangesByColumn: signal({}),
+  };
   const mockRouter = { navigate: vi.fn(() => Promise.resolve(true)) };
 
   beforeEach(async () => {
@@ -48,10 +55,19 @@ describe('PhotoTooltipComponent', () => {
     fixture = TestBed.createComponent(TestHostComponent);
   });
 
-  it('keeps present NULL extended metrics visible in the actual hover template', () => {
-    mockStore.config.set({ populated_scores: ['aesthetic_v25', 'qrealign_score', 'deqa_score'] });
-    fixture.componentInstance.photo.set(makePhotoFull({ aesthetic_v25: null, qrealign_score: null, deqa_score: 0 }));
+  /** The full metric sheet lives in the side panel's tabs now that the floating
+   *  bubble keeps four key scores: render docked with one tab open. */
+  function renderDocked(photo: Photo, tab: 'quality' | 'composition' | 'technical'): string {
+    TestBed.inject(MetricsTabState).tab.set(tab);
+    fixture.componentInstance.docked.set(true);
+    fixture.componentInstance.photo.set(photo);
     fixture.detectChanges();
+    return fixture.nativeElement.textContent as string;
+  }
+
+  it('keeps present NULL extended metrics visible in the side panel', () => {
+    mockStore.config.set({ populated_scores: ['aesthetic_v25', 'qrealign_score', 'deqa_score'] });
+    renderDocked(makePhotoFull({ aesthetic_v25: null, qrealign_score: null, deqa_score: 0 }), 'quality');
     for (const key of ['aesthetic_v25', 'qrealign_score']) {
       expect(fixture.nativeElement.querySelector(`[data-testid="${key}-score"]`).textContent).toContain('tooltip.not_computed');
     }
@@ -94,52 +110,44 @@ describe('PhotoTooltipComponent', () => {
 
   it('renders face_ratio as percentage (value * 100)', () => {
     // API returns face_ratio as 0-1 fraction; template multiplies by 100 for display
-    fixture.componentInstance.photo.set(makePhoto({ face_count: 1, face_quality: 8.5, face_ratio: 0.35 }));
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('35%');
+    const text = renderDocked(makePhoto({ face_count: 1, face_quality: 8.5, face_ratio: 0.35 }), 'quality');
+    expect(text).toContain('35%');
   });
 
   it('renders face_confidence as percentage (value * 100)', () => {
-    fixture.componentInstance.photo.set(makePhoto({ face_count: 1, face_quality: 8.5, face_confidence: 0.92 }));
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('92%');
+    const text = renderDocked(makePhoto({ face_count: 1, face_quality: 8.5, face_confidence: 0.92 }), 'quality');
+    expect(text).toContain('92%');
   });
 
   it('renders mean_saturation as percentage (value * 100)', () => {
-    fixture.componentInstance.photo.set(makePhoto({ mean_saturation: 0.47 }));
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('47%');
+    const text = renderDocked(makePhoto({ mean_saturation: 0.47 }), 'technical');
+    expect(text).toContain('47%');
   });
 
   it('renders mean_luminance as percentage (value * 100)', () => {
-    fixture.componentInstance.photo.set(makePhoto({ mean_luminance: 0.62 }));
-    fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('62%');
+    const text = renderDocked(makePhoto({ mean_luminance: 0.62 }), 'technical');
+    expect(text).toContain('62%');
   });
 
   describe('Extended Quality metrics', () => {
     it('renders aesthetic_iaa when present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ aesthetic_iaa: 7.3 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('7.3');
+      const text = renderDocked(makePhoto({ aesthetic_iaa: 7.3 }), 'quality');
+      expect(text).toContain('7.3');
     });
 
     it('renders face_quality_iqa when present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ face_quality_iqa: 6.8 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('6.8');
+      const text = renderDocked(makePhoto({ face_quality_iqa: 6.8 }), 'quality');
+      expect(text).toContain('6.8');
     });
 
     it('renders liqe_score when present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ liqe_score: 8.1 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('8.1');
+      const text = renderDocked(makePhoto({ liqe_score: 8.1 }), 'quality');
+      expect(text).toContain('8.1');
     });
 
     it('does not render aesthetic_iaa row when null', () => {
-      fixture.componentInstance.photo.set(makePhoto({ aesthetic_iaa: null }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).not.toContain('tooltip.aesthetic_iaa');
+      const text = renderDocked(makePhoto({ aesthetic_iaa: null }), 'quality');
+      expect(text).not.toContain('tooltip.aesthetic_iaa');
     });
   });
 
@@ -219,130 +227,132 @@ describe('PhotoTooltipComponent', () => {
 
   describe('Subject Saliency section', () => {
     it('renders saliency section when at least one metric is present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ subject_sharpness: 7.5 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('tooltip.saliency_section');
-      expect(fixture.nativeElement.textContent).toContain('7.5');
+      const text = renderDocked(makePhoto({ subject_sharpness: 7.5 }), 'composition');
+      expect(text).toContain('photo_detail.saliency');
+      expect(text).toContain('7.5');
     });
 
     it('hides saliency section when all saliency fields are null', () => {
-      fixture.componentInstance.photo.set(makePhoto({
+      const text = renderDocked(makePhoto({
         subject_sharpness: null, subject_prominence: null,
         subject_placement: null, bg_separation: null,
-      }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).not.toContain('tooltip.saliency_section');
+      }), 'composition');
+      expect(text).not.toContain('photo_detail.saliency');
     });
 
     it('renders subject_prominence when present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ subject_prominence: 5.2 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('5.2');
+      const text = renderDocked(makePhoto({ subject_prominence: 5.2 }), 'composition');
+      expect(text).toContain('5.2');
     });
 
     it('renders bg_separation when present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ bg_separation: 8.0 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('8.0');
+      const text = renderDocked(makePhoto({ bg_separation: 8.0 }), 'composition');
+      expect(text).toContain('8.0');
     });
 
     it('renders subject_placement when present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ subject_placement: 6.7 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('tooltip.subject_placement');
-      expect(fixture.nativeElement.textContent).toContain('6.7');
+      const text = renderDocked(makePhoto({ subject_placement: 6.7 }), 'composition');
+      expect(text).toContain('tooltip.subject_placement');
+      expect(text).toContain('6.7');
     });
   });
 
   describe('Quality section extra metrics', () => {
     it('renders quality_score when present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ quality_score: 8.2 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('tooltip.quality_score');
-      expect(fixture.nativeElement.textContent).toContain('8.2');
+      const text = renderDocked(makePhoto({ quality_score: 8.2 }), 'quality');
+      expect(text).toContain('tooltip.quality_score');
+      expect(text).toContain('8.2');
     });
 
     it('renders topiq_score when present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ topiq_score: 7.6 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('tooltip.topiq_score');
-      expect(fixture.nativeElement.textContent).toContain('7.6');
+      const text = renderDocked(makePhoto({ topiq_score: 7.6 }), 'quality');
+      expect(text).toContain('tooltip.topiq_score');
+      expect(text).toContain('7.6');
     });
   });
 
   describe('Face section sharpness metrics', () => {
     it('renders face_sharpness when a scored face is present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ face_count: 1, face_quality: 8.4, face_sharpness: 8.1 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('tooltip.face_sharpness');
-      expect(fixture.nativeElement.textContent).toContain('8.1');
+      const text = renderDocked(makePhoto({ face_count: 1, face_quality: 8.4, face_sharpness: 8.1 }), 'quality');
+      expect(text).toContain('tooltip.face_sharpness');
+      expect(text).toContain('8.1');
     });
 
     it('renders eye_sharpness when a scored face is present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ face_count: 1, face_quality: 8.4, eye_sharpness: 8.9 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('tooltip.eye_sharpness');
-      expect(fixture.nativeElement.textContent).toContain('8.9');
+      const text = renderDocked(makePhoto({ face_count: 1, face_quality: 8.4, eye_sharpness: 8.9 }), 'quality');
+      expect(text).toContain('tooltip.eye_sharpness');
+      expect(text).toContain('8.9');
     });
   });
 
   describe('Composition section extra metrics', () => {
     it('renders power_point_score when present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ power_point_score: 6.1 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('tooltip.power_points');
-      expect(fixture.nativeElement.textContent).toContain('6.1');
+      const text = renderDocked(makePhoto({ power_point_score: 6.1 }), 'composition');
+      expect(text).toContain('tooltip.power_points');
+      expect(text).toContain('6.1');
     });
 
     it('renders leading_lines_score when present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ leading_lines_score: 5.4 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('tooltip.leading_lines');
-      expect(fixture.nativeElement.textContent).toContain('5.4');
+      const text = renderDocked(makePhoto({ leading_lines_score: 5.4 }), 'composition');
+      expect(text).toContain('tooltip.leading_lines');
+      expect(text).toContain('5.4');
     });
   });
 
   describe('Technical section extra metrics', () => {
     it('renders contrast_score when present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ contrast_score: 6.8 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('tooltip.contrast');
-      expect(fixture.nativeElement.textContent).toContain('6.8');
+      const text = renderDocked(makePhoto({ contrast_score: 6.8 }), 'technical');
+      expect(text).toContain('tooltip.contrast');
+      expect(text).toContain('6.8');
     });
 
     it('renders dynamic_range_stops when present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ dynamic_range_stops: 9.5 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('tooltip.dynamic_range');
-      expect(fixture.nativeElement.textContent).toContain('9.5');
+      const text = renderDocked(makePhoto({ dynamic_range_stops: 9.5 }), 'technical');
+      expect(text).toContain('tooltip.dynamic_range');
+      expect(text).toContain('9.5');
     });
 
     it('renders noise_sigma when present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ noise_sigma: 2.4 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('tooltip.noise');
-      expect(fixture.nativeElement.textContent).toContain('2.4');
+      const text = renderDocked(makePhoto({ noise_sigma: 2.4 }), 'technical');
+      expect(text).toContain('tooltip.noise');
+      expect(text).toContain('2.4');
     });
 
     it('renders histogram_spread when present', () => {
-      fixture.componentInstance.photo.set(makePhoto({ histogram_spread: 5.3 }));
-      fixture.detectChanges();
-      expect(fixture.nativeElement.textContent).toContain('tooltip.histogram_spread');
-      expect(fixture.nativeElement.textContent).toContain('5.3');
+      const text = renderDocked(makePhoto({ histogram_spread: 5.3 }), 'technical');
+      expect(text).toContain('tooltip.histogram_spread');
+      expect(text).toContain('5.3');
     });
   });
 
-  it('renders every gated metric row at once from the full fixture', () => {
-    fixture.componentInstance.photo.set(makePhotoFull());
-    fixture.detectChanges();
-    const text = fixture.nativeElement.textContent as string;
-    for (const key of [
-      'quality_score', 'topiq_score', 'face_sharpness', 'eye_sharpness',
-      'power_points', 'leading_lines', 'subject_placement',
-      'contrast', 'dynamic_range', 'noise', 'histogram_spread',
-    ]) {
-      expect(text).toContain(`tooltip.${key}`);
+  it('renders every gated metric row from the full fixture in the side panel', () => {
+    const rows = {
+      quality: ['quality_score', 'topiq_score', 'face_sharpness', 'eye_sharpness'],
+      composition: ['power_points', 'leading_lines', 'subject_placement'],
+      technical: ['contrast', 'dynamic_range', 'noise', 'histogram_spread'],
+    } as const;
+    for (const [tab, keys] of Object.entries(rows) as [keyof typeof rows, readonly string[]][]) {
+      fixture = TestBed.createComponent(TestHostComponent);
+      const text = renderDocked(makePhotoFull(), tab);
+      for (const key of keys) expect(text).toContain(`tooltip.${key}`);
     }
+  });
+
+  describe('floating key scores', () => {
+    it('shows the four key scores and one EXIF line', () => {
+      fixture.componentInstance.photo.set(makePhoto({
+        aesthetic: 9.9, comp_score: 7.3, tech_sharpness: null, exposure_score: 6.1,
+        camera_model: 'Canon EOS R6', focal_length: 24, f_stop: 8, iso: 640,
+      }));
+      fixture.detectChanges();
+      const text = fixture.nativeElement.textContent as string;
+      for (const key of ['tooltip.aesthetic', 'tooltip.composition', 'tooltip.exposure']) expect(text).toContain(key);
+      expect(text).not.toContain('tooltip.tech_sharpness');
+      expect(text).toContain('Canon EOS R6');
+      expect(text).toContain('ISO 640');
+      expect(fixture.nativeElement.querySelector('app-histogram')).toBeNull();
+      expect(text).not.toContain('tooltip.contrast');
+    });
   });
 
   describe('Person avatars', () => {
@@ -529,14 +539,18 @@ describe('PhotoTooltipComponent', () => {
       TestBed.tick();
       fixture.detectChanges();
       expect(root().style.top).toBe('');
+      expect(observers.some(o => o.target === root())).toBe(false);
       fixture.componentInstance.docked.set(false);
       fixture.detectChanges();
       TestBed.tick();
-      expect(observers.some(o => !o.disconnected)).toBe(true);
+      // Only the box's own observer: the docked metric tabs' header keeps
+      // Material's shared, never-disconnected one.
+      const box = root();
+      expect(observers.some(o => o.target === box && !o.disconnected)).toBe(true);
       fixture.componentInstance.photo.set(null);
       fixture.detectChanges();
       TestBed.tick();
-      expect(observers.every(o => o.disconnected)).toBe(true);
+      expect(observers.filter(o => o.target === box).every(o => o.disconnected)).toBe(true);
     });
   });
 
@@ -581,7 +595,7 @@ describe('PhotoTooltipComponent', () => {
       setFixture.componentInstance.photo.set(makePhoto({ sequence_kind: null }));
       setFixture.detectChanges();
 
-      expect(setFixture.nativeElement.textContent).not.toContain('tooltip.set_section');
+      expect(setFixture.nativeElement.querySelector('[data-testid="tooltip-set"]')).toBeNull();
       expect(mockApi.get).not.toHaveBeenCalledWith('/photo/set', expect.anything());
     });
 
@@ -600,7 +614,7 @@ describe('PhotoTooltipComponent', () => {
       );
       setFixture.detectChanges();
 
-      expect(setFixture.nativeElement.textContent).toContain('tooltip.set_section');
+      expect(setFixture.nativeElement.querySelector('[data-testid="tooltip-set"]')).not.toBeNull();
       expect(setFixture.nativeElement.textContent).toContain('culling.type_burst');
       vi.advanceTimersByTime(300);
       setFixture.detectChanges();
@@ -620,7 +634,7 @@ describe('PhotoTooltipComponent', () => {
       setFixture.componentInstance.photo.set(makePhoto({ sequence_kind: null, duplicate_group_id: 1 }));
       setFixture.detectChanges();
 
-      expect(setFixture.nativeElement.textContent).toContain('tooltip.set_section');
+      expect(setFixture.nativeElement.querySelector('[data-testid="tooltip-set"]')).not.toBeNull();
       expect(setFixture.nativeElement.textContent).toContain('photo_detail.set.kind_duplicate');
     });
 
@@ -630,7 +644,7 @@ describe('PhotoTooltipComponent', () => {
       }));
       setFixture.detectChanges();
 
-      expect(setFixture.nativeElement.textContent).toContain('tooltip.set_section');
+      expect(setFixture.nativeElement.querySelector('[data-testid="tooltip-set"]')).not.toBeNull();
       expect(setFixture.nativeElement.textContent).toContain('culling.bracket.label');
       expect(setFixture.nativeElement.textContent).toContain('+1.5 EV');
       expect(mockApi.get).not.toHaveBeenCalledWith('/photo/set', expect.anything());
@@ -667,69 +681,41 @@ describe('PhotoTooltipComponent', () => {
       expect(mockApi.get).not.toHaveBeenCalledWith('/photo/set', expect.anything());
     });
 
-    it('hides the histogram mode toggle in plain hover mode (neither pinned nor docked)', () => {
+    it('has no histogram in the floating tooltip, pinned or not', () => {
       setFixture.componentInstance.photo.set(makePhoto({ sequence_kind: null }));
       setFixture.detectChanges();
-
-      expect(setFixture.nativeElement.querySelectorAll('button').length).toBe(0);
-    });
-
-    it('shows the histogram mode toggle when pinned', () => {
+      expect(setFixture.nativeElement.querySelector('app-histogram')).toBeNull();
       setFixture.componentInstance.pinned.set(true);
-      setFixture.componentInstance.photo.set(makePhoto({ sequence_kind: null }));
       setFixture.detectChanges();
-
-      expect(setFixture.nativeElement.querySelectorAll('button').length).toBeGreaterThan(0);
+      expect(setFixture.nativeElement.querySelector('app-histogram')).toBeNull();
     });
 
     it('shows the histogram mode toggle when docked', () => {
+      localStorage.setItem('facet_photo_detail_tab', 'histogram');
       setFixture.componentInstance.docked.set(true);
       setFixture.componentInstance.photo.set(makePhoto({ sequence_kind: null }));
       setFixture.detectChanges();
 
-      expect(setFixture.nativeElement.querySelectorAll('button').length).toBeGreaterThan(0);
+      expect(setFixture.nativeElement.querySelectorAll('app-histogram button').length).toBeGreaterThan(0);
     });
 
-    // --- full-width histogram when the photo belongs to no set ---------------
-
-    function histogramContainer(): HTMLElement | null {
-      return setFixture.nativeElement.querySelector('app-histogram')?.parentElement ?? null;
-    }
-
-    it('the histogram is its own full-width block, not a grid column, when the photo belongs to no set', () => {
+    it('shows the metric tabs instead of the score sections when docked', () => {
+      setFixture.componentInstance.docked.set(true);
       setFixture.componentInstance.photo.set(makePhoto({ sequence_kind: null }));
       setFixture.detectChanges();
-
-      expect(setFixture.nativeElement.textContent).not.toContain('tooltip.set_section');
-      const container = histogramContainer();
-      expect(container).not.toBeNull();
-      expect(container!.parentElement?.classList.contains('grid')).toBe(false);
+      expect(setFixture.nativeElement.querySelector('app-photo-metrics-tabs')).not.toBeNull();
+      setFixture.componentInstance.docked.set(false);
+      setFixture.detectChanges();
+      expect(setFixture.nativeElement.querySelector('app-photo-metrics-tabs')).toBeNull();
     });
 
-    it('the layout is already full-width on the very first render, before the debounced fetch resolves -- no reflow once it does', () => {
+    it('shows the set block for a photo in a set and none otherwise', () => {
       setFixture.componentInstance.photo.set(makePhoto({ sequence_kind: null }));
       setFixture.detectChanges();
-
-      // Presence of the set block is decided by the synchronous
-      // p.sequence_kind, never by GET /api/photo/set -- assert the layout is
-      // already correct before advancing the fake timer past the dwell delay.
-      const beforeFetch = histogramContainer()!.parentElement?.classList.contains('grid');
-
-      vi.advanceTimersByTime(300);
-      setFixture.detectChanges();
-
-      const afterFetch = histogramContainer()!.parentElement?.classList.contains('grid');
-      expect(beforeFetch).toBe(false);
-      expect(afterFetch).toBe(false);
-    });
-
-    it('keeps the set block and the histogram as two stacked full-width blocks when the photo IS in a set', () => {
+      expect(setFixture.nativeElement.querySelector('[data-testid="tooltip-set"]')).toBeNull();
       setFixture.componentInstance.photo.set(makePhoto({ sequence_kind: 'bracket', sequence_ev_offset: 0 }));
       setFixture.detectChanges();
-
-      expect(setFixture.nativeElement.textContent).toContain('tooltip.set_section');
-      const container = histogramContainer();
-      expect(container!.parentElement?.classList.contains('grid')).toBe(false);
+      expect(setFixture.nativeElement.querySelector('[data-testid="tooltip-set"]')).not.toBeNull();
     });
 
     // --- docked-only sibling thumbnails ---------------------------------------

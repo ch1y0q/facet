@@ -1,6 +1,6 @@
 import { Directive, computed, effect, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { Photo } from '../models/photo.model';
+import { Photo, hasExifFields } from '../models/photo.model';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 
@@ -33,7 +33,7 @@ export abstract class PhotoDetailBase {
   protected readonly hasExif = computed(() => {
     const p = this.photo();
     if (!p) return false;
-    return !!(p.camera_model || p.lens_model || p.focal_length || p.f_stop || p.shutter_speed || p.iso);
+    return hasExifFields(p);
   });
 
   protected readonly captionTranslationEffect = effect(() => {

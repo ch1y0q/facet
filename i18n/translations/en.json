@@ -139,20 +139,16 @@
   "tooltip": {
     "not_computed": "Not computed",
     "category": "Category",
-    "aggregate": "Aggregate",
-    "quality_section": "Quality",
     "aesthetic": "Aesthetic",
     "quality_score": "Quality Score",
     "face_quality": "Face Quality",
     "face_sharpness": "Face Sharpness",
     "eye_sharpness": "Eye Sharpness",
     "tech_sharpness": "Tech Sharpness",
-    "composition_section": "Composition",
     "composition": "Composition",
     "pattern": "Pattern",
     "power_points": "Power Points",
     "leading_lines": "Leading Lines",
-    "technical_section": "Technical",
     "exposure": "Exposure",
     "color": "Color",
     "contrast": "Contrast",
@@ -162,7 +158,6 @@
     "noise": "Noise",
     "bonus_section": "Bonus",
     "isolation": "Isolation",
-    "exif_section": "EXIF",
     "camera": "Camera",
     "lens": "Lens",
     "focal": "Focal",
@@ -188,7 +183,6 @@
     "qrealign_score": "Q-ReAlign",
     "aesthetic_v25": "Aesthetic V2.5",
     "deqa_score": "DeQA",
-    "saliency_section": "Subject Saliency",
     "subject_sharpness": "Subject Sharpness",
     "subject_prominence": "Prominence",
     "subject_placement": "Placement",
@@ -201,7 +195,6 @@
     "color_harmony": "Color Harmony",
     "caption": "Caption",
     "filter_by_person": "Filter by {name}",
-    "set_section": "Set",
     "histogram": "Histogram"
   },
   "photoCard": {
@@ -577,7 +570,8 @@
     "mark_rejected": "Mark as rejected",
     "unmark_rejected": "Remove rejected mark",
     "rejected_badge": "Rejected",
-    "rating_badge": "Rated {stars}"
+    "rating_badge": "Rated {stars}",
+    "stars_out_of_five": "Rated {stars} out of 5"
   },
   "similar": {
     "title": "Similar Photos",
@@ -1212,7 +1206,6 @@
       "find_filter": "Find a filter…",
       "clear_find_filter": "Clear filter search",
       "no_filters_match": "No filters match",
-      "advanced_metrics": "Advanced metrics",
       "refine": "Refine",
       "view": "View",
       "color_quality": "Color & Quality",
@@ -2466,7 +2459,6 @@
     "location": "Location",
     "social_crop": "Social crop",
     "set": {
-      "title": "Set",
       "ev_span": "EV span",
       "kind_duplicate": "Duplicate",
       "open_in_gallery": "Open this set in the gallery",
@@ -2524,6 +2516,11 @@
       "batch_error": "Could not apply location. Select at most 1000 photos and preview again; the selection or saved place may have changed.",
       "batch_limit": "Select at most 1000 photos. Existing locations are replaced when protection is off. Original files are unchanged.",
       "batch_hint": "Choose a location, then preview the changes before saving the selection."
+    },
+    "distribution": {
+      "top": "Top {pct}% of the library",
+      "range": "Library range {min}–{max}",
+      "top_in_range": "Top {pct}% of the library · library range {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2548,7 +2545,8 @@
       "success": "Category set to {category}.",
       "cleared": "Override cleared. Recompute to apply the filter-based category.",
       "explainer_toggle": "Why isn't this a different category?",
-      "target_category_label": "Compare against"
+      "target_category_label": "Compare against",
+      "target_category_hint": "Pick a category to see which of its filters keep this photo out, and what would let it in."
     }
   },
   "download": {
@@ -2871,8 +2869,7 @@
   },
   "capture_date": {
     "title": "Correct capture date",
-    "offset": "Offset in seconds (+ later, − earlier)",
-    "invalid": "Use a nonzero whole number of seconds within ±366 days; select at most 1000 photos.",
+    "invalid": "Choose a nonzero shift of at most 366 days; select at most 1000 photos.",
     "counts": "{changed} changed · {skipped} skipped",
     "samples": "First 20 changes. Unknown, incomplete, unsupported or overflowing dates are skipped.",
     "photo": "Photo",
@@ -2882,8 +2879,27 @@
     "reset_hint": "The “Use file date” button removes the manual override. If the file has no date, the capture date becomes unknown.",
     "use_file": "Use file date",
     "preview": "Preview",
-    "apply": "Apply correction",
-    "hint": "Shift stored camera walltime; no timezone or daylight-saving inference. Originals stay unchanged until explicit metadata export."
+    "apply": "Apply correction ({count})",
+    "hint": "Shift stored camera walltime; no timezone or daylight-saving inference. Originals stay unchanged until explicit metadata export.",
+    "mode_shift": "Shift by",
+    "mode_exact": "Set exact time",
+    "mode": "Correction mode",
+    "direction": "Direction",
+    "earlier": "Earlier",
+    "later": "Later",
+    "days": "Days",
+    "hours": "Hours",
+    "minutes": "Minutes",
+    "seconds": "Seconds",
+    "unit_d": "d",
+    "unit_h": "h",
+    "unit_min": "min",
+    "unit_s": "s",
+    "quick": "Quick adjust",
+    "summary_earlier": "{amount} earlier",
+    "summary_later": "{amount} later",
+    "exact_label": "Correct date and time of the reference photo",
+    "reference": "Reference photo:"
   },
   "organization_history": {
     "title": "Organization history",
