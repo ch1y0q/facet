@@ -188,6 +188,27 @@ describe('GpsEditDialogComponent', () => {
       expect(mockSnackBar.open).not.toHaveBeenCalled();
     });
 
+    const onlineInput = (): HTMLInputElement => fixture.nativeElement.querySelector('input[aria-describedby="gps-online-notice"]');
+
+    it.each([
+      [1, 'photo_detail.gps.online_results'], [2, 'photo_detail.gps.online_results_plural'],
+    ] as const)('searches on Enter, describes the query by the privacy notice and announces %i result(s)', async (count, key) => {
+      expect(fixture.nativeElement.querySelector('#gps-online-notice')).not.toBeNull();
+      onlineInput().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      request().flush({ results: Array.from({ length: count }, (_, i) => ({ label: `P${i}`, latitude: i, longitude: i })) });
+      await vi.waitFor(() => expect(component.onlineResults().length).toBe(count));
+      fixture.detectChanges();
+      const list: HTMLElement = fixture.nativeElement.querySelector('ul[aria-label="photo_detail.gps.online_results_label"]');
+      expect(list.querySelectorAll('li').length).toBe(count);
+      const statuses = [...fixture.nativeElement.querySelectorAll('[role="status"]')].map((el: Element) => el.textContent?.trim());
+      expect(statuses).toContain(key);
+    });
+
+    it('does not search on the Enter that commits an IME composition', () => {
+      onlineInput().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+      http.expectNone(req => req.url === '/api/places/search');
+    });
+
     it('cancels an obsolete lookup on real navigation without reporting a failure', async () => {
       const pending = component.searchOnline(); const lookup = request();
       events.next(new NavigationStart(1, '/other'));

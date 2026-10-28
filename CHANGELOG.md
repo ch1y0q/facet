@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Screen readers hear location search results and the culling skeleton** (#302). In the location editor, Enter in the address field runs the online search, the field is described by the privacy notice, the results list is named and the number of places found is announced. The culling page's loading skeleton announces "Loading" as text rather than an unread label.
+
 ## [1.26.0] "Histogramme" — 2026-10-28
 
 ### Added
