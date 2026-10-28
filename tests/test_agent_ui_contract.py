@@ -8,6 +8,9 @@ from pathlib import Path
 
 from api.agent.ui_tools import UI_TOOLS, render_client_json, tools_version
 
+# Reads client, i18n or docs files: runs on every pull request (see ci.yml).
+pytestmark = pytest.mark.cross_file
+
 CLIENT_JSON = Path(__file__).resolve().parent.parent / "client/src/app/core/agent/ui-tools.schema.json"
 
 

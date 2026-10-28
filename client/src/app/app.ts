@@ -43,6 +43,7 @@ import { CULLING_SHORTCUT_SECTIONS } from './features/gallery/culling-shortcuts'
 import { GALLERY_SHORTCUT_SECTION } from './features/gallery/gallery-shortcuts';
 import { AssistantActivityChipComponent } from './features/agent/assistant-activity-chip.component';
 import { CONNECT_ASSISTANT_DIALOG_ID } from './core/agent/page-context.service';
+import { SortOptionIconPipe } from './shared/pipes/sort-option-icon.pipe';
 import { SortGroupKeyPipe } from './shared/pipes/sort-group-key.pipe';
 import { PersonThumbnailUrlPipe, ThumbnailUrlPipe } from './shared/pipes/thumbnail-url.pipe';
 import { SlideshowComponent } from './features/gallery/slideshow.component';
@@ -56,6 +57,9 @@ import { isUnavailableKey, unavailableSet } from './shared/utils/unavailable-met
 /** When the "a newer Facet is out" notice was last shown, so it stays weekly. */
 const RELEASE_NOTICE_KEY = 'facet_release_notice_shown';
 const RELEASE_NOTICE_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Translation key of a configured sort column's label. */
+const sortOptionLabelKey = (column: string): string => `sort_options.${column}`;
 
 /** Response of GET /api/updates/check. */
 interface ReleaseCheck {
@@ -141,6 +145,7 @@ export class EditionDialogComponent {
     MatDividerModule,
     TranslatePipe,
     SortGroupKeyPipe,
+    SortOptionIconPipe,
     PersonThumbnailUrlPipe,
     ThumbnailUrlPipe,
     MatSliderModule,
@@ -277,6 +282,48 @@ export class App implements OnInit {
     const grouped = this.store.config()?.sort_options_grouped;
     if (!grouped) return null;
     return Object.entries(grouped);
+  });
+
+  /** The sort menu's entries in display order: the conditional sorts, then each configured group
+   *  (header is the raw group name, keyed by `sortGroupKey` in the template) or the three fallbacks. */
+  protected readonly sortMenuSections = computed(() => {
+    const filters = this.store.filters();
+    const sections: { header: string | null; options: { column: string; labelKey: string }[] }[] = [];
+    if (filters.semanticQuery) sections.push({ header: null, options: [{ column: 'relevance', labelKey: I18N.gallery.sort_relevance }] });
+    if (this.store.config()?.features?.show_my_taste) sections.push({ header: null, options: [{ column: 'learned_score', labelKey: I18N.gallery.sort_my_taste }] });
+    const groups = this.sortGroups();
+    if (groups) {
+      for (const [name, options] of groups) {
+        sections.push({
+          header: name,
+          options: options.map(opt => ({ column: opt.column, labelKey: sortOptionLabelKey(opt.column) })),
+        });
+      }
+    } else {
+      sections.push({ header: null, options: [
+        { column: 'aggregate', labelKey: I18N.gallery.sort_aggregate },
+        { column: 'aesthetic', labelKey: I18N.gallery.sort_aesthetic },
+        { column: 'date_taken', labelKey: I18N.gallery.sort_date },
+      ] });
+    }
+    return sections;
+  });
+
+  /** Labels of sorts the menu may not list: a restored or assistant-set sort the current
+   *  config hides, and top picks, which has no menu entry. */
+  private static readonly SORT_LABELS_OUTSIDE_MENU: Record<string, string> = {
+    relevance: I18N.gallery.sort_relevance,
+    learned_score: I18N.gallery.sort_my_taste,
+    top_picks_score: I18N.photo_types.top_picks,
+  };
+
+  /** Translation key of the active sort's label, for the sort button's tooltip and aria-label. */
+  protected readonly currentSortLabelKey = computed(() => {
+    const sort = this.store.filters().sort;
+    const match = this.sortMenuSections().flatMap(section => section.options).find(opt => opt.column === sort);
+    const outsideLabel = Object.hasOwn(App.SORT_LABELS_OUTSIDE_MENU, sort)
+      ? App.SORT_LABELS_OUTSIDE_MENU[sort] : undefined;
+    return match?.labelKey ?? outsideLabel ?? sortOptionLabelKey(sort);
   });
 
   private static readonly RANGE_CHIPS: { minKey: string; maxKey: string; labelKey: string }[] = [
@@ -579,6 +626,7 @@ export class App implements OnInit {
 
 
   protected onSortChange(sort: string): void {
+    if (sort === this.store.filters().sort) return;
     void this.store.setUserSort(sort);
   }
 

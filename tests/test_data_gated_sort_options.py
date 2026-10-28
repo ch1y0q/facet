@@ -10,6 +10,9 @@ import licensing
 from api.database import get_db
 from api.types import DATA_GATED_SORT_COLS, VALID_SORT_COLS, reset_data_gate_cache
 
+# Reads client, i18n or docs files: runs on every pull request (see ci.yml).
+pytestmark = pytest.mark.cross_file
+
 KEYS_TS = (Path(__file__).resolve().parents[1] / "client/src/app/core/i18n/keys.ts").read_text()
 
 

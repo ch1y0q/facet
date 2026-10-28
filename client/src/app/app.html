@@ -201,32 +201,13 @@
         <span class="!hidden min-[1360px]:!inline text-sm opacity-70">{{ I18N.gallery.photo_count | translate:{ count: store.total() } }}</span>
 
         @if (!pinned()) {
-          <mat-form-field class="!hidden lg:!inline-flex w-48 shrink-0" subscriptSizing="dynamic">
-            <mat-label>{{ I18N.gallery.sort | translate }}</mat-label>
-            <mat-select panelWidth="auto" panelClass="nowrap-panel" [value]="store.filters().sort" (selectionChange)="onSortChange($event.value)">
-              @if (store.filters().semanticQuery) {
-                <mat-option value="relevance">{{ I18N.gallery.sort_relevance | translate }}</mat-option>
-              }
-              @if (store.config()?.features?.show_my_taste) {
-                <mat-option value="learned_score">{{ I18N.gallery.sort_my_taste | translate }}</mat-option>
-              }
-              @if (sortGroups(); as groups) {
-                @for (group of groups; track group[0]) {
-                  <mat-optgroup [label]="('sort_groups.' + (group[0] | sortGroupKey)) | translate">
-                    @for (opt of group[1]; track opt.column) {
-                      <mat-option [value]="opt.column">{{ 'sort_options.' + opt.column | translate }}</mat-option>
-                    }
-                  </mat-optgroup>
-                }
-              } @else {
-                <mat-option value="aggregate">{{ I18N.gallery.sort_aggregate | translate }}</mat-option>
-                <mat-option value="aesthetic">{{ I18N.gallery.sort_aesthetic | translate }}</mat-option>
-                <mat-option value="date_taken">{{ I18N.gallery.sort_date | translate }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
+          @let sortTooltip = I18N.gallery.sort_current | translate:{ label: (currentSortLabelKey() | translate) };
+          <button mat-icon-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="sortMenu" [matTooltip]="sortTooltip" [attr.aria-label]="sortTooltip">
+            @let currentIcon = store.filters().sort | sortOptionIcon;
+            <mat-icon aria-hidden="true" class="!w-8 -mx-1 text-center" [class]="currentIcon.classes">{{ currentIcon.text }}</mat-icon>
+          </button>
           <button
-            class="!hidden lg:!inline-flex -ml-1"
+            class="!hidden lg:!inline-flex"
             mat-icon-button
             (click)="toggleSortDirection()"
             [matTooltip]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)"
@@ -235,6 +216,18 @@
             <mat-icon>{{
               store.filters().sort_direction === 'DESC' ? 'arrow_downward' : 'arrow_upward'
             }}</mat-icon>
+          </button>
+          <button
+            class="!hidden lg:!inline-flex"
+            mat-icon-button
+            (click)="store.setFilterDrawerOpen(!store.filterDrawerOpen())"
+            [matBadge]="store.activeFilterCount() || null"
+            matBadgeColor="primary"
+            matBadgeSize="small"
+            [matTooltip]="I18N.gallery.filters | translate"
+            [attr.aria-label]="I18N.gallery.filters | translate"
+          >
+            <mat-icon [style.color]="store.filterDrawerOpen() ? 'var(--mat-sys-primary)' : ''">filter_alt</mat-icon>
           </button>
         }
 
@@ -275,66 +268,6 @@
         >
           <mat-icon [style.color]="store.slideshowActive() ? 'var(--mat-sys-primary)' : ''">slideshow</mat-icon>
         </button>
-
-        @if (!pinned()) {
-          <button
-            class="!hidden lg:!inline-flex"
-            mat-icon-button
-            (click)="store.setFilterDrawerOpen(!store.filterDrawerOpen())"
-            [matBadge]="store.activeFilterCount() || null"
-            matBadgeColor="primary"
-            matBadgeSize="small"
-            [matTooltip]="I18N.gallery.filters | translate"
-            [attr.aria-label]="I18N.gallery.filters | translate"
-          >
-            <mat-icon [style.color]="store.filterDrawerOpen() ? 'var(--mat-sys-primary)' : ''">filter_alt</mat-icon>
-          </button>
-        }
-
-        <mat-menu #tooltipModeMenu="matMenu">
-          <button mat-menu-item (click)="store.updateFilter('tooltip_mode', 'hover')">
-            <mat-icon>chat_bubble_outline</mat-icon>
-            {{ I18N.gallery.tooltip_mode.hover | translate }}
-          </button>
-          <button mat-menu-item (click)="store.updateFilter('tooltip_mode', 'click')">
-            <mat-icon>touch_app</mat-icon>
-            {{ I18N.gallery.tooltip_mode.click | translate }}
-          </button>
-          @if (canDockDetails()) {
-            <button mat-menu-item (click)="store.updateFilter('tooltip_mode', 'panel')">
-              <mat-icon>view_sidebar</mat-icon>
-              {{ I18N.gallery.tooltip_mode.panel | translate }}
-            </button>
-            @if (store.filters().tooltip_mode === 'panel') {
-              <button mat-menu-item [matMenuTriggerFor]="panelActivationMenu">
-                <mat-icon>{{
-                  store.filters().panel_activation === 'hover' ? 'chat_bubble_outline'
-                  : store.filters().panel_activation === 'click' ? 'touch_app'
-                  : 'swap_horiz'
-                }}</mat-icon>
-                {{ I18N.gallery.panel_activation.label | translate }}
-              </button>
-            }
-          }
-          <button mat-menu-item (click)="store.updateFilter('tooltip_mode', 'off')">
-            <mat-icon>visibility_off</mat-icon>
-            {{ I18N.gallery.tooltip_mode.off | translate }}
-          </button>
-        </mat-menu>
-        <mat-menu #panelActivationMenu="matMenu">
-          <button mat-menu-item (click)="store.updateFilter('panel_activation', 'hover')">
-            <mat-icon>chat_bubble_outline</mat-icon>
-            {{ I18N.gallery.panel_activation.hover | translate }}
-          </button>
-          <button mat-menu-item (click)="store.updateFilter('panel_activation', 'click')">
-            <mat-icon>touch_app</mat-icon>
-            {{ I18N.gallery.panel_activation.click | translate }}
-          </button>
-          <button mat-menu-item (click)="store.updateFilter('panel_activation', 'both')">
-            <mat-icon>swap_horiz</mat-icon>
-            {{ I18N.gallery.panel_activation.both | translate }}
-          </button>
-        </mat-menu>
       }
 
       <!-- Scan for new photos (gallery only), last before the account menu. -->
@@ -583,111 +516,18 @@
         }
 
         @if (!pinned()) {
-          <!-- Sort selector with label -->
-          <mat-form-field class="flex-1 min-w-0" subscriptSizing="dynamic">
-            <mat-label>{{ I18N.gallery.sort | translate }}</mat-label>
-            <mat-select panelWidth="auto" panelClass="nowrap-panel" [value]="store.filters().sort" (selectionChange)="onSortChange($event.value)">
-              @if (store.filters().semanticQuery) {
-                <mat-option value="relevance">{{ I18N.gallery.sort_relevance | translate }}</mat-option>
-              }
-              @if (store.config()?.features?.show_my_taste) {
-                <mat-option value="learned_score">{{ I18N.gallery.sort_my_taste | translate }}</mat-option>
-              }
-              @if (sortGroups(); as groups) {
-                @for (group of groups; track group[0]) {
-                  <mat-optgroup [label]="('sort_groups.' + (group[0] | sortGroupKey)) | translate">
-                    @for (opt of group[1]; track opt.column) {
-                      <mat-option [value]="opt.column">{{ 'sort_options.' + opt.column | translate }}</mat-option>
-                    }
-                  </mat-optgroup>
-                }
-              } @else {
-                <mat-option value="aggregate">{{ I18N.gallery.sort_aggregate | translate }}</mat-option>
-                <mat-option value="aesthetic">{{ I18N.gallery.sort_aesthetic | translate }}</mat-option>
-                <mat-option value="date_taken">{{ I18N.gallery.sort_date | translate }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-        }
-
-        @if (scan.canLaunch()) {
-          <button mat-icon-button class="!w-9 !h-9 shrink-0 !bg-[var(--mat-sys-primary-container)] !text-[var(--mat-sys-on-primary-container)]" (click)="openScanLauncher()" [matTooltip]="I18N.gallery.scan_action | translate" [attr.aria-label]="I18N.gallery.scan_action | translate">
-            <mat-icon>add_photo_alternate</mat-icon>
+          @let sortTooltip = I18N.gallery.sort_current | translate:{ label: (currentSortLabelKey() | translate) };
+          <!-- Sort: icon button opening the shared sort menu -->
+          <button mat-icon-button class="!w-9 !h-9 shrink-0" [matMenuTriggerFor]="sortMenu" [matTooltip]="sortTooltip" [attr.aria-label]="sortTooltip">
+            @let currentIcon = store.filters().sort | sortOptionIcon;
+            <mat-icon aria-hidden="true" class="!w-8 -mx-1 text-center" [class]="currentIcon.classes">{{ currentIcon.text }}</mat-icon>
           </button>
-        }
-
-        <!-- Tooltip-mode menu (mobile, first in icon cluster) -->
-        <button mat-icon-button class="!w-9 !h-9 shrink-0"
-                [matMenuTriggerFor]="tooltipModeMenuMobile"
-                [matTooltip]="I18N.gallery.tooltip_mode.label | translate"
-                [attr.aria-label]="I18N.gallery.tooltip_mode.label | translate">
-          <mat-icon>{{
-            store.filters().tooltip_mode === 'click' ? 'touch_app'
-            : store.filters().tooltip_mode === 'off' ? 'visibility_off'
-            : store.filters().tooltip_mode === 'panel' ? 'view_sidebar'
-            : 'chat_bubble_outline'
-          }}</mat-icon>
-        </button>
-        <mat-menu #tooltipModeMenuMobile="matMenu">
-          <button mat-menu-item (click)="store.updateFilter('tooltip_mode', 'hover')">
-            <mat-icon>chat_bubble_outline</mat-icon>
-            {{ I18N.gallery.tooltip_mode.hover | translate }}
-          </button>
-          <button mat-menu-item (click)="store.updateFilter('tooltip_mode', 'click')">
-            <mat-icon>touch_app</mat-icon>
-            {{ I18N.gallery.tooltip_mode.click | translate }}
-          </button>
-          @if (canDockDetails()) {
-            <button mat-menu-item (click)="store.updateFilter('tooltip_mode', 'panel')">
-              <mat-icon>view_sidebar</mat-icon>
-              {{ I18N.gallery.tooltip_mode.panel | translate }}
-            </button>
-            @if (store.filters().tooltip_mode === 'panel') {
-              <button mat-menu-item [matMenuTriggerFor]="panelActivationMenuMobile">
-                <mat-icon>{{
-                  store.filters().panel_activation === 'hover' ? 'chat_bubble_outline'
-                  : store.filters().panel_activation === 'click' ? 'touch_app'
-                  : 'swap_horiz'
-                }}</mat-icon>
-                {{ I18N.gallery.panel_activation.label | translate }}
-              </button>
-            }
-          }
-          <button mat-menu-item (click)="store.updateFilter('tooltip_mode', 'off')">
-            <mat-icon>visibility_off</mat-icon>
-            {{ I18N.gallery.tooltip_mode.off | translate }}
-          </button>
-        </mat-menu>
-        <mat-menu #panelActivationMenuMobile="matMenu">
-          <button mat-menu-item (click)="store.updateFilter('panel_activation', 'hover')">
-            <mat-icon>chat_bubble_outline</mat-icon>
-            {{ I18N.gallery.panel_activation.hover | translate }}
-          </button>
-          <button mat-menu-item (click)="store.updateFilter('panel_activation', 'click')">
-            <mat-icon>touch_app</mat-icon>
-            {{ I18N.gallery.panel_activation.click | translate }}
-          </button>
-          <button mat-menu-item (click)="store.updateFilter('panel_activation', 'both')">
-            <mat-icon>swap_horiz</mat-icon>
-            {{ I18N.gallery.panel_activation.both | translate }}
-          </button>
-        </mat-menu>
-
-        @if (!pinned()) {
           <!-- Sort direction toggle -->
           <button mat-icon-button class="!w-9 !h-9 shrink-0" (click)="toggleSortDirection()"
             [matTooltip]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)"
             [attr.aria-label]="store.filters().sort_direction === 'DESC' ? (I18N.gallery.sort_desc | translate) : (I18N.gallery.sort_asc | translate)">
             <mat-icon>{{ store.filters().sort_direction === 'DESC' ? 'arrow_downward' : 'arrow_upward' }}</mat-icon>
           </button>
-        }
-
-        <!-- Slideshow toggle -->
-        <button mat-icon-button class="!w-9 !h-9 shrink-0" (click)="store.slideshowActive.set(!store.slideshowActive())" [matTooltip]="I18N.slideshow.start | translate" [attr.aria-label]="I18N.slideshow.start | translate">
-          <mat-icon [style.color]="store.slideshowActive() ? 'var(--mat-sys-primary)' : ''">slideshow</mat-icon>
-        </button>
-
-        @if (!pinned()) {
           <!-- Filter drawer toggle -->
           <button
             mat-icon-button class="!w-9 !h-9 shrink-0"
@@ -699,6 +539,31 @@
             matBadgeSize="small"
           >
             <mat-icon [style.color]="store.filterDrawerOpen() ? 'var(--mat-sys-primary)' : ''">filter_alt</mat-icon>
+          </button>
+        }
+
+        <!-- Tooltip-mode menu (mobile, first in icon cluster) -->
+        <button mat-icon-button class="!w-9 !h-9 shrink-0"
+                [matMenuTriggerFor]="tooltipModeMenu"
+                [matTooltip]="I18N.gallery.tooltip_mode.label | translate"
+                [attr.aria-label]="I18N.gallery.tooltip_mode.label | translate">
+          <mat-icon>{{
+            store.filters().tooltip_mode === 'click' ? 'touch_app'
+            : store.filters().tooltip_mode === 'off' ? 'visibility_off'
+            : store.filters().tooltip_mode === 'panel' ? 'view_sidebar'
+            : 'chat_bubble_outline'
+          }}</mat-icon>
+        </button>
+
+        <!-- Slideshow toggle -->
+        <button mat-icon-button class="!w-9 !h-9 shrink-0" (click)="store.slideshowActive.set(!store.slideshowActive())" [matTooltip]="I18N.slideshow.start | translate" [attr.aria-label]="I18N.slideshow.start | translate">
+          <mat-icon [style.color]="store.slideshowActive() ? 'var(--mat-sys-primary)' : ''">slideshow</mat-icon>
+        </button>
+
+        <!-- Scan for new photos: far right of the bar -->
+        @if (scan.canLaunch()) {
+          <button mat-icon-button class="!w-9 !h-9 shrink-0 ml-auto !bg-[var(--mat-sys-primary-container)] !text-[var(--mat-sys-on-primary-container)]" (click)="openScanLauncher()" [matTooltip]="I18N.gallery.scan_action | translate" [attr.aria-label]="I18N.gallery.scan_action | translate">
+            <mat-icon>add_photo_alternate</mat-icon>
           </button>
         }
       </div>
@@ -879,4 +744,108 @@
       [transitionType]="'kenburns'"
       (closed)="closeMemories()" />
   }
+  <!-- Tooltip-mode and panel-activation menus shared by the header and mobile-bar triggers -->
+  <mat-menu #tooltipModeMenu="matMenu">
+    <button mat-menu-item role="menuitemradio" [attr.aria-checked]="store.filters().tooltip_mode === 'hover'" (click)="store.updateFilter('tooltip_mode', 'hover')">
+      <mat-icon aria-hidden="true">chat_bubble_outline</mat-icon>
+      <span class="flex items-center gap-4">
+        <span class="grow">{{ I18N.gallery.tooltip_mode.hover | translate }}</span>
+        @if (store.filters().tooltip_mode === 'hover') {
+          <span class="flex"><mat-icon aria-hidden="true">check</mat-icon></span>
+        }
+      </span>
+    </button>
+    <button mat-menu-item role="menuitemradio" [attr.aria-checked]="store.filters().tooltip_mode === 'click'" (click)="store.updateFilter('tooltip_mode', 'click')">
+      <mat-icon aria-hidden="true">touch_app</mat-icon>
+      <span class="flex items-center gap-4">
+        <span class="grow">{{ I18N.gallery.tooltip_mode.click | translate }}</span>
+        @if (store.filters().tooltip_mode === 'click') {
+          <span class="flex"><mat-icon aria-hidden="true">check</mat-icon></span>
+        }
+      </span>
+    </button>
+    @if (canDockDetails()) {
+      <button mat-menu-item role="menuitemradio" [attr.aria-checked]="store.filters().tooltip_mode === 'panel'" (click)="store.updateFilter('tooltip_mode', 'panel')">
+        <mat-icon aria-hidden="true">view_sidebar</mat-icon>
+        <span class="flex items-center gap-4">
+          <span class="grow">{{ I18N.gallery.tooltip_mode.panel | translate }}</span>
+          @if (store.filters().tooltip_mode === 'panel') {
+            <span class="flex"><mat-icon aria-hidden="true">check</mat-icon></span>
+          }
+        </span>
+      </button>
+      @if (store.filters().tooltip_mode === 'panel') {
+        <button mat-menu-item [matMenuTriggerFor]="panelActivationMenu">
+          <mat-icon aria-hidden="true">{{
+            store.filters().panel_activation === 'hover' ? 'chat_bubble_outline'
+            : store.filters().panel_activation === 'click' ? 'touch_app'
+            : 'swap_horiz'
+          }}</mat-icon>
+          {{ I18N.gallery.panel_activation.label | translate }}
+        </button>
+      }
+    }
+    <button mat-menu-item role="menuitemradio" [attr.aria-checked]="store.filters().tooltip_mode === 'off'" (click)="store.updateFilter('tooltip_mode', 'off')">
+      <mat-icon aria-hidden="true">visibility_off</mat-icon>
+      <span class="flex items-center gap-4">
+        <span class="grow">{{ I18N.gallery.tooltip_mode.off | translate }}</span>
+        @if (store.filters().tooltip_mode === 'off') {
+          <span class="flex"><mat-icon aria-hidden="true">check</mat-icon></span>
+        }
+      </span>
+    </button>
+  </mat-menu>
+  <mat-menu #panelActivationMenu="matMenu">
+    <button mat-menu-item role="menuitemradio" [attr.aria-checked]="store.filters().panel_activation === 'hover'" (click)="store.updateFilter('panel_activation', 'hover')">
+      <mat-icon aria-hidden="true">chat_bubble_outline</mat-icon>
+      <span class="flex items-center gap-4">
+        <span class="grow">{{ I18N.gallery.panel_activation.hover | translate }}</span>
+        @if (store.filters().panel_activation === 'hover') {
+          <span class="flex"><mat-icon aria-hidden="true">check</mat-icon></span>
+        }
+      </span>
+    </button>
+    <button mat-menu-item role="menuitemradio" [attr.aria-checked]="store.filters().panel_activation === 'click'" (click)="store.updateFilter('panel_activation', 'click')">
+      <mat-icon aria-hidden="true">touch_app</mat-icon>
+      <span class="flex items-center gap-4">
+        <span class="grow">{{ I18N.gallery.panel_activation.click | translate }}</span>
+        @if (store.filters().panel_activation === 'click') {
+          <span class="flex"><mat-icon aria-hidden="true">check</mat-icon></span>
+        }
+      </span>
+    </button>
+    <button mat-menu-item role="menuitemradio" [attr.aria-checked]="store.filters().panel_activation === 'both'" (click)="store.updateFilter('panel_activation', 'both')">
+      <mat-icon aria-hidden="true">swap_horiz</mat-icon>
+      <span class="flex items-center gap-4">
+        <span class="grow">{{ I18N.gallery.panel_activation.both | translate }}</span>
+        @if (store.filters().panel_activation === 'both') {
+          <span class="flex"><mat-icon aria-hidden="true">check</mat-icon></span>
+        }
+      </span>
+    </button>
+  </mat-menu>
+
+  <!-- Sort menu shared by the desktop and mobile sort buttons -->
+  <mat-menu #sortMenu="matMenu">
+    @for (section of sortMenuSections(); track section.header ?? section.options[0].column) {
+      @let headerId = 'sort-menu-group-' + $index;
+      <div [attr.role]="section.header ? 'group' : 'none'" [attr.aria-labelledby]="section.header ? headerId : null">
+        @if (section.header) {
+          <div [id]="headerId" class="px-4 pt-2 pb-1 text-xs font-medium uppercase opacity-70">{{ ('sort_groups.' + (section.header | sortGroupKey)) | translate }}</div>
+        }
+        @for (opt of section.options; track opt.column) {
+          @let optionIcon = opt.column | sortOptionIcon;
+          <button mat-menu-item role="menuitemradio" [attr.aria-checked]="store.filters().sort === opt.column" (click)="onSortChange(opt.column)">
+            <mat-icon aria-hidden="true" class="!w-8 text-center" [class]="optionIcon.classes">{{ optionIcon.text }}</mat-icon>
+            <span class="flex items-center gap-4">
+              <span class="grow">{{ opt.labelKey | translate }}</span>
+              @if (store.filters().sort === opt.column) {
+                <span class="flex"><mat-icon aria-hidden="true">check</mat-icon></span>
+              }
+            </span>
+          </button>
+        }
+      </div>
+    }
+  </mat-menu>
 </div>

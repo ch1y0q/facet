@@ -1777,7 +1777,7 @@ Affichage et comportement de la galerie web.
 | `low_light_max_luminance` | `0.2` | Seuil de faible luminosité |
 | **defaults** | | |
 | `type` | `""` | Filtre de type de photo par défaut (par ex. `"portraits"`, `"landscapes"`, ou `""` pour Toutes) |
-| `sort` | `"aggregate"` | Colonne de tri par défaut. La galerie s'ouvre plutôt sur le dernier tri choisi dans le sélecteur de tri lorsque ce navigateur en mémorise un (voir [Tri](VIEWER.md#tri)) |
+| `sort` | `"aggregate"` | Colonne de tri par défaut. La galerie s'ouvre plutôt sur le dernier tri choisi dans le menu de tri lorsque ce navigateur en mémorise un (voir [Tri](VIEWER.md#tri)) |
 | `sort_direction` | `"DESC"` | Sens de tri par défaut (`"ASC"` ou `"DESC"`) |
 | `hide_blinks` | `true` | Masquer les photos avec clignement par défaut |
 | `hide_bursts` | `true` | Afficher uniquement la meilleure de chaque rafale par défaut |

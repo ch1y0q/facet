@@ -544,21 +544,19 @@ export function saveDisplayOptionsToStorage(filters: GalleryFilters): void {
   } catch { /* ignore */ }
 }
 
+/** The keys of the active (non-default) filters, in a stable order. */
+export function activeFilterKeys(f: GalleryFilters): (keyof GalleryFilters)[] {
+  const stringKeys: (keyof GalleryFilters)[] = [...RANGE_AND_SELECT_KEYS, 'similar_to', 'semanticQuery'];
+  const flagKeys: (keyof GalleryFilters)[] = [
+    'favorites_only', 'show_rejected', 'blinks_only', 'duplicates_only', 'is_monochrome',
+    'manual_faces_need_review', 'faces_need_names',
+  ];
+  return [...stringKeys, ...flagKeys].filter(key => !!f[key]);
+}
+
 /** Count the number of active (non-default) filters for the badge. */
 export function countActiveFilters(f: GalleryFilters): number {
-  let count = 0;
-  const stringKeys: (keyof GalleryFilters)[] = [...RANGE_AND_SELECT_KEYS, 'similar_to', 'semanticQuery'];
-  for (const key of stringKeys) {
-    if (f[key]) count++;
-  }
-  if (f.favorites_only) count++;
-  if (f.show_rejected) count++;
-  if (f.blinks_only) count++;
-  if (f.duplicates_only) count++;
-  if (f.is_monochrome) count++;
-  if (f.manual_faces_need_review) count++;
-  if (f.faces_need_names) count++;
-  return count;
+  return activeFilterKeys(f).length;
 }
 
 /** Apply URL query params over a base filter state. */

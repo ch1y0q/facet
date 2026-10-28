@@ -1787,7 +1787,7 @@ Anzeige und Verhalten der Web-Galerie.
 | `low_light_max_luminance` | `0.2` | Schwelle für wenig Licht |
 | **defaults** | | |
 | `type` | `""` | Standard-Fototypfilter (z. B. `"portraits"`, `"landscapes"` oder `""` für Alle) |
-| `sort` | `"aggregate"` | Standard-Sortierspalte. Die Galerie öffnet stattdessen mit der zuletzt im Sortierauswahlfeld gewählten Sortierung, wenn dieser Browser eine gemerkt hat (siehe [Sortierung](VIEWER.md#sortierung)) |
+| `sort` | `"aggregate"` | Standard-Sortierspalte. Die Galerie öffnet stattdessen mit der zuletzt im Sortiermenü gewählten Sortierung, wenn dieser Browser eine gemerkt hat (siehe [Sortierung](VIEWER.md#sortierung)) |
 | `sort_direction` | `"DESC"` | Standard-Sortierrichtung (`"ASC"` oder `"DESC"`) |
 | `hide_blinks` | `true` | Blinzelfotos standardmäßig ausblenden |
 | `hide_bursts` | `true` | Standardmäßig nur das beste Serienbild anzeigen |

@@ -1778,7 +1778,7 @@ Exibição e comportamento da galeria web.
 | `low_light_max_luminance` | `0.2` | Limiar de pouca luz |
 | **defaults** | | |
 | `type` | `""` | Filtro de tipo de foto padrão (ex.: `"portraits"`, `"landscapes"`, ou `""` para Todas) |
-| `sort` | `"aggregate"` | Coluna de ordenação padrão. A galeria abre, em vez disso, na última ordenação escolhida no seletor de ordenação quando este navegador lembra uma (veja [Ordenação](VIEWER.md#ordenação)) |
+| `sort` | `"aggregate"` | Coluna de ordenação padrão. A galeria abre, em vez disso, na última ordenação escolhida no menu de ordenação quando este navegador lembra uma (veja [Ordenação](VIEWER.md#ordenação)) |
 | `sort_direction` | `"DESC"` | Direção de ordenação padrão (`"ASC"` ou `"DESC"`) |
 | `hide_blinks` | `true` | Oculta fotos com piscar por padrão |
 | `hide_bursts` | `true` | Mostra apenas a melhor da rajada por padrão |
