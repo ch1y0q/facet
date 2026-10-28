@@ -14,9 +14,10 @@ from PIL import Image
 
 # PyIQAScorer imports torch at module load; skip (don't error) where torch is
 # absent, e.g. the lightweight CI test env.
-pytest.importorskip("torch")
+torch = pytest.importorskip("torch")
+import torch.nn.functional as F  # noqa: E402
 
-from models.pyiqa_scorer import PyIQAScorer
+from models.pyiqa_scorer import MPS_POOL_STRIDE, PyIQAScorer, _mps_stride_box  # noqa: E402
 
 
 class _CountingModel:
@@ -117,7 +118,6 @@ def test_single_image_uses_serial_path():
     ((1024, 20), (0, 0, 1024, 20)),
 ])
 def test_mps_stride_box(size, expected):
-    from models.pyiqa_scorer import _mps_stride_box
     assert _mps_stride_box(*size) == expected
 
 
@@ -127,25 +127,29 @@ def test_mps_stride_box(size, expected):
     ('liqe', 'mps', (682, 1024)),
 ])
 def test_preprocess_snaps_only_topiq_on_mps(monkeypatch, model, device, expected):
-    import torch
     s = _scorer(model)
-    s.device = device
     monkeypatch.setattr(torch.Tensor, 'to', lambda self, *a, **k: self)
-    assert tuple(s._preprocess_image(_img(0, size=(6240, 4160))).shape[-2:]) == expected
+    img = _img(0, size=(6240, 4160))
+    s.device = 'cpu'
+    bounded = s._preprocess_image(img)
+    s.device = device
+    out = s._preprocess_image(img)
+    assert tuple(out.shape[-2:]) == expected
+    if (model, device) == ('topiq', 'mps'):
+        # A centre crop of the bounded 1024x682 pixels (rows 5..676), not a
+        # resample or an off-centre crop.
+        bounded = bounded[..., 5:677, :]
+    assert torch.equal(out, bounded)
 
 
 @pytest.mark.skipif(
-    not __import__('torch').backends.mps.is_available(), reason="needs an MPS device")
+    not torch.backends.mps.is_available(), reason="needs an MPS device")
 def test_mps_snapped_size_pools_like_topiq():
     # pyiqa/archs/topiq_arch.py adaptive-pools each ResNet level (strides 2..32) to
     # the stride-32 shape; MPS raised on that for the unsnapped 1024x682 (#377).
-    import torch
-    import torch.nn.functional as F
-    from models.pyiqa_scorer import _mps_stride_box
-
     left, top, right, bottom = _mps_stride_box(1024, 682)
     w, h = right - left, bottom - top
-    th, tw = h // 32, w // 32
+    th, tw = h // MPS_POOL_STRIDE, w // MPS_POOL_STRIDE
     for stride in (2, 4, 8, 16):
         feat = torch.ones(1, 4, h // stride, w // stride, device='mps')
         assert F.adaptive_avg_pool2d(feat, (th, tw)).shape[2:] == (th, tw)
