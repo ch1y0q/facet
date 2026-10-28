@@ -154,6 +154,8 @@ jobs:
       - name: Scan, group, name
         run: |
           mkdir -p "$RUNNER_TEMP/data" "$RUNNER_TEMP/config" reports
+          # The scan runs as the image's facet user (uid 1000), not the runner's.
+          sudo chown 1000:1000 "$RUNNER_TEMP/data" "$RUNNER_TEMP/config"
           # An idle container: the scan and the reports are the only processes in it.
           docker run -d --name facet --entrypoint sleep \
             -e DB_PATH=/app/data/photo_scores_pro.db -e FACET_VRAM_PROFILE \

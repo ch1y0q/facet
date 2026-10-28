@@ -28,7 +28,7 @@ GPU is auto-detected and optional. Facet runs CPU-only or with up to 24 GB VRAM.
 
 Each photo is scored across 9 dimensions: aesthetic quality, composition, face quality, eye sharpness, technical sharpness, color, exposure, subject saliency, and dynamic range. Photos are categorized by content (portrait, landscape, macro, street, etc. — 30+ categories) and scored with category-specific weights. A **Top Picks** filter ranks the library by a combined score.
 
-Hover over any photo for a tooltip with the score breakdown and EXIF data.
+Hover over any photo to see its score breakdown and EXIF data in the gallery's side panel, or switch to a hover bubble that gives a glance at the key scores.
 
 <img src="docs/screenshots/hover-tooltip.jpg" alt="Hover tooltip with score breakdown" width="100%">
 
@@ -105,7 +105,7 @@ Hover over any photo for a tooltip with the score breakdown and EXIF data.
 - **My Taste sort** — sort the gallery by the personal ranker's learned score, with a confidence badge showing learned coverage and held-out accuracy
 - **Learning from labels** — culling decisions, star ratings, favorites, and rejections feed the weight optimizer (`--sync-label-comparisons`, `--mine-insights`)
 - **Snapshots** — save, restore, and compare weight configurations
-- **Histogram** — RGB/luminance histogram with clipping indicators, in the photo tooltip and detail view
+- **Histogram** — RGB/luminance histogram with clipping indicators, in the gallery side panel and detail view
 - **AI captions** `[GPU]` `[16gb/24gb]` — text descriptions, editable `[Edition]` and translatable to 5 languages (viewing is open; generation and editing need edition)
 
 <table><tr>

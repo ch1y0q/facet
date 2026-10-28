@@ -1701,7 +1701,7 @@ Visualizzazione e comportamento della galleria web.
       "hide_brackets": true,
       "hide_panoramas": true,
       "hide_details": true,
-      "tooltip_mode": "hover",
+      "tooltip_mode": "panel",
       "hide_rejected": true,
       "sort": "aggregate",
       "sort_direction": "DESC",
@@ -1787,7 +1787,7 @@ Visualizzazione e comportamento della galleria web.
 | `hide_brackets` | `true` | Mostra per impostazione predefinita solo l'esposizione base di ogni bracketing |
 | `hide_panoramas` | `true` | Mostrare per impostazione predefinita un solo fotogramma per panorama |
 | `hide_details` | `true` | Nasconde per impostazione predefinita i dettagli della foto sulle schede |
-| `tooltip_mode` | `"hover"` | Attivazione del tooltip: `"hover"`, `"click"`, `"off"` o `"panel"` (barra ancorata invece di un tooltip fluttuante — vedi `panel_activation` sotto). Sostituisce il precedente booleano `hide_tooltip`. |
+| `tooltip_mode` | `"panel"` | Attivazione del tooltip: `"hover"`, `"click"`, `"off"` o `"panel"` (barra ancorata invece di un tooltip fluttuante — vedi `panel_activation` sotto). Sostituisce il precedente booleano `hide_tooltip`. |
 | `panel_activation` | `"both"` | Gesto che aggiorna la foto selezionata nella barra ancorata quando `tooltip_mode` è `"panel"`: `"hover"`, `"click"` o `"both"`. Nessun effetto sugli altri modi tooltip. Il valore predefinito `"both"` preserva il comportamento originale del pannello |
 | `hide_rejected` | `true` | Nasconde per impostazione predefinita le foto rifiutate |
 | `gallery_mode` | `"mosaic"` | Layout predefinito della galleria (`"grid"` o `"mosaic"`) |
@@ -1852,7 +1852,7 @@ divergere.
 | `badge_percent` | `5` | Percentuale di pixel, nel peggiore dei canali R/G/B, oltre la quale la scheda riceve il badge. Misurato su 28 foto campione: mediana 0,31 % e p90 2,35 %, quindi il 5 % scatta su circa 1 foto su 25 |
 | `indicator_percent` | `1` | Soglia dei marcatori R/G/B dell'istogramma. Più fine del badge perché si sta già guardando una singola foto |
 | `histogram_mode` | `"rgb"` | Valore predefinito per l'istogramma del **pannello dei dettagli**: `"luma"`, `"rgb"`, oppure un singolo canale (`"r"` / `"g"` / `"b"`). La scelta dell'utente per questa superficie è salvata in `localStorage` sotto `facet_histogram_mode` e ha la precedenza su questo valore |
-| `tooltip_histogram_mode` | `"luma"` | Valore predefinito per l'istogramma del **tooltip al passaggio/appuntato**, stessi cinque valori. Volutamente indipendente da `histogram_mode` e persistito sotto una propria chiave `localStorage` (`facet_histogram_mode_tooltip`): il pannello dei dettagli serve a studiare una singola foto, dove il dettaglio per canale merita spazio; il tooltip serve a scorrere rapidamente molte foto, dove una semplice curva di luminanza si legge di solito più in fretta. Impostarne uno non modifica mai l'altro, e l'interruttore per cambiarlo compare solo mentre il tooltip è appuntato (barra ancorata, oppure `tooltip_mode: "click"`) — in modalità passaggio semplice mostra solo il proprio modo risolto in sola lettura |
+| `tooltip_histogram_mode` | `"luma"` | Valore predefinito per l'istogramma della scheda Istogramma del **pannello laterale** (`tooltip_mode: "panel"`), stessi cinque valori. Volutamente indipendente da `histogram_mode` e persistito sotto una propria chiave `localStorage` (`facet_histogram_mode_tooltip`): il dettaglio foto serve a studiare una singola foto, dove il dettaglio per canale merita spazio; il pannello laterale serve a scorrere rapidamente molte foto, dove una semplice curva di luminanza si legge di solito più in fretta. Impostarne uno non modifica mai l'altro. I fumetti **Hover** e **Clic** non mostrano alcun istogramma |
 
 **Il clipping è misurato per canale, esattamente ai bin 0 e 255.** È memorizzato in
 `photos.channel_clip_shadow_pct` / `channel_clip_highlight_pct` come percentuale di

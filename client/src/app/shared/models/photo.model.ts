@@ -205,6 +205,12 @@ type AssertNever<T extends never> = T;
  */
 export type PhotoFlagCoverage = AssertNever<Exclude<PhotoBooleanField, PhotoFlagField>>;
 
+/** Whether the photo carries any EXIF field a viewer shows. */
+export function hasExifFields(p: Photo): boolean {
+  return !!(p.camera_model || p.lens_model || p.focal_length || p.f_stop || p.shutter_speed || p.iso);
+}
+
+
 /**
  * Coerce the 0/1 flag columns to real booleans as a photo enters the client.
  *

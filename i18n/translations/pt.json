@@ -139,20 +139,16 @@
   "tooltip": {
     "not_computed": "Não calculado",
     "category": "Categoria",
-    "aggregate": "Agregado",
-    "quality_section": "Qualidade",
     "aesthetic": "Estético",
     "quality_score": "Pontuação de qualidade",
     "face_quality": "Qualidade do rosto",
     "face_sharpness": "Nitidez do rosto",
     "eye_sharpness": "Nitidez dos olhos",
     "tech_sharpness": "Nitidez técnica",
-    "composition_section": "Composição",
     "composition": "Composição",
     "pattern": "Padrão",
     "power_points": "Pontos de força",
     "leading_lines": "Linhas-guia",
-    "technical_section": "Técnico",
     "exposure": "Exposição",
     "color": "Cor",
     "contrast": "Contraste",
@@ -162,7 +158,6 @@
     "noise": "Ruído",
     "bonus_section": "Bônus",
     "isolation": "Isolamento",
-    "exif_section": "EXIF",
     "camera": "Câmera",
     "lens": "Lente",
     "focal": "Focal",
@@ -188,7 +183,6 @@
     "qrealign_score": "Q-ReAlign",
     "aesthetic_v25": "Estético V2.5",
     "deqa_score": "DeQA",
-    "saliency_section": "Saliência do sujeito",
     "subject_sharpness": "Nitidez do sujeito",
     "subject_prominence": "Proeminência",
     "subject_placement": "Posicionamento",
@@ -201,7 +195,6 @@
     "color_harmony": "Harmonia de cores",
     "caption": "Legenda",
     "filter_by_person": "Filtrar por {name}",
-    "set_section": "Grupo",
     "histogram": "Histograma"
   },
   "photoCard": {
@@ -577,7 +570,8 @@
     "mark_rejected": "Marcar como rejeitada",
     "unmark_rejected": "Remover marca de rejeitada",
     "rejected_badge": "Rejeitada",
-    "rating_badge": "Classificação {stars}"
+    "rating_badge": "Classificação {stars}",
+    "stars_out_of_five": "Avaliado com {stars} de 5"
   },
   "similar": {
     "title": "Fotos semelhantes",
@@ -2464,7 +2458,6 @@
     "location": "Localização",
     "social_crop": "Recorte social",
     "set": {
-      "title": "Grupo",
       "ev_span": "Intervalo EV",
       "kind_duplicate": "Duplicata",
       "open_in_gallery": "Abrir este grupo na galeria",
@@ -2522,6 +2515,11 @@
       "batch_error": "Não foi possível aplicar a localização. Selecione no máximo 1000 fotos e repita a prévia; a seleção ou o local salvo pode ter mudado.",
       "batch_limit": "Selecione no máximo 1000 fotos. Sem proteção, as localizações existentes são substituídas. Os arquivos originais não são alterados.",
       "batch_hint": "Escolha uma localização e confira as alterações antes de salvar a seleção."
+    },
+    "distribution": {
+      "top": "Top {pct}% da biblioteca",
+      "range": "Intervalo da biblioteca {min}–{max}",
+      "top_in_range": "Top {pct}% da biblioteca · intervalo da biblioteca {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2546,7 +2544,8 @@
       "success": "Categoria definida como {category}.",
       "cleared": "Substituição removida. Recalcule para aplicar a categoria baseada em filtros.",
       "explainer_toggle": "Por que não é uma categoria diferente?",
-      "target_category_label": "Comparar com"
+      "target_category_label": "Comparar com",
+      "target_category_hint": "Escolha uma categoria para ver quais filtros deixam esta foto de fora e o que a faria entrar."
     }
   },
   "download": {
