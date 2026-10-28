@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 ### Added
 
 - **Scores placed in the library.** Photo detail, the gallery side panel and the card score badge show where each score sits in the whole library: a sparkline of its distribution with this photo's bar lit, and "Top X% of the library" with the library range on hover or focus. Scores with no better end (ISO, aperture, face count…) show the range only.
+- **Reset all filters from a notice.** While any gallery filter is on, a card in the floating notice stack (bottom right, beside the hidden-photos card) says how many are active and offers **Reset all filters**, the same reset as the sidebar button. Its × hides it for the tab until the set of active filters changes; it is not shown in an album view.
 
 ### Changed
 

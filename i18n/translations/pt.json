@@ -1040,6 +1040,11 @@
       "restore": "Restaurar filtros",
       "showing_all": "A mostrar todas as fotos, incluindo piscadelas, rajadas e duplicados"
     },
+    "filters_notice": {
+      "message": "{count} filtro ativo",
+      "message_plural": "{count} filtros ativos",
+      "reset": "Redefinir todos os filtros"
+    },
     "render_migration": {
       "message": "{n} fotos RAW ainda mostram uma miniatura da renderização anterior.",
       "command_hint": "Execute {command} para atualizar todas de uma vez."

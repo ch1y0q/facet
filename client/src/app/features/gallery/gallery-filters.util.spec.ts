@@ -19,6 +19,7 @@ import {
   exclusiveHidePatch,
   reviewStatusPatch,
   setScopePatch,
+  activeFilterKeys,
   countActiveFilters,
   loadDisplayOptionsFromStorage,
   saveDisplayOptionsToStorage,
@@ -30,6 +31,31 @@ import {
 function filters(overrides: Partial<GalleryFilters> = {}): GalleryFilters {
   return { ...DEFAULT_FILTERS, ...overrides };
 }
+
+describe('activeFilterKeys', () => {
+  it('is empty for defaults', () => {
+    expect(activeFilterKeys(DEFAULT_FILTERS)).toEqual([]);
+  });
+  it('names string and flag filters in a stable order, whatever order they were set in', () => {
+    const a = activeFilterKeys(filters({ is_monochrome: true, tag: 'beach', camera: 'Canon' }));
+    const b = activeFilterKeys(filters({ camera: 'Nikon', tag: 'x', is_monochrome: true }));
+    expect(a).toEqual(['camera', 'tag', 'is_monochrome']);
+    expect(b).toEqual(a);
+  });
+  it('lists every flag after the string filters, in declaration order', () => {
+    const f = filters({
+      faces_need_names: true, manual_faces_need_review: true, is_monochrome: true, duplicates_only: true,
+      blinks_only: true, show_rejected: true, favorites_only: true,
+      semanticQuery: 'dog', similar_to: '/a.jpg', camera: 'Canon',
+    });
+    expect(activeFilterKeys(f)).toEqual([
+      'camera', 'similar_to', 'semanticQuery',
+      'favorites_only', 'show_rejected', 'blinks_only', 'duplicates_only', 'is_monochrome',
+      'manual_faces_need_review', 'faces_need_names',
+    ]);
+    expect(countActiveFilters(f)).toBe(10);
+  });
+});
 
 describe('countActiveFilters', () => {
   it('returns 0 for defaults', () => {

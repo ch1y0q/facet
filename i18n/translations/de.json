@@ -1040,6 +1040,11 @@
       "restore": "Filter wiederherstellen",
       "showing_all": "Alle Fotos werden angezeigt – einschließlich Blinzler, Serien und Duplikate"
     },
+    "filters_notice": {
+      "message": "{count} Filter aktiv",
+      "message_plural": "{count} Filter aktiv",
+      "reset": "Alle Filter zurücksetzen"
+    },
     "render_migration": {
       "message": "{n} RAW-Fotos zeigen noch eine Miniatur aus der vorherigen Darstellung.",
       "command_hint": "Führen Sie {command} aus, um alle auf einmal aufzufrischen."
