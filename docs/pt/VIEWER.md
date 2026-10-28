@@ -1521,7 +1521,7 @@ Os tipos TypeScript do cliente são gerados a partir desse esquema em `client/sr
 | `DELETE /api/photo/capture_date?path=` | `[Edição]` Descarta uma data de captura corrigida e relê a do próprio arquivo (ou limpa a data se o arquivo não tiver nenhuma); retorna `{date_taken, date_manually_set}`. `409` quando a data do arquivo não é suportada (a data manual é mantida) ou a foto mudou nesse meio-tempo, `404` quando o arquivo não pode ser lido |
 | `GET /api/stacks/by-photo` | Ler pilha privada por caminho exato; apenas membros permitidos |
 | `GET /api/stacks/{stack_id}` | Ler pilha privada por UUID; visibilidade parcial é somente leitura |
-| `POST /api/stacks/suggestions` | [Autenticado] Pesquisa sem escritas. Corpo `{filters}`: filtros da galeria exceto recolha de pilhas e ocultação de sequências/duplicados. Devolve `{suggestions: [{key, kind, paths, cover_path}]}`, máximo 20 sugestões / 2000 caminhos. Filtro desconhecido: 422. Acesso ao álbum e visibilidade verificados. |
+| `POST /api/stacks/suggestions` | Pesquisa sem escritas. Corpo `{filters}`: filtros da galeria exceto recolha de pilhas e ocultação de sequências/duplicados. Devolve `{suggestions: [{key, kind, paths, cover_path}]}`, máximo 20 sugestões / 2000 caminhos. Filtro desconhecido: 422. Acesso ao álbum e visibilidade verificados. |
 | `POST /api/stacks` | [Edição] Criar com 2–1000 caminhos explícitos e cover_path; retorna stack e undo.entry_id |
 | `PUT /api/stacks/{stack_id}` | [Edição] Substituir paths/ordem e cover_path opcional com expected_revision; 0/1 membro dissolve |
 | `DELETE /api/stacks/{stack_id}` | [Edição] Dissolver com expected_revision na consulta; recusa revisão antiga/visibilidade parcial |

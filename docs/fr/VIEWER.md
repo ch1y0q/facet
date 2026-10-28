@@ -1523,7 +1523,7 @@ Les types TypeScript du client sont générés à partir de ce schéma dans `cli
 | `DELETE /api/photo/capture_date?path=` | `[Édition]` Abandonne une date de prise de vue corrigée et relit celle du fichier (ou efface la date si le fichier n’en a pas) ; renvoie `{date_taken, date_manually_set}`. `409` quand la date du fichier n’est pas prise en charge (la date manuelle est conservée) ou que la photo a changé entre-temps, `404` quand le fichier est illisible |
 | `GET /api/stacks/by-photo` | Lire la pile privée par chemin exact ; membres autorisés seulement |
 | `GET /api/stacks/{stack_id}` | Lire la pile privée par UUID ; visibilité partielle en lecture seule |
-| `POST /api/stacks/suggestions` | [Authentifié] Recherche sans écriture. Corps `{filters}`, filtres galerie sauf repli des piles et masquage rafales/doublons. Retour `{suggestions: [{key, kind, paths, cover_path}]}`, au plus 20 suggestions / 2000 chemins. Clé inconnue : 422. Accès album et visibilité vérifiés. |
+| `POST /api/stacks/suggestions` | Recherche sans écriture. Corps `{filters}`, filtres galerie sauf repli des piles et masquage rafales/doublons. Retour `{suggestions: [{key, kind, paths, cover_path}]}`, au plus 20 suggestions / 2000 chemins. Clé inconnue : 422. Accès album et visibilité vérifiés. |
 | `POST /api/stacks` | [Édition] Créer avec 2–1000 chemins explicites et cover_path ; renvoie stack et undo.entry_id |
 | `PUT /api/stacks/{stack_id}` | [Édition] Remplacer paths/ordre et cover_path facultatif avec expected_revision ; 0/1 membre dissout |
 | `DELETE /api/stacks/{stack_id}` | [Édition] Dissoudre avec expected_revision en requête ; refuse révision périmée ou visibilité partielle |

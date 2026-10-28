@@ -2962,6 +2962,8 @@
     "suggestion_duplicate": "Doublons",
     "suggestion_review": "Réviser et choisir la couverture",
     "suggestion_dismiss": "Ignorer pour le moment",
+    "suggestions_error": "Impossible de charger les suggestions. Réessayez.",
+    "suggestions_reload": "Recharger les suggestions",
     "previous": "Photo précédente de la pile",
     "next": "Photo suivante de la pile",
     "browse_position": "{position} sur {count}",

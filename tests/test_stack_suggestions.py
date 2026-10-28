@@ -70,13 +70,38 @@ def test_visibility_is_applied_before_grouping_and_private_stacks_do_not_cross_a
     })
     own = discover(regular_client)
     assert own.status_code == 200 and len(own.json()['suggestions']) == 1
-    assert 'stack_id' not in str(own.json())
+    # The other account's stack must not hide or shrink this account's suggestion.
+    assert set(own.json()['suggestions'][0]['paths']) == set(paths)
 
 
 def test_unknown_filters_refuse_and_readonly_can_discover(regular_client):
     response = regular_client.post('/api/stacks/suggestions', json={'filters': {'unexpected_scope': 'x'}})
     assert response.status_code == 422
     assert discover(regular_client).status_code == 200
+
+
+def test_burst_group_is_suggested_with_its_lead_as_cover(edition_client, seed_photos_prefix):
+    paths = seed(seed_photos_prefix)
+    with get_db() as conn, conn:
+        conn.execute("UPDATE photos SET duplicate_group_id=NULL WHERE path LIKE '/suggestions/%'")
+    suggestions = discover(edition_client).json()['suggestions']
+    assert len(suggestions) == 1 and suggestions[0]['kind'] == 'burst'
+    assert set(suggestions[0]['paths']) == set(paths)
+    assert suggestions[0]['cover_path'] == paths[0]
+
+
+def test_json_number_and_boolean_filters_match_their_string_form(edition_client, seed_photos_prefix):
+    paths = seed(seed_photos_prefix)
+    with get_db() as conn, conn:
+        conn.execute('UPDATE photos SET is_rejected=1 WHERE path=?', (paths[-1],))
+    typed = discover(edition_client, hide_rejected=True, per_page=50)
+    assert typed.status_code == 200, typed.text
+    assert typed.json() == discover(edition_client, hide_rejected='true', per_page='50').json()
+    assert set(typed.json()['suggestions'][0]['paths']) == set(paths[:2])
+
+
+def test_invalid_filter_value_is_a_422(edition_client):
+    assert discover(edition_client, per_page='0').status_code == 422
 
 
 def test_stale_acceptance_refuses_existing_stack_without_modifying_decisions(edition_client, seed_photos_prefix):

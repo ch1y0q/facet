@@ -1580,7 +1580,7 @@ python database.py --stats-info
 | `DELETE /api/photo/capture_date?path=` | `[编辑]` 放弃已修正的拍摄日期，并重新读取文件自身的日期（文件没有日期时则清除）；返回 `{date_taken, date_manually_set}`。文件日期不受支持（保留手动日期）或照片在此期间发生变化时返回 `409`，文件无法读取时返回 `404` |
 | `GET /api/stacks/by-photo` | 按精确照片路径读取私有堆叠，仅返回有权查看的成员 |
 | `GET /api/stacks/{stack_id}` | 按 UUID 读取私有堆叠，部分可见时只读 |
-| `POST /api/stacks/suggestions` | [已认证] 只读发现。请求 `{filters}` 使用图库筛选，仅关闭堆栈折叠及连拍、重复照片隐藏。返回 `{suggestions: [{key, kind, paths, cover_path}]}`，最多 20 条建议、2000 个路径，无写入。未知筛选键返回 422；验证相册访问及照片可见性。 |
+| `POST /api/stacks/suggestions` | 只读发现。请求 `{filters}` 使用图库筛选，仅关闭堆栈折叠及连拍、重复照片隐藏。返回 `{suggestions: [{key, kind, paths, cover_path}]}`，最多 20 条建议、2000 个路径，无写入。未知筛选键返回 422；验证相册访问及照片可见性。 |
 | `POST /api/stacks` | [编辑] 使用 2–1000 个明确路径和 cover_path 创建，返回 stack 和 undo.entry_id |
 | `PUT /api/stacks/{stack_id}` | [编辑] 用 expected_revision 替换 paths/顺序及可选 cover_path，0/1 成员时解散 |
 | `DELETE /api/stacks/{stack_id}` | [编辑] 用 expected_revision 查询参数解散，拒绝旧版本或部分可见堆叠 |

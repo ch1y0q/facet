@@ -1520,7 +1520,7 @@ Los tipos TypeScript del cliente se generan a partir de ese esquema en `client/s
 | `DELETE /api/photo/capture_date?path=` | `[Edición]` Descarta una fecha de captura corregida y vuelve a leer la del propio archivo (o borra la fecha si el archivo no tiene ninguna); devuelve `{date_taken, date_manually_set}`. `409` cuando la fecha del archivo no es compatible (se conserva la fecha manual) o la foto cambió entretanto, `404` cuando el archivo no se puede leer |
 | `GET /api/stacks/by-photo` | Leer pila privada por ruta exacta; solo miembros permitidos |
 | `GET /api/stacks/{stack_id}` | Leer pila privada por UUID; visibilidad parcial es solo lectura |
-| `POST /api/stacks/suggestions` | [Autenticado] Búsqueda sin escrituras. Cuerpo `{filters}`: filtros de galería excepto plegado de pilas y ocultación de ráfagas/duplicados. Devuelve `{suggestions: [{key, kind, paths, cover_path}]}`, máximo 20 sugerencias / 2000 rutas. Filtro desconocido: 422. Comprueba acceso al álbum y visibilidad. |
+| `POST /api/stacks/suggestions` | Búsqueda sin escrituras. Cuerpo `{filters}`: filtros de galería excepto plegado de pilas y ocultación de ráfagas/duplicados. Devuelve `{suggestions: [{key, kind, paths, cover_path}]}`, máximo 20 sugerencias / 2000 rutas. Filtro desconocido: 422. Comprueba acceso al álbum y visibilidad. |
 | `POST /api/stacks` | [Edición] Crear con 2–1000 rutas explícitas y cover_path; devuelve stack y undo.entry_id |
 | `PUT /api/stacks/{stack_id}` | [Edición] Reemplazar paths/orden y cover_path opcional con expected_revision; 0/1 miembro disuelve |
 | `DELETE /api/stacks/{stack_id}` | [Edición] Disolver con expected_revision en consulta; rechaza revisión obsoleta/visibilidad parcial |

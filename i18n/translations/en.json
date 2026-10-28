@@ -2962,6 +2962,8 @@
     "suggestion_duplicate": "Duplicates",
     "suggestion_review": "Review and choose cover",
     "suggestion_dismiss": "Dismiss for now",
+    "suggestions_error": "Could not load suggestions. Try again.",
+    "suggestions_reload": "Reload suggestions",
     "previous": "Previous stack photo",
     "next": "Next stack photo",
     "browse_position": "{position} of {count}",

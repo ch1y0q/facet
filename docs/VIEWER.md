@@ -1590,7 +1590,7 @@ The client's TypeScript types are generated from that schema into `client/src/ap
 | `DELETE /api/photo/capture_date?path=` | `[Edition]` Drop a corrected capture date and re-read the file's own (or clear the date when the file has none); returns `{date_taken, date_manually_set}`. `409` when the file's date is unsupported (the manual date is kept) or the photo changed meanwhile, `404` when the file cannot be read |
 | `GET /api/stacks/by-photo` | Read owner-private stack by exact photo path; permitted members only |
 | `GET /api/stacks/{stack_id}` | Read owner-private stack by UUID; partial visibility is read-only |
-| `POST /api/stacks/suggestions` | [Authenticated] Read-only candidate discovery. Body `{filters}` uses gallery filters, bypassing only stack collapse and burst/duplicate hiding. Returns `{suggestions: [{key, kind, paths, cover_path}]}`; maximum 20 suggestions / 2000 paths, no writes. Unknown filter keys return 422; album access and photo visibility are enforced. |
+| `POST /api/stacks/suggestions` | Read-only candidate discovery. Body `{filters}` uses gallery filters, bypassing only stack collapse and burst/duplicate hiding. Returns `{suggestions: [{key, kind, paths, cover_path}]}`; maximum 20 suggestions / 2000 paths, no writes. Unknown filter keys return 422; album access and photo visibility are enforced. |
 | `POST /api/stacks` | [Edition] Create from 2–1000 explicit paths and cover_path; returns stack and undo.entry_id |
 | `PUT /api/stacks/{stack_id}` | [Edition] Replace paths/order and optional cover_path with expected_revision; 0/1 members dissolve |
 | `DELETE /api/stacks/{stack_id}` | [Edition] Dissolve with expected_revision query; stale or partially visible stacks refuse |

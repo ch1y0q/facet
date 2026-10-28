@@ -2962,6 +2962,8 @@
     "suggestion_duplicate": "Duplicados",
     "suggestion_review": "Rever e escolher capa",
     "suggestion_dismiss": "Dispensar por agora",
+    "suggestions_error": "Não foi possível carregar as sugestões. Tente novamente.",
+    "suggestions_reload": "Recarregar sugestões",
     "previous": "Foto anterior da pilha",
     "next": "Foto seguinte da pilha",
     "browse_position": "{position} de {count}",

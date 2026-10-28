@@ -2976,6 +2976,8 @@ export const I18N = {
     suggestion_duplicate: "stacks.suggestion_duplicate",
     suggestion_review: "stacks.suggestion_review",
     suggestion_dismiss: "stacks.suggestion_dismiss",
+    suggestions_error: "stacks.suggestions_error",
+    suggestions_reload: "stacks.suggestions_reload",
     previous: "stacks.previous",
     next: "stacks.next",
     browse_position: "stacks.browse_position",

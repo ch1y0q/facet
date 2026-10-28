@@ -2962,6 +2962,8 @@
     "suggestion_duplicate": "Duplicati",
     "suggestion_review": "Rivedi e scegli la copertina",
     "suggestion_dismiss": "Ignora per ora",
+    "suggestions_error": "Impossibile caricare i suggerimenti. Riprova.",
+    "suggestions_reload": "Ricarica i suggerimenti",
     "previous": "Foto precedente della pila",
     "next": "Foto successiva della pila",
     "browse_position": "{position} di {count}",

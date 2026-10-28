@@ -2962,6 +2962,8 @@
     "suggestion_duplicate": "Duplicados",
     "suggestion_review": "Revisar y elegir portada",
     "suggestion_dismiss": "Descartar por ahora",
+    "suggestions_error": "No se pudieron cargar las sugerencias. Inténtalo de nuevo.",
+    "suggestions_reload": "Recargar sugerencias",
     "previous": "Foto anterior de la pila",
     "next": "Foto siguiente de la pila",
     "browse_position": "{position} de {count}",

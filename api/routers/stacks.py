@@ -87,11 +87,15 @@ def stack_suggestions(body: StackSuggestionsRequest, response: Response,
                       user: CurrentUser = Depends(require_authenticated)):
     """Scoped, bounded suggestions only; no writes, filesystem reads or cached private rows."""
     from pydantic import ValidationError
+    from api.models.gallery import query_value
     from api.routers.gallery import gallery_scope_sql, _raise_422_for_invalid_gallery_params
     from db.stack_suggestions import suggestions
 
     response.headers['Cache-Control'] = 'no-store'
-    filters = {**body.filters, 'collapse_stacks': 'false', 'hide_bursts': 'false', 'hide_duplicates': 'false'}
+    # The gallery validator reads query-string values, so a JSON number or boolean
+    # the request model accepts is converted the way /api/photos/by_paths does.
+    filters = {**{key: query_value(value) for key, value in body.filters.items()},
+               'collapse_stacks': 'false', 'hide_bursts': 'false', 'hide_duplicates': 'false'}
     with get_db() as conn, conn:
         conn.execute('BEGIN')
         try:

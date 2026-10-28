@@ -31,7 +31,7 @@ function nextPreviewToken(): string { return `${Date.now().toString(36)}-${++pre
     <mat-dialog-content>
       <p class="text-sm mb-3">{{ I18N.stacks.suggestions_hint | translate }}</p>
       @if (loading()) { <p role="status">{{ I18N.ui.labels.loading | translate }}</p> }
-      @if (failed()) { <p role="alert">{{ I18N.stacks.error | translate }}</p> }
+      @if (failed()) { <p role="alert">{{ I18N.stacks.suggestions_error | translate }}</p> }
       @if (!loading() && !failed() && !candidates().length) {
         <p role="status">{{ I18N.stacks.suggestions_empty | translate }}</p>
       }
@@ -50,7 +50,7 @@ function nextPreviewToken(): string { return `${Date.now().toString(36)}-${++pre
       }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
-      <button mat-button (click)="load()" [disabled]="loading() || reviewing()">{{ I18N.stacks.reload | translate }}</button>
+      <button mat-button (click)="load()" [disabled]="loading() || reviewing()">{{ I18N.stacks.suggestions_reload | translate }}</button>
       <button mat-button mat-dialog-close>{{ I18N.dialog.close | translate }}</button>
     </mat-dialog-actions>
   `,

@@ -1522,7 +1522,7 @@ Die TypeScript-Typen des Clients werden mit `cd client && npm run gen:api` aus d
 | `DELETE /api/photo/capture_date?path=` | `[Edition]` Ein korrigiertes Aufnahmedatum verwerfen und das der Datei selbst neu lesen (oder das Datum löschen, wenn die Datei keines enthält); gibt `{date_taken, date_manually_set}` zurück. `409`, wenn das Datum der Datei nicht unterstützt wird (das manuelle Datum bleibt erhalten) oder sich das Foto zwischenzeitlich geändert hat, `404`, wenn die Datei nicht lesbar ist |
 | `GET /api/stacks/by-photo` | Privaten Stapel per exaktem Fotopfad lesen; nur erlaubte Mitglieder |
 | `GET /api/stacks/{stack_id}` | Privaten Stapel per UUID lesen; teilweise sichtbar bedeutet schreibgeschützt |
-| `POST /api/stacks/suggestions` | [Authentifiziert] Nur lesende Suche. Body `{filters}`: Galeriefilter ohne Stapelfaltung und Serien-/Duplikatausblendung. Ergebnis `{suggestions: [{key, kind, paths, cover_path}]}`, höchstens 20 Vorschläge / 2000 Pfade. Unbekannte Filter: 422. Albumzugriff und Sichtbarkeit werden geprüft. |
+| `POST /api/stacks/suggestions` | Nur lesende Suche. Body `{filters}`: Galeriefilter ohne Stapelfaltung und Serien-/Duplikatausblendung. Ergebnis `{suggestions: [{key, kind, paths, cover_path}]}`, höchstens 20 Vorschläge / 2000 Pfade. Unbekannte Filter: 422. Albumzugriff und Sichtbarkeit werden geprüft. |
 | `POST /api/stacks` | [Edition] Mit 2–1000 expliziten Pfaden und cover_path erstellen; liefert stack und undo.entry_id |
 | `PUT /api/stacks/{stack_id}` | [Edition] paths/Reihenfolge und optional cover_path mit expected_revision ersetzen; 0/1 Mitglied löst auf |
 | `DELETE /api/stacks/{stack_id}` | [Edition] Mit expected_revision-Abfrage auflösen; alte Revision/teilweise Sichtbarkeit verweigert |
