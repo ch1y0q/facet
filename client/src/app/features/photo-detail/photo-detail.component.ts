@@ -819,7 +819,12 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     this.router.navigate(['/'], { state: { setScope: updates } });
   }
 
+  /** Escape leaves the page, unless a dialog is open: it closes that instead. */
   @HostListener('document:keydown.escape')
+  protected onEscape(): void {
+    if (!this.dialog.openDialogs.length) this.goBack();
+  }
+
   protected goBack(): void {
     this.location.back();
   }

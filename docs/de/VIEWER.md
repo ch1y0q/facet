@@ -229,7 +229,7 @@ Wähle in der Galerie **Auswahlstatus → Zu prüfen**, um unentschiedene Fotos 
 
 **Behalten** und **Ablehnen** entfernen ein Foto nach dem Speichern aus dieser Ansicht. Behaltene Fotos bleiben in der normalen Bibliothek und sind über **Behalten** auffindbar. Favoriten und Sterne bleiben unabhängig davon.
 
-Behalten und **Entscheidung zurücksetzen** stehen in der Detailansicht, im Kontextmenü und für die Mehrfachauswahl bereit. **K** behält das aktuelle Foto. In der Detailansicht ist die Schaltfläche Behalten ein Umschalter: Bei einem bereits behaltenen Foto setzt sie die Entscheidung zurück. Zurücksetzen löscht Behalten und Ablehnen, ohne Sterne oder Favoriten zu ändern. Galerieaktionen lassen sich rückgängig machen.
+Behalten und **Entscheidung zurücksetzen** stehen in der Detailansicht, im Kontextmenü und für die Mehrfachauswahl bereit. **K** (umbelegbar, siehe [Tastenkürzel](#tastenkürzel-galerie)) behält das aktuelle Foto. In der Detailansicht ist die Schaltfläche Behalten ein Umschalter: Bei einem bereits behaltenen Foto setzt sie die Entscheidung zurück. Zurücksetzen löscht Behalten und Ablehnen, ohne Sterne oder Favoriten zu ändern. Galerieaktionen lassen sich rückgängig machen.
 
 Entscheidungen überstehen Neuladen, Neustarts und erneute Scans und gelten pro Benutzer. Bestätigte Auswahlgruppen markieren ihre ausgewählten Fotos ebenfalls als behalten. Bestehende Sterne, Favoriten und bereits gesichtete Gruppen werden nicht automatisch umgewandelt.
 
@@ -947,6 +947,7 @@ Galerie- und Fotokürzel ohne Zusatztaste bleiben inaktiv, solange der Fokus in 
 | `Double-click` | Foto öffnen |
 | `Shift+F10` / `Menu` | Kontextmenü der fokussierten Fotokarte öffnen (der Rechtsklick tut dasselbe) |
 | `1`–`5` | Sterne 1–5 für das Fokusfoto vergeben (Bearbeitungsmodus; springt zum nächsten Foto) |
+| `K` | Fokusfoto behalten (Bearbeitungsmodus) |
 | `F` | Fokusfoto favorisieren / Favorit entfernen (Bearbeitungsmodus) |
 | `X` oder `0` | Fokusfoto verwerfen / Verwerfung aufheben (Bearbeitungsmodus; springt weiter) |
 | `/` | Die Suche der Werkzeugleiste fokussieren (ab 1360 px Breite sichtbar); darunter öffnet es die Filter-Seitenleiste und fokussiert deren Suchfeld |
@@ -954,11 +955,11 @@ Galerie- und Fotokürzel ohne Zusatztaste bleiben inaktiv, solange der Fokus in 
 | `V` | Zwischen Raster- und Mosaiklayout wechseln |
 | `?` | Die Tastenkürzel-Referenz anzeigen (funktioniert auf jeder Seite; die Galerie-Kürzel stehen auch unter Benutzermenü → Hilfe) |
 
-Die Bewertungs-, Behalten- und Ansichtskürzel — Favorit, Verwerfen, Behalten, Suche fokussieren, Filterseitenleiste und Raster/Mosaik — lassen sich pro Browser umbelegen: Benutzermenü → **Tastenkürzel** öffnet einen Dialog, in dem du auf eine Aktion klickst und die neue Taste drückst. Ziffern, `Leertaste` und `?` bleiben reserviert, eine bereits von einer anderen Aktion belegte Taste wird abgelehnt; **Alle zurücksetzen** stellt die eingebauten Tasten wieder her. Die Belegung liegt in `localStorage` und folgt damit dem Browser statt dem Konto; die Fotoseite antwortet auf dieselben Tasten, und die `?`-Referenz sowie die Kürzel-Tabellen des Hilfe-Dialogs zeigen immer die gültigen Tasten.
+Die Bewertungs-, Behalten- und Ansichtskürzel — Favorit, Verwerfen, Behalten, Suche fokussieren, Filterseitenleiste und Raster/Mosaik — lassen sich pro Browser umbelegen, daher sind `K`, `F`, `X`, `/`, `B` und `V` oben die Standardtasten: Benutzermenü → **Tastenkürzel anpassen** öffnet einen Dialog, in dem du auf eine Aktion klickst und die neue Taste drückst (`Esc` oder `Tab` bricht ab). Ziffern, `Leertaste` und `?` bleiben reserviert, eine bereits von einer anderen Aktion belegte Taste wird abgelehnt; **Alle zurücksetzen** stellt die eingebauten Tasten wieder her. Die Belegung liegt in `localStorage` und folgt damit dem Browser statt dem Konto; die Fotoseite antwortet auf dieselben Tasten, und die `?`-Referenz sowie die Galerie-Tabelle des Hilfe-Dialogs und der Hinweis auf der fokussierten Karte zeigen immer die gültigen Tasten. Eine gespeicherte Taste, die reserviert ist oder von zwei Aktionen geteilt wird, fällt auf die Standardtaste dieser Aktion zurück; die übrigen gespeicherten Tasten bleiben erhalten, es sei denn, diese Standardtaste ist bereits belegt – dann werden alle Tasten zurückgesetzt.
 
 Das aktuelle Foto — das, auf das die Tastenkürzel für Sternebewertung, Favorit und Ablehnen wirken — ist mit einer 4px breiten Umrandung um seine Karte markiert; alle anderen Karten werden auf 50 % Deckkraft abgedunkelt. Markiert wird erst, wenn der Cursor sich tatsächlich auf ein Foto in den Ergebnissen bewegt hat, sodass eine noch nicht durchgeblätterte Galerie in voller Stärke bleibt. Ein Klick auf ein Foto verschiebt die Markierung darauf, sodass ein direkt nach einem Klick getipptes Tastenkürzel das angeklickte Foto trifft und nicht das, wo die Pfeiltasten zuletzt standen. Die Rückkehr von einem Foto (Zurück oder Esc) lässt die Markierung auf dem zuletzt angesehenen Foto, sodass die Tastenkürzel von dort aus weiterarbeiten. Der Tastenkürzelhinweis auf der fokussierten Karte erscheint nur im Bearbeitungsmodus, wenn `viewer.features.show_rating_controls` aktiviert ist.
 
-**Auf der Fotoseite** bewerten, favorisieren und verwerfen `1`–`5`, `F` und `X` (oder `0`) das geöffnete Foto, unter denselben Bedingungen wie die Bewertungsschaltflächen: Bearbeitungsmodus, mit aktiviertem `viewer.features.show_rating_controls`. Anders als in der Galerie springen sie nie zu einem anderen Foto; dafür gibt es `←` `→`. Die `?`-Referenz führt sie unter *Fotoansicht* auf.
+**Auf der Fotoseite** bewerten, favorisieren und verwerfen `1`–`5`, die Favoritentaste und die Verwerfen-Taste (standardmäßig `F` und `X`; `0` verwirft ebenfalls) das geöffnete Foto, unter denselben Bedingungen wie die Bewertungsschaltflächen: Bearbeitungsmodus, mit aktiviertem `viewer.features.show_rating_controls`. Anders als in der Galerie springen sie nie zu einem anderen Foto; dafür gibt es `←` `→`. Die `?`-Referenz führt sie unter *Fotoansicht* auf.
 
 ## Rückgängig
 

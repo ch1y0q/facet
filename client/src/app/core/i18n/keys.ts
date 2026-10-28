@@ -2689,6 +2689,7 @@ export const I18N = {
     reset_keys: "shortcuts.reset_keys",
     key_in_use: "shortcuts.key_in_use",
     key_reserved: "shortcuts.key_reserved",
+    keymap_title: "shortcuts.keymap_title",
   },
   pwa: {
     update_available: "pwa.update_available",

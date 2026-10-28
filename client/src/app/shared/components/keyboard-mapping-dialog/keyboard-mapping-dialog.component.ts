@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, HostListener, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
@@ -18,16 +19,11 @@ const KEYMAP_ACTIONS: { id: keyof KeymapConfig; labelKey: string }[] = [
   { id: 'swapLayout', labelKey: I18N.shortcuts.toggle_layout },
 ];
 
-/** Keys capture refuses: the digits drive rating (and the 0 reject alias),
- *  Space scrolls the page, ? opens the shortcut reference. Modifier combos
- *  are not remappable at all, and multi-key names (arrows, Home, F-keys)
- *  never reach the capture branch. */
-const RESERVED_KEYS = new Set(['0', '1', '2', '3', '4', '5', ' ', '?']);
-
 /** Lets the user reassign the primary key of each gallery and photo-page
- *  action. Click a row to enter capture mode, press the new key; Esc backs
- *  out, and a key held by another action or a reserved key is refused with
- *  an inline message. */
+ *  action. Click a row to enter capture mode, press the new key; Esc or Tab
+ *  backs out, and a key held by another action or a reserved key is refused
+ *  with an inline message. Modifier combos and multi-character key names
+ *  (arrows, Home, F-keys) leave capture armed. */
 @Component({
   selector: 'app-keyboard-mapping-dialog',
   standalone: true,
@@ -39,7 +35,7 @@ const RESERVED_KEYS = new Set(['0', '1', '2', '3', '4', '5', ' ', '?']);
         <div class="w-9 h-9 rounded-lg bg-[var(--mat-sys-primary-container)] flex items-center justify-center shrink-0">
           <mat-icon class="!text-base !w-5 !h-5 !leading-5 text-[var(--mat-sys-on-primary-container)]">keyboard</mat-icon>
         </div>
-        <h2 mat-dialog-title class="!text-base !font-semibold !m-0 !p-0">{{ I18N.shortcuts.title | translate }}</h2>
+        <h2 mat-dialog-title class="!text-base !font-semibold !m-0 !p-0">{{ I18N.shortcuts.keymap_title | translate }}</h2>
       </div>
     </div>
     <mat-dialog-content class="!px-6">
@@ -47,26 +43,29 @@ const RESERVED_KEYS = new Set(['0', '1', '2', '3', '4', '5', ' ', '?']);
       <div class="flex flex-col gap-1">
         @for (action of KEYMAP_ACTIONS; track action.id) {
           <div class="flex items-center gap-3 py-0.5">
-            <span class="flex-1 text-sm">{{ action.labelKey | translate }}</span>
+            <span [id]="'keymap-label-' + action.id" class="flex-1 text-sm">{{ action.labelKey | translate }}</span>
             <button
               type="button"
               mat-stroked-button
+              [id]="'keymap-key-' + action.id"
+              [attr.aria-labelledby]="'keymap-label-' + action.id + ' keymap-key-' + action.id"
               class="!min-w-[3.5rem] !px-3 !py-0.5 !rounded-md font-mono text-xs"
               [class.!border-[var(--mat-sys-primary)]]="capturing() === action.id"
-              [attr.aria-label]="action.labelKey"
               (click)="startCapture(action.id, $event)">
               @if (capturing() === action.id) {
                 {{ I18N.shortcuts.press_key | translate }}
               } @else {
-                {{ displayKey(action.id) }}
+                {{ keyLabels()[action.id] }}
               }
             </button>
           </div>
         }
       </div>
-      @if (error(); as message) {
-        <p class="text-xs text-[var(--mat-sys-error)] mt-2 mb-0">{{ message | translate }}</p>
-      }
+      <p role="status" class="text-xs text-[var(--mat-sys-error)] mb-0" [class.mt-2]="error()">
+        @if (error(); as message) {
+          {{ message | translate }}
+        }
+      </p>
     </mat-dialog-content>
     <mat-dialog-actions class="!px-6 !pb-5">
       <button mat-button (click)="resetAll()">{{ I18N.shortcuts.reset_keys | translate }}</button>
@@ -83,9 +82,19 @@ export class KeyboardMappingDialogComponent {
   private readonly errorMessage = signal('');
   protected readonly capturing = this.capturingAction.asReadonly();
   protected readonly error = this.errorMessage.asReadonly();
+  protected readonly keyLabels = computed(() => {
+    const map = this.mapping.keymap();
+    return Object.fromEntries(KEYMAP_ACTIONS.map(a => [a.id, map[a.id].toUpperCase()])) as Record<keyof KeymapConfig, string>;
+  });
 
-  protected displayKey(action: keyof KeymapConfig): string {
-    return this.mapping.key(action).toUpperCase();
+  constructor() {
+    // Capture phase on document: runs before the dialog overlay's Escape
+    // handler on body and before page shortcuts (the photo page's Escape goes
+    // back), so a key pressed while capturing reaches nothing else.
+    const document = inject(DOCUMENT);
+    const listener = (event: KeyboardEvent) => this.onKeydown(event);
+    document.addEventListener('keydown', listener, true);
+    inject(DestroyRef).onDestroy(() => document.removeEventListener('keydown', listener, true));
   }
 
   protected startCapture(action: keyof KeymapConfig, event: MouseEvent): void {
@@ -100,31 +109,22 @@ export class KeyboardMappingDialogComponent {
     this.capturingAction.set(null);
   }
 
-  @HostListener('document:keydown', ['$event'])
-  protected onKeydown(event: KeyboardEvent): void {
+  private onKeydown(event: KeyboardEvent): void {
     const action = this.capturingAction();
     if (!action) return;
+    if (event.key === 'Tab') {
+      this.capturingAction.set(null);
+      return;
+    }
     event.preventDefault();
-    event.stopPropagation();
+    event.stopImmediatePropagation();
     if (event.key === 'Escape') {
       this.capturingAction.set(null);
       return;
     }
     if (event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) return;
-    const key = event.key.toLowerCase();
-    if (RESERVED_KEYS.has(key)) {
-      this.errorMessage.set(I18N.shortcuts.key_reserved);
-      this.capturingAction.set(null);
-      return;
-    }
-    const clash = KEYMAP_ACTIONS.find(a => a.id !== action && this.mapping.key(a.id) === key);
-    if (clash) {
-      this.errorMessage.set(I18N.shortcuts.key_in_use);
-      this.capturingAction.set(null);
-      return;
-    }
-    this.mapping.setKey(action, key);
-    this.errorMessage.set('');
+    const refused = this.mapping.setKey(action, event.key);
+    this.errorMessage.set(refused === 'reserved' ? I18N.shortcuts.key_reserved : refused === 'in_use' ? I18N.shortcuts.key_in_use : '');
     this.capturingAction.set(null);
   }
 }

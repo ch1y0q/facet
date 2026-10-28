@@ -3,7 +3,7 @@ import { MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { i18nKeys } from '../../../core/i18n/keys';
-import { galleryShortcutSection } from '../../../features/gallery/gallery-shortcuts';
+import { galleryShortcutSection, photoShortcutSection } from '../../../features/gallery/gallery-shortcuts';
 import { KeyboardMappingService } from '../../../core/services/keyboard-mapping.service';
 
 interface ShortcutRow {
@@ -55,22 +55,9 @@ export class ShortcutsDialogComponent {
 
   /** Built at open time from the live key mapping, so a remapped key shows
    *  here the moment it is saved. */
-  protected readonly sections: ShortcutSection[] = (() => {
-    const map = this.keymap.keymap();
-    const label = (k: string) => k.toUpperCase();
-    return [
-      galleryShortcutSection(map),
-      {
-        titleKey: 'shortcuts.section_detail',
-        rows: [
-          { keys: [label(map.keep)], labelKey: this.I18N.review.shortcut },
-          { keys: ['←', '→'], labelKey: 'shortcuts.navigate' },
-          { keys: ['1', '–', '5'], labelKey: 'shortcuts.rate' },
-          { keys: ['0', label(map.reject)], labelKey: 'shortcuts.reject' },
-          { keys: [label(map.favourite)], labelKey: 'shortcuts.favorite' },
-          { keys: ['Esc'], labelKey: 'shortcuts.close' },
-        ],
-      },
+  protected readonly sections: ShortcutSection[] = [
+    galleryShortcutSection(this.keymap.keymap()),
+    photoShortcutSection(this.keymap.keymap()),
     {
       titleKey: 'shortcuts.section_comparison',
       rows: [
@@ -86,6 +73,5 @@ export class ShortcutsDialogComponent {
         { keys: ['?'], labelKey: 'shortcuts.show_help' },
       ],
     },
-    ];
-  })();
+  ];
 }

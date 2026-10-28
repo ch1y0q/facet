@@ -229,7 +229,7 @@ Dans la galerie, choisissez **Décision de tri → À examiner** pour parcourir 
 
 **Conserver** et **Rejeter** retirent la photo de cette file après enregistrement. Les photos conservées restent dans la bibliothèque et apparaissent avec le filtre **Conservées**. Cette décision est indépendante des favoris et des étoiles.
 
-Les actions Conserver et **Réinitialiser la décision** sont disponibles dans le détail, le menu contextuel et les actions groupées. **K** conserve la photo courante. Dans le détail, le bouton Conserver est une bascule : l’activer sur une photo conservée réinitialise la décision. Réinitialiser efface les décisions Conserver et Rejeter sans modifier les étoiles ni les favoris. Les actions de galerie disposent d’Annuler.
+Les actions Conserver et **Réinitialiser la décision** sont disponibles dans le détail, le menu contextuel et les actions groupées. **K** (reconfigurable, voir [Raccourcis clavier](#raccourcis-clavier-galerie)) conserve la photo courante. Dans le détail, le bouton Conserver est une bascule : l’activer sur une photo conservée réinitialise la décision. Réinitialiser efface les décisions Conserver et Rejeter sans modifier les étoiles ni les favoris. Les actions de galerie disposent d’Annuler.
 
 Les décisions persistent après rechargement, redémarrage et nouvelle analyse, et sont propres à chaque utilisateur. Confirmer un groupe de tri marque ses photos choisies comme conservées. Les anciens favoris, notes et groupes examinés ne sont pas convertis automatiquement.
 
@@ -948,6 +948,7 @@ Les raccourcis à une seule touche de la galerie et des photos restent inactifs 
 | `Double-click` | Ouvrir la photo |
 | `Shift+F10` / `Menu` | Ouvrir le menu contextuel de la carte de photo ayant le focus (le clic droit fait de même) |
 | `1`–`5` | Noter la photo ciblée de 1 à 5 étoiles (mode édition ; passe à la suivante) |
+| `K` | Conserver la photo ciblée (mode édition) |
 | `F` | Mettre en favori / retirer des favoris la photo ciblée (mode édition) |
 | `X` ou `0` | Rejeter / annuler le rejet de la photo ciblée (mode édition ; passe à la suivante) |
 | `/` | Cibler la recherche de la barre d'outils (affichée à partir de 1360 px de large) ; en dessous, ouvre la barre latérale des filtres et cible son champ de recherche |
@@ -955,11 +956,11 @@ Les raccourcis à une seule touche de la galerie et des photos restent inactifs 
 | `V` | Basculer entre les dispositions grille et mosaïque |
 | `?` | Afficher la référence des raccourcis clavier (fonctionne sur chaque page ; les raccourcis de la galerie figurent aussi dans menu utilisateur → Aide) |
 
-Les raccourcis de notation, de conservation et de vue — favori, rejeter, garder, cibler la recherche, la barre latérale et grille/mosaïque — sont reconfigurables par navigateur : le menu utilisateur → **Raccourcis clavier** ouvre une boîte de dialogue où vous cliquez sur une action puis appuyez sur sa nouvelle touche. Les chiffres, `Espace` et `?` restent réservés, et une touche déjà prise par une autre action est refusée ; **Tout réinitialiser** restaure les touches d'origine. L'assignation est stockée dans `localStorage` : elle suit le navigateur, pas le compte ; la page photo répond aux mêmes touches, et la référence `?` ainsi que les tableaux du dialogue d'aide affichent toujours les touches en vigueur.
+Les raccourcis de notation, de conservation et de vue — favori, rejeter, garder, cibler la recherche, la barre latérale et grille/mosaïque — sont reconfigurables par navigateur, donc `K`, `F`, `X`, `/`, `B` et `V` ci-dessus sont les touches par défaut : le menu utilisateur → **Personnaliser les raccourcis** ouvre une boîte de dialogue où vous cliquez sur une action puis appuyez sur sa nouvelle touche (`Échap` ou `Tab` annule). Les chiffres, `Espace` et `?` restent réservés, et une touche déjà prise par une autre action est refusée ; **Tout réinitialiser** restaure les touches d'origine. L'assignation est stockée dans `localStorage` : elle suit le navigateur, pas le compte ; la page photo répond aux mêmes touches, et la référence `?` ainsi que le tableau de la galerie du dialogue d'aide et l'indication de la carte active affichent toujours les touches en vigueur. Une touche enregistrée réservée, ou partagée par deux actions, revient à la touche par défaut de cette action ; les autres touches enregistrées sont conservées, sauf si cette touche par défaut est déjà prise, auquel cas toutes les touches sont réinitialisées.
 
 La photo courante — celle sur laquelle agissent les raccourcis de note, de favori et de rejet — est marquée par un contour de 4px autour de sa carte ; toutes les autres cartes passent à 50% d'opacité. Rien n'est marqué tant que le curseur ne s'est pas réellement déplacé sur une photo des résultats, si bien qu'une galerie que vous n'avez pas encore parcourue reste à pleine intensité. Cliquer sur une photo y déplace le marqueur, si bien qu'un raccourci tapé juste après un clic s'applique à la photo cliquée, et non à celle où les flèches l'avaient laissé. Revenir d'une photo (Retour ou Échap) laisse le marqueur sur la dernière photo que vous y avez vue, si bien que les raccourcis reprennent à partir de là. L’indication des raccourcis sur la carte active apparaît uniquement en mode édition lorsque `viewer.features.show_rating_controls` est activé.
 
-**Sur la page photo**, `1`–`5`, `F` et `X` (ou `0`) notent, mettent en favori et rejettent la photo ouverte, aux mêmes conditions que les boutons de notation : mode édition, avec `viewer.features.show_rating_controls` activé. Contrairement à la galerie, ils ne passent jamais à une autre photo ; utilisez `←` `→` pour cela. La référence `?` les liste sous *Vue photo*.
+**Sur la page photo**, `1`–`5`, la touche favori et la touche rejet (`F` et `X` par défaut ; `0` rejette aussi) notent, mettent en favori et rejettent la photo ouverte, aux mêmes conditions que les boutons de notation : mode édition, avec `viewer.features.show_rating_controls` activé. Contrairement à la galerie, ils ne passent jamais à une autre photo ; utilisez `←` `→` pour cela. La référence `?` les liste sous *Vue photo*.
 
 ## Annuler
 

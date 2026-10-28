@@ -1,10 +1,11 @@
 import { I18N } from '../../core/i18n/keys';
 import { DEFAULT_KEYMAP, KeymapConfig } from '../../core/services/keyboard-mapping.service';
 
-/** The gallery's keyboard reference. One builder feeds both the `?` shortcuts
- *  dialog and the help dialog the user menu opens on the gallery routes, so
- *  the two can never list different keys — and both show the keys the user
- *  actually remapped, not the defaults. */
+/** The gallery's and photo page's keyboard references. One builder per page
+ *  feeds the `?` shortcuts dialog and, for the gallery, the help dialog the
+ *  user menu opens on the gallery routes, so they can never list different
+ *  keys — and both show the keys the user actually remapped, not the
+ *  defaults. */
 export interface GalleryShortcutRow { keys: string[]; labelKey: string; }
 
 export interface GalleryShortcutSection { titleKey: string; rows: GalleryShortcutRow[]; }
@@ -28,6 +29,20 @@ export function galleryShortcutSection(map: KeymapConfig = DEFAULT_KEYMAP): Gall
       { keys: [label(map.focusSearch)], labelKey: I18N.shortcuts.focus_search },
       { keys: [label(map.toggleSidebar)], labelKey: I18N.shortcuts.toggle_filters },
       { keys: [label(map.swapLayout)], labelKey: I18N.shortcuts.toggle_layout },
+    ],
+  };
+}
+
+export function photoShortcutSection(map: KeymapConfig = DEFAULT_KEYMAP): GalleryShortcutSection {
+  return {
+    titleKey: I18N.shortcuts.section_detail,
+    rows: [
+      { keys: [label(map.keep)], labelKey: I18N.review.shortcut },
+      { keys: ['←', '→'], labelKey: I18N.shortcuts.navigate },
+      { keys: ['1', '–', '5'], labelKey: I18N.shortcuts.rate },
+      { keys: ['0', label(map.reject)], labelKey: I18N.shortcuts.reject },
+      { keys: [label(map.favourite)], labelKey: I18N.shortcuts.favorite },
+      { keys: ['Esc'], labelKey: I18N.shortcuts.close },
     ],
   };
 }

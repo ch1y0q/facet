@@ -23,17 +23,38 @@ export const DEFAULT_KEYMAP: KeymapConfig = {
 
 const STORAGE_KEY = 'facet_keymap';
 
+/** Keys no action may take: the digits drive rating (and the 0 reject
+ *  alias), Space selects the focused photo, ? opens the shortcut reference. */
+const RESERVED_KEYS = new Set(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ' ', '?']);
+
+/** The stored form of a pressed key — lowercased, one character, not
+ *  reserved — or null when no action may take it. Lowercasing can lengthen a
+ *  character (`İ` becomes two code units), so length is checked after it. */
+export function assignableKey(key: string): string | null {
+  const k = key.toLowerCase();
+  return k.length === 1 && !RESERVED_KEYS.has(k) ? k : null;
+}
+
+/** A saved key that is reserved or that two actions share (a hand edit, or an
+ *  older save meeting a newer rule) falls back to that action's default, so
+ *  one keystroke never fires two actions. If that default is itself already
+ *  taken by another saved key, nothing short of the full defaults is safe. */
 function load(): KeymapConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_KEYMAP };
-    const saved = JSON.parse(raw) as Partial<KeymapConfig>;
-    const out = { ...DEFAULT_KEYMAP };
-    for (const action of Object.keys(DEFAULT_KEYMAP) as (keyof KeymapConfig)[]) {
+    const saved = JSON.parse(raw) as Partial<Record<keyof KeymapConfig, unknown>>;
+    const actions = Object.keys(DEFAULT_KEYMAP) as (keyof KeymapConfig)[];
+    const keys = actions.map(action => {
       const v = saved[action];
-      if (typeof v === 'string' && v.length === 1) out[action] = v.toLowerCase();
-    }
-    return out;
+      return typeof v === 'string' ? assignableKey(v) : null;
+    });
+    const out = { ...DEFAULT_KEYMAP };
+    actions.forEach((action, i) => {
+      const k = keys[i];
+      if (k && keys.indexOf(k) === keys.lastIndexOf(k)) out[action] = k;
+    });
+    return new Set(Object.values(out)).size === actions.length ? out : { ...DEFAULT_KEYMAP };
   } catch {
     return { ...DEFAULT_KEYMAP };
   }
@@ -46,15 +67,24 @@ function load(): KeymapConfig {
 export class KeyboardMappingService {
   readonly keymap = signal<KeymapConfig>(load());
 
-  setKey(action: keyof KeymapConfig, key: string): void {
-    const k = key.length === 1 ? key.toLowerCase() : key;
-    this.keymap.update(m => ({ ...m, [action]: k }));
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(this.keymap())); } catch { /* session-only */ }
+  /** Assigns `key` to `action`. Refuses a key no action may take
+   *  (`'reserved'`) or one another action holds (`'in_use'`). */
+  setKey(action: keyof KeymapConfig, key: string): 'reserved' | 'in_use' | null {
+    const k = assignableKey(key);
+    if (!k) return 'reserved';
+    const map = this.keymap();
+    if ((Object.keys(map) as (keyof KeymapConfig)[]).some(a => a !== action && map[a] === k)) return 'in_use';
+    this.save({ ...map, [action]: k });
+    return null;
   }
 
   resetAll(): void {
-    this.keymap.set({ ...DEFAULT_KEYMAP });
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_KEYMAP)); } catch { /* ignore */ }
+    this.save({ ...DEFAULT_KEYMAP });
+  }
+
+  private save(map: KeymapConfig): void {
+    this.keymap.set(map);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(map)); } catch { /* session-only */ }
   }
 
   /** The key for an action, from the current mapping. */

@@ -19,6 +19,7 @@ import { ScanService } from './core/services/scan.service';
 import { By } from '@angular/platform-browser';
 import { MatTooltip } from '@angular/material/tooltip';
 import { MatMenuTrigger } from '@angular/material/menu';
+import { KeyboardMappingService } from './core/services/keyboard-mapping.service';
 
 function createApp(routerUrl = '/', extraProviders: Provider[] = []) {
   const filtersSignal = signal<GalleryFilters>({ ...DEFAULT_FILTERS });
@@ -76,6 +77,24 @@ function createApp(routerUrl = '/', extraProviders: Provider[] = []) {
 }
 
 describe('App', () => {
+  describe('help dialog shortcuts', () => {
+    afterEach(() => {
+      TestBed.inject(KeyboardMappingService).resetAll();
+      localStorage.removeItem('facet_keymap');
+    });
+
+    it('lists the remapped reject key on a gallery route, not the default', () => {
+      const { app } = createApp('/');
+      TestBed.inject(KeyboardMappingService).setKey('reject', 'r');
+      (app as any).openHelpDialog();
+      const open = TestBed.inject(MatDialog).open as unknown as ReturnType<typeof vi.fn>;
+      const sections = open.mock.calls[0][1].data.shortcutSections as { rows: { keys: string[]; labelKey: string }[] }[];
+      const reject = sections[0].rows.find(r => r.labelKey === I18N.shortcuts.reject)!;
+      expect(reject.keys).toContain('R');
+      expect(reject.keys).not.toContain('X');
+    });
+  });
+
   describe('route detection', () => {
     it('isGalleryRoute returns true for /', () => {
       const { app } = createApp('/');
@@ -1031,7 +1050,7 @@ describe('App', () => {
       const items = openUserMenu(fixture, root);
       const labels = items.map(i => i.textContent!.replace(/\s+/g, ' ').trim());
       expect(labels.at(-3)).toContain(I18N.gallery.card_actions.title);
-      expect(labels.at(-2)).toContain(I18N.shortcuts.title);
+      expect(labels.at(-2)).toContain(I18N.shortcuts.keymap_title);
       expect(labels.at(-1)).toContain(I18N.nav.help);
       items.at(-3)!.click();
       expect(openCardActions).toHaveBeenCalledOnce();

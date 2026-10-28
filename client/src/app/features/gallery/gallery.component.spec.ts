@@ -376,7 +376,10 @@ describe('GalleryComponent', () => {
 
     describe('remapped keys', () => {
       const keymap = () => TestBed.inject(KeyboardMappingService);
-      afterEach(() => keymap().resetAll());
+      afterEach(() => {
+        keymap().resetAll();
+        localStorage.removeItem('facet_keymap');
+      });
 
       it('rejects with the user-mapped key instead of X', () => {
         keymap().setKey('reject', 'r');
@@ -402,6 +405,9 @@ describe('GalleryComponent', () => {
         fire(keyEvent('z'));
         expect(mockStore.toggleFavorite).toHaveBeenCalledWith('/a.jpg');
         expect(activeIndex()).toBe(0);
+        mockStore.toggleFavorite.mockClear();
+        fire(keyEvent('f'));
+        expect(mockStore.toggleFavorite).not.toHaveBeenCalled();
       });
 
       it('keeps with the user-mapped key', () => {
@@ -412,6 +418,9 @@ describe('GalleryComponent', () => {
         ).mockResolvedValue(undefined);
         fire(keyEvent('j'));
         expect(reviewSingle).toHaveBeenCalledWith('/a.jpg', 'kept');
+        reviewSingle.mockClear();
+        fire(keyEvent('k'));
+        expect(reviewSingle).not.toHaveBeenCalled();
       });
     });
   });
@@ -5560,7 +5569,11 @@ describe('GalleryComponent', () => {
 
     describe('/, B and V', () => {
       const stubWide = (matches: boolean) => vi.stubGlobal('matchMedia', (media: string) => ({ matches, media, addEventListener() {}, removeEventListener() {} }));
-      afterEach(() => vi.unstubAllGlobals());
+      afterEach(() => {
+        vi.unstubAllGlobals();
+        TestBed.inject(KeyboardMappingService).resetAll();
+        localStorage.removeItem('facet_keymap');
+      });
 
       it('/ focuses and selects the toolbar search', () => {
         stubWide(true);
@@ -5618,6 +5631,28 @@ describe('GalleryComponent', () => {
         drawer.mockClear();
         key({ key: 'b' });
         expect(drawer).not.toHaveBeenCalled();
+      });
+
+      it('focuses the search with a remapped key, and no longer with /', () => {
+        stubWide(true);
+        TestBed.inject(KeyboardMappingService).setKey('focusSearch', 's');
+        expect(key({ key: 's' }).defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(search);
+        search.blur();
+        expect(key({ key: '/' }).defaultPrevented).toBe(false);
+        expect(document.activeElement).not.toBe(search);
+      });
+
+      it('flips the layout with a remapped key, and no longer with V', () => {
+        TestBed.inject(KeyboardMappingService).setKey('swapLayout', 'l');
+        (gallery as unknown as { containerWidth: WritableSignal<number> }).containerWidth.set(800);
+        mockStore.galleryMode.set('mosaic');
+        expect(key({ key: 'l' }).defaultPrevented).toBe(true);
+        expect(mockStore.setGalleryMode).toHaveBeenCalledWith('grid');
+        const mode = mockStore.setGalleryMode as unknown as ReturnType<typeof vi.fn>;
+        mode.mockClear();
+        key({ key: 'v' });
+        expect(mode).not.toHaveBeenCalled();
       });
 
       it('does nothing while the gallery is parked behind a photo page', () => {

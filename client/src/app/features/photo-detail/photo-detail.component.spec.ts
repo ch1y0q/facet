@@ -855,6 +855,16 @@ describe('PhotoDetailComponent', () => {
       component.goBack();
       expect(mockLocation.back).toHaveBeenCalled();
     });
+
+    it('goes back on Escape, but not while a dialog is open', () => {
+      createComponent();
+      mockDialog.openDialogs.push({});
+      component.onEscape();
+      expect(mockLocation.back).not.toHaveBeenCalled();
+      mockDialog.openDialogs.length = 0;
+      component.onEscape();
+      expect(mockLocation.back).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('download', () => {
@@ -1099,6 +1109,11 @@ describe('PhotoDetailComponent', () => {
       toggleRejected = vi.spyOn(component, 'toggleRejected').mockResolvedValue(undefined);
     });
 
+    afterEach(() => {
+      TestBed.inject(KeyboardMappingService).resetAll();
+      localStorage.removeItem('facet_keymap');
+    });
+
     function press(init: KeyboardEventInit, target?: HTMLElement): KeyboardEvent {
       const event = new KeyboardEvent('keydown', { cancelable: true, ...init });
       if (target) Object.defineProperty(event, 'target', { value: target });
@@ -1141,6 +1156,41 @@ describe('PhotoDetailComponent', () => {
       } finally {
         keymap.resetAll();
       }
+    });
+
+    it('toggles the favourite with a remapped key and retires the default F', () => {
+      TestBed.inject(KeyboardMappingService).setKey('favourite', 'z');
+      expect(press({ key: 'z' }).defaultPrevented).toBe(true);
+      expect(toggleFavorite).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+      press({ key: 'f' });
+      expect(toggleFavorite).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+    });
+
+    describe('keep key', () => {
+      let reviewPhoto: MockInstance;
+
+      beforeEach(() => {
+        reviewPhoto = vi.spyOn(component, 'reviewPhoto').mockResolvedValue(undefined);
+      });
+
+      function pressKeep(key: string): KeyboardEvent {
+        const event = new KeyboardEvent('keydown', { cancelable: true, key });
+        component.onReviewKey(event);
+        return event;
+      }
+
+      it('keeps with the default k', () => {
+        expect(pressKeep('k').defaultPrevented).toBe(true);
+        expect(reviewPhoto).toHaveBeenCalledExactlyOnceWith('kept');
+      });
+
+      it('keeps with a remapped key and retires the default K', () => {
+        TestBed.inject(KeyboardMappingService).setKey('keep', 'j');
+        expect(pressKeep('j').defaultPrevented).toBe(true);
+        expect(reviewPhoto).toHaveBeenCalledExactlyOnceWith('kept');
+        expect(pressKeep('k').defaultPrevented).toBe(false);
+        expect(reviewPhoto).toHaveBeenCalledExactlyOnceWith('kept');
+      });
     });
 
     it.each(['6', '9', 'q', 'Enter'])('leaves %s alone', key => {

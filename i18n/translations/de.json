@@ -203,7 +203,7 @@
     "burst_set": "Seriengruppe öffnen",
     "sequence_set": "Belichtungsreihe/Panorama öffnen",
     "open_detail": "Fotoseite öffnen",
-    "key_hint": "1-5 bewerten · F fav · X verwerfen · Leertaste auswählen · Eingabe öffnen"
+    "key_hint": "1-5 bewerten · {favourite} fav · {reject} verwerfen · Leertaste auswählen · Eingabe öffnen"
   },
   "notifications": {
     "copied": "Kopiert!",
@@ -2674,7 +2674,8 @@
     "press_key": "Taste drücken…",
     "reset_keys": "Alle zurücksetzen",
     "key_in_use": "Diese Taste ist bereits belegt",
-    "key_reserved": "Diese Taste ist reserviert"
+    "key_reserved": "Diese Taste ist reserviert",
+    "keymap_title": "Tastenkürzel anpassen"
   },
   "pwa": {
     "update_available": "Eine neue Version ist verfügbar",

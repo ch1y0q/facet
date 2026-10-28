@@ -203,7 +203,7 @@
     "burst_set": "Abrir grupo de ráfaga",
     "sequence_set": "Abrir bracket/panorama",
     "open_detail": "Abrir página de foto",
-    "key_hint": "1-5 puntuar · F favorita · X rechazar · Espacio seleccionar · Intro abrir"
+    "key_hint": "1-5 puntuar · {favourite} favorita · {reject} rechazar · Espacio seleccionar · Intro abrir"
   },
   "notifications": {
     "copied": "Copiado!",
@@ -2674,7 +2674,8 @@
     "press_key": "Pulsa una tecla…",
     "reset_keys": "Restablecer todo",
     "key_in_use": "Esa tecla ya está asignada",
-    "key_reserved": "Esa tecla está reservada"
+    "key_reserved": "Esa tecla está reservada",
+    "keymap_title": "Personalizar atajos"
   },
   "pwa": {
     "update_available": "Hay una nueva versión disponible",

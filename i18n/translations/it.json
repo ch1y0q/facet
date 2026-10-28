@@ -203,7 +203,7 @@
     "burst_set": "Apri gruppo di raffica",
     "sequence_set": "Apri bracket/panorama",
     "open_detail": "Apri pagina foto",
-    "key_hint": "1-5 valuta · F preferita · X scarta · Spazio seleziona · Invio apri"
+    "key_hint": "1-5 valuta · {favourite} preferita · {reject} scarta · Spazio seleziona · Invio apri"
   },
   "notifications": {
     "copied": "Copiato!",
@@ -2674,7 +2674,8 @@
     "press_key": "Premi un tasto…",
     "reset_keys": "Ripristina tutto",
     "key_in_use": "Questo tasto è già assegnato",
-    "key_reserved": "Questo tasto è riservato"
+    "key_reserved": "Questo tasto è riservato",
+    "keymap_title": "Personalizza le scorciatoie"
   },
   "pwa": {
     "update_available": "È disponibile una nuova versione",

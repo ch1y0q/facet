@@ -203,7 +203,7 @@
     "burst_set": "查看连拍组",
     "sequence_set": "查看包围曝光/全景组",
     "open_detail": "打开照片页",
-    "key_hint": "1-5 评分 · F 收藏 · X 淘汰 · 空格 选择 · 回车 打开"
+    "key_hint": "1-5 评分 · {favourite} 收藏 · {reject} 淘汰 · 空格 选择 · 回车 打开"
   },
   "notifications": {
     "copied": "已复制！",
@@ -2674,7 +2674,8 @@
     "press_key": "请按新键…",
     "reset_keys": "全部恢复默认",
     "key_in_use": "该按键已被其他操作使用",
-    "key_reserved": "该按键为保留按键"
+    "key_reserved": "该按键为保留按键",
+    "keymap_title": "自定义快捷键"
   },
   "pwa": {
     "update_available": "有新版本可用",
