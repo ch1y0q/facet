@@ -1,13 +1,18 @@
 import { GalleryStore } from '../gallery/gallery.store';
 import { makePhoto } from '../../../testing/photo.fixture';
-import type { Mock } from 'vitest';
+import type { Mock, MockInstance } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, ParamMap, Router, convertToParamMap } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, NavigationStart, NavigationEnd, convertToParamMap } from '@angular/router';
 import { Location } from '@angular/common';
 import { MatDialog } from '@angular/material/dialog';
-import { BehaviorSubject, NEVER, Observable, of, Subject, throwError } from 'rxjs';
+import { BehaviorSubject, finalize, Observable, of, Subject, throwError } from 'rxjs';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
-import { signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { MatTooltip } from '@angular/material/tooltip';
+import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
+import { MatSelect, MatSelectModule } from '@angular/material/select';
+import { OverlayContainer } from '@angular/cdk/overlay';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
@@ -26,15 +31,18 @@ vi.doMock('leaflet', () => leafletMock);
 let PhotoDetailComponent: typeof import('./photo-detail.component').PhotoDetailComponent;
 
 describe('PhotoDetailComponent', () => {
+  // The open metric tab is remembered across tests otherwise.
+  afterEach(() => localStorage.removeItem('facet_photo_detail_tab'));
+
    
   let component: any;
   let changes$: Subject<AssistantChangeBatch>;
   let mockApi: { get: Mock; post: Mock; put: Mock; delete: Mock; imageUrl: Mock; downloadUrl: Mock; getRaw: Mock };
-  let mockRouter: { navigate: Mock; events: Observable<unknown> };
+  let mockRouter: { url: string; navigate: Mock; events: Observable<unknown> };
   let mockLocation: { back: Mock };
   let mockRoute: { snapshot: { queryParamMap: { get: Mock } }; queryParamMap: BehaviorSubject<ParamMap> };
-  let mockAuth: { identity: () => string; isEdition: ReturnType<typeof signal>; downloadProfiles: ReturnType<typeof signal> };
-  let mockDialog: { open: Mock };
+  let mockAuth: { status: ReturnType<typeof signal>; identity: () => string; isEdition: ReturnType<typeof signal>; downloadProfiles: ReturnType<typeof signal> };
+  let mockDialog: { open: Mock; openDialogs: unknown[] };
 
   const samplePhoto = {
     path: '/photos/test.jpg',
@@ -104,7 +112,7 @@ describe('PhotoDetailComponent', () => {
       downloadUrl: vi.fn((path: string, type = 'original', profile?: string) => `/api/download?path=${encodeURIComponent(path)}&type=${type}${profile ? '&profile=' + profile : ''}`),
       getRaw: vi.fn(() => of(new Blob(['test'], { type: 'image/jpeg' }))),
     };
-    mockRouter = { navigate: vi.fn(), events: NEVER };
+    mockRouter = { url: '/photo', navigate: vi.fn(), events: new Subject() };
     mockLocation = { back: vi.fn() };
     mockRoute = {
       snapshot: {
@@ -112,8 +120,9 @@ describe('PhotoDetailComponent', () => {
       },
       queryParamMap: new BehaviorSubject(convertToParamMap({ path: '/photos/test.jpg' })),
     };
-    mockAuth = { identity: () => '0|', isEdition: signal(true), downloadProfiles: signal([]) };
-    mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(undefined) })) };
+    const status = signal({ user_id: 'test' });
+    mockAuth = { status, identity: () => status().user_id, isEdition: signal(true), downloadProfiles: signal([]) };
+    mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(undefined) })), openDialogs: [] };
   });
 
   it('opens the manual editor with no detections and patches confirmed membership after navigation', async () => {
@@ -142,6 +151,8 @@ describe('PhotoDetailComponent', () => {
     const other = makePhoto({ path: '/other.jpg', persons: [{ id: 9, name: 'Other' }] });
     const store = TestBed.inject(GalleryStore);
     store.filters.update(f => ({ ...f, person_id: '5', camera: 'Canon' }));
+    mockApi.get.mockReturnValue(of({ photos: [original, remaining], total: 2, has_more: false }));
+    await store.loadPhotos();
     store.photos.set([original, remaining]);
     store.total.set(2);
     vi.spyOn(store, 'reloadPersonOptions').mockResolvedValue();
@@ -155,14 +166,47 @@ describe('PhotoDetailComponent', () => {
       return of({});
     });
 
+    mockApi.post.mockReturnValue(of({ photos: [] }));
     await committed();
 
     expect(store.photos().map(p => p.path)).toEqual(['/remaining.jpg']);
     expect(store.total()).toBe(1);
     expect(store.filters()).toMatchObject({ person_id: '5', camera: 'Canon' });
-    expect(mockApi.get).toHaveBeenCalledWith('/photos', expect.objectContaining({ person_id: '5', camera: 'Canon' }));
+    expect(mockApi.post).toHaveBeenCalledWith('/photos/by_paths', expect.objectContaining({
+      paths: ['/manual.jpg'], filters: expect.objectContaining({ person_id: '5', camera: 'Canon' }),
+    }));
     expect(component.photo()).toEqual(other);
     expect(mockRouter.navigate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['manual_faces_need_review', false], ['manual_faces_need_review', true],
+    ['faces_need_names', false], ['faces_need_names', true],
+  ] as const)('refreshes the %s queue without clearing newer selection or pins (pinned=%s)', async (queue, pinned) => {
+    createComponent();
+    const original = makePhoto({ path: '/manual.jpg' });
+    const other = makePhoto({ path: '/other.jpg' });
+    const store = TestBed.inject(GalleryStore);
+    store.filters.update(f => ({ ...f, [queue]: true }));
+    mockApi.get.mockReturnValue(of({ photos: [original, other], total: 2, has_more: false }));
+    await store.loadPhotos();
+    vi.spyOn(store, 'reloadPersonOptions').mockResolvedValue();
+    component.photo.set(original);
+    await component.openManualFaces(original);
+    const committed = mockDialog.open.mock.calls[0][1].data.onCommitted;
+    store.selectedPaths.set(new Set(['/other.jpg']));
+    if (pinned) store.pinnedPaths.set(['/manual.jpg', '/other.jpg']);
+    component.photo.set(other);
+    mockApi.get.mockReturnValue(of({ ...original, persons: [] }));
+    mockApi.post.mockReturnValue(of({ photos: pinned ? [original] : [] }));
+    await committed();
+    expect(store.selectedPaths()).toEqual(new Set(['/other.jpg']));
+    expect(store.pinnedPaths()).toEqual(pinned ? ['/manual.jpg', '/other.jpg'] : null);
+    expect(store.photos().map(p => p.path)).toEqual(pinned ? ['/manual.jpg', '/other.jpg'] : ['/other.jpg']);
+    expect(component.photo()).toEqual(other);
+    expect(mockApi.post).toHaveBeenCalledWith('/photos/by_paths', pinned
+      ? { paths: ['/manual.jpg'] }
+      : expect.objectContaining({ filters: expect.objectContaining({ [queue]: '1' }) }));
   });
 
   it('refreshes persisted person membership after the detail component is destroyed', async () => {
@@ -180,7 +224,7 @@ describe('PhotoDetailComponent', () => {
     expect(store.photos()[0].persons).toEqual([{ id: 5, name: 'Ada' }]);
   });
 
-  it('renders NULL and zero extended metrics in the actual detail template', () => {
+  function renderDetail() {
     TestBed.configureTestingModule({
       imports: [PhotoDetailComponent],
       providers: [
@@ -196,6 +240,64 @@ describe('PhotoDetailComponent', () => {
     });
     const view = TestBed.createComponent(PhotoDetailComponent);
     vi.spyOn(view.componentInstance, 'ngOnInit').mockResolvedValue(undefined);
+    return view;
+  }
+
+  it('ranks each score that has a library distribution, and only those', () => {
+    localStorage.setItem('facet_photo_detail_tab', 'quality');
+    const view = renderDetail();
+    TestBed.inject(GalleryStore).metricRanges.set({
+      min_aesthetic: { column: 'aesthetic', min: 0, max: 10, buckets: [1, 1] },
+    });
+    view.componentInstance.photo.set(makePhoto({ aesthetic: 7.2 }));
+    view.detectChanges();
+    const ranks = view.debugElement.queryAll(By.css('app-metric-rank'));
+    expect(ranks).toHaveLength(1);
+    expect(ranks[0].nativeElement.querySelector('[tabindex="0"]')).not.toBeNull();
+  });
+
+  it('places the aggregate in its library distribution in the header', () => {
+    const view = renderDetail();
+    TestBed.inject(GalleryStore).metricRanges.set({
+      min_score: { column: 'aggregate', min: 0, max: 10, buckets: [1, 1] },
+    });
+    view.componentInstance.photo.set(makePhoto({ aggregate: 6.4 }));
+    view.detectChanges();
+    const header = view.debugElement.queryAll(By.css('app-metric-rank.w-28'));
+    expect(header).toHaveLength(1);
+    expect(header[0].componentInstance.value()).toBe(6.4);
+  });
+
+  it('loads the library distributions on a deep-linked open', async () => {
+    createComponent();
+    const ensure = vi.spyOn(TestBed.inject(GalleryStore), 'ensureMetricRanges').mockResolvedValue();
+    await component.ngOnInit();
+    expect(ensure).toHaveBeenCalled();
+  });
+
+  it.each([
+    { kept: true, decision: 'undecided', icon: 'check_circle' },
+    { kept: false, decision: 'kept', icon: 'check_circle_outline' },
+  ])('Keep toggle on a photo with is_kept=$kept sends $decision, shows $icon and flips its state', async ({ kept, decision, icon }) => {
+    const view = renderDetail();
+    view.componentInstance.photo.set(makePhoto({ is_kept: kept, is_rejected: !kept }));
+    mockApi.post.mockReturnValue(of({}));
+    view.detectChanges();
+    const keep = view.nativeElement.querySelector('button[aria-label="review.keep"]') as HTMLButtonElement;
+    expect(keep.getAttribute('aria-pressed')).toBe(String(kept));
+    expect(keep.querySelector('mat-icon')!.textContent!.trim()).toBe(icon);
+    keep.click();
+    await view.whenStable();
+    expect(mockApi.post).toHaveBeenCalledWith('/photos/batch_review', { photo_paths: [view.componentInstance.photo()!.path], decision });
+    view.detectChanges();
+    expect(view.componentInstance.photo()).toMatchObject({ is_kept: !kept, is_rejected: false });
+    expect(keep.getAttribute('aria-pressed')).toBe(String(!kept));
+    expect(keep.querySelector('mat-icon')!.textContent!.trim()).not.toBe(icon);
+  });
+
+  it('renders NULL and zero extended metrics in the actual detail template', () => {
+    localStorage.setItem('facet_photo_detail_tab', 'quality');
+    const view = renderDetail();
     TestBed.inject(GalleryStore).config.set({ populated_scores: ['aesthetic_v25', 'qrealign_score', 'deqa_score'] } as never);
     view.componentInstance.photo.set(makePhoto({ aesthetic_v25: null, qrealign_score: 0, deqa_score: null }));
     view.detectChanges();
@@ -218,6 +320,157 @@ describe('PhotoDetailComponent', () => {
     expect(component).toBeTruthy();
   });
 
+  it.each(['k', 'K'])('ignores %s from a dialog button without saving or advancing', key => {
+    createComponent();
+    component.photo.set(makePhoto());
+    mockDialog.openDialogs.push({});
+    const event = new KeyboardEvent('keydown', { key, cancelable: true });
+    const button = document.createElement('button');
+    Object.defineProperty(event, 'target', { value: button });
+    component.onReviewKey(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(mockApi.post).not.toHaveBeenCalled();
+    expect(mockRouter.navigate).not.toHaveBeenCalled();
+  });
+
+  it.each(['kept', 'undecided', 'rejected'])('refreshes progress after %s outside a review-status queue', async decision => {
+    createComponent();
+    const store = TestBed.inject(GalleryStore);
+    const photo = makePhoto();
+    component.photo.set(photo);
+    store.photos.set([photo]);
+    const count = vi.spyOn(store, 'loadReviewProgress').mockResolvedValue();
+    mockApi.post.mockReturnValue(of({ is_rejected: true, is_favorite: null, star_rating: null }));
+    if (decision === 'rejected') await component.toggleRejected(photo.path);
+    else await component.reviewPhoto(decision);
+    expect(count).toHaveBeenCalled();
+  });
+
+  function enterPhotoFromGallery(path: string): void {
+    mockRouter.url = '/';
+    (mockRouter.events as Subject<unknown>).next(new NavigationStart(1, '/photo?path=' + encodeURIComponent(path)));
+    component.store.parkListingReads();
+    mockRouter.url = '/photo?path=' + encodeURIComponent(path);
+    (mockRouter.events as Subject<unknown>).next(new NavigationEnd(1, mockRouter.url, mockRouter.url));
+  }
+
+  describe('delayed review responses', () => {
+    it.each(['kept', 'undecided', 'rejected'])('preserves navigation after %s', async decision => {
+      createComponent();
+      const store = TestBed.inject(GalleryStore);
+      const a = makePhoto({ path: '/a.jpg' });
+      const b = makePhoto({ path: '/b.jpg' });
+      store.photos.set([a, b]);
+      store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+      const refresh = vi.spyOn(store, 'refreshReviewResults').mockResolvedValue();
+      component.photo.set(a);
+      const response = new Subject<any>();
+      mockApi.post.mockReturnValue(response);
+      const pending = decision === 'rejected' ? component.toggleRejected(a.path) : component.reviewPhoto(decision);
+      component.photo.set(b);
+      response.next({ is_rejected: true, is_favorite: null, star_rating: null });
+      await pending;
+      expect(component.photo()).toBe(b);
+      expect(TestBed.inject(UserActivityJournal).since().items).toEqual([expect.objectContaining({
+        kind: decision === 'rejected' ? 'reject' : 'review', paths: [a.path],
+        value: decision === 'rejected' ? true : decision,
+      })]);
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+      expect(refresh).toHaveBeenCalledOnce();
+      expect(store.photos()[0]).toMatchObject({ path: a.path, is_kept: decision === 'kept', is_rejected: decision === 'rejected' });
+    });
+    it.each(['kept', 'undecided', 'rejected'])('preserves closed detail after %s', async decision => {
+      createComponent();
+      const store = TestBed.inject(GalleryStore);
+      const a = makePhoto({ path: '/a.jpg' });
+      component.photo.set(a);
+      store.photos.set([a]);
+      store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+      const refresh = vi.spyOn(store, 'refreshReviewResults').mockResolvedValue();
+      const response = new Subject<any>();
+      mockApi.post.mockReturnValue(response);
+      const pending = decision === 'rejected' ? component.toggleRejected(a.path) : component.reviewPhoto(decision);
+      TestBed.resetTestingModule();
+      response.next({ is_rejected: true, is_favorite: null, star_rating: null });
+      await pending;
+      expect(component.photo()).toBe(a);
+      expect(refresh).toHaveBeenCalledOnce();
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+    it.each(['kept', 'undecided', 'rejected'])('applies and journals %s that lands after the gallery view changed', async decision => {
+      createComponent();
+      const store = TestBed.inject(GalleryStore);
+      const a = makePhoto({ path: '/a.jpg' });
+      store.photos.set([a]);
+      store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+      const refresh = vi.spyOn(store, 'refreshReviewResults').mockResolvedValue();
+      component.photo.set(a);
+      const response = new Subject<any>();
+      mockApi.post.mockReturnValue(response);
+      const pending = decision === 'rejected' ? component.toggleRejected(a.path) : component.reviewPhoto(decision);
+      store.filters.update(f => ({ ...f, path_prefix: '/elsewhere/' }));
+      response.next({ is_rejected: true, is_favorite: null, star_rating: null });
+      await pending;
+      expect(component.photo()).toMatchObject({ path: a.path, is_kept: decision === 'kept', is_rejected: decision === 'rejected' });
+      expect(refresh).not.toHaveBeenCalled();
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+      expect(TestBed.inject(UserActivityJournal).since().items).toEqual([expect.objectContaining({
+        kind: decision === 'rejected' ? 'reject' : 'review', paths: [a.path],
+        value: decision === 'rejected' ? true : decision,
+      })]);
+    });
+
+    it('merges delayed Keep into current metadata', async () => {
+      createComponent();
+      const a = makePhoto({ star_rating: 1 });
+      component.photo.set(a);
+      const response = new Subject<any>();
+      mockApi.post.mockReturnValue(response);
+      const pending = component.reviewPhoto('kept');
+      component.photo.set({ ...a, star_rating: 5, is_favorite: true });
+      response.next({});
+      await pending;
+      expect(component.photo()).toMatchObject({ is_kept: true, star_rating: 5, is_favorite: true });
+    });
+    it('does not override Back started during a parked Keep refill', async () => {
+      createComponent();
+      const store = TestBed.inject(GalleryStore);
+      const current = makePhoto({ path: '/current.jpg' });
+      store.photos.set([current]);
+      store.hasMore.set(true);
+      store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+      component.photo.set(current);
+      enterPhotoFromGallery(current.path);
+      const tail = new Subject<any>();
+      let cancelled = false;
+      mockApi.get.mockReturnValue(tail.pipe(finalize(() => { cancelled = true; })));
+      const keeping = component.reviewPhoto('kept');
+      await Promise.resolve();
+      expect(mockApi.get).toHaveBeenCalledWith('/photos', expect.anything());
+      (mockRouter.events as Subject<unknown>).next(new NavigationStart(2, '/'));
+      await keeping;
+      expect(cancelled).toBe(true);
+      expect(mockRouter.navigate).not.toHaveBeenCalled();
+    });
+    it('advances last loaded row to refilled successor then supports Next', async () => {
+      createComponent();
+      const store = TestBed.inject(GalleryStore);
+      const all = Array.from({ length: 128 }, (_, i) => makePhoto({ path: `/p${i + 1}.jpg` }));
+      store.photos.set(all.slice(0, 64));
+      store.hasMore.set(true);
+      store.filters.update(f => ({ ...f, review_status: 'undecided' }));
+      component.photo.set(all[63]);
+      enterPhotoFromGallery(all[63].path);
+      const remaining = all.filter(p => p.path !== all[63].path);
+      mockApi.get.mockImplementation((_url: string, params: { page: number }) => of({ photos: remaining.slice((params.page - 1) * 64, params.page * 64), total: 127, has_more: params.page === 1 }));
+      await component.reviewPhoto('kept');
+      expect(component.photo().path).toBe('/p65.jpg');
+      mockRoute.snapshot.queryParamMap.get.mockReturnValue('/p65.jpg');
+      await component.navigateAdjacentPhoto(1);
+      expect(component.photo().path).toBe('/p66.jpg');
+    });
+  });
+
   describe('ngOnInit', () => {
     // The Angular Vitest builder runs with isolate: false, so this jsdom
     // `history` is the SAME object every later spec file in the worker sees.
@@ -237,7 +490,8 @@ describe('PhotoDetailComponent', () => {
       await component.ngOnInit();
 
       expect(component.photo()).toEqual(samplePhoto);
-      expect(mockApi.get).not.toHaveBeenCalled();
+      // The photo is not refetched; the only read is the library distributions.
+      expect(mockApi.get.mock.calls.map(call => call[0])).toEqual(['/filter_options/metric_ranges']);
     });
 
     it('should load photo from API when no history state', async () => {
@@ -657,6 +911,34 @@ describe('PhotoDetailComponent', () => {
   });
 
   describe('user activity journal', () => {
+    it.each(['kept', 'undecided'] as const)('reports %s only after success and respects assistant suppression', async decision => {
+      createComponent();
+      component.photo.set({ ...samplePhoto });
+      const journal = TestBed.inject(UserActivityJournal);
+      mockApi.post.mockReturnValue(throwError(() => new Error('offline')));
+      await component.reviewPhoto(decision);
+      expect(journal.since().items).toEqual([]);
+      mockApi.post.mockReturnValue(of({ count: 1 }));
+      await journal.suppress(() => component.reviewPhoto(decision));
+      expect(journal.since().items).toEqual([]);
+      await component.reviewPhoto(decision);
+      expect(journal.since().items).toEqual([expect.objectContaining({ kind: 'review', paths: [samplePhoto.path], value: decision })]);
+    });
+
+    it.each(['kept', 'undecided'] as const)('discards queued %s journal confirmation after a direct account switch', async decision => {
+      createComponent();
+      component.photo.set({ ...samplePhoto });
+      const journal = TestBed.inject(UserActivityJournal);
+      TestBed.tick();
+      const response = new Subject<{ count: number }>();
+      mockApi.post.mockReturnValue(response);
+      const pending = component.reviewPhoto(decision);
+      response.next({ count: 1 });
+      mockAuth.status.set({ user_id: 'bob' });
+      await pending;
+      expect(journal.since().items).toEqual([]);
+    });
+
     const kinds = (): string[] => TestBed.inject(UserActivityJournal).since().items.map(i => i.kind);
 
     it('records rating, favorite, reject and manual-tag edits', async () => {
@@ -802,6 +1084,137 @@ describe('PhotoDetailComponent', () => {
     });
   });
 
+  describe('rating keyboard shortcuts', () => {
+    let setRating: MockInstance;
+    let toggleFavorite: MockInstance;
+    let toggleRejected: MockInstance;
+
+    beforeEach(() => {
+      createComponent();
+      component.store.config.set({ features: { show_rating_controls: true } });
+      component.photo.set({ ...samplePhoto });
+      setRating = vi.spyOn(component, 'setRating').mockResolvedValue(undefined);
+      toggleFavorite = vi.spyOn(component, 'toggleFavorite').mockResolvedValue(undefined);
+      toggleRejected = vi.spyOn(component, 'toggleRejected').mockResolvedValue(undefined);
+    });
+
+    function press(init: KeyboardEventInit, target?: HTMLElement): KeyboardEvent {
+      const event = new KeyboardEvent('keydown', { cancelable: true, ...init });
+      if (target) Object.defineProperty(event, 'target', { value: target });
+      component.onRatingShortcut(event);
+      return event;
+    }
+
+    function expectNothing(event: KeyboardEvent): void {
+      expect(event.defaultPrevented).toBe(false);
+      expect(setRating).not.toHaveBeenCalled();
+      expect(toggleFavorite).not.toHaveBeenCalled();
+      expect(toggleRejected).not.toHaveBeenCalled();
+    }
+
+    it.each([1, 2, 3, 4, 5])('%i rates the open photo', stars => {
+      const event = press({ key: String(stars) });
+      expect(event.defaultPrevented).toBe(true);
+      expect(setRating).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg', stars);
+    });
+
+    it.each(['f', 'F'])('%s toggles the favourite', key => {
+      expect(press({ key }).defaultPrevented).toBe(true);
+      expect(toggleFavorite).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+    });
+
+    it.each(['x', 'X', '0'])('%s toggles the reject', key => {
+      expect(press({ key }).defaultPrevented).toBe(true);
+      expect(toggleRejected).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+    });
+
+    it.each(['6', '9', 'q', 'Enter'])('leaves %s alone', key => {
+      expectNothing(press({ key }));
+    });
+
+    @Component({
+      imports: [MatMenuModule, MatSelectModule],
+      template: `
+        <button [matMenuTriggerFor]="menu">Menu</button>
+        <mat-menu #menu="matMenu">
+          <button mat-menu-item>Favorite</button>
+          <button mat-menu-item>X reject</button>
+        </mat-menu>
+        <mat-select aria-label="Keyboard rating selector">
+          <mat-option value="f">Favorite</mat-option>
+          <mat-option value="x">X reject</mat-option>
+        </mat-select>
+      `,
+    })
+    class RatingControlsHost {}
+
+    it.each(['menu', 'select'])('does not rate the photo while a real Material %s owns the keys', async control => {
+      const host = TestBed.createComponent(RatingControlsHost);
+      host.detectChanges();
+      document.body.appendChild(host.nativeElement);
+      const trigger = host.debugElement.query(By.directive(MatMenuTrigger)).injector.get(MatMenuTrigger);
+      const select = host.debugElement.query(By.directive(MatSelect)).componentInstance as MatSelect;
+      try {
+        if (control === 'menu') trigger.openMenu();
+        else select.open();
+        host.detectChanges();
+        await host.whenStable();
+        const target = control === 'menu'
+          ? TestBed.inject(OverlayContainer).getContainerElement().querySelector('[role="menu"] button') as HTMLElement
+          : select.panel.nativeElement as HTMLElement;
+        target.focus();
+        for (const key of ['1', '2', '3', '4', '5', 'f', 'F', 'x', 'X']) {
+          const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+          target.dispatchEvent(event);
+          component.onRatingShortcut(event);
+        }
+        expect(setRating).not.toHaveBeenCalled();
+        expect(toggleFavorite).not.toHaveBeenCalled();
+        expect(toggleRejected).not.toHaveBeenCalled();
+        if (control === 'menu') trigger.closeMenu();
+        else select.close();
+        press({ key: 'f' });
+        expect(toggleFavorite).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+      } finally {
+        host.destroy();
+        host.nativeElement.remove();
+      }
+    });
+
+    it('does nothing outside edition mode', () => {
+      mockAuth.isEdition.set(false);
+      expectNothing(press({ key: '3' }));
+    });
+
+    it('does nothing when the rating controls are turned off', () => {
+      component.store.config.set({ features: { show_rating_controls: false } });
+      expectNothing(press({ key: 'f' }));
+    });
+
+    it('does nothing before the photo has loaded', () => {
+      component.photo.set(null);
+      expectNothing(press({ key: '3' }));
+    });
+
+    it('does nothing while typing in a field', () => {
+      expectNothing(press({ key: '3' }, document.createElement('input')));
+    });
+
+    it.each([['ctrlKey'], ['metaKey'], ['altKey']])('does nothing with %s held', mod => {
+      expectNothing(press({ key: 'x', [mod]: true }));
+    });
+
+    it('does nothing while a dialog is open', () => {
+      const dialog = document.createElement('mat-dialog-container');
+      document.body.appendChild(dialog);
+      try {
+        expectNothing(press({ key: '3' }));
+      } finally {
+        dialog.remove();
+      }
+    });
+  });
+
   describe('socialExportEnabled', () => {
     const withPreset = { features: { show_social_export: true }, social_export: { presets: [{ key: 'square', label_key: 'social.square' }] } };
 
@@ -902,6 +1315,22 @@ describe('PhotoDetailComponent', () => {
         whileLoading();
       });
     }
+
+    it('fetches past the loaded page after real photo navigation parks the gallery', async () => {
+      createComponent();
+      component.store.photos.set([last]);
+      component.store.hasMore.set(true);
+      component.photo.set(last);
+      mockRoute.snapshot.queryParamMap.get.mockReturnValue(last.path);
+      enterPhotoFromGallery(last.path);
+      mockApi.get.mockImplementation((url: string) => of(url === '/photos'
+        ? { photos: [onNextPage], total: 2, has_more: false }
+        : {}));
+      await component.navigateAdjacentPhoto(1);
+      expect(mockApi.get).toHaveBeenCalledWith('/photos', expect.objectContaining({ page: 2 }));
+      expect(component.photo().path).toBe(onNextPage.path);
+      expect(mockRouter.navigate).toHaveBeenCalledWith(['/photo'], expect.objectContaining({ replaceUrl: true }));
+    });
 
     it('stepping past the last loaded photo loads the next page and moves onto it', async () => {
       atEndOfLoadedPage();
@@ -1036,6 +1465,53 @@ describe('PhotoDetailComponent', () => {
       expect(stored().star_rating).toBe(4);
     });
 
+    it.each([['a dated photo', '2024:01:01 00:00:00', { path: '/photos/a.jpg', date: '2024:01:01 00:00:00' }], ['an undated photo', null, null]])(
+      'editCaptureDate passes %s as the dialog reference', async (_, date, reference) => {
+        createComponent();
+        seedGrid({ date_taken: date });
+        mockDialog.open.mockReturnValue({ afterClosed: () => new Subject() });
+        await import('./capture-date-dialog.component');
+        component.editCaptureDate(component.photo());
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        expect(mockDialog.open.mock.calls.at(-1)![1].data.reference).toEqual(reference);
+      });
+
+    it('refetches the open photo after an Organization history restore, unless a newer edit landed first', async () => {
+      createComponent();
+      seedGrid();
+      mockApi.get.mockReturnValue(of({ ...edited, gps_latitude: 12 }));
+      component.store.notifyOrganizationRestored();
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      expect(mockApi.get).toHaveBeenCalledWith('/photo', { path: edited.path });
+      expect(component.photo().gps_latitude).toBe(12);
+
+      const delayed = new Subject();
+      mockApi.get.mockReturnValue(delayed);
+      component.store.notifyOrganizationRestored();
+      component.photo.update((photo: typeof edited) => ({ ...photo, star_rating: 5 }));
+      delayed.next({ ...edited, star_rating: 1 });
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      expect(component.photo().star_rating).toBe(5);
+    });
+
+    it('capture date commits are available on immediate reopen and do not replace a newer photo', async () => {
+      createComponent();
+      seedGrid();
+      const closed = new Subject();
+      mockDialog.open.mockReturnValue({ afterClosed: () => closed });
+      await import('./capture-date-dialog.component');
+      component.editCaptureDate(component.photo());
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      closed.next({ date_taken: '2024:01:01 01:00:00', date_manually_set: 1 });
+      component.editCaptureDate(component.photo());
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
+      expect(mockDialog.open.mock.calls.at(-1)![1].data.manuallySet).toBe(true);
+      expect(stored().date_manually_set).toBe(1);
+      component.photo.set(neighbour);
+      closed.next({ date_taken: null, date_manually_set: 0 });
+      expect(component.photo().path).toBe(neighbour.path);
+    });
+
     it('GPS results preserve concurrent metadata and do not resurrect a navigated photo', async () => {
       createComponent();
       seedGrid();
@@ -1053,6 +1529,120 @@ describe('PhotoDetailComponent', () => {
       closed.next({ gps_latitude: 3, gps_longitude: 4 });
       expect(component.photo().path).toBe(neighbour.path);
       expect(component.photo().gps_latitude).toBeUndefined();
+    });
+
+    describe('date detail launcher ownership', () => {
+      for (const loss of ['identity', 'edition', 'navigation']) {
+        function lose(events: Subject<NavigationStart>) {
+          if (loss === 'identity') mockAuth.status.set({ user_id: 'bob' });
+          if (loss === 'edition') mockAuth.isEdition.set(false);
+          if (loss === 'navigation') { events.next(new NavigationStart(1, '/other')); events.next(new NavigationStart(2, '/')); }
+        }
+        it(`discards deferred date import after ${loss} and releases its listener`, async () => {
+          const events = new Subject<NavigationStart>(); mockRouter.events = events;
+          createComponent(); seedGrid();
+          const listeners = events.observers.length;
+          const module = await import('./capture-date-dialog.component');
+          let finish!: (value: typeof module) => void;
+          vi.spyOn(component, 'loadCaptureDateDialog').mockReturnValue(new Promise(resolve => { finish = resolve; }));
+          component.editCaptureDate(component.photo());
+          lose(events); finish(module);
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          expect(mockDialog.open).not.toHaveBeenCalled();
+          expect(events.observers).toHaveLength(listeners);
+        });
+        it(`ignores closed date results after ${loss}`, async () => {
+          const events = new Subject<NavigationStart>(); mockRouter.events = events;
+          createComponent(); seedGrid();
+          const listeners = events.observers.length;
+          const closed = new Subject();
+          mockDialog.open.mockReturnValue({ afterClosed: () => closed });
+          await import('./capture-date-dialog.component');
+          component.editCaptureDate(component.photo());
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          expect(mockDialog.open).toHaveBeenCalledOnce();
+          const before = component.photo(); const row = stored();
+          lose(events); closed.next({ date_taken: '2024:01:02 12:00:00', date_manually_set: 1 }); closed.complete();
+          expect(component.photo()).toBe(before); expect(stored()).toBe(row);
+          expect(events.observers).toHaveLength(listeners);
+        });
+      }
+    });
+
+    describe('gps detail launcher ownership', () => {
+      for (const loss of ['identity', 'edition', 'navigation']) {
+        function lose(events: Subject<NavigationStart>) {
+          if (loss === 'identity') mockAuth.status.set({ user_id: 'bob' });
+          if (loss === 'edition') mockAuth.isEdition.set(false);
+          if (loss === 'navigation') { events.next(new NavigationStart(1, '/other')); events.next(new NavigationStart(2, '/')); }
+        }
+        it(`discards deferred gps import after ${loss} and releases its listener`, async () => {
+          const events = new Subject<NavigationStart>(); mockRouter.events = events;
+          createComponent(); seedGrid();
+          const listeners = events.observers.length;
+          const module = await import('./gps-edit-dialog.component');
+          let finish!: (value: typeof module) => void;
+          vi.spyOn(component, 'loadGpsDialog').mockReturnValue(new Promise(resolve => { finish = resolve; }));
+          component.editGps(component.photo());
+          lose(events); finish(module);
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          expect(mockDialog.open).not.toHaveBeenCalled();
+          expect(events.observers).toHaveLength(listeners);
+        });
+        it(`ignores closed gps results after ${loss}`, async () => {
+          const events = new Subject<NavigationStart>(); mockRouter.events = events;
+          createComponent(); seedGrid();
+          const listeners = events.observers.length;
+          const closed = new Subject();
+          mockDialog.open.mockReturnValue({ afterClosed: () => closed });
+          await import('./gps-edit-dialog.component');
+          component.editGps(component.photo());
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          expect(mockDialog.open).toHaveBeenCalledOnce();
+          const before = component.photo(); const row = stored();
+          lose(events); closed.next({ gps_latitude: 7, gps_longitude: 8 }); closed.complete();
+          expect(component.photo()).toBe(before); expect(stored()).toBe(row);
+          expect(events.observers).toHaveLength(listeners);
+        });
+      }
+    });
+
+    describe('date detail launcher ownership', () => {
+      for (const loss of ['identity', 'edition', 'navigation']) {
+        function lose(events: Subject<NavigationStart>) {
+          if (loss === 'identity') mockAuth.status.set({ user_id: 'bob' });
+          if (loss === 'edition') mockAuth.isEdition.set(false);
+          if (loss === 'navigation') { events.next(new NavigationStart(1, '/other')); events.next(new NavigationStart(2, '/')); }
+        }
+        it(`discards deferred date import after ${loss} and releases its listener`, async () => {
+          const events = new Subject<NavigationStart>(); mockRouter.events = events;
+          createComponent(); seedGrid();
+          const listeners = events.observers.length;
+          const module = await import('./capture-date-dialog.component');
+          let finish!: (value: typeof module) => void;
+          vi.spyOn(component, 'loadCaptureDateDialog').mockReturnValue(new Promise(resolve => { finish = resolve; }));
+          component.editCaptureDate(component.photo());
+          lose(events); finish(module);
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          expect(mockDialog.open).not.toHaveBeenCalled();
+          expect(events.observers).toHaveLength(listeners);
+        });
+        it(`ignores closed date results after ${loss}`, async () => {
+          const events = new Subject<NavigationStart>(); mockRouter.events = events;
+          createComponent(); seedGrid();
+          const listeners = events.observers.length;
+          const closed = new Subject();
+          mockDialog.open.mockReturnValue({ afterClosed: () => closed });
+          await import('./capture-date-dialog.component');
+          component.editCaptureDate(component.photo());
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
+          expect(mockDialog.open).toHaveBeenCalledOnce();
+          const before = component.photo(); const row = stored();
+          lose(events); closed.next({ date_taken: '2024:01:02 12:00:00', date_manually_set: 1 }); closed.complete();
+          expect(component.photo()).toBe(before); expect(stored()).toBe(row);
+          expect(events.observers).toHaveLength(listeners);
+        });
+      }
     });
 
     it('the category override dialog result reaches the store', async () => {
@@ -1423,6 +2013,60 @@ describe('PhotoDetailComponent', () => {
 
       expect(component.explainerOpen()).toBe(false);
       expect(mockApi.get).not.toHaveBeenCalledWith('/config/category_priorities');
+    });
+
+    it('renders a toggle inside the category chip that reveals the select below and shows its expanded state', () => {
+      mockApi.get.mockImplementation((url: string) => {
+        if (url === '/config/category_priorities') return of({ categories: [{ name: 'portrait' }] });
+        return of(samplePhoto);
+      });
+      const view = renderDetail();
+      view.componentInstance.photo.set(makePhoto({ category: 'portrait' }));
+      view.detectChanges();
+      const el: HTMLElement = view.nativeElement;
+      const toggle = el.querySelector<HTMLButtonElement>('[data-explainer-toggle]')!;
+      expect(toggle.getAttribute('aria-label')).toBe('photo.category_override.explainer_toggle');
+      expect(toggle.closest('span')!.textContent).toContain('Portrait');
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      expect(toggle.textContent?.trim()).toBe('expand_more');
+      expect(el.querySelector('mat-select')).toBeNull();
+      toggle.click();
+      view.detectChanges();
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+      expect(toggle.textContent?.trim()).toBe('expand_less');
+      expect(el.querySelector('mat-select')).not.toBeNull();
+    });
+
+    it('renders download as a labelled icon-only button with a tooltip', () => {
+      const view = renderDetail();
+      view.componentInstance.photo.set(makePhoto({ category: 'portrait' }));
+      view.detectChanges();
+      const download = view.nativeElement.querySelector('button[aria-label="photo_detail.download"]') as HTMLButtonElement;
+      expect(download.hasAttribute('mat-icon-button')).toBe(true);
+      expect(download.textContent?.trim()).toBe('download');
+      const tooltip = view.debugElement.query(By.css('button[aria-label="photo_detail.download"]')).injector.get(MatTooltip);
+      expect(tooltip.message).toBe('photo_detail.download');
+    });
+
+    it('keeps the explainer toggle reachable for a photo with no category', () => {
+      const view = renderDetail();
+      view.componentInstance.photo.set(makePhoto({ category: null }));
+      view.detectChanges();
+      const toggle = view.nativeElement.querySelector('[data-explainer-toggle]') as HTMLButtonElement;
+      expect(toggle).not.toBeNull();
+      expect(toggle.closest('span')!.textContent?.trim()).toBe('expand_more');
+      toggle.click();
+      view.detectChanges();
+      expect(toggle.isConnected).toBe(true);
+      expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    });
+
+    it('hides the toggle outside edition mode', () => {
+      mockAuth.isEdition.set(false);
+      const view = renderDetail();
+      view.componentInstance.photo.set(makePhoto({ category: 'portrait' }));
+      view.detectChanges();
+      expect(view.nativeElement.querySelector('[data-explainer-toggle]')).toBeNull();
     });
   });
 

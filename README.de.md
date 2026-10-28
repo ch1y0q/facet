@@ -16,7 +16,7 @@ Facet ist eine lokale Engine zur Fotoanalyse und Bildauswahl. Sie bewertet jedes
 
 ## Funktionsweise
 
-1. **Scannen** — Richten Sie Facet auf einen Ordner mit Fotos. Jedes Bild wird auf Qualität, Komposition und Gesichter analysiert. Unterstützt JPG, HEIF/HEIC/HIF (Canon-HDR-PQ-`.HIF`-Aufnahmen werden mit der SMPTE-ST-2084-PQ-Kurve decodiert und automatisch auf SDR-sRGB tone-gemappt), 10 RAW-Formate (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF) sowie PNG-, GIF-, WebP-, BMP-, TIFF- und AVIF-Bilder (AVIF benötigt ein Pillow mit AVIF-Unterstützung, nativ ab 11.3). Ein RAW, das LibRaw nicht decodieren kann — etwa ein Lightroom-„Zu HDR/Panorama zusammenfügen"-DNG (`-HDR.dng`, `-Pano.dng`) oder eine Kamera, die neuer als die installierte LibRaw-Version ist — greift auf seine größte eingebettete Vorschau über `exiftool` zurück (benötigt eine Vorschau von mindestens 1024 px an der langen Seite; die Bewertungen stammen dann von dieser Vorschau, nicht von einer vollständigen RAW-Decodierung). Lightroom Classic 13+ speichert diese Vorschau bei Zusammenführungen (und Enhance) als JPEG XL; Facet decodiert sie direkt.
+1. **Scannen** — Richten Sie Facet auf einen Ordner mit Fotos. Jedes Bild wird auf Qualität, Komposition und Gesichter analysiert. Unterstützt JPG, HEIF/HEIC/HIF (Canon-HDR-PQ-`.HIF`-Aufnahmen werden mit der SMPTE-ST-2084-PQ-Kurve decodiert und automatisch auf SDR-sRGB tone-gemappt), 10 RAW-Formate (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF) sowie PNG-, GIF-, WebP-, BMP-, TIFF- und AVIF-Bilder (AVIF benötigt ein Pillow mit AVIF-Unterstützung, nativ ab 11.3), sowie JPEG XL (`.jxl`) über die vorhandene Abhängigkeit `imagecodecs`, enthalten in Standardinstallation und Docker. Ein RAW, das LibRaw nicht decodieren kann — etwa ein Lightroom-„Zu HDR/Panorama zusammenfügen"-DNG (`-HDR.dng`, `-Pano.dng`) oder eine Kamera, die neuer als die installierte LibRaw-Version ist — greift auf seine größte eingebettete Vorschau über `exiftool` zurück (benötigt eine Vorschau von mindestens 1024 px an der langen Seite; die Bewertungen stammen dann von dieser Vorschau, nicht von einer vollständigen RAW-Decodierung). Lightroom Classic 13+ speichert diese Vorschau bei Zusammenführungen (und Enhance) als JPEG XL; Facet decodiert sie direkt.
 2. **Durchstöbern** — Öffnen Sie die Web-Galerie, um Ihre Bibliothek mit Filtern, Suche und mehreren Ansichtsmodi zu erkunden.
 3. **Aussortieren** — Facet erkennt Serienbilder, markiert Blinzler, gruppiert ähnliche Fotos und hebt die beste Auswahl hervor. Belichtungsreihen und Panorama-/HDR-Sets werden erkannt und vollständig erhalten, statt auseinandergerissen zu werden.
 
@@ -28,7 +28,7 @@ Die GPU wird automatisch erkannt und ist optional. Facet läuft rein über CPU o
 
 Jedes Foto wird anhand von 9 Dimensionen bewertet: ästhetische Qualität, Komposition, Gesichtsqualität, Augenschärfe, technische Schärfe, Farbe, Belichtung, Motiverkennung und Dynamikumfang. Fotos werden nach Inhalt kategorisiert (Porträt, Landschaft, Makro, Straße usw. — über 30 Kategorien) und mit kategoriespezifischen Gewichten bewertet. Ein Filter **Beste Auswahl** ordnet die Bibliothek anhand einer kombinierten Wertung.
 
-Bewegen Sie den Mauszeiger über ein beliebiges Foto, um einen Tooltip mit der Wertungsaufschlüsselung und EXIF-Daten zu sehen.
+Bewegen Sie den Mauszeiger über ein beliebiges Foto, um die Wertungsaufschlüsselung und EXIF-Daten in der Seitenleiste der Galerie zu sehen, oder wechseln Sie zu einer Hover-Blase, die die wichtigsten Wertungen auf einen Blick zeigt.
 
 <img src="docs/screenshots/hover-tooltip.jpg" alt="Hover-Tooltip mit Wertungsaufschlüsselung" width="100%">
 
@@ -100,7 +100,7 @@ Bewegen Sie den Mauszeiger über ein beliebiges Foto, um einen Tooltip mit der W
 - **Sortierung „Mein Geschmack“** — sortieren Sie die Galerie nach der gelernten Wertung des persönlichen Rankers, mit einem Konfidenz-Badge, das die gelernte Abdeckung und die Holdout-Genauigkeit anzeigt
 - **Lernen aus Labels** — Auswahlentscheidungen, Sternebewertungen, Favoriten und Ablehnungen fließen in den Gewichtsoptimierer ein (`--sync-label-comparisons`, `--mine-insights`)
 - **Snapshots** — Gewichtskonfigurationen speichern, wiederherstellen und vergleichen
-- **Histogramm** — RGB-/Helligkeitshistogramm mit Clipping-Indikatoren, im Foto-Tooltip und in der Detailansicht
+- **Histogramm** — RGB-/Helligkeitshistogramm mit Clipping-Indikatoren, in der Seitenleiste der Galerie und in der Detailansicht
 - **KI-Beschreibungen** `[GPU]` `[16gb/24gb]` `[Edition]` — Textbeschreibungen, bearbeitbar und in 5 Sprachen übersetzbar
 
 <table><tr>
@@ -225,6 +225,7 @@ Zum ersten Mal hier? Folgen Sie der Anleitung **[Erste Schritte](docs/de/GETTING
 | [Viewer](docs/de/VIEWER.md) | Funktionen und Nutzung der Web-Galerie |
 | [Interop](docs/de/INTEROP.md) | Bewertungen/Tags mit Lightroom, Capture One, digiKam, darktable austauschen |
 | [Immich](docs/de/IMMICH.md) | Bewertungen und Favoriten mit Immich synchronisieren, plus der eingehende Webhook |
+| [Neu verknüpfen](docs/de/RELINK.md) | Verschobene Fotos neu verknüpfen |
 | [KI-Agenten](docs/de/AGENTS.md) | Einen MCP-fähigen Assistenten die Bibliothek mit einem persönlichen Token durchsuchen lassen |
 | [Bereitstellung](docs/de/DEPLOYMENT.md) | Produktivbereitstellung (Synology NAS, Linux, Docker) |
 | [Mitwirken](CONTRIBUTING.md) | Entwicklungseinrichtung, Architektur, Code-Stil |

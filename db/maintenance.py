@@ -45,6 +45,16 @@ DURABLE_STATS_CACHE_KEY_GLOBS: tuple[str, ...] = (
 AUTO_RETRAIN_COUNTER_KEY_GLOB = 'auto_retrain_pending:*'
 
 
+def evict_derived_stats_cache(cursor, preserve_auto_retrain_counters=True):
+    """Drop every stats_cache row derived from the photo rows, keeping library state."""
+    kept = DURABLE_STATS_CACHE_KEY_GLOBS
+    if preserve_auto_retrain_counters:
+        kept += (AUTO_RETRAIN_COUNTER_KEY_GLOB,)
+    cursor.execute(
+        "DELETE FROM stats_cache WHERE NOT (" + " OR ".join(["key GLOB ?"] * len(kept)) + ")",
+        kept)
+
+
 def _classify_missing_path(path):
     """Classify a stored photo path as present, genuinely deleted, or merely
     inaccessible (permission denied or an unmounted/absent parent).
@@ -70,6 +80,11 @@ def _classify_missing_path(path):
     if not os.access(parent, os.R_OK | os.X_OK):
         return _PATH_INACCESSIBLE
     return _PATH_DELETED
+
+
+def is_path_deleted(path):
+    """True only when ``path`` is genuinely gone: its entry is absent and its parent is readable."""
+    return _classify_missing_path(path) == _PATH_DELETED
 
 
 def vacuum_database(db_path='photo_scores_pro.db', verbose=True):
@@ -353,12 +368,7 @@ def delete_photo_rows(conn, paths: list[str], *, preserve_auto_retrain_counters:
 
     # Invalidate stats cache since photo counts and details have changed.
     try:
-        kept = DURABLE_STATS_CACHE_KEY_GLOBS
-        if preserve_auto_retrain_counters:
-            kept += (AUTO_RETRAIN_COUNTER_KEY_GLOB,)
-        cursor.execute(
-            "DELETE FROM stats_cache WHERE NOT (" + " OR ".join(["key GLOB ?"] * len(kept)) + ")",
-            kept)
+        evict_derived_stats_cache(cursor, preserve_auto_retrain_counters)
         # Tombstone rather than absence, so a viewer computing the ranges right
         # now cannot write its pre-deletion result back (invalidate_metric_ranges).
         invalidate_metric_ranges(cursor)
@@ -597,6 +607,30 @@ def _downsize_face_thumbnails(dest_conn, face_resync_paths, thumbnail_size, batc
     return face_resized
 
 
+def _review_decision_assignments(table: str, source_kept: str, source_rejected: str,
+                                 *, preserve_edits=False) -> dict[str, str]:
+    """Keep/reject is one decision: a decided viewer wins, otherwise use the source."""
+    decided = f"(COALESCE({table}.is_kept, 0) != 0 OR COALESCE({table}.is_rejected, 0) != 0)"
+    if preserve_edits:
+        from db.metadata_edits import viewer_review_preserved
+        decided = viewer_review_preserved(table, 'is_kept', per_user=table.endswith('user_preferences'))
+    kept = f"CASE WHEN {decided} THEN {table}.is_kept ELSE {source_kept} END"
+    rejected = f"CASE WHEN {decided} THEN {table}.is_rejected ELSE {source_rejected} END"
+    # Old preview builds could hold both flags. Rejection wins, like the gallery filter.
+    return {
+        'is_kept': f"is_kept = CASE WHEN COALESCE(({rejected}), 0) != 0 THEN 0 ELSE COALESCE(({kept}), 0) END",
+        'is_rejected': f"is_rejected = COALESCE(({rejected}), 0)",
+    }
+
+
+def _normalize_review_decisions(conn: sqlite3.Connection) -> None:
+    """Repair contradictory decisions on copied/new rows without changing ratings."""
+    for table in ('photos', 'user_preferences'):
+        columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if {'is_kept', 'is_rejected'} <= columns:
+            conn.execute(f"UPDATE {table} SET is_kept = 0 WHERE is_kept != 0 AND is_rejected != 0")
+
+
 def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbose):
     """Incrementally sync changes from source_db into the existing viewer database.
 
@@ -606,6 +640,7 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         Tuple of (source_size, output_size) in bytes
     """
     from PIL import Image
+    from db.metadata_edits import viewer_review_preserved, viewer_review_sync
 
     source_size = os.path.getsize(source_db)
     if verbose:
@@ -657,32 +692,45 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
     # the current destination value so a re-export never overwrites that
     # GPU-expensive cache with a NULL from source.
     _CACHE_COLS = {'vlm_critique', 'vlm_critique_translated', 'caption', 'caption_translated'}
-    _RATING_COLS = {'star_rating', 'is_favorite', 'is_rejected'}
+    _RATING_COLS = {'star_rating', 'is_favorite'}
     update_cols = [c for c in src_photo_cols if c not in _STRIP_COLS and c in dest_photo_col_set]
+    photo_decisions = _review_decision_assignments(
+        'main.photos',
+        "(SELECT is_kept FROM src.photos WHERE src.photos.path = main.photos.path)" if 'is_kept' in src_photo_cols else '0',
+        "(SELECT is_rejected FROM src.photos WHERE src.photos.path = main.photos.path)",
+        preserve_edits=True,
+    )
 
     def _photo_set_expr(col):
         """SET expression that propagates source metadata while preserving
         viewer-side edits. Cache columns keep the destination value when source
         is NULL. A rating column keeps a *set* viewer value (non-NULL and
-        non-zero: star > 0, favorite/rejected = 1), else takes the source value —
-        so the first export carries the scan rating, later viewer ratings survive
+        non-zero: star > 0 or favorite = 1), else takes the source value.
+        Keep/reject instead moves together as one decision: a decided viewer
+        wins, otherwise the source decision is used. Thus later viewer edits survive
         a re-export, and scan ratings still reach a never-rated photo. A rating
-        cleared to 0 on the viewer is indistinguishable from unrated and cannot
-        be preserved against a non-zero source."""
+        cleared to 0 is preserved when a post-upgrade edit receipt exists;
+        untracked legacy zeros retain the earlier source-fallback policy."""
         src_val = f"(SELECT {col} FROM src.photos WHERE src.photos.path = main.photos.path)"
+        if col in ('date_taken', 'date_manually_set'):
+            return (f"{col} = CASE WHEN main.photos.date_manually_set = 1 "
+                    f"THEN main.photos.{col} ELSE {src_val} END")
         if col in ('gps_latitude', 'gps_longitude', 'gps_manually_set'):
             return (f"{col} = CASE WHEN main.photos.gps_manually_set = 1 "
                     f"THEN main.photos.{col} ELSE {src_val} END")
         if col in _CACHE_COLS:
             return f"{col} = COALESCE({src_val}, {col})"
+        if col in photo_decisions:
+            return photo_decisions[col]
         if col in _RATING_COLS:
-            return (f"{col} = CASE WHEN main.photos.{col} IS NOT NULL AND main.photos.{col} != 0 "
+            return (f"{col} = CASE WHEN {viewer_review_preserved('main.photos', col)} "
                     f"THEN main.photos.{col} ELSE {src_val} END")
         return f"{col} = {src_val}"
 
     if update_cols:
         set_clause = ', '.join(_photo_set_expr(c) for c in update_cols)
-        dest_conn.execute(f"UPDATE main.photos SET {set_clause}")
+        with viewer_review_sync(dest_conn, 'photos'):
+            dest_conn.execute(f"UPDATE main.photos SET {set_clause}")
         dest_conn.commit()
         if verbose:
             logger.info("  Updated metadata for existing photos")
@@ -698,14 +746,15 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         )
         col_list = ', '.join(common_photo_cols)
 
-        for i in range(0, len(new_paths), batch_size):
-            batch = new_paths[i:i + batch_size]
-            placeholders = ','.join('?' * len(batch))
-            dest_conn.execute(
-                f"INSERT OR IGNORE INTO main.photos ({col_list}) "
-                f"SELECT {select_exprs} FROM src.photos WHERE path IN ({placeholders})",
-                batch
-            )
+        with viewer_review_sync(dest_conn, 'photos'):
+            for i in range(0, len(new_paths), batch_size):
+                batch = new_paths[i:i + batch_size]
+                placeholders = ','.join('?' * len(batch))
+                dest_conn.execute(
+                    f"INSERT OR IGNORE INTO main.photos ({col_list}) "
+                    f"SELECT {select_exprs} FROM src.photos WHERE path IN ({placeholders})",
+                    batch
+                )
         dest_conn.commit()
         if verbose:
             logger.info("  Inserted %d new photos", len(new_paths))
@@ -810,7 +859,9 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
     # --- Sync user_preferences (multi-user per-user ratings) ---
     # Mirror the photos rating-preservation logic (F30): a per-user rating set on
     # the viewer deployment survives re-export, while scan-side ratings still reach
-    # (user, photo) pairs the viewer has not rated. Rows for deleted photos cascade
+    # (user, photo) pairs the viewer has not rated. Keep/reject stays a single
+    # decision, with a decided viewer taking precedence over the source.
+    # Rows for deleted photos cascade
     # out with the photos delete above (FK ON DELETE CASCADE, foreign_keys=ON).
     if 'user_preferences' in dest_tables and 'user_preferences' in src_tables:
         src_pref_cols = [r[1] for r in dest_conn.execute("PRAGMA src.table_info(user_preferences)").fetchall()]
@@ -819,27 +870,38 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
         pref_rating_cols = [c for c in common_pref_cols if c not in ('user_id', 'photo_path')]
         pref_match = ("sp.user_id = main.user_preferences.user_id "
                       "AND sp.photo_path = main.user_preferences.photo_path")
-        if pref_rating_cols:
-            set_clause = ', '.join(
-                f"{c} = CASE WHEN main.user_preferences.{c} IS NOT NULL AND main.user_preferences.{c} != 0 "
-                f"THEN main.user_preferences.{c} "
-                f"ELSE (SELECT sp.{c} FROM src.user_preferences sp WHERE {pref_match}) END"
-                for c in pref_rating_cols
-            )
-            dest_conn.execute(
-                f"UPDATE main.user_preferences SET {set_clause} "
-                f"WHERE EXISTS (SELECT 1 FROM src.user_preferences sp WHERE {pref_match})"
-            )
-        if common_pref_cols:
-            col_list = ', '.join(common_pref_cols)
-            dest_conn.execute(
-                f"INSERT OR IGNORE INTO main.user_preferences ({col_list}) "
-                f"SELECT {col_list} FROM src.user_preferences"
-            )
+        pref_decisions = _review_decision_assignments(
+            'main.user_preferences',
+            f"(SELECT sp.is_kept FROM src.user_preferences sp WHERE {pref_match})" if 'is_kept' in src_pref_cols else '0',
+            f"(SELECT sp.is_rejected FROM src.user_preferences sp WHERE {pref_match})",
+            preserve_edits=True,
+        )
+        with viewer_review_sync(dest_conn, 'user_preferences'):
+            if pref_rating_cols:
+                set_clause = ', '.join(
+                    pref_decisions[c] if c in pref_decisions else
+                    f"{c} = CASE WHEN {viewer_review_preserved('main.user_preferences', c, per_user=True)} "
+                    f"THEN main.user_preferences.{c} "
+                    f"ELSE (SELECT sp.{c} FROM src.user_preferences sp WHERE {pref_match}) END"
+                    for c in pref_rating_cols
+                )
+                dest_conn.execute(
+                    f"UPDATE main.user_preferences SET {set_clause} "
+                    f"WHERE EXISTS (SELECT 1 FROM src.user_preferences sp WHERE {pref_match})"
+                )
+            if common_pref_cols:
+                col_list = ', '.join(common_pref_cols)
+                dest_conn.execute(
+                    f"INSERT OR IGNORE INTO main.user_preferences ({col_list}) "
+                    f"SELECT {col_list} FROM src.user_preferences"
+                )
         dest_conn.commit()
         if verbose:
             count = dest_conn.execute("SELECT COUNT(*) FROM main.user_preferences").fetchone()[0]
             logger.info("  Synced user preferences (%d rows)", count)
+
+    _normalize_review_decisions(dest_conn)
+    dest_conn.commit()
 
     # --- Merge photo_manual_tags (user-authored tags; additive only) ---
     # Never replaced wholesale: a tag added on the viewer deployment survives a
@@ -929,7 +991,7 @@ def _incremental_update_viewer_db(source_db, output_path, thumbnail_size, verbos
 
 
 # Tables a viewer database export must not carry (the DROP list of the full export).
-VIEWER_EXPORT_EXCLUDED_TABLES = ('mcp_tokens', 'rating_provenance')
+VIEWER_EXPORT_EXCLUDED_TABLES = ('mcp_tokens', 'rating_provenance', 'organization_history')
 
 
 def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnail_size=320, verbose=True, force=False):
@@ -981,10 +1043,13 @@ def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnai
     dst_conn = sqlite3.connect(output_path)
     src_conn.backup(dst_conn)
     src_conn.close()
+    _normalize_review_decisions(dst_conn)
+    dst_conn.commit()
 
     # A copied database may contain an older active row alongside a deletion
     # learned from another deployment. UUID deletion wins in full copies too.
-    if dst_conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='manual_face_deletions'").fetchone():
+    from db.schema import table_exists
+    if table_exists(dst_conn, 'manual_face_deletions'):
         from db.manual_faces import prune_deleted_manual_faces
         from db.person_carry_over import refresh_person_counts
         refresh_person_counts(dst_conn, prune_deleted_manual_faces(dst_conn))
@@ -1004,12 +1069,21 @@ def export_viewer_db(source_db='photo_scores_pro.db', output_path=None, thumbnai
                      "raw_sharpness_variance = NULL, caption_embedding = NULL")
     dst_conn.commit()
 
-    # The agent side tables never ship in a viewer export: the provenance table holds user paths and
-    # paths, and the token table holds bearer-secret hashes. The viewer's own init_database
-    # re-creates both empty. (The incremental path copies neither.)
+    # Three side tables never ship in a viewer export: the provenance table holds user paths, the
+    # token table holds bearer-secret hashes, and organization_history holds per-owner before/after
+    # snapshots of edited photos. The viewer's own init_database re-creates all three empty. (The
+    # incremental path copies none of them.) organization_revisions and organization_clock stay: they
+    # are trigger-maintained derived counters (photo paths and integers only) that the
+    # destination's own triggers keep advancing.
     for table in VIEWER_EXPORT_EXCLUDED_TABLES:
         dst_conn.execute(f"DROP TABLE IF EXISTS {table}")
     dst_conn.commit()
+
+    # Receipt authority and private source paths belong to this database only.
+    # Keep its schema/triggers usable, but start a fresh viewer with no records.
+    if table_exists(dst_conn, 'photo_metadata_edits'):
+        dst_conn.execute('DELETE FROM photo_metadata_edits')
+        dst_conn.commit()
 
     # faces: embedding (NOT NULL constraint — use empty blob), landmark_2d_106
     dst_conn.execute("UPDATE faces SET embedding = zeroblob(0), landmark_2d_106 = NULL")

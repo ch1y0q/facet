@@ -357,9 +357,86 @@ describe('SyncedZoomComponent', () => {
       const emitted: string[] = [];
       f.componentInstance.sharpLoaded.subscribe(s => emitted.push(s));
       f.detectChanges();
-      expect(FakeImage.instances).toHaveLength(0);
+      expect(FakeImage.instances).toHaveLength(1);
+      expect(imgEl(f).getAttribute('src')).toBe('/thumb-a.jpg');
+      expect(emitted).toEqual([]);
+      FakeImage.instances[0].onload!();
+      f.detectChanges();
       expect(imgEl(f).getAttribute('src')).toBe('/render-a.jpg');
       expect(emitted).toEqual(['/render-a.jpg']);
+    });
+
+    it('keeps the current thumbnail on render failure and reports settlement without sharp success', () => {
+      const f = makeProgressive();
+      const failed: string[] = [];
+      const sharp: string[] = [];
+      f.componentInstance.sharpFailed.subscribe(s => failed.push(s));
+      f.componentInstance.sharpLoaded.subscribe(s => sharp.push(s));
+      startPreload(f).onerror!();
+      f.detectChanges();
+      expect(imgEl(f).getAttribute('src')).toBe('/thumb-a.jpg');
+      expect(failed).toEqual(['/render-a.jpg']);
+      expect(sharp).toEqual([]);
+    });
+
+    it('ignores a canceled failure even after returning to the same source', () => {
+      const f = makeProgressive();
+      const lateFailure = startPreload(f).onerror!;
+      const failed: string[] = [];
+      f.componentInstance.sharpFailed.subscribe(s => failed.push(s));
+      setInputs(f, { src: '/render-b.jpg', frameKey: 'b' });
+      setInputs(f, { src: '/render-a.jpg', frameKey: 'a' });
+      lateFailure();
+      expect(failed).toEqual([]);
+    });
+
+    it('revalidates a previously displayed render after revisiting its frame', () => {
+      const f = makeProgressive();
+      startPreload(f).onload!();
+      f.detectChanges();
+      setInputs(f, { src: '/render-b.jpg', placeholderSrc: '/thumb-b.jpg', frameKey: 'b' });
+      setInputs(f, { src: '/render-a.jpg', placeholderSrc: '/thumb-a.jpg', frameKey: 'a' });
+      expect(imgEl(f).getAttribute('src')).toBe('/thumb-a.jpg');
+    });
+
+    it('promotes a genuinely warm browser image without waiting for another load event', () => {
+      class WarmImage extends FakeImage {
+        complete = true;
+        naturalWidth = 640;
+      }
+      vi.stubGlobal('Image', WarmImage);
+      const loaded = new LoadedSources();
+      loaded.add('/render-a.jpg');
+      const f = makeProgressive({ loadedSources: loaded });
+      expect(imgEl(f).getAttribute('src')).toBe('/render-a.jpg');
+    });
+
+    it('stays on the thumbnail when a warm-looking image has zero natural width', () => {
+      class BrokenWarmImage extends FakeImage {
+        complete = true;
+        naturalWidth = 0;
+      }
+      vi.stubGlobal('Image', BrokenWarmImage);
+      const loaded = new LoadedSources();
+      loaded.add('/render-a.jpg');
+      const f = makeProgressive({ loadedSources: loaded });
+      expect(imgEl(f).getAttribute('src')).toBe('/thumb-a.jpg');
+    });
+
+    it('keeps the thumbnail and reports failure when a LoadedSources-hinted preload errors', () => {
+      const loaded = new LoadedSources();
+      loaded.add('/render-a.jpg');
+      const f = TestBed.createComponent(SyncedZoomComponent);
+      const inputs: Record<string, unknown> = {
+        src: '/render-a.jpg', placeholderSrc: '/thumb-a.jpg', frameKey: 'a', zoom: FIT_ZOOM, loadedSources: loaded };
+      for (const [k, v] of Object.entries(inputs)) f.componentRef.setInput(k, v);
+      const failed: string[] = [];
+      f.componentInstance.sharpFailed.subscribe(s => failed.push(s));
+      f.detectChanges();
+      FakeImage.instances[0].onerror!();
+      f.detectChanges();
+      expect(imgEl(f).getAttribute('src')).toBe('/thumb-a.jpg');
+      expect(failed).toEqual(['/render-a.jpg']);
     });
 
     it('records a fetched render so a later pane can skip the debounce', () => {

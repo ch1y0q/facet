@@ -72,7 +72,8 @@
     "switch_language": "Sprache wechseln",
     "theme": "Farbschema",
     "dark_mode": "Dunkelmodus",
-    "light_mode": "Hellmodus"
+    "light_mode": "Hellmodus",
+    "version": "Facet {version}"
   },
   "dialog": {
     "cancel": "Abbrechen",
@@ -129,7 +130,8 @@
       "inpage_hint": "Wenn aktiviert, kann ein in diesem Browser laufender Assistent suchen und, sofern Ihre Sitzung es erlaubt, Ihre Bibliothek über die Seite ändern. Standardmäßig aus; gilt nur für diesen Browser.",
       "inpage_changed": "Der Assistent hat {count} Foto geändert",
       "inpage_changed_plural": "Der Assistent hat {count} Fotos geändert"
-    }
+    },
+    "ok": "OK"
   },
   "pagination": {
     "scroll_for_more": "Scrollen für mehr",
@@ -138,20 +140,16 @@
   "tooltip": {
     "not_computed": "Nicht berechnet",
     "category": "Kategorie",
-    "aggregate": "Gesamtwertung",
-    "quality_section": "Qualität",
     "aesthetic": "Ästhetik",
     "quality_score": "Qualitätswert",
     "face_quality": "Gesichtsqualität",
     "face_sharpness": "Gesichtsschärfe",
     "eye_sharpness": "Augenschärfe",
     "tech_sharpness": "Techn. Schärfe",
-    "composition_section": "Komposition",
     "composition": "Komposition",
     "pattern": "Muster",
     "power_points": "Kraftpunkte",
     "leading_lines": "Führungslinien",
-    "technical_section": "Technik",
     "exposure": "Belichtung",
     "color": "Farbe",
     "contrast": "Kontrast",
@@ -161,7 +159,6 @@
     "noise": "Rauschen",
     "bonus_section": "Bonus",
     "isolation": "Freistellung",
-    "exif_section": "EXIF",
     "camera": "Kamera",
     "lens": "Objektiv",
     "focal": "Brennweite",
@@ -184,7 +181,6 @@
     "qrealign_score": "Q-ReAlign",
     "aesthetic_v25": "Ästhetik V2.5",
     "deqa_score": "DeQA",
-    "saliency_section": "Motiverkennung",
     "subject_sharpness": "Motivschärfe",
     "subject_prominence": "Hervorhebung",
     "subject_placement": "Platzierung",
@@ -200,11 +196,15 @@
     "star_rating": "Bewertung",
     "topiq_score": "TOPIQ",
     "filter_by_person": "Nach {name} filtern",
-    "set_section": "Gruppe",
     "histogram": "Histogramm"
   },
   "photoCard": {
-    "embed_to_file": "Metadaten in Datei schreiben"
+    "embed_to_file": "Metadaten in Datei schreiben",
+    "duplicate_set": "Duplikatgruppe öffnen",
+    "burst_set": "Seriengruppe öffnen",
+    "sequence_set": "Belichtungsreihe/Panorama öffnen",
+    "open_detail": "Fotoseite öffnen",
+    "key_hint": "1-5 bewerten · F fav · X verwerfen · Leertaste auswählen · Eingabe öffnen"
   },
   "notifications": {
     "copied": "Kopiert!",
@@ -459,6 +459,7 @@
     "exposure": "Belichtung",
     "composition": "Komposition",
     "subject_saliency": "Motivhervorhebung",
+    "content": "Inhalt",
     "camera": "Kamera"
   },
   "sort_options": {
@@ -571,7 +572,8 @@
     "mark_rejected": "Als abgelehnt markieren",
     "unmark_rejected": "Ablehnung aufheben",
     "rejected_badge": "Abgelehnt",
-    "rating_badge": "Bewertung {stars}"
+    "rating_badge": "Bewertung {stars}",
+    "stars_out_of_five": "Mit {stars} von 5 bewertet"
   },
   "similar": {
     "title": "Ähnliche Fotos",
@@ -982,7 +984,8 @@
       "avg_monochrome": "Monochrom (%)",
       "avg_dynamic_range": "Durchschn. Dynamikumfang",
       "usage_timeline": "Nutzungszeitraum"
-    }
+    },
+    "gear_metric_label": "Diagrammmetrik"
   },
   "login": {
     "title": "Anmelden",
@@ -1017,7 +1020,8 @@
     "folders": "Ordner",
     "map": "Karte",
     "capsules": "Kapseln",
-    "junk_sweep": "Aufräumen"
+    "junk_sweep": "Aufräumen",
+    "help": "Hilfe"
   },
   "auth": {
     "logout": "Abmelden",
@@ -1030,13 +1034,18 @@
     "user_menu": "Benutzermenü"
   },
   "gallery": {
-    "help": "Durchsuchen und filtern Sie Ihre Bibliothek. Sortieren Sie nach Bewertung, Datum oder Ihrem persönlichen Geschmack; nutzen Sie die Filter in der Seitenleiste (Personen, Schlagwörter, Kamera, Kategorie, Wertungsbereich, Momente) und die Suche, um Fotos zu finden.",
+    "help": "Nach Bewertung, Datum oder deinem Geschmack sortieren\nMit der Seitenleiste filtern: Personen, Tags, Kamera, Kategorien\nSuche nach Dateiname oder Beschreibung",
     "hidden_banner": {
       "message": "{n} Fotos durch aktuelle Filter ausgeblendet",
       "some_hidden": "Einige Fotos werden durch Ihre Filter ausgeblendet",
       "show_all": "Alle anzeigen",
       "restore": "Filter wiederherstellen",
       "showing_all": "Alle Fotos werden angezeigt – einschließlich Blinzler, Serien und Duplikate"
+    },
+    "filters_notice": {
+      "message": "{count} Filter aktiv",
+      "message_plural": "{count} Filter aktiv",
+      "reset": "Alle Filter zurücksetzen"
     },
     "render_migration": {
       "message": "{n} RAW-Fotos zeigen noch eine Miniatur aus der vorherigen Darstellung.",
@@ -1052,6 +1061,7 @@
     },
     "all_photos": "Alle Fotos",
     "sort": "Sortieren nach",
+    "sort_current": "Sortieren nach: {label}",
     "sort_aggregate": "Gesamtwertung",
     "sort_aesthetic": "Ästhetik",
     "sort_date": "Datum",
@@ -1203,7 +1213,6 @@
       "find_filter": "Filter suchen…",
       "clear_find_filter": "Filtersuche löschen",
       "no_filters_match": "Keine passenden Filter",
-      "advanced_metrics": "Erweiterte Metriken",
       "refine": "Verfeinern",
       "view": "Ansicht",
       "color_quality": "Farbe & Qualität",
@@ -1296,7 +1305,32 @@
       "badge_shadow": "Beschnittene Schatten: {percent}% der Pixel"
     },
     "channel_clip_highlight_range": "Beschnittene Lichter %",
-    "channel_clip_shadow_range": "Beschnittene Schatten %"
+    "channel_clip_shadow_range": "Beschnittene Schatten %",
+    "blinks_only": "Nur Blinker",
+    "duplicates_only": "Nur Duplikate",
+    "card_actions": {
+      "title": "Kartenknöpfe anpassen",
+      "hint": "Wähle, welche Knöpfe ein Foto beim Überfahren zeigt und in welcher Reihenfolge. Gruppen-Knöpfe erscheinen nur bei Fotos, die zu einer solchen Gruppe gehören.",
+      "move_up": "Nach oben",
+      "move_down": "Nach unten",
+      "reset": "Auf Standard zurücksetzen"
+    },
+    "review_progress": {
+      "title": "Sichtungsfortschritt",
+      "counts": "{undecided} unentschieden · {kept} behalten · {rejected} abgelehnt",
+      "complete": "{percent}% von {total} gesichtet",
+      "start": "Unentschiedene sichten",
+      "resume": "Sichtung fortsetzen",
+      "browser": "Gespeicherte Warteschlange in diesem Browser fortsetzen.",
+      "hide_from_menu": "Bewertungsfortschritt ausblenden",
+      "show_from_menu": "Bewertungsfortschritt anzeigen"
+    },
+    "manual_faces_need_review": "Manuelle Gesichter prüfen",
+    "manual_faces_review_hint": "Stand des letzten Scans oder der letzten Prüfung im Gesichtseditor, keine laufende Überwachung. Öffnen Sie den Gesichtseditor eines Fotos, um gespeicherte Markierungen zu prüfen.",
+    "faces_need_names": "Gesichter ohne Namen",
+    "faces_need_names_hint": "Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Mit + ein Gesicht zuweisen oder unter Personen eine Gruppe benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen.",
+    "faces_need_names_readonly_hint": "Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Personen mit Bearbeitungszugriff können Gesichter zuweisen oder Gruppen benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen.",
+    "help_none": "Diese Seite hat noch keinen Hilfetext."
   },
   "composition_patterns": {
     "none": "Keines",
@@ -1596,7 +1630,10 @@
       "sequences": "Belichtungsreihen werden erkannt",
       "tagging": "Verschlagwortung",
       "vec": "Indizierung",
-      "done": "Fertig"
+      "done": "Fertig",
+      "moments": "Momente erkennen",
+      "junk": "Unerwünschte Fotos erkennen",
+      "recompute": "Bewertungen neu berechnen"
     },
     "title": "Fotos scannen",
     "start_button": "Scan starten",
@@ -1685,10 +1722,14 @@
     "split_select_face": "Gesicht {index} auswählen",
     "no_faces": "Keine Gesichter für diese Person gefunden",
     "split_done": "Person aufgeteilt",
-    "split_error": "Person konnte nicht aufgeteilt werden"
+    "split_error": "Person konnte nicht aufgeteilt werden",
+    "empty_hint": "Personen entstehen aus Gesichtern, die du auf einer Fotoseite zuweist (Bearbeitungsmodus). Öffne ein Foto mit Gesichtern und wähle „Gesicht einer Person zuweisen“, um die erste anzulegen."
   },
   "person_selector": {
-    "create_new": "Neue Person erstellen"
+    "create_new": "Neue Person erstellen",
+    "ordering_hint": "Zuerst kürzlich in diesem Browser zugewiesene Personen, dann Personen mit den meisten Gesichtern in sichtbaren Fotos.",
+    "face_count": "{count} Gesichter",
+    "face_count_one": "1 Gesicht"
   },
   "slideshow": {
     "start": "Diashow",
@@ -1965,7 +2006,6 @@
     "similarity_threshold": "Ähnlichkeitsschwelle",
     "burst_help": "Fotos, die in schneller Folge aufgenommen wurden, werden zusammengefasst. Klicken Sie auf Fotos, um sie zu behalten (grüner Rahmen). Nicht ausgewählte Fotos (roter Rahmen) werden ausgeblendet. Das beste Foto wird automatisch anhand von Schärfe und Qualität ausgewählt.",
     "similar_help": "Visuell ähnliche Fotos in Ihrer Bibliothek werden mithilfe von KI-Embeddings gruppiert. Überprüfen Sie jede Gruppe, behalten Sie die besten Aufnahmen und verwerfen Sie Fast-Duplikate. Passen Sie den Schwellenwert-Regler an, um zu steuern, wie ähnlich Fotos sein müssen, um eine Gruppe zu bilden.",
-    "help": "Hilfe",
     "help_text": "Sichten Sie nahezu identische Aufnahmen schnell. Wählen Sie eine Granularität — Serien, Ähnliche, Szenen oder alle zusammengeführt — und eine Sortierung; die Strenge legt fest, wie aggressiv die automatische Auswahl nur das beste Bild behält, und im Modus Ähnliche stellt der Regler Ähnlichkeit ein, wie ähnlich Fotos zum Gruppieren sein müssen. Klicken Sie auf ein Foto, um es zu behalten oder zu verwerfen, doppelklicken Sie, um nur dieses zu behalten, oder schalten Sie die Lupe (Z) ein, um Pixel zu prüfen. Öffnen Sie die Dunkelkammer (Eingabetaste) für die Vollbild-Durchsicht mit 2- oder 4-fach-Vergleich. Mit Hoch/Runter wählen Sie eine Gruppe, mit der Leertaste bestätigen Sie sie und springen weiter; Überspringen und Bestätigen starten einen 7-Sekunden-Countdown, den Sie vor dem Schließen der Gruppe abbrechen können, und das Bestätigen blendet die abgelehnten Fotos in der Galerie aus. Beschränken Sie den Feed auf ein Album oder eine Szene, schalten Sie Abgelehnte ausschließen um, und beachten Sie, dass jede Sichtungsentscheidung Ihr persönliches Ranking „Mein Geschmack“ trainiert. Alle Tasten finden Sie in der Kürzelliste unten.",
     "type_burst": "Serie",
     "type_similar": "Ähnlich",
@@ -2396,7 +2436,9 @@
     "cluster_photos": "{count} Fotos",
     "score": "Bewertung: {score}",
     "date_from": "Von",
-    "date_to": "Bis"
+    "date_to": "Bis",
+    "no_gps_title": "Keine Fotos mit Standort",
+    "no_gps_hint": "Nichts im Umfang trägt GPS-Koordinaten. Öffne ein Foto und lege es über dessen Standort-Panel fest — platzierte Fotos erscheinen hier."
   },
   "photo_detail": {
     "back": "Zurück",
@@ -2424,7 +2466,6 @@
     "gps_clear": "Standort entfernen",
     "social_crop": "Social-Zuschnitt",
     "set": {
-      "title": "Gruppe",
       "ev_span": "EV-Spanne",
       "kind_duplicate": "Duplikat",
       "open_in_gallery": "Diese Gruppe in der Galerie öffnen",
@@ -2443,6 +2484,15 @@
       "error": "Löschen fehlgeschlagen"
     },
     "gps": {
+      "online_query": "Adresse oder Geschäft",
+      "online_notice": "Die Onlinesuche sendet diese Anfrage an den konfigurierten Photon-Anbieter. Gespeicherte Orte und Koordinaten funktionieren offline. Die Auswahl zeigt eine Vorschau; Speichern übernimmt sie.",
+      "osm_attribution": "© OpenStreetMap-Mitwirkende",
+      "opens_new_tab": "(öffnet in neuem Tab)",
+      "online_search": "Online suchen",
+      "online_disabled": "Die Onlinesuche ist deaktiviert.",
+      "online_loading": "Onlinesuche läuft…",
+      "online_empty": "Keine Orte gefunden. Andere Suchanfrage versuchen oder Koordinaten eingeben.",
+      "online_error": "Onlinesuche fehlgeschlagen oder ausgelastet. Kurz warten und erneut versuchen oder Koordinaten eingeben.",
       "preview_hint": "Wählen Sie einen Ort und dann Speichern, um ihn diesem Foto zuzuweisen.",
       "search": "Gespeicherte Orte suchen",
       "loading": "Orte werden geladen…",
@@ -2462,7 +2512,22 @@
       "load_error": "Orte konnten nicht geladen werden.",
       "place_error": "Ort konnte nicht aktualisiert werden. Prüfen Sie Name, Limit und Verbindung.",
       "save_error": "Fotoort konnte nicht gespeichert werden. Bitte erneut versuchen.",
-      "use_file_location": "Standort aus der Datei verwenden"
+      "use_file_location": "Standort aus der Datei verwenden",
+      "batch_title": "Ort festlegen",
+      "only_missing": "Nur Fotos ohne Standort",
+      "preview_batch": "Standortänderungen prüfen",
+      "batch_preview": "{changed} Foto wird geändert; {skipped} übersprungen.",
+      "batch_preview_plural": "{changed} Fotos werden geändert; {skipped} übersprungen.",
+      "batch_applied": "{changed} Foto geändert; {skipped} übersprungen.",
+      "batch_applied_plural": "{changed} Fotos geändert; {skipped} übersprungen.",
+      "batch_error": "Standort konnte nicht angewendet werden. Wählen Sie höchstens 1000 Fotos und erstellen Sie eine neue Vorschau; Auswahl oder gespeicherter Ort könnte sich geändert haben.",
+      "batch_limit": "Wählen Sie höchstens 1000 Fotos. Ohne Schutz werden vorhandene Standorte ersetzt. Originaldateien bleiben unverändert.",
+      "batch_hint": "Wählen Sie einen Ort und prüfen Sie die Änderungen, bevor Sie die Auswahl speichern."
+    },
+    "distribution": {
+      "top": "Top {pct} % der Bibliothek",
+      "range": "Bereich der Bibliothek {min}–{max}",
+      "top_in_range": "Top {pct} % der Bibliothek · Bereich der Bibliothek {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2487,7 +2552,8 @@
       "success": "Kategorie auf {category} gesetzt.",
       "cleared": "Überschreibung entfernt. Neu berechnen, um die filterbasierte Kategorie anzuwenden.",
       "explainer_toggle": "Warum ist dies keine andere Kategorie?",
-      "target_category_label": "Vergleichen mit"
+      "target_category_label": "Vergleichen mit",
+      "target_category_hint": "Wählen Sie eine Kategorie, um zu sehen, welche ihrer Filter dieses Foto ausschließen und was es aufnehmen würde."
     }
   },
   "download": {
@@ -2502,7 +2568,7 @@
     "mode_copy": "Auswahl in einen Ordner kopieren",
     "mode_symlink": "Auswahl per Symlink in einen Ordner",
     "overwrite": "Vorhandene .xmp-Dateien überschreiben",
-    "overwrite_hint": "Standardmäßig aus: eine von darktable erstellte .xmp bleibt erhalten und Facet schreibt stattdessen eine .facet.xmp.",
+    "overwrite_hint": "Mit ExifTool werden vorhandene Sidecars zusammengeführt. Ohne ExifTool bleibt .xmp erhalten und Facet schreibt .facet.xmp, sofern Überschreiben nicht aktiviert ist.",
     "target_dir": "Zielordner",
     "run": "Exportieren",
     "running": "Exportiere…",
@@ -2520,6 +2586,32 @@
       "invalid_json": "Diese Datei ist kein gültiges JSON",
       "imported": "Lightroom-Status importiert: {matched} zugeordnet, {unmatched} nicht gefunden, {changed} geändert",
       "import_failed": "Lightroom-Statusdatei konnte nicht importiert werden"
+    },
+    "jobs": {
+      "running": "Sidecars werden exportiert",
+      "completed": "Export abgeschlossen",
+      "cancelled": "Export abgebrochen",
+      "failed": "Export fehlgeschlagen",
+      "interrupted": "Export unterbrochen",
+      "progress": "{processed} / {total} Dateien verarbeitet",
+      "counts": "{written} geschrieben · {skipped} übersprungen · {errors} Fehler",
+      "close": "Schließen",
+      "close_hint": "Der Export läuft nach dem Schließen weiter. Öffnen Sie den Dialog erneut für letzte Exporte.",
+      "cancel": "Nach aktueller Datei stoppen",
+      "cancelling": "Stoppt nach aktueller Datei…",
+      "cancel_hint": "Geschriebene Sidecars bleiben erhalten. Die aktuelle Datei kann noch fertiggestellt werden.",
+      "retry": "Unerledigte Dateien erneut versuchen",
+      "retry_hint": "Fehlgeschlagene, übersprungene und unerledigte Dateien werden mit aktuellen Metadaten erneut versucht. Eine unterbrochene Datei kann erneut geschrieben werden, falls ihr Fortschritt nicht gespeichert wurde.",
+      "refresh": "Status aktualisieren",
+      "recent": "Letzte Sidecar-Exporte",
+      "none": "Keine letzten Sidecar-Exporte.",
+      "read_failed": "Exportfortschritt nicht lesbar. Aktualisieren Sie den Status erneut.",
+      "errors": {
+        "metadata_repair": "Vorhandene Metadaten müssen vor dem Export repariert werden.",
+        "write_failed": "Metadaten konnten nicht geschrieben werden. Prüfen Sie die Serverprotokolle.",
+        "exiftool_upgrade": "ExifTool 13.23 bis 13.27 beschädigt XMP-Sidecar-Dateien. Aktualisieren Sie ExifTool auf 13.28 oder neuer.",
+        "stopped": "Der Export wurde unerwartet beendet. Prüfen Sie die Serverprotokolle und wiederholen Sie die übrigen Fotos."
+      }
     }
   },
   "undo": {
@@ -2533,6 +2625,9 @@
     "selected": "ausgewählt",
     "copy_keeps": "Behaltene in Ordner kopieren",
     "move_rejects": "Abgelehnte in Ordner verschieben",
+    "trash_all_rejects": "Alle abgelehnten Fotos in den Papierkorb",
+    "all_rejects_scope": "Alle für Sie sichtbaren abgelehnten Fotos der gesamten Bibliothek. Aktuelle Album-, Datums- und Galeriefilter werden ignoriert. Die Dateien werden gemeinsam genutzt: Maßgeblich sind Ihre Ablehnungen. Auch Fotos, die andere Benutzer behalten, favorisiert oder bewertet haben, können im Papierkorb landen.",
+    "all_rejects_limit": "Diese Aktion unterstützt höchstens 10.000 Fotos gleichzeitig. Zeigen Sie in der Galerie nur abgelehnte Fotos an, grenzen Sie nach Datum oder Album ein und verwenden Sie die Ordnerauswahl mit der Papierkorbaktion für kleinere Stapel. Deaktivieren Sie Filter, die Gruppenmitglieder ausblenden, um jedes abgelehnte Bild einzuschließen.",
     "trash_rejects": "Abgelehnte in den Papierkorb",
     "trash_disabled": "Papierkorb-Funktion ist deaktiviert — ein Administrator kann sie über viewer.cull.allow_trash aktivieren.",
     "trash_missing_pkg": "Der Papierkorb ist auf diesem Server nicht verfügbar — das Paket send2trash ist nicht installiert.",
@@ -2547,6 +2642,7 @@
     "preview": "Vorschau",
     "apply": "Anwenden",
     "cancel": "Abbrechen",
+    "partial_error": "Einige Dateien konnten nicht verarbeitet werden. Erstellen Sie eine neue Vorschau der verbleibenden Dateien.",
     "done": "Aussortierung angewendet",
     "error": "Aussortierung fehlgeschlagen",
     "delete_action": "Löschen…",
@@ -2554,7 +2650,8 @@
     "delete_confirm_body": "{count} Fotos werden in den Papierkorb des Betriebssystems verschoben. Sie bleiben wiederherstellbar, bis Sie ihn leeren.",
     "delete_partial_result": "{deleted} gelöscht, {failed} fehlgeschlagen",
     "delete_failed": "Löschen fehlgeschlagen — nichts wurde in den Papierkorb verschoben",
-    "delete_disabled_view_scope_tooltip": "Wählen Sie Fotos explizit aus, um sie zu löschen — eine Auswahl der gesamten Ansicht kann hier nicht verwendet werden"
+    "delete_disabled_view_scope_tooltip": "Wählen Sie Fotos explizit aus, um sie zu löschen — eine Auswahl der gesamten Ansicht kann hier nicht verwendet werden",
+    "remove_missing_rows": "Bibliothekseinträge ebenfalls entfernen, deren Datei auf der Platte bereits fehlt"
   },
   "shortcuts": {
     "title": "Tastenkürzel",
@@ -2573,6 +2670,9 @@
     "rate": "Bewerten (1–5 Sterne)",
     "reject": "Ablehnen",
     "favorite": "Favorit umschalten",
+    "focus_search": "Suchfeld fokussieren",
+    "toggle_filters": "Filterleiste ein- / ausblenden",
+    "toggle_layout": "Zwischen Raster und Mosaik wechseln",
     "comp_left_wins": "Linkes Foto gewinnt",
     "comp_right_wins": "Rechtes Foto gewinnt"
   },
@@ -2766,5 +2866,80 @@
       "ui_suggest_culling": "Vorschläge im Auswahlplan markiert",
       "ui_show_comparison": "Vergleich angezeigt"
     }
+  },
+  "review": {
+    "status": "Auswahlstatus",
+    "all": "Alle Entscheidungen",
+    "needs_review": "Zu prüfen",
+    "kept": "Behalten",
+    "rejected": "Abgelehnt",
+    "keep": "Behalten",
+    "reset": "Entscheidung zurücksetzen",
+    "updated": "Entscheidung für {count} Fotos aktualisiert",
+    "shortcut": "Foto behalten"
+  },
+  "capture_date": {
+    "title": "Aufnahmedatum korrigieren",
+    "invalid": "Wähle eine Verschiebung ungleich null von höchstens 366 Tagen; wähle höchstens 1000 Fotos aus.",
+    "counts": "{changed} geändert · {skipped} übersprungen",
+    "samples": "Die ersten 20 Änderungen. Unbekannte, unvollständige, nicht unterstützte oder überlaufende Datumswerte werden übersprungen.",
+    "photo": "Foto",
+    "before": "Vorher",
+    "after": "Nachher",
+    "error": "Aktion fehlgeschlagen. Zugriff und Dateien prüfen und die Vorschau erneut laden.",
+    "reset_hint": "Die Schaltfläche „Dateidatum verwenden“ entfernt die manuelle Korrektur. Ohne Datum in der Datei wird das Aufnahmedatum unbekannt.",
+    "use_file": "Dateidatum verwenden",
+    "preview": "Vorschau",
+    "apply": "Korrektur anwenden ({count})",
+    "hint": "Verschiebt die gespeicherte Kamera-Uhrzeit ohne Ableitung von Zeitzone oder Sommerzeit. Originale ändern sich erst beim ausdrücklichen Metadatenexport.",
+    "mode_shift": "Verschieben um",
+    "mode_exact": "Genaue Zeit festlegen",
+    "mode": "Korrekturmodus",
+    "direction": "Richtung",
+    "earlier": "Früher",
+    "later": "Später",
+    "days": "Tage",
+    "hours": "Stunden",
+    "minutes": "Minuten",
+    "seconds": "Sekunden",
+    "unit_d": "T",
+    "unit_h": "h",
+    "unit_min": "min",
+    "unit_s": "s",
+    "quick": "Schnellanpassung",
+    "summary_earlier": "{amount} früher",
+    "summary_later": "{amount} später",
+    "exact_label": "Korrektes Datum und Uhrzeit des Referenzfotos",
+    "reference": "Referenzfoto:"
+  },
+  "organization_history": {
+    "title": "Änderungsverlauf",
+    "hint": "Ihre letzten 50 Einträge in dieser Viewer-Datenbank. Orte und Aufnahmedaten gelten für alle; Entscheidungen, Sterne und Favoriten gehören zu Ihrem Konto. Originaldateien bleiben unverändert.",
+    "gps": "Ort",
+    "date": "Aufnahmedatum",
+    "review": "Auswahl",
+    "revert": "Diesen Eintrag zurücksetzen",
+    "reverted": "Bereits zurückgesetzt",
+    "empty": "Keine verfügbaren Einträge.",
+    "part": "Teil {part} von {parts}: Dieser Eintrag stellt nur seine {count} Fotos wieder her. Ältere Teile können abgelaufen sein.",
+    "success": "Wiederhergestellte Fotos: {count}",
+    "conflict": "Fotos wurden seit dieser Aktion geändert. Nichts wurde wiederhergestellt.",
+    "unavailable": "Dieser Eintrag ist nicht mehr verfügbar. Nichts wurde wiederhergestellt.",
+    "error": "Verlauf konnte nicht geladen oder wiederhergestellt werden.",
+    "latitude": "Breitengrad",
+    "longitude": "Längengrad",
+    "manual_gps": "Manueller Ort",
+    "capture_date": "Aufnahmedatum",
+    "manual_date": "Manuelles Datum",
+    "stars": "Sterne",
+    "favorite": "Favorit",
+    "rejected": "Abgelehnt",
+    "kept": "Behalten",
+    "yes": "Ja",
+    "no": "Nein",
+    "unknown": "Unbekannt",
+    "photo_count": "Fotos: {count}",
+    "field": "Feld",
+    "entry_action": "{action} · {kind} · {date} · #{id}"
   }
 }

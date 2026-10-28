@@ -8,6 +8,7 @@ import { ExportService } from './export.service';
 import { I18nService } from './i18n.service';
 import { ApiService } from './api.service';
 import { I18N } from '../i18n/keys';
+import { AuthService } from './auth.service';
 
 /** `POST /api/photo/delete` response — per-path, see `api.routers.export.api_photo_delete`. */
 export interface PhotoDeleteResponse {
@@ -19,6 +20,9 @@ export interface PhotoDeleteResponse {
   refused_bracket_lead: string[];
   sequence_siblings: string[];
   skipped: string[];
+  /** Rows removed because their file was already gone (`remove_missing`).
+   *  Never folded into `deleted`: no file was trashed for these. */
+  removed_missing: string[];
   trashed: number;
   errors: Record<string, string>;
 }
@@ -31,6 +35,7 @@ export class PhotoActionsService {
   private readonly exportService = inject(ExportService);
   private readonly i18n = inject(I18nService);
   private readonly api = inject(ApiService);
+  private readonly auth = inject(AuthService);
 
   /**
    * Send photos to the OS trash via `POST /api/photo/delete`.
@@ -46,13 +51,14 @@ export class PhotoActionsService {
    */
   async deletePhotos(
     paths: string[],
-    opts: { includeCompanions: boolean; includeSequenceSiblings: boolean },
+    opts: { includeCompanions: boolean; includeSequenceSiblings: boolean; removeMissing?: boolean },
   ): Promise<PhotoDeleteResponse | null> {
     try {
       return await firstValueFrom(this.api.post<PhotoDeleteResponse>('/photo/delete', {
         paths,
         include_companions: opts.includeCompanions,
         include_sequence_siblings: opts.includeSequenceSiblings,
+        remove_missing: opts.removeMissing ?? false,
         dry_run: false,
       }));
     } catch {
@@ -80,23 +86,27 @@ export class PhotoActionsService {
   }
 
   openAddPerson(photo: Photo, onAssigned?: () => void): void {
+    const owner = this.auth.identity();
     import('../../features/gallery/face-selector-dialog.component').then(m => {
+      if (this.auth.identity() !== owner) return;
       const faceRef = this.dialog.open(m.FaceSelectorDialogComponent, {
         data: { photoPath: photo.path },
         width: '95vw',
         maxWidth: '400px',
       });
       faceRef.afterClosed().subscribe(face => {
-        if (!face) return;
+        if (!face || this.auth.identity() !== owner) return;
         import('../../features/gallery/person-selector-dialog.component').then(m2 => {
+          if (this.auth.identity() !== owner) return;
           const personRef = this.dialog.open(m2.PersonSelectorDialogComponent, {
             width: '95vw',
             maxWidth: '400px',
           });
           personRef.afterClosed().subscribe(async result => {
-            if (!result) return;
+            if (!result || this.auth.identity() !== owner) return;
             if (result.kind === 'create') {
               const created = await this.store.createPerson(result.name, [face.id], photo.path);
+              if (this.auth.identity() !== owner) return;
               if (created) {
                 this.snackBar.open(this.i18n.t(I18N.notifications.faces_assigned), '', { duration: 2000 });
                 onAssigned?.();
@@ -105,6 +115,7 @@ export class PhotoActionsService {
               }
             } else if (result.kind === 'select') {
               const assigned = await this.store.assignFace(face.id, result.person.id, photo.path, result.person.name);
+              if (this.auth.identity() !== owner) return;
               if (assigned) {
                 this.snackBar.open(this.i18n.t(I18N.notifications.faces_assigned), '', { duration: 2000 });
                 onAssigned?.();

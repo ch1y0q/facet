@@ -155,6 +155,7 @@ PHOTOS_COLUMNS = [
     ('star_rating', 'INTEGER DEFAULT 0 CHECK (star_rating >= 0 AND star_rating <= 5)'),
     ('is_favorite', 'INTEGER DEFAULT 0 CHECK (is_favorite IN (0, 1))'),
     ('is_rejected', 'INTEGER DEFAULT 0 CHECK (is_rejected IN (0, 1))'),
+    ('is_kept', 'INTEGER DEFAULT 0 CHECK (is_kept IN (0, 1))'),
 
     # AI captioning
     ('caption', 'TEXT'),
@@ -214,6 +215,8 @@ PHOTOS_COLUMNS = [
     # the row's sequence_kind, never on its own. NULL = written before the stamp
     # existed, i.e. before the RAW exposure fix. See db/render_version.py.
     ('render_version', 'INTEGER'),
+    # Manual capture dates survive EXIF rescans.
+    ('date_manually_set', 'INTEGER NOT NULL DEFAULT 0'),
     # Manual GPS (including intentional clears) survives EXIF rescans.
     ('gps_manually_set', 'INTEGER NOT NULL DEFAULT 0'),
 ]
@@ -247,6 +250,7 @@ FACES_COLUMNS = [
     ('manual_source', 'TEXT'),
     ('manual_width', 'INTEGER'),
     ('manual_height', 'INTEGER'),
+    ('manual_review_required', 'INTEGER NOT NULL DEFAULT 0'),
 ]
 
 # UUIDs are never reused. Explicit deletion survives synchronization with an
@@ -361,13 +365,14 @@ INDEXES = [
     ('idx_is_burst_lead', 'photos', 'is_burst_lead'),
     ('idx_is_sequence_lead', 'photos', 'is_sequence_lead'),
     ('idx_tags', 'photos', 'tags'),
-    ('idx_faces_photo', 'faces', 'photo_path'),
     ('idx_faces_person', 'faces', 'person_id'),
     # Composite indexes for common query patterns
     ('idx_aggregate_date', 'photos', 'aggregate DESC, date_taken DESC'),
     ('idx_burst_aggregate', 'photos', 'is_burst_lead, aggregate DESC'),
     ('idx_face_detection', 'photos', 'face_count, face_ratio'),
     ('idx_faces_person_photo', 'faces', 'person_id, photo_path'),
+    # Keep naming-queue EXISTS probes out of the face table's wide embedding rows.
+    ('idx_faces_photo_person', 'faces', 'photo_path, person_id'),
     ('idx_filename', 'photos', 'filename'),
     ('idx_category', 'photos', 'category'),
     ('idx_category_aggregate', 'photos', 'category, aggregate DESC'),
@@ -523,6 +528,12 @@ INDEXES = [
      'phash, date_taken, aggregate, face_count, eyes_open_score, expression_score, '
      'tech_sharpness, is_burst_lead, burst_group_id, duplicate_group_id, '
      'is_duplicate_lead, path'),
+    # Review progress (/api/photos/review_progress) counts the whole visible scope
+    # by decision, so it reads the cover tuple plus is_kept on every gallery load.
+    # No gallery index carries is_kept, and without this one the count walked the
+    # whole table (12.2s cold on a 126k-photo library). `path` leads so a folder
+    # scope seeks instead of scanning.
+    ('idx_review_progress', 'photos', f'path, {_GALLERY_COVER_SQL}, is_kept'),
     # Category / type dropdown (the most common filter).
     ('idx_gallery_category', 'photos', f'category, aggregate DESC, path, {_GALLERY_COVER_SQL}'),
     # Camera filter (and the camera+lens pair). `camera_model = ?` is the only
@@ -626,6 +637,12 @@ REJECTED_MERGE_SUGGESTIONS_COLUMNS = [
     ('person_a_id', 'INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE'),
     ('person_b_id', 'INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE'),
     ('rejected_at', "TEXT DEFAULT (datetime('now'))"),
+]
+
+# Derived cache state, not user edits; a fresh DB identity prevents cross-file reuse.
+EMBEDDING_CACHE_REVISION_COLUMNS = [
+    ('id', 'INTEGER PRIMARY KEY CHECK(id=1)'),
+    ('revision', "TEXT NOT NULL CHECK(length(revision)=32 AND revision NOT GLOB '*[^0-9a-f]*')"),
 ]
 
 # Weight optimization history
@@ -823,6 +840,7 @@ USER_PREFERENCES_COLUMNS = [
     ('star_rating', 'INTEGER DEFAULT 0 CHECK (star_rating >= 0 AND star_rating <= 5)'),
     ('is_favorite', 'INTEGER DEFAULT 0 CHECK (is_favorite IN (0, 1))'),
     ('is_rejected', 'INTEGER DEFAULT 0 CHECK (is_rejected IN (0, 1))'),
+    ('is_kept', 'INTEGER DEFAULT 0 CHECK (is_kept IN (0, 1))'),
 ]
 
 USER_PREFERENCES_INDEXES = [
@@ -830,6 +848,11 @@ USER_PREFERENCES_INDEXES = [
     ('idx_user_prefs_path', 'user_preferences', 'photo_path'),
     ('idx_user_prefs_fav', 'user_preferences', 'user_id, is_favorite'),
     ('idx_user_prefs_rating', 'user_preferences', 'user_id, star_rating'),
+]
+
+# Required by the review queue before background gallery indexes finish.
+MANUAL_FACE_INDEXES = [
+    ('idx_faces_manual_review', 'faces', 'photo_path, is_manual, manual_review_required'),
 ]
 
 # Identity constraints share the registry used by schema diagnostics. Manual
@@ -867,6 +890,17 @@ MCP_TOKENS_INDEXES = [
     ('idx_mcp_tokens_user', 'mcp_tokens', 'user_id'),
 ]
 
+# Latest review-field edit receipt per photo/account; durable across viewer exports.
+PHOTO_METADATA_EDITS_COLUMNS = [
+    ('photo_path', 'TEXT NOT NULL REFERENCES photos(path) ON DELETE CASCADE ON UPDATE CASCADE'),
+    ('user_id', "TEXT NOT NULL DEFAULT ''"),
+    ('field', 'TEXT NOT NULL'),
+    ('changed_at', 'TEXT NOT NULL'),
+    ('source', "TEXT NOT NULL DEFAULT 'local'"),
+    ('source_path', 'TEXT'),
+    ('source_at', 'TEXT'),
+]
+
 # Which rating labels an assistant left behind, so the rating-derived comparisons
 # (`optimization/label_pairs.py`) never treat them as the user's taste. A side table, not a column on
 # `photos`, written by the rating routes themselves when the request is an agent's (an internal `mcp` JWT).
@@ -900,6 +934,7 @@ ALL_INDEX_GROUPS = [
     ALBUM_INDEXES,
     USER_PREFERENCES_INDEXES,
     IDENTITY_INDEXES,
+    MANUAL_FACE_INDEXES,
     MCP_TOKENS_INDEXES,
 ]
 
@@ -1084,6 +1119,7 @@ _MIGRATED_TABLES = [
     ('photo_manual_tags', PHOTO_MANUAL_TAGS_COLUMNS),
     ('mcp_tokens', MCP_TOKENS_COLUMNS),
     ('rating_provenance', RATING_PROVENANCE_COLUMNS),
+    ('photo_metadata_edits', PHOTO_METADATA_EDITS_COLUMNS),
     ('comparisons', COMPARISONS_COLUMNS),
     ('learned_scores', LEARNED_SCORES_COLUMNS),
     ('rejected_merge_suggestions', REJECTED_MERGE_SUGGESTIONS_COLUMNS),
@@ -1178,7 +1214,7 @@ SCHEMA_VERSION = 1
 MIGRATIONS: list[tuple[int, Callable[[Any], None]]] = []
 
 
-def _table_exists(conn, name):
+def table_exists(conn, name):
     return conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
     ).fetchone() is not None
@@ -1211,6 +1247,29 @@ def _run_migration_ladder(conn, is_fresh):
             current, SCHEMA_VERSION)
 
 
+def _bootstrap_manual_review(conn: sqlite3.Connection) -> None:
+    """One-time conservative bootstrap of ``faces.manual_review_required``.
+
+    Existing v2 frames are verifiable; obsolete, malformed or missing
+    identities require the editor.
+    """
+    import json
+    for face_id, source in conn.execute(
+            'SELECT id,manual_source FROM faces WHERE is_manual=1').fetchall():
+        try:
+            identity = json.loads(source)
+            verifiable = (isinstance(identity, dict) and identity.get('v') == 2
+                          and isinstance(identity.get('w'), int) and identity['w'] > 0
+                          and isinstance(identity.get('h'), int) and identity['h'] > 0
+                          and isinstance(identity.get('sig'), list) and len(identity['sig']) == 64
+                          and all(isinstance(n, (int, float)) and 0 <= n <= 255 for n in identity['sig'])
+                          and isinstance(identity.get('stat'), list) and len(identity['stat']) == 4)
+        except (KeyError, TypeError, ValueError):
+            verifiable = False
+        if not verifiable:
+            conn.execute('UPDATE faces SET manual_review_required=1 WHERE id=?', (face_id,))
+
+
 def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
     """
     Initialize the database schema (idempotent).
@@ -1241,7 +1300,7 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
 
         # Detect a brand-new DB before any CREATE runs, so the version ladder
         # can stamp it to SCHEMA_VERSION instead of replaying historical steps.
-        is_fresh = not _table_exists(conn, 'photos')
+        is_fresh = not table_exists(conn, 'photos')
 
         conn.execute(_build_create_table_sql(
             'saved_places', SAVED_PLACES_COLUMNS,
@@ -1280,6 +1339,10 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
 
         # Create mcp_tokens (agent bearer tokens, hash only; side table)
         conn.execute(_build_create_table_sql('mcp_tokens', MCP_TOKENS_COLUMNS))
+
+        conn.execute(_build_create_table_sql(
+            'photo_metadata_edits', PHOTO_METADATA_EDITS_COLUMNS,
+            constraints=['PRIMARY KEY (photo_path, user_id, field)']))
 
         # Create rating_provenance (which rating labels an assistant left; side table)
         conn.execute(_build_create_table_sql(
@@ -1403,8 +1466,13 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
         # creation because new indexes may target columns added here (e.g.
         # comparisons.source), and before the photos_vec init below because that
         # reads photos.clip_embedding, which the sweep backfills on old DBs.
+        migrate_manual_review = 'manual_review_required' not in {
+            row[1] for row in conn.execute('PRAGMA table_info(faces)')}
         for table_name, columns in _MIGRATED_TABLES:
             _migrate_add_missing_columns(conn, table_name, columns)
+
+        if migrate_manual_review:
+            _bootstrap_manual_review(conn)
 
         # Shared pre-upgrade copies share numeric identities. Every NEW person
         # gets a random key, including inserts by scanners and older callers.
@@ -1434,6 +1502,12 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
                 "WHERE centroid IS NOT NULL AND centroid_model IS NULL",
                 (ARCFACE_MODEL,))
 
+        from db.embedding_revision import init_schema as init_embedding_revision
+        init_embedding_revision(conn)
+
+        from db.organization_history import init_schema as init_organization_history
+        init_organization_history(conn)
+
         # Create photos_vec virtual table for vector search (requires sqlite-vec).
         # After the sweep so detect_embedding_dim can see clip_embedding.
         if HAS_SQLITE_VEC:
@@ -1460,9 +1534,10 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
         # narrow copy instead of maintaining two near-identical B-trees.
         # idx_qrealign_score, idx_deqa_score and idx_aesthetic_v25 are superseded by
         # idx_qrealign_sort, idx_deqa_sort and idx_aesthetic_v25_sort (X DESC, path).
+        # idx_faces_photo is covered by idx_faces_photo_person, including photo-only probes.
         for stale_idx in ('idx_burst_moment', 'idx_burst_learned', 'idx_qalign_score',
                           'idx_render_version', 'idx_gallery_date_asc', 'idx_qrealign_score',
-                          'idx_deqa_score', 'idx_aesthetic_v25'):
+                          'idx_deqa_score', 'idx_aesthetic_v25', 'idx_faces_photo'):
             conn.execute(f'DROP INDEX IF EXISTS {stale_idx}')
 
         # Create every remaining index group (photo_tags, comparisons,
@@ -1481,7 +1556,7 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
         # narrower schema is detected (caption+tags only), drop it so the
         # CREATE below installs the covering schema. The FTS data is then
         # repopulated by db.fts.rebuild_fts (or whoever rebuilds next).
-        fts_existed = _table_exists(conn, 'photos_fts')
+        fts_existed = table_exists(conn, 'photos_fts')
         fts_current = fts_schema_is_current(conn)
         fts_recreated = False
         if not (fts_existed and fts_current) and not conn.in_transaction:
@@ -1514,6 +1589,9 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
                     "photos_fts rebuild after recreate failed — run 'python database.py --rebuild-fts'"
                 )
 
+        from db.metadata_edits import create_review_edit_triggers
+        create_review_edit_triggers(conn)
+
         # Run the version ladder (no-op today) and stamp PRAGMA user_version.
         _run_migration_ladder(conn, is_fresh)
 
@@ -1539,7 +1617,7 @@ ANALYZE_KEY_INDEXES = ('idx_moment_confidence', 'idx_gallery_aggregate')
 # stale partial stats. A one-index ANALYZE scans the small covering index, not the
 # 16 GB table, so it costs seconds where ``ANALYZE photos`` costs the whole file.
 ANALYZE_ON_BUILD_INDEXES = ('idx_post_scan', 'idx_date_asc_cover', 'idx_qrealign_sort',
-                            'idx_deqa_sort', 'idx_aesthetic_v25_sort')
+                            'idx_deqa_sort', 'idx_aesthetic_v25_sort', 'idx_faces_photo_person')
 
 
 def missing_photo_indexes(conn):

@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["persons"])
 
+# Client-side cap: RECENT_LIMIT in person-assignment-history.service.ts.
+MAX_RECENT_IDS = 12
+
 _SORT_CLAUSES = {
     "name_asc": "ORDER BY COALESCE(p.name, '') ASC, p.face_count DESC",
     "name_desc": "ORDER BY COALESCE(p.name, '') DESC, p.face_count DESC",
@@ -137,26 +140,63 @@ async def list_persons(
     page: int = Query(1, ge=1),
     per_page: int = Query(48, ge=1, le=200),
     search: str = Query(""),
-    sort: str = Query("count_desc", pattern="^(count_asc|count_desc|quality_asc|quality_desc|name_asc|name_desc)$"),
+    sort: str = Query("count_desc", pattern="^(count_asc|count_desc|quality_asc|quality_desc|name_asc|name_desc|assignment)$"),
     include_hidden: bool = Query(False),
+    recent_ids: str = Query("", max_length=MAX_RECENT_IDS * 16 + MAX_RECENT_IDS - 1),
     user: CurrentUser = Depends(require_authenticated),
 ):
     """List all persons with pagination and search.
 
     Hidden persons (``is_hidden = 1``) are excluded by default; pass
     ``include_hidden=true`` to surface them.
+
+    ``sort=assignment`` orders named candidates by the supplied recent IDs (at
+    most 12), then by face count in visible photos, then name and ID. Recent IDs
+    confer no visibility: hidden (even with include_hidden), deleted and
+    inaccessible candidates stay out. In assignment order, ``face_count`` is
+    computed from visible photos; other orders return the stored library count.
     """
+    recent = []
+    if recent_ids:
+        tokens = recent_ids.split(',')
+        if sort != 'assignment' or len(tokens) > MAX_RECENT_IDS or any(
+            not token.isascii() or not token.isdecimal() or not 0 < int(token) <= 9007199254740991
+            for token in tokens
+        ):
+            raise HTTPException(status_code=422, detail="recent_ids requires assignment order and at most 12 positive safe integer IDs")
+        recent = list(dict.fromkeys(map(int, tokens)))
+    order_params = []
+    prefix = ''
+    from_clause = 'FROM persons p'
+    count_column = 'p.face_count'
     order_clause = _SORT_CLAUSES.get(sort, _SORT_CLAUSES["count_desc"])
 
     where_parts: list = []
     params: list = []
-    if not include_hidden:
+    visibility_params: list = []
+    if sort == 'assignment':
+        visibility, visibility_params = get_visibility_clause(user.user_id if user else None, 'visible_photos')
+        prefix = f"""WITH visible_counts AS (
+            SELECT visible_faces.person_id, COUNT(*) AS face_count
+            FROM faces visible_faces JOIN photos visible_photos ON visible_faces.photo_path = visible_photos.path
+            WHERE visible_faces.person_id IS NOT NULL AND {visibility}
+            GROUP BY visible_faces.person_id
+        ) """
+        from_clause += ' LEFT JOIN visible_counts ON visible_counts.person_id = p.id'
+        count_column = 'COALESCE(visible_counts.face_count, 0)'
+        where_parts.append("TRIM(COALESCE(p.name, '')) != ''")
+        recent_order = ('CASE p.id ' + ' '.join(f'WHEN ? THEN {rank}' for rank in range(len(recent)))
+                        + f' ELSE {len(recent)} END, ') if recent else ''
+        order_params = recent
+        order_clause = f"ORDER BY {recent_order}COALESCE(visible_counts.face_count, 0) DESC, p.name COLLATE NOCASE ASC, p.name ASC, p.id ASC"
+    if not include_hidden or sort == 'assignment':
         where_parts.append(person_not_hidden_clause('p'))
     if search.strip():
         term = search.strip()
-        if term.isdigit():
+        numeric_id = int(term) if term.isascii() and term.isdecimal() and len(term) <= 19 else None
+        if numeric_id is not None and numeric_id <= 9223372036854775807:
             where_parts.append("(p.id = ? OR p.name LIKE ?)")
-            params.extend([int(term), f"%{term}%"])
+            params.extend([numeric_id, f"%{term}%"])
         else:
             where_parts.append("p.name LIKE ?")
             params.append(f"%{term}%")
@@ -176,18 +216,18 @@ async def list_persons(
 
         offset = (page - 1) * per_page
         cur = await conn.execute(f"""
-            SELECT p.id, p.name, p.representative_face_id, p.face_count,
+            {prefix}SELECT p.id, p.name, p.representative_face_id, {count_column} AS face_count,
                    COALESCE(p.is_hidden, 0) as is_hidden,
                    CASE WHEN p.face_thumbnail IS NOT NULL THEN 1 ELSE 0 END as face_thumbnail,
                    (COALESCE(photos.eye_sharpness, 0) / 10.0 * 0.7 +
                     (COALESCE(photos.face_quality, 6.5) - 6.5) / 3.0 * 0.3) as rep_quality
-            FROM persons p
+            {from_clause}
             LEFT JOIN faces f ON p.representative_face_id = f.id
             LEFT JOIN photos ON f.photo_path = photos.path
             {where_clause}
             {order_clause}
             LIMIT ? OFFSET ?
-        """, params + [per_page, offset])
+        """, visibility_params + params + order_params + [per_page, offset])
         rows = await cur.fetchall()
         await cur.close()
         persons = [dict(row) for row in rows]

@@ -1,7 +1,7 @@
 import { Component, computed, DestroyRef, effect, ElementRef, inject, signal, viewChild, viewChildren, ChangeDetectionStrategy } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { MatSelectModule } from '@angular/material/select';
+import { MatSelectModule, MatSelect } from '@angular/material/select';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
@@ -28,9 +28,12 @@ import { AlbumService, Album } from '../../core/services/album.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { SaveSmartAlbumDialogComponent } from '../albums/save-smart-album-dialog.component';
+import { CardActionsDialogComponent } from './card-actions-dialog.component';
 import { folderDisplayName } from '../folders/folders.util';
 import { i18nKeys } from '../../core/i18n/keys';
 import { isUnavailableKey, unavailableSet } from '../../shared/utils/unavailable-metrics';
+import { closeOverlayDirectives } from '../../shared/utils/overlays';
+import { MetricSparklineComponent } from '../../shared/components/metric-sparkline/metric-sparkline.component';
 
 export const ADDITIONAL_FILTERS: AdditionalFilterDef[] = [
   // Quality
@@ -150,6 +153,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
   host: { class: 'flex flex-col h-full' },
   imports: [
     DecimalPipe,
+    MetricSparklineComponent,
     NgTemplateOutlet,
     FormsModule,
     MatSelectModule,
@@ -206,7 +210,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
         @if (noFilterMatches()) {
           <p class="text-xs opacity-50 px-2 py-3">{{ I18N.gallery.sidebar.no_filters_match | translate }}</p>
         }
-        @for (group of searchResultGroups(); track group.sectionKey) {
+        @for (group of metricFilterGroups(); track group.sectionKey) {
           <div class="px-1 pt-2 pb-1">
             <div class="flex items-center gap-2 text-xs font-medium opacity-70 mb-1">
               <mat-icon class="!text-base !w-4 !h-4 !leading-4 opacity-60">{{ sectionIcons[group.sectionKey] || 'tune' }}</mat-icon>
@@ -275,11 +279,11 @@ function saveSectionStates(states: Record<string, boolean>): void {
         <mat-form-field subscriptSizing="dynamic" class="w-full">
           <mat-label>{{ I18N.ui.filters.search | translate }}</mat-label>
           <mat-icon matPrefix class="mr-1 opacity-60">search</mat-icon>
-          <input matInput
+          <input matInput #sidebarSearch
             [placeholder]="I18N.gallery.search_placeholder | translate"
             [value]="store.filters().search"
-            (keyup.enter)="onSidebarSearchChange($event)"
-            (blur)="onSidebarSearchChange($event)" />
+            (input)="onSidebarSearchChange($event)"
+            (keyup.enter)="onSidebarSearchCommit($event)" />
           @if (store.filters().search) {
             <button matSuffix mat-icon-button class="!w-6 !h-6 !p-0" (click)="store.updateFilter('search', '')" [attr.aria-label]="I18N.gallery.clear_search | translate">
               <mat-icon class="!text-sm !w-4 !h-4">close</mat-icon>
@@ -289,7 +293,6 @@ function saveSectionStates(states: Record<string, boolean>): void {
       </div>
 
       <!-- Persons -->
-      @if (store.persons().length) {
         <mat-expansion-panel class="!mb-1 mt-1" [expanded]="sectionStates()['persons'] !== false"
                              (opened)="onSectionToggle('persons', true)"
                              (closed)="onSectionToggle('persons', false)"
@@ -304,6 +307,14 @@ function saveSectionStates(states: Record<string, boolean>): void {
             </mat-panel-title>
           </mat-expansion-panel-header>
           <div class="flex flex-col gap-2 pb-2">
+            <mat-checkbox
+              [aria-describedby]="store.filters().faces_need_names ? 'face-naming-hint' : ''"
+              [checked]="store.filters().faces_need_names"
+              (change)="store.updateFilter('faces_need_names', $event.checked)"
+            >{{ I18N.gallery.faces_need_names | translate }}</mat-checkbox>
+            @if (store.filters().faces_need_names) {
+              <p id="face-naming-hint" class="text-xs text-gray-500 dark:text-gray-400">{{ (auth.isEdition() ? I18N.gallery.faces_need_names_hint : I18N.gallery.faces_need_names_readonly_hint) | translate }}</p>
+            }
             <mat-form-field subscriptSizing="dynamic" class="w-full">
               @if (!selectedPersons().length) {
                 <mat-label>{{ I18N.gallery.person | translate }}</mat-label>
@@ -341,7 +352,6 @@ function saveSectionStates(states: Record<string, boolean>): void {
             }
           </div>
         </mat-expansion-panel>
-      }
 
       <!-- Date Range -->
       <mat-expansion-panel class="!mb-1 mt-4" [expanded]="sectionStates()['date'] !== false"
@@ -562,14 +572,48 @@ function saveSectionStates(states: Record<string, boolean>): void {
             [checked]="store.filters().hide_panoramas"
             (change)="store.updateFilter('hide_panoramas', $event.checked)"
           >{{ I18N.gallery.hide_panoramas | translate }}</mat-checkbox>
+          <mat-form-field class="w-full">
+            <mat-label>{{ I18N.review.status | translate }}</mat-label>
+            <mat-select [value]="store.filters().review_status"
+                        (selectionChange)="store.updateFilter('review_status', $event.value)">
+              <mat-option value="">{{ I18N.review.all | translate }}</mat-option>
+              <mat-option value="undecided">{{ I18N.review.needs_review | translate }}</mat-option>
+              <mat-option value="kept">{{ I18N.review.kept | translate }}</mat-option>
+              <mat-option value="rejected">{{ I18N.review.rejected | translate }}</mat-option>
+            </mat-select>
+          </mat-form-field>
+          <!-- The positive counterpart of the toggles above: "only X" views.
+               The server suppresses the hide toggles while either is set, so
+               every member of what they name is listed. -->
           <mat-checkbox
+            [checked]="store.filters().blinks_only"
+            (change)="store.updateFilter('blinks_only', $event.checked)"
+          >{{ I18N.gallery.blinks_only | translate }}</mat-checkbox>
+          <mat-checkbox
+            [checked]="store.filters().duplicates_only"
+            (change)="store.updateFilter('duplicates_only', $event.checked)"
+          >{{ I18N.gallery.duplicates_only | translate }}</mat-checkbox>
+          <mat-checkbox
+            [disabled]="!!store.filters().review_status"
             [checked]="store.filters().hide_rejected"
             (change)="store.updateFilter('hide_rejected', $event.checked)"
           >{{ I18N.gallery.hide_rejected | translate }}</mat-checkbox>
+          <mat-checkbox
+            [disabled]="!!store.filters().review_status"
+            [checked]="store.filters().show_rejected"
+            (change)="store.updateFilter('show_rejected', $event.checked)"
+          >{{ I18N.rating.show_rejected | translate }}</mat-checkbox>
           <!-- A correction is invisible in the labels until the detector runs
                again, so without this the only record of one still pending is
                the user's memory. Edition-only: nobody else can make one. -->
           @if (auth.isEdition()) {
+            <mat-checkbox
+              [checked]="store.filters().manual_faces_need_review"
+              (change)="store.updateFilter('manual_faces_need_review', $event.checked)"
+            >{{ I18N.gallery.manual_faces_need_review | translate }}</mat-checkbox>
+            @if (store.filters().manual_faces_need_review) {
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ I18N.gallery.manual_faces_review_hint | translate }}</p>
+            }
             <mat-form-field subscriptSizing="dynamic" class="w-full">
               <mat-label>{{ I18N.gallery.sequence_override.label | translate }}</mat-label>
               <mat-select [value]="store.filters().sequence_override"
@@ -614,6 +658,10 @@ function saveSectionStates(states: Record<string, boolean>): void {
             [checked]="store.virtualScroll()"
             (change)="store.setVirtualScroll($event.checked)"
           >{{ I18N.gallery.sidebar.virtual_scroll | translate }}</mat-checkbox>
+          <button mat-stroked-button class="!justify-start" (click)="openCardActionsDialog()">
+            <mat-icon class="!text-base !w-4 !h-4 !leading-4 mr-1">tune</mat-icon>
+            {{ I18N.gallery.card_actions.title | translate }}
+          </button>
           <div class="flex items-center gap-2 mt-2">
             <span class="text-sm opacity-70 shrink-0">{{ I18N.gallery.layout_mode | translate }}</span>
             <div class="flex gap-1 ml-auto">
@@ -751,32 +799,10 @@ function saveSectionStates(states: Record<string, boolean>): void {
         </mat-expansion-panel>
       }
 
-      <!-- Metric filter sections (collapsed by default) -->
-      <!-- Common metric sections -->
-      @for (group of commonFilterGroups(); track group.sectionKey) {
+      <!-- Metric filter sections, common then advanced, all top-level and collapsed by default -->
+      @for (group of metricFilterGroups(); track group.sectionKey) {
         <ng-container [ngTemplateOutlet]="metricPanel" [ngTemplateOutletContext]="{ $implicit: group }" />
       }
-
-      <!-- Advanced metrics (collapsed; nested sections) -->
-      <mat-expansion-panel class="!mb-1" [expanded]="sectionStates()['advanced'] === true"
-                           (opened)="onSectionToggle('advanced', true)"
-                           (closed)="onSectionToggle('advanced', false)"
-                           [style.background-color]="sectionStates()['advanced'] === true ? 'var(--mat-sys-surface-container)' : null">
-        <mat-expansion-panel-header>
-          <mat-panel-title class="flex items-center gap-2">
-            <mat-icon class="!text-base !w-5 !h-5 !leading-5 opacity-60">tune</mat-icon>
-            {{ I18N.gallery.sidebar.advanced_metrics | translate }}
-            @if (advancedActiveCount()) {
-              <span class="text-xs rounded-full min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center bg-[var(--mat-sys-primary)] text-[var(--mat-sys-on-primary)] leading-none">{{ advancedActiveCount() }}</span>
-            }
-          </mat-panel-title>
-        </mat-expansion-panel-header>
-        <div class="flex flex-col gap-1 pb-1">
-          @for (group of advancedFilterGroups(); track group.sectionKey) {
-            <ng-container [ngTemplateOutlet]="metricPanel" [ngTemplateOutletContext]="{ $implicit: group }" />
-          }
-        </div>
-      </mat-expansion-panel>
       }
 
       <ng-template #metricPanel let-group>
@@ -806,12 +832,8 @@ function saveSectionStates(states: Record<string, boolean>): void {
           <span class="text-xs opacity-60 px-1">{{ def.labelKey | translate }}</span>
           <div class="flex items-center gap-1">
             <div class="flex-1 flex flex-col">
-              @if (metricHistograms()[def.minKey]; as bars) {
-                <div class="flex items-end gap-px h-3 px-2" aria-hidden="true">
-                  @for (h of bars; track $index) {
-                    <span class="flex-1 rounded-sm bg-[var(--mat-sys-primary)] opacity-25" [style.height.%]="h"></span>
-                  }
-                </div>
+              @if (store.metricRanges()[def.minKey]; as range) {
+                <app-metric-sparkline [range]="range" />
               }
               <mat-slider [min]="def.sliderMin" [max]="def.sliderMax" [step]="def.step" class="w-full">
                 <input matSliderStartThumb
@@ -864,6 +886,12 @@ export class GalleryFilterSidebarComponent {
    *  the thumb, so the unit has to come through `displayWith` -- a bare "5" is
    *  what a screen reader announced otherwise. */
   protected readonly formatThresholdPercent = (value: number): string => `${value}%`;
+
+  /** Open the hover-button customiser: reorder and show/hide what the photo
+   *  cards' top row offers. Writes go through CardActionsService on save. */
+  protected openCardActionsDialog(): void {
+    this.dialog.open(CardActionsDialogComponent, { width: '26rem', autoFocus: false });
+  }
 
   /** The value being dragged right now, before the 400ms debounce commits it.
    *
@@ -1028,24 +1056,8 @@ export class GalleryFilterSidebarComponent {
 
   readonly commonFilterGroups = computed(() => this.matchGroups(COMMON_SECTION_ORDER));
   readonly advancedFilterGroups = computed(() => this.matchGroups(ADVANCED_SECTION_ORDER));
-  readonly searchResultGroups = computed(() => [...this.commonFilterGroups(), ...this.advancedFilterGroups()]);
-  readonly noFilterMatches = computed(() => !!this.filterQuery().trim() && this.searchResultGroups().length === 0);
-
-  readonly metricHistograms = computed(() => {
-    const ranges = this.store.metricRanges();
-    const out: Record<string, number[]> = {};
-    for (const key of Object.keys(ranges)) {
-      const buckets = ranges[key].buckets;
-      const max = Math.max(1, ...buckets);
-      out[key] = buckets.map(b => Math.round((b / max) * 100));
-    }
-    return out;
-  });
-
-  readonly advancedActiveCount = computed(() => {
-    const counts = this.sectionActiveCounts();
-    return ADVANCED_SECTION_ORDER.reduce((sum, key) => sum + (counts[key] || 0), 0);
-  });
+  readonly metricFilterGroups = computed(() => [...this.commonFilterGroups(), ...this.advancedFilterGroups()]);
+  readonly noFilterMatches = computed(() => !!this.filterQuery().trim() && this.metricFilterGroups().length === 0);
 
   readonly sectionActiveCounts = computed((): Record<string, number> => {
     const f = this.store.filters();
@@ -1053,9 +1065,10 @@ export class GalleryFilterSidebarComponent {
       date: (f.date_from ? 1 : 0) + (f.date_to ? 1 : 0),
       content: (f.type ? 1 : 0) + (f.tag ? 1 : 0) + (f.composition_pattern ? 1 : 0),
       equipment: (f.camera ? 1 : 0) + (f.lens ? 1 : 0),
-      persons: f.person_id ? f.person_id.split(',').length : 0,
-      refine: (f.favorites_only ? 1 : 0) + (f.is_monochrome ? 1 : 0) + (f.hide_rejected ? 1 : 0)
-        + (f.sequence_override ? 1 : 0),
+      persons: (f.person_id ? f.person_id.split(',').length : 0) + (f.faces_need_names ? 1 : 0),
+      refine: (f.review_status ? 1 : 0) + (f.favorites_only ? 1 : 0) + (f.is_monochrome ? 1 : 0) + (f.hide_rejected ? 1 : 0)
+        + (f.show_rejected ? 1 : 0) + (f.blinks_only ? 1 : 0) + (f.duplicates_only ? 1 : 0)
+        + (f.sequence_override ? 1 : 0) + (f.manual_faces_need_review ? 1 : 0),
       folder: f.path_prefix ? 1 : 0,
     };
     const fAny = f as Record<string, any>;
@@ -1092,6 +1105,9 @@ export class GalleryFilterSidebarComponent {
   // Kept separate from searchTimeout so a slider drag can't cancel a pending
   // text search (or vice versa) -- they debounce independent filter keys.
   private thresholdTimeout: ReturnType<typeof setTimeout> | null = null;
+  // The filename box's own debounce: sharing searchTimeout with the semantic
+  // box let a keystroke in one cancel the other's pending update.
+  private filenameTimeout: ReturnType<typeof setTimeout> | null = null;
   private albumsLoaded = false;
 
   constructor() {
@@ -1104,15 +1120,22 @@ export class GalleryFilterSidebarComponent {
     });
     inject(DestroyRef).onDestroy(() => {
       this.cancelPendingSearch();
+      if (this.filenameTimeout) clearTimeout(this.filenameTimeout);
       this.coarsePointer.cleanup();
     });
   }
 
   private readonly tooltips = viewChildren(MatTooltip);
+  private readonly selects = viewChildren(MatSelect);
 
   /** Hide every tooltip the sidebar owns, for a gallery parking behind a photo page. */
   hideTooltips(): void {
-    for (const tooltip of this.tooltips()) tooltip.hide(0);
+    closeOverlayDirectives(this.tooltips());
+  }
+
+  /** Close overlays before the gallery parks behind a photo. */
+  closeOverlays(): void {
+    closeOverlayDirectives(this.tooltips(), [], this.selects());
   }
 
   cancelPendingSearch(): void {
@@ -1131,9 +1154,33 @@ export class GalleryFilterSidebarComponent {
     ).catch(() => {});
   }
 
+  private readonly sidebarSearch = viewChild<ElementRef<HTMLInputElement>>('sidebarSearch');
+
+  /** The `/` shortcut's target when the toolbar search is hidden (below 1360 px). */
+  focusSearch(): void {
+    const input = this.sidebarSearch()?.nativeElement;
+    input?.focus();
+    input?.select();
+  }
+
   onSidebarSearchChange(event: Event): void {
     const value = (event.target as HTMLInputElement).value;
-    this.store.updateFilter('search', value);
+    // Debounced live filtering on every keystroke: waiting for Enter/blur
+    // made typing feel dead, with the grid frozen and no hint that a commit
+    // was pending. Enter still commits immediately through the same path.
+    if (this.filenameTimeout) clearTimeout(this.filenameTimeout);
+    this.filenameTimeout = setTimeout(() => {
+      this.filenameTimeout = null;
+      this.store.updateFilter('search', value);
+    }, 400);
+  }
+
+  onSidebarSearchCommit(event: Event): void {
+    if (this.filenameTimeout) {
+      clearTimeout(this.filenameTimeout);
+      this.filenameTimeout = null;
+    }
+    this.store.updateFilter('search', (event.target as HTMLInputElement).value);
   }
 
   onSemanticSearch(event: Event): void {

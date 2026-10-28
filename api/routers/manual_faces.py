@@ -5,6 +5,7 @@ from io import BytesIO
 import math
 import sqlite3
 
+import cv2
 from fastapi import APIRouter, Depends, HTTPException, Response
 from PIL import Image
 
@@ -22,6 +23,7 @@ from utils.manual_face_frame import file_stamp, read_frame
 router = APIRouter(tags=['manual faces'])
 _PURPOSE = 'manual_face_frame'
 _DECODER = 'upright-analysis-v1'
+_PREVIEW_EDGE = 1600
 
 
 def _visible(conn, user, path):
@@ -50,8 +52,21 @@ def _decode(path):
         frame = read_frame(disk_path)
     except OSError as exc:
         raise HTTPException(409, 'Original image unavailable or changed') from exc
-    # Canonical loader returns BGR; browser JPEG and crops must be RGB.
-    return Image.fromarray(frame.pixels[:, :, ::-1]), frame.identity, frame.stamp
+    return frame
+
+
+def _rgb(pixels):
+    """Convert only an owned crop/preview, never the full cached source frame."""
+    return Image.fromarray(cv2.cvtColor(pixels, cv2.COLOR_BGR2RGB))
+
+
+def _preview(pixels, edge=_PREVIEW_EDGE):
+    height, width = pixels.shape[:2]
+    if max(width, height) > edge:
+        scale = edge / max(width, height)
+        pixels = cv2.resize(pixels, (max(1, round(width * scale)), max(1, round(height * scale))),
+                            interpolation=cv2.INTER_AREA)
+    return _rgb(pixels)
 
 
 def _check_stamp(path, stamp):
@@ -83,8 +98,10 @@ def list_manual_faces(path: str, response: Response, user: CurrentUser = Depends
             'SELECT f.*,p.name AS person_name FROM faces f LEFT JOIN persons p ON p.id=f.person_id '
             'WHERE f.photo_path=? AND f.is_manual=1 ORDER BY f.id', (path,)).fetchall()
     states = [_current(path, row['manual_source']) for row in rows]
-    with get_db() as conn:
+    with get_db() as conn, conn:
         _visible(conn, user, path)
+        manual_faces.apply_review_states(conn, {
+            (row['id'], row['manual_source']): state for row, state in zip(rows, states)})
     return {'regions': [manual_faces.region_response(row, state) for row, state in zip(rows, states)]}
 
 
@@ -93,15 +110,15 @@ def manual_face_frame(path: str, response: Response, user: CurrentUser = Depends
     response.headers['Cache-Control'] = 'no-store'
     with get_db() as conn:
         _visible(conn, user, path)
-    image, identity, stamp = _decode(path)
+    frame = _decode(path)
     with get_db() as conn:
         _visible(conn, user, path)
-    _check_stamp(path, stamp)
-    w, h = image.size
+    _check_stamp(path, frame.stamp)
+    h, w = frame.pixels.shape[:2]
     token = create_access_token({'sub': user.user_id or '_legacy', 'purpose': _PURPOSE,
-                                 'path': path, 'width': w, 'height': h, 'source': identity,
+                                 'path': path, 'width': w, 'height': h, 'source': frame.identity,
                                  'decoder': _DECODER}, expires_delta=timedelta(minutes=15))
-    return {'image_base64': base64.b64encode(_jpeg(image, 1600)).decode('ascii'),
+    return {'image_base64': base64.b64encode(_jpeg(_preview(frame.pixels), _PREVIEW_EDGE)).decode('ascii'),
             'width': w, 'height': h, 'frame_token': token}
 
 
@@ -147,8 +164,10 @@ def _write(body, user, face_id=None):
         raise HTTPException(409, 'Invalid or expired editor frame; reload the editor')
     if claims.get('sub') != (user.user_id or '_legacy') or claims.get('path') != body.path:
         raise HTTPException(409, 'Editor frame belongs to another photo or user')
-    image, identity, stamp = _decode(body.path)
-    w, h = image.size
+    frame = _decode(body.path)
+    stamp = frame.stamp
+    identity = frame.identity
+    h, w = frame.pixels.shape[:2]
     if (not manual_faces.same_image(claims.get('source'), identity) or
             (claims.get('width'), claims.get('height')) != (w, h)):
         raise HTTPException(409, 'Image changed; reload the editor')
@@ -156,7 +175,8 @@ def _write(body, user, face_id=None):
     if (x2 - x1) * w < 4 - 1e-9 or (y2 - y1) * h < 4 - 1e-9:
         raise HTTPException(422, 'Rectangle must cover at least 4 by 4 source pixels')
     box = (math.floor(x1 * w), math.floor(y1 * h), math.ceil(x2 * w), math.ceil(y2 * h))
-    crop = _jpeg(image.crop(box), 160)
+    left, top, right, bottom = box
+    crop = _jpeg(_rgb(frame.pixels[top:bottom, left:right]), 160)
     with get_db() as conn, conn:
         conn.execute('BEGIN IMMEDIATE')
         _visible(conn, user, body.path)
@@ -181,7 +201,7 @@ def _write(body, user, face_id=None):
         fields = (*box, person_id, crop, identity, w, h)
         if old:
             conn.execute('UPDATE faces SET bbox_x1=?,bbox_y1=?,bbox_x2=?,bbox_y2=?,person_id=?, '
-                         'face_thumbnail=?,manual_source=?,manual_width=?,manual_height=? WHERE id=?',
+                         'face_thumbnail=?,manual_source=?,manual_width=?,manual_height=?,manual_review_required=0 WHERE id=?',
                          (*fields, face_id))
         else:
             index = conn.execute('SELECT MIN(COALESCE(face_index,0)) FROM faces WHERE photo_path=?',

@@ -6,6 +6,8 @@ plus the no-clobber / overwrite behaviour around an existing darktable sidecar.
 """
 
 import os
+from pathlib import Path
+import shutil
 import subprocess
 import sys
 from xml.etree import ElementTree as ET
@@ -35,6 +37,39 @@ _NS = {
     "dc": "http://purl.org/dc/elements/1.1/",
     "lr": "http://ns.adobe.com/lightroom/1.0/",
 }
+
+
+@pytest.mark.skipif(shutil.which('exiftool') is None, reason='requires ExifTool')
+@pytest.mark.parametrize('embed_original', [False, True])
+@pytest.mark.parametrize('resource', ['missing', 'directory'])
+def test_missing_packaged_exiftool_config_refuses_before_any_write(tmp_path, monkeypatch, embed_original, resource):
+    from PIL import Image
+
+    image = tmp_path / 'photo.jpg'
+    Image.new('RGB', (16, 16), 'blue').save(image)
+    companion = Path(str(image) + '.xmp')
+    companion.write_text(build_xmp(XmpRating(star_rating=1)), encoding='utf-8')
+    before = image.read_bytes(), companion.read_bytes()
+    # Model an installed package lacking its non-Python resource.
+    if resource == 'directory':
+        (tmp_path / 'installed' / 'facet_exiftool.config').mkdir(parents=True)
+    monkeypatch.setattr(xe, '__file__', str(tmp_path / 'installed' / 'xmp_export.py'))
+    with pytest.raises(RuntimeError, match='configuration is unavailable'):
+        write_metadata(str(image), XmpRating(star_rating=5, is_kept=True), embed_original=embed_original)
+    assert (image.read_bytes(), companion.read_bytes()) == before
+
+
+def test_missing_exiftool_config_does_not_prevent_dependency_free_sidecars(tmp_path, monkeypatch):
+    image = tmp_path / 'photo.jpg'
+    image.write_bytes(b'original')
+    monkeypatch.setattr(xe, '__file__', str(tmp_path / 'installed' / 'xmp_export.py'))
+    monkeypatch.setattr(xe, 'exiftool_available', lambda: False)
+    result = write_metadata(str(image), XmpRating(star_rating=5, is_kept=True))
+    assert result['embedded'] is None
+    packet = _parse(Path(result['sidecar']).read_text(encoding='utf-8'))
+    assert packet.get(f'{{{_NS["xmp"]}}}Rating') == '5'
+    assert packet.get(f'{{{xe.NS_FACET}}}ReviewDecision') == 'kept'
+    assert image.read_bytes() == b'original'
 
 
 def _parse(xml: str):
@@ -332,7 +367,7 @@ class TestExiftoolArgs:
 
     def test_caption_present(self):
         args = xe._exiftool_tag_args(XmpRating(caption="a quiet bay"), [], [])
-        assert "-XMP-dc:Description=a quiet bay" in args
+        assert "-XMP-dc:Description-x-default=a quiet bay" in args
         assert "-IPTC:Caption-Abstract=a quiet bay" in args
 
     def test_no_caption_no_description_arg(self):
@@ -340,18 +375,18 @@ class TestExiftoolArgs:
         assert not any(a.startswith("-XMP-dc:Description") for a in args)
 
     def test_regions_args_and_math(self):
+        from tests.conftest import added_region
         reg = FaceRegion.from_bbox("Alice", 0, 0, 100, 100, 1000, 1000)
-        args = xe._exiftool_tag_args(XmpRating(regions=[reg]), [], [])
-        assert "-XMP-mwg-rs:RegionInfo=" in args  # clear list first
-        assert "-XMP-mwg-rs:RegionName=Alice" in args
-        assert "-XMP-mwg-rs:RegionType=Face" in args
+        args = xe._region_args([reg])
+        region = added_region(args)
         assert "-XMP-mwg-rs:RegionAppliedToDimensionsW=1000" in args
-        assert "-XMP-mwg-rs:RegionAreaX=0.050000" in args  # center (0+100)/2/1000
-        assert "-XMP-mwg-rs:RegionAreaW=0.100000" in args
+        assert "-XMP-mwg-rs:RegionAppliedToDimensionsH=1000" in args
+        assert region["Area"] == {
+            "X": 0.05, "Y": 0.05, "W": 0.1, "H": 0.1, "Unit": "normalized"}
+        assert region["Extensions"] == {"XMP-facet:RegionOwner": "Facet"}
 
     def test_no_regions_no_region_args(self):
-        args = xe._exiftool_tag_args(XmpRating(star_rating=1), [], [])
-        assert not any("mwg-rs" in a for a in args)
+        assert xe._region_args([]) == []
 
     def test_existing_keywords_unioned_existing_first(self):
         args = xe._exiftool_tag_args(
@@ -369,7 +404,7 @@ class TestWriteMetadata:
         calls = []
         monkeypatch.setattr(xe, "exiftool_available", lambda: True)
         monkeypatch.setattr(xe, "_run_exiftool",
-                            lambda target, rating, *, timeout: calls.append(target))
+                            lambda target, rating, *, timeout, reconcile: calls.append(target))
         img = tmp_path / "p.jpg"
         img.write_bytes(b"x")
         result = write_metadata(str(img), XmpRating(star_rating=3))
@@ -380,8 +415,10 @@ class TestWriteMetadata:
     def test_safe_format_embeds_when_opted_in(self, monkeypatch, tmp_path):
         calls = []
         monkeypatch.setattr(xe, "exiftool_available", lambda: True)
+        monkeypatch.setattr(xe, "_resolve_exiftool", lambda: 'mock-exiftool')
+        monkeypatch.setattr(xe, "_exiftool_write_args", lambda *args, **kwargs: [])
         monkeypatch.setattr(xe, "_run_exiftool",
-                            lambda target, rating, *, timeout: calls.append(target))
+                            lambda target, rating, *, timeout, reconcile: calls.append(target))
         img = tmp_path / "p.jpg"
         img.write_bytes(b"x")
         result = write_metadata(str(img), XmpRating(star_rating=3), embed_original=True)
@@ -394,7 +431,7 @@ class TestWriteMetadata:
         calls = []
         monkeypatch.setattr(xe, "exiftool_available", lambda: True)
         monkeypatch.setattr(xe, "_run_exiftool",
-                            lambda target, rating, *, timeout: calls.append(target))
+                            lambda target, rating, *, timeout, reconcile: calls.append(target))
         img = tmp_path / "p.nef"
         img.write_bytes(b"x")
         result = write_metadata(str(img), XmpRating(star_rating=3), embed_original=True)
@@ -419,7 +456,7 @@ _GOOD_XMP = (
 
 
 def _fake_exiftool(tmp_path, version="13.55", payload="<broken attr=\"a=\" b"):
-    """Executable stand-in: answers -ver, returns [] for reads, corrupts on write."""
+    """Executable stand-in: answers -ver, returns one empty metadata record for reads, corrupts on write."""
     body = tmp_path / "fake_exiftool.py"
     body.write_text(
         "import sys\n"
@@ -428,7 +465,7 @@ def _fake_exiftool(tmp_path, version="13.55", payload="<broken attr=\"a=\" b"):
         f"    print({version!r})\n"
         "    sys.exit(0)\n"
         "if '-json' in ' '.join(args):\n"
-        "    print('[]')\n"
+        "    print('[{}]')\n"
         "    sys.exit(0)\n"
         f"open(args[-1], 'wb').write({payload!r}.encode())\n"
     )
@@ -444,9 +481,9 @@ def _fake_exiftool(tmp_path, version="13.55", payload="<broken attr=\"a=\" b"):
 
 @pytest.fixture
 def clear_version_cache():
-    xe._exiftool_version.cache_clear()
+    xe._cached_exiftool_version.cache_clear()
     yield
-    xe._exiftool_version.cache_clear()
+    xe._cached_exiftool_version.cache_clear()
 
 
 @pytest.mark.usefixtures("clear_version_cache")
@@ -463,6 +500,78 @@ class TestExiftoolVersionGuard:
             lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=raw + "\n", stderr=""),
         )
         assert (xe.exiftool_defective_version() is not None) is defective
+
+    @pytest.mark.parametrize('failure', ['io', 'timeout', 'nonzero', 'malformed', 'empty'])
+    def test_failed_probe_is_retried_then_success_is_cached(self, monkeypatch, failure):
+        calls = []
+
+        def probe(args, **kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                if failure == 'io':
+                    raise OSError('transient version lookup failure')
+                if failure == 'timeout':
+                    raise subprocess.TimeoutExpired(args, 15)
+                if failure == 'nonzero':
+                    return subprocess.CompletedProcess(args, 1, stdout='13.55', stderr='temporary failure')
+                return subprocess.CompletedProcess(args, 0, stdout='not a version' if failure == 'malformed' else '')
+            return subprocess.CompletedProcess(args, 0, stdout='13.55\n')
+
+        monkeypatch.setattr(xe.subprocess, 'run', probe)
+        assert xe._exiftool_version('/same/exiftool') is None
+        assert xe._exiftool_version('/same/exiftool') == (13, 55)
+        assert xe._exiftool_version('/same/exiftool') == (13, 55)
+        assert len(calls) == 2
+
+    def test_face_writes_recover_after_a_failed_capability_probe(self, monkeypatch, tmp_path):
+        calls = []
+
+        def probe(args, **kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                raise OSError('transient version lookup failure')
+            return subprocess.CompletedProcess(args, 0, stdout='13.55')
+
+        monkeypatch.setattr(xe.subprocess, 'run', probe)
+        monkeypatch.setattr(xe, '_read_existing_regions', lambda *args, **kwargs: {})
+        monkeypatch.setattr(xe, '_read_existing_metadata', lambda *args, **kwargs: ([], [], False))
+        rating = XmpRating(star_rating=4, regions=[FaceRegion.from_bbox('Ada', 1, 1, 4, 4, 10, 10)])
+        target = str(tmp_path / 'new.xmp')
+        first = xe._exiftool_write_args(target, rating, '/same/exiftool', timeout=1)
+        second = xe._exiftool_write_args(target, rating, '/same/exiftool', timeout=1)
+        assert '-XMP:Rating=4' in first and '-XMP:Rating=4' in second
+        assert not any('RegionList' in argument for argument in first)
+        assert any(argument.startswith('-XMP-mwg-rs:RegionList+=') for argument in second)
+        assert len(calls) == 2
+        assert not Path(target).exists()
+
+    @pytest.mark.parametrize('embed', [False, True])
+    def test_recovered_defective_version_refuses_before_any_write(self, monkeypatch, tmp_path, embed):
+        exe = _fake_exiftool(tmp_path, version='13.25', payload=_GOOD_XMP)
+        monkeypatch.setattr(xe, '_resolve_exiftool', lambda: exe)
+        image = tmp_path / 'guard.jpg'
+        image.write_bytes(b'original image')
+        sidecar = Path(str(image) + '.xmp')
+        sidecar.write_text(_GOOD_XMP, encoding='utf-8')
+        before = image.read_bytes(), sidecar.read_bytes()
+        original_run = subprocess.run
+        probes, writes = [], []
+
+        def run(args, **kwargs):
+            if args[1:] == ['-ver']:
+                probes.append(args)
+                if len(probes) == 1:
+                    raise OSError('transient first version lookup failure')
+            if '-overwrite_original' in args:
+                writes.append(args)
+            return original_run(args, **kwargs)
+
+        monkeypatch.setattr(xe.subprocess, 'run', run)
+        with pytest.raises(RuntimeError, match='13.25.*13.28'):
+            write_metadata(str(image), XmpRating(star_rating=3), embed_original=embed)
+        assert len(probes) == 2
+        assert writes == []
+        assert (image.read_bytes(), sidecar.read_bytes()) == before
 
     def test_lookup_failure_does_not_block(self, monkeypatch):
         monkeypatch.setattr(xe, "_resolve_exiftool", lambda: "/nonexistent/exiftool")
@@ -524,6 +633,49 @@ class TestPostWriteValidation:
         assert "malformed XMP" in caplog.text
         assert not (tmp_path / "p.jpg.xmp").exists()
 
+    def test_export_sidecars_precondition_error_counts_and_continues(self, monkeypatch, tmp_path, request):
+        import sqlite3
+
+        from db.schema import init_database
+        db = str(tmp_path / "e.db")
+        init_database(db)
+        conn = sqlite3.connect(db)
+        request.addfinalizer(conn.close)
+        conn.row_factory = sqlite3.Row
+        paths = []
+        for name in ("a.jpg", "b.jpg"):
+            img = tmp_path / name
+            img.write_bytes(b"x")
+            paths.append(str(img))
+            conn.execute("INSERT INTO photos (path, filename) VALUES (?, ?)", (str(img), name))
+        seen = []
+
+        def write(path, rating, **kwargs):
+            seen.append(path)
+            if path == paths[0]:
+                raise xe.MetadataPreconditionError("Cannot read face metadata; repair it before exporting")
+            return {"ok": True, "embedded": None, "sidecar": path + ".xmp", "skipped": False}
+        monkeypatch.setattr(xe, "write_metadata", write)
+        stats = xe.export_sidecars(conn)
+        assert stats == {"written": 1, "embedded": 0, "missing": 0, "errors": 1}
+        assert sorted(seen) == sorted(paths)
+
+    def test_row_without_ai_tags_marks_no_manual_tag_as_ai(self):
+        rating = XmpRating.from_row({"tags": "dog, manual", "manual_tags": ["manual"]})
+        assert rating.ai_tags == []
+        assert rating.manual_tags == ["manual"]
+
+    @pytest.mark.parametrize("value,expected", [
+        (None, []), ("", []), (1.50, ["1.5"]), (["a", ["b", None, 2]], ["a", "b", "2"]),
+    ])
+    def test_listify_stringifies_scalars_and_nests(self, value, expected):
+        assert xe._listify(value) == expected
+
+    @pytest.mark.parametrize("value", [True, False, ["ok", True], [[False]]])
+    def test_listify_refuses_booleans(self, value):
+        with pytest.raises(RuntimeError, match="Boolean keyword needs lossless readback"):
+            xe._listify(value)
+
 
 _EXIFTOOL = xe._resolve_exiftool()
 
@@ -544,7 +696,7 @@ class TestKeywordMergeIntegration:
             check=True,
         )
         write_metadata(str(img), XmpRating(star_rating=4, tags=["beach"]), embed_original=True)
-        flat, _ = xe._read_existing_keywords(str(img), _EXIFTOOL, timeout=30)
+        flat, _, _ = xe._read_existing_metadata(str(img), _EXIFTOOL, timeout=30)
         assert "Vacation" in flat  # foreign keyword preserved, not wiped
         assert "beach" in flat     # Facet keyword added
 
@@ -585,6 +737,85 @@ class TestKeywordMergeIntegration:
 
         assert field("params") == "abc="
         assert field("multi_name") == "y"
+
+
+@pytest.mark.skipif(not _EXIFTOOL, reason="exiftool not installed")
+class TestCaptionLanguagesIntegration:
+    """Exercise actual language alternatives, not just the generated arguments."""
+
+    @staticmethod
+    def _captions(path):
+        root = ET.fromstring(path.read_bytes())
+        return {
+            li.get(f"{{{xe.NS_XML}}}lang"): li.text
+            for li in root.findall(".//dc:description/rdf:Alt/rdf:li", _NS)
+        }
+
+    @staticmethod
+    def _seed(tmp_path):
+        from PIL import Image
+
+        img = tmp_path / "p.jpg"
+        Image.new("RGB", (8, 8), "blue").save(img, "JPEG")
+        sidecar = tmp_path / "p.jpg.xmp"
+        seed_args = [
+            "-XMP-dc:Description-x-default=Original caption",
+            "-XMP-dc:Description-fr=Légende française",
+            "-XMP-dc:Description-ja=日本語の説明",
+            "-XMP-dc:Title-x-default=External title",
+            "-XMP-dc:Creator=External author",
+        ]
+        for target in (img, sidecar):
+            subprocess.run(
+                [_EXIFTOOL, "-q", "-overwrite_original", *seed_args, str(target)],
+                check=True,
+            )
+        return img, sidecar
+
+    @pytest.mark.parametrize("embed_original", [False, True])
+    @pytest.mark.parametrize("caption", ["Facet caption & <sunset>", ""])
+    def test_updates_only_default_caption(self, tmp_path, embed_original, caption):
+        img, sidecar = self._seed(tmp_path)
+        original_bytes = img.read_bytes()
+        expected = self._captions(sidecar)
+        if caption:
+            expected["x-default"] = caption
+
+        # A second write must neither drop languages nor duplicate alternatives.
+        for _ in range(2):
+            result = write_metadata(
+                str(img), XmpRating(caption=caption, star_rating=4),
+                embed_original=embed_original,
+            )
+            assert result["ok"]
+            targets = [sidecar]
+            if embed_original:
+                extracted = tmp_path / "embedded.xmp"
+                extracted.write_bytes(subprocess.run(
+                    [_EXIFTOOL, "-b", "-XMP", str(img)],
+                    capture_output=True, check=True,
+                ).stdout)
+                targets.append(extracted)
+            else:
+                assert img.read_bytes() == original_bytes
+            for target in targets:
+                assert self._captions(target) == expected
+                root = ET.fromstring(target.read_bytes())
+                assert len(root.findall(".//dc:description/rdf:Alt/rdf:li", _NS)) == 3
+                assert root.find(".//dc:title/rdf:Alt/rdf:li", _NS).text == "External title"
+                assert root.find(".//dc:creator/rdf:Seq/rdf:li", _NS).text == "External author"
+
+    def test_fallback_diverts_without_changing_existing_languages(self, monkeypatch, tmp_path):
+        img, sidecar = self._seed(tmp_path)
+        original_bytes, sidecar_bytes = img.read_bytes(), sidecar.read_bytes()
+        monkeypatch.setattr(xe, "exiftool_available", lambda: False)
+        result = write_metadata(str(img), XmpRating(caption="Facet caption"), embed_original=True)
+        assert result["embedded"] is None
+        fallback = tmp_path / "p.jpg.facet.xmp"
+        assert result["sidecar"] == str(fallback)
+        assert self._captions(fallback) == {"x-default": "Facet caption"}
+        assert img.read_bytes() == original_bytes
+        assert sidecar.read_bytes() == sidecar_bytes
 
 
 class TestExportSidecarsCli:

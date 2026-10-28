@@ -2,8 +2,8 @@
 
 A smart album's ``smart_filter_json`` is written by the Angular store (``smartAlbumFilterJson``) and
 read back into that store when the album opens, so what an agent stores must be the CLIENT form:
-``person_id`` / ``type`` (not ``person`` / ``category``), JSON booleans for ``favorites_only`` and
-``is_monochrome``, every other value a string, and none of the keys the client strips
+``person_id`` / ``type`` (not ``person`` / ``category``), JSON booleans for the flags in
+``BOOLEAN_KEYS``, every other value a string, and none of the keys the client strips
 (``SMART_ALBUM_EXCLUDE_KEYS``: the hide toggles are the viewer's, never the album's definition).
 
 The key table lives in :mod:`api.agent.ui_tools`; the client's copy is checked against it.
@@ -14,12 +14,14 @@ from typing import Any, Optional
 
 from api.agent.internal_client import err
 from api.agent.show import _is_effective
-from api.agent.ui_tools import CONTRACT_TO_CLIENT_KEY, SMART_ALBUM_EXCLUDE_KEYS, TAB_UNSUPPORTED_FILTER_KEYS
+from api.agent.ui_tools import (
+    CONTRACT_TO_CLIENT_KEY, SMART_ALBUM_EXCLUDE_KEYS, TAB_UNSUPPORTED_FILTER_KEYS, conflicting_rejected_filters,
+)
 from api.models.gallery import query_value
 from api.types import TYPE_FILTERS
 
-# The two flags the client store holds as booleans (``GalleryFilters``); every other value is a string.
-BOOLEAN_KEYS = frozenset({"favorites_only", "is_monochrome"})
+# Flags the client store holds as booleans (``GalleryFilters``); every other value is a string.
+BOOLEAN_KEYS = frozenset({"favorites_only", "is_monochrome", "manual_faces_need_review", "faces_need_names", "show_rejected"})
 # Every spelling an album refuses: the client's own excluded keys plus the contract names that rename to one
 # (``semantic_query`` -> ``semanticQuery``), so a semantic or similar view is refused in both name forms.
 REFUSED_KEYS = SMART_ALBUM_EXCLUDE_KEYS | frozenset(
@@ -44,6 +46,8 @@ def to_stored(filters: dict) -> tuple[Optional[dict], dict]:
                or (key in TAB_UNSUPPORTED_FILTER_KEYS and _is_effective(key, given[key]))]
     if refused:
         return unsupported(refused), {}
+    if conflicting_rejected_filters(given):
+        return err("invalid_input", "`show_rejected` and `favorites_only` cannot be combined in a smart album"), {}
     if "type" in given and "category" in given:
         return err("invalid_input", "`type` and `category` cannot be combined: both are the gallery's `type` "
                    "filter in a stored album. Give one of them"), {}

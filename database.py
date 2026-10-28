@@ -222,6 +222,8 @@ def migrate_user_preferences(username, db_path=DEFAULT_DB_PATH):
     """Copy non-zero ratings from photos table to user_preferences for a user."""
     import sqlite3
 
+    # The copy reads is_kept, which an older library gains only on schema upgrade.
+    init_database(db_path, build_photo_indexes=False)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
 
@@ -235,7 +237,7 @@ def migrate_user_preferences(username, db_path=DEFAULT_DB_PATH):
     # Count existing photos with ratings
     row = conn.execute("""
         SELECT COUNT(*) FROM photos
-        WHERE star_rating > 0 OR is_favorite = 1 OR is_rejected = 1
+        WHERE star_rating > 0 OR is_favorite = 1 OR is_rejected = 1 OR is_kept = 1
     """).fetchone()
     count = row[0] if row else 0
 
@@ -247,10 +249,10 @@ def migrate_user_preferences(username, db_path=DEFAULT_DB_PATH):
     logger.info("Migrating %d photo rating(s) to user_preferences for user '%s'...", count, username)
 
     conn.execute("""
-        INSERT OR IGNORE INTO user_preferences (user_id, photo_path, star_rating, is_favorite, is_rejected)
-        SELECT ?, path, COALESCE(star_rating, 0), COALESCE(is_favorite, 0), COALESCE(is_rejected, 0)
+        INSERT OR IGNORE INTO user_preferences (user_id, photo_path, star_rating, is_favorite, is_rejected, is_kept)
+        SELECT ?, path, COALESCE(star_rating, 0), COALESCE(is_favorite, 0), COALESCE(is_rejected, 0), COALESCE(is_kept, 0)
         FROM photos
-        WHERE star_rating > 0 OR is_favorite = 1 OR is_rejected = 1
+        WHERE star_rating > 0 OR is_favorite = 1 OR is_rejected = 1 OR is_kept = 1
     """, (username,))
     row = conn.execute("SELECT changes()").fetchone()
     migrated = row[0] if row else 0
@@ -311,6 +313,12 @@ def _hold_library_lock(args):
 
 def main():
     import argparse
+
+    if '--relink-photos' in sys.argv[1:]:
+        from db.relink import main as relink_photos
+        relink_photos([arg for arg in sys.argv[1:] if arg != '--relink-photos'],
+                      prog=os.path.basename(sys.argv[0]) + ' --relink-photos')
+        return
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
@@ -458,6 +466,9 @@ def main():
         metavar='N',
         help='Number of database backups to retain with --backup (default: 3)'
     )
+
+    parser.add_argument('--relink-photos', action='store_true',
+                        help='Preview/apply explicitly moved photo paths; use --relink-photos --help for the bounded workflow')
 
     args = parser.parse_args()
 

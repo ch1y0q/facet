@@ -393,6 +393,7 @@ def test_scannable_extensions_include_hif():
         | image_loading.BMP_EXTENSIONS
         | image_loading.TIFF_EXTENSIONS
         | image_loading.AVIF_EXTENSIONS
+        | image_loading.JXL_EXTENSIONS
     )
 
 
@@ -932,3 +933,102 @@ def test_open_nonraw_image_drafts_only_a_jpeg(tmp_path):
 
     draft.assert_not_called()
     assert out.size == (4000, 3000)
+
+
+CANON_PQ_ROTATED_HIF = FIXTURES / 'canon_eos_r8_hdr_pq_rotated.hif'
+
+
+@requires_heif
+def test_pq_hif_carrying_orientation_eight_decodes_upright():
+    """The pillow-heif 1.6 double-transpose regression.
+
+    A portrait frame stored the way cameras write it -- pixels in the sensor's
+    reading, EXIF Orientation 8 -- must come back upright. pillow-heif 1.6
+    began applying the orientation inside ``open_heif`` itself, so the raw
+    EXIF blob the PQ path re-attached made the caller's ``exif_transpose``
+    turn the already-upright frame again: every rotated HDR PQ .HIF from this
+    Canon body lay on its side in the viewer, its thumbnail and its scores.
+    """
+    img = image_loading.open_nonraw_image(CANON_PQ_ROTATED_HIF)
+    assert img is not None
+    assert img.size == (600, 800)  # portrait: the stored 800x600 plane turned upright
+    # The re-attached metadata keeps the orientation neutralised, so a second
+    # transpose downstream can never move it again.
+    exif = img.info.get('exif')
+    assert exif
+    Image_, _ = image_loading._ensure_pil()
+    parsed = Image_.Exif()
+    blob = exif[6:] if exif[:6] == b'Exif\x00\x00' else exif
+    parsed.load(blob)
+    assert parsed.get(image_loading._EXIF_ORIENTATION_TAG) == 1
+
+
+@requires_heif
+def test_pillow_heif_transposes_probe_agrees_with_the_decoder():
+    """The cache seeded by the probe must match what open_heif really does."""
+    import pillow_heif
+    probe = image_loading._pillow_heif_transposes()
+    buf = __import__('io').BytesIO()
+    Image_, _ = image_loading._ensure_pil()
+    exif = Image_.Exif()
+    exif[image_loading._EXIF_ORIENTATION_TAG] = 8
+    pillow_heif.from_pillow(Image_.new('RGB', (6, 4))).save(buf, format='HEIF', exif=exif.tobytes())
+    buf.seek(0)
+    assert probe == (pillow_heif.open_heif(buf).size == (4, 6))
+    assert image_loading._pillow_heif_transposes() is probe  # cached, not re-derived
+
+
+@requires_heif
+@pytest.mark.parametrize('decoder_transposes, expected_orientation', [(True, 1), (False, 8)])
+def test_native_pq_exif_is_neutralised_only_when_the_decoder_already_turned_the_plane(
+        monkeypatch, decoder_transposes, expected_orientation):
+    """Neutralise on a transposing decoder; pass the blob verbatim on one that leaves the plane alone."""
+    monkeypatch.setattr(image_loading, '_heif_transposes', decoder_transposes)
+    img = image_loading._decode_pq_native(
+        CANON_PQ_ROTATED_HIF, image_loading.get_hdr_pq_tonemap_settings())
+    assert img is not None
+    exif = img.info['exif']
+    Image_, _ = image_loading._ensure_pil()
+    parsed = Image_.Exif()
+    parsed.load(exif[6:] if exif[:6] == b'Exif\x00\x00' else exif)
+    assert parsed.get(image_loading._EXIF_ORIENTATION_TAG) == expected_orientation
+
+
+def test_exif_with_neutral_orientation_rewrites_only_the_orientation():
+    Image_, _ = image_loading._ensure_pil()
+    exif = Image_.Exif()
+    exif[274] = 8
+    exif[271] = 'Canon'  # Make, to prove the rest of the blob survives
+    neutral = image_loading._exif_with_neutral_orientation(exif.tobytes())
+    parsed = Image_.Exif()
+    parsed.load(neutral)
+    assert parsed.get(274) == 1
+    assert parsed.get(271) == 'Canon'
+
+    # A blob with the Exif\0\0 marker (as JPEG-style callers carry) keeps it.
+    marked = image_loading._exif_with_neutral_orientation(b'Exif\x00\x00' + exif.tobytes())
+    assert marked[:6] == b'Exif\x00\x00'
+    parsed2 = Image_.Exif()
+    parsed2.load(marked[6:])
+    assert parsed2.get(274) == 1
+
+
+def test_exif_with_neutral_orientation_survives_a_malformed_blob():
+    garbage = b'\x00\x01\x02not an exif blob'
+    assert image_loading._exif_with_neutral_orientation(garbage) == garbage
+
+
+def test_unavailable_imagecodecs_jxl_skips_scan_but_watch_knows_extension():
+    import subprocess
+    import sys
+    code = """
+import sys
+import imagecodecs
+from types import SimpleNamespace
+imagecodecs.JPEGXL = SimpleNamespace(available=False)
+from utils.image_loading import JXL_EXTENSIONS, SCANNABLE_IMAGE_EXTENSIONS, WATCHABLE_IMAGE_EXTENSIONS
+assert not JXL_EXTENSIONS
+assert '.jxl' not in SCANNABLE_IMAGE_EXTENSIONS
+assert '.jxl' in WATCHABLE_IMAGE_EXTENSIONS
+"""
+    subprocess.run([sys.executable, "-c", code], check=True, capture_output=True, text=True)

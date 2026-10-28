@@ -7,7 +7,7 @@
 import asyncio
 import json
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from starlette.websockets import WebSocketDisconnect
@@ -157,12 +157,29 @@ class TestHandshake:
             ws.send_json(auth_frame(None))
             assert closed_after(ws) == 4401
 
-    def test_expired_session_closes_4401(self, agent_app, fake_tab):
+    def test_expired_session_closes_4401(self, agent_app, fake_tab, monkeypatch):
+        import jwt.api_jwt
+
         env = agent_app("legacy")
         token = create_access_token({"sub": "_legacy", "role": "user"},
                                     expires_delta=timedelta(seconds=2))
+        # Read after minting: a clock frozen just before a second boundary would
+        # precede the token's whole-second iat and fail the handshake instead.
+        verification_time = datetime.now(timezone.utc)
+
+        class VerificationClock(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return (verification_time.astimezone(tz) if tz is not None
+                        else verification_time.replace(tzinfo=None))
+
+        # A slow worker must not spend this token's lifetime before the
+        # handshake. Keep the real JWT validation, then expire it only after
+        # the actual socket has authenticated and sent its ready frame.
+        monkeypatch.setattr(jwt.api_jwt, "datetime", VerificationClock)
         tab = fake_tab(env, token)
         assert tab.ready["type"] == "ready"
+        verification_time += timedelta(seconds=3)
         assert tab.wait_closed() == bridge.CLOSE_UNAUTHORIZED
 
     def test_rotated_password_closes_4401(self, agent_app, fake_tab):
@@ -613,6 +630,7 @@ class TestUiTools:
         ("ui_navigate", {"route": "/stats", "extra": 1}),
         ("ui_set_gallery_filters", {"patch": {"not_a_filter": 1}}),
         ("ui_set_gallery_filters", {"patch": {"sort": "nope"}}),
+        ("ui_set_gallery_filters", {"patch": {"show_rejected": True, "favorites_only": True}}),
         ("ui_get_gallery_view", {"limit": 500}),
         ("ui_select_photos", {}),
         ("ui_select_photos", {"paths": ["a"], "select_view": True}),

@@ -3,6 +3,7 @@ import { MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { i18nKeys } from '../../../core/i18n/keys';
+import { GALLERY_SHORTCUT_SECTION } from '../../../features/gallery/gallery-shortcuts';
 
 interface ShortcutRow {
   keys: string[];
@@ -50,24 +51,15 @@ interface ShortcutSection {
 export class ShortcutsDialogComponent {
   protected readonly I18N = i18nKeys();
   protected readonly sections: ShortcutSection[] = [
-    {
-      titleKey: 'shortcuts.section_gallery',
-      rows: [
-        { keys: ['←', '→', '↑', '↓'], labelKey: 'shortcuts.navigate' },
-        { keys: ['Enter'], labelKey: 'shortcuts.open_detail' },
-        { keys: ['Space'], labelKey: 'shortcuts.toggle_select' },
-        { keys: ['Ctrl', 'A'], labelKey: 'shortcuts.select_all' },
-        { keys: ['1', '–', '5'], labelKey: 'shortcuts.rate' },
-        { keys: ['0', 'X'], labelKey: 'shortcuts.reject' },
-        { keys: ['F'], labelKey: 'shortcuts.favorite' },
-        { keys: ['Esc'], labelKey: 'shortcuts.clear_selection' },
-        { keys: ['Shift', 'F10'], labelKey: 'shortcuts.context_menu' },
-      ],
-    },
+    GALLERY_SHORTCUT_SECTION,
     {
       titleKey: 'shortcuts.section_detail',
       rows: [
+        { keys: ['K'], labelKey: this.I18N.review.shortcut },
         { keys: ['←', '→'], labelKey: 'shortcuts.navigate' },
+        { keys: ['1', '–', '5'], labelKey: 'shortcuts.rate' },
+        { keys: ['0', 'X'], labelKey: 'shortcuts.reject' },
+        { keys: ['F'], labelKey: 'shortcuts.favorite' },
         { keys: ['Esc'], labelKey: 'shortcuts.close' },
       ],
     },

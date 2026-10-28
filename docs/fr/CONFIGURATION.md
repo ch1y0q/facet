@@ -999,6 +999,8 @@ linéaire puis encodée avec l’OETF sRGB — la réduction à 8 bits n’inter
 qu’à cette dernière étape. Ce bloc contrôle ce mappage. Il ne s’applique qu’aux images dont le profil de
 couleur NCLX déclare le transfert PQ (caractéristique 16) ; les HEIF SDR, HLG
 et JPEG passent tels quels, quelle que soit la valeur de `enabled`.
+Les cadres que le boîtier a écrits tournés (une orientation EXIF autre que 1) ressortent droits : le décodeur applique lui-même l'orientation — y compris sur le chemin de profondeur native, où pillow-heif 1.6 et plus tournent le plan avant le mappage de tons et la valeur EXIF brute est neutralisée plutôt que réappliquée.
+
 
 ```json
 "hdr_pq_tonemap": {
@@ -1099,6 +1101,8 @@ Regroupe les photos similaires prises en succession rapide.
 ## Notifications de mise à jour
 
 Prévient l'administrateur de l'installation qu'une nouvelle version de Facet est parue. À ne pas confondre avec le « Une nouvelle version est disponible — Recharger » du navigateur, qui bascule la page sur un paquet déjà téléchargé : ici il s'agit d'une version que personne n'a encore installée.
+
+La version en cours est toujours affichée en bas du menu utilisateur, pour tous ceux qui peuvent ouvrir le visualiseur. Une image construite avec `--build-arg FACET_BUILD=<branche>@<commit>` affiche aussi cette ligne, pour distinguer deux installations d'une même version construites depuis des branches différentes (`/api/config` les fournit en `version` et `build`, mais seulement à qui peut lire la bibliothèque : sur une installation protégée par mot de passe, un visiteur non connecté ne reçoit ni l'un ni l'autre).
 
 Volontairement discret. La vérification a lieu côté serveur et son résultat est mis en cache : une installation n'interroge GitHub qu'une fois tous les `interval_days`, quel que soit le nombre de personnes devant le viewer. La requête ne transporte rien d'autre qu'elle-même — aucun jeton, aucun identifiant, rien de la photothèque. Un échec est silencieux : un GitHub injoignable se traduit par « aucune mise à jour connue », jamais par une erreur. Seuls les utilisateurs en mode édition sont prévenus, car la mise à jour relève de l'exploitant, et chaque navigateur n'affiche l'avis qu'une fois par semaine au maximum.
 
@@ -1695,7 +1699,7 @@ Affichage et comportement de la galerie web.
       "hide_brackets": true,
       "hide_panoramas": true,
       "hide_details": true,
-      "tooltip_mode": "hover",
+      "tooltip_mode": "panel",
       "hide_rejected": true,
       "sort": "aggregate",
       "sort_direction": "DESC",
@@ -1717,6 +1721,7 @@ Affichage et comportement de la galerie web.
 | `default_category` | `""` | Filtre de catégorie par défaut |
 | `edition_password` | `""` | Mot de passe pour déverrouiller le mode édition (vide = toute modification est refusée ; l'installation est en lecture seule, sauf pour un navigateur local direct ou un assistant local en édition complète sous `trusted_local_editing`) |
 | `trusted_local_editing` | `false` | Accorde les droits d'édition, sans mot de passe d'édition, à un navigateur de la même machine qui joint la visionneuse directement en loopback. Ne s'applique que si `password` ET `edition_password` sont vides sur une installation mono-utilisateur ; couvre toutes les routes soumises à l'édition, déclenchement du scan compris, et permet à la boîte « Connecter un assistant » de créer un jeton d'assistant en édition complète pour les requêtes `/mcp` de la même machine. **Ne jamais l'activer derrière un proxy inverse sur la même machine.** Voir [Édition locale de confiance](#édition-locale-de-confiance) |
+| `place_search_url` | `"https://photon.komoot.io/api"` | Point d’accès Photon derrière la recherche explicite **Rechercher en ligne** de la galerie ; `""` la désactive. Voir [Recherche en ligne de lieux](#recherche-en-ligne-de-lieux). |
 | **comparison_mode** | | |
 | `min_comparisons_for_optimization` | `50` | Nombre minimal de comparaisons décisives (une photo l'a emporté ; les égalités ne comptent pas) de la catégorie avant de suggérer des poids |
 | `pair_selection_strategy` | `"learning"` | Stratégie de paires : `learning` (démarrage à froid par diversité d'embeddings + désaccord de rang une fois entraîné), `uncertainty`, `boundary`, `active`, `random` |
@@ -1772,7 +1777,7 @@ Affichage et comportement de la galerie web.
 | `low_light_max_luminance` | `0.2` | Seuil de faible luminosité |
 | **defaults** | | |
 | `type` | `""` | Filtre de type de photo par défaut (par ex. `"portraits"`, `"landscapes"`, ou `""` pour Toutes) |
-| `sort` | `"aggregate"` | Colonne de tri par défaut |
+| `sort` | `"aggregate"` | Colonne de tri par défaut. La galerie s'ouvre plutôt sur le dernier tri choisi dans le menu de tri lorsque ce navigateur en mémorise un (voir [Tri](VIEWER.md#tri)) |
 | `sort_direction` | `"DESC"` | Sens de tri par défaut (`"ASC"` ou `"DESC"`) |
 | `hide_blinks` | `true` | Masquer les photos avec clignement par défaut |
 | `hide_bursts` | `true` | Afficher uniquement la meilleure de chaque rafale par défaut |
@@ -1780,7 +1785,7 @@ Affichage et comportement de la galerie web.
 | `hide_brackets` | `true` | Afficher uniquement l'exposition de base de chaque bracketing par défaut |
 | `hide_panoramas` | `true` | N'afficher qu'une image représentative par panorama par défaut |
 | `hide_details` | `true` | Masquer les détails des photos sur les cartes par défaut |
-| `tooltip_mode` | `"hover"` | Déclencheur d'infobulle : `"hover"`, `"click"`, `"off"` ou `"panel"` (rail ancré au lieu d'une infobulle flottante — voir `panel_activation` ci-dessous). Remplace l'ancien booléen `hide_tooltip`. |
+| `tooltip_mode` | `"panel"` | Déclencheur d'infobulle : `"hover"`, `"click"`, `"off"` ou `"panel"` (rail ancré au lieu d'une infobulle flottante — voir `panel_activation` ci-dessous). Remplace l'ancien booléen `hide_tooltip`. |
 | `panel_activation` | `"both"` | Geste qui redirige la photo sélectionnée du rail ancré quand `tooltip_mode` vaut `"panel"` : `"hover"`, `"click"` ou `"both"`. Sans effet sur les autres modes d'infobulle. La valeur par défaut `"both"` préserve le comportement d'origine du panneau |
 | `hide_rejected` | `true` | Masquer les photos rejetées par défaut |
 | `gallery_mode` | `"mosaic"` | Disposition de galerie par défaut (`"grid"` ou `"mosaic"`) |
@@ -1845,7 +1850,7 @@ ne puissent pas diverger.
 | `badge_percent` | `5` | Pourcentage de pixels, dans le pire des canaux R/V/B, au-delà duquel la carte est badgée. Mesuré sur un échantillon de 28 photos : l'écrêtage des hautes lumières du pire canal avait une médiane de 0,31 % et un p90 de 2,35 %, donc 5 % se déclenche sur environ 1 photo sur 25 |
 | `indicator_percent` | `1` | Seuil des repères R/V/B de l'histogramme. Plus fin que le badge, car vous regardez déjà une seule photo |
 | `histogram_mode` | `"rgb"` | Valeur par défaut de l'histogramme du **panneau de détail** : `"luma"`, `"rgb"`, ou un canal isolé (`"r"` / `"g"` / `"b"`). Le choix propre de l'utilisateur pour cette surface est stocké dans `localStorage` sous `facet_histogram_mode` et prévaut sur cette valeur |
-| `tooltip_histogram_mode` | `"luma"` | Valeur par défaut de l'histogramme de l'**infobulle au survol/épinglée**, mêmes cinq valeurs possibles. Volontairement indépendante de `histogram_mode` et persistée sous sa propre clé `localStorage` (`facet_histogram_mode_tooltip`) : le panneau de détail sert à étudier une seule photo, où le détail par canal se justifie ; l'infobulle sert à parcourir rapidement de nombreuses photos, où une simple courbe de luminance se lit généralement plus vite. Modifier l'une ne retouche jamais l'autre, et le bouton pour la changer ne s'affiche que lorsque l'infobulle est épinglée (rail ancré, ou `tooltip_mode: "click"`) — en simple survol, elle affiche son mode résolu en lecture seule |
+| `tooltip_histogram_mode` | `"luma"` | Valeur par défaut de l'histogramme de l'onglet Histogramme du **panneau latéral** (`tooltip_mode: "panel"`), mêmes cinq valeurs possibles. Volontairement indépendante de `histogram_mode` et persistée sous sa propre clé `localStorage` (`facet_histogram_mode_tooltip`) : le détail d'une photo sert à étudier une seule photo, où le détail par canal se justifie ; le panneau latéral sert à parcourir rapidement de nombreuses photos, où une simple courbe de luminance se lit généralement plus vite. Modifier l'une ne retouche jamais l'autre. Les bulles **Survol** et **Clic** n'affichent pas d'histogramme |
 
 **L'écrêtage est mesuré par canal, exactement aux bins 0 et 255.** Il est stocké
 dans `photos.channel_clip_shadow_pct` / `channel_clip_highlight_pct` sous forme du
@@ -2001,6 +2006,12 @@ Une requête de confiance détient tous les droits d'édition : chaque route qui
 **Assistants.** La même option permet à la boîte « Connecter un assistant » de créer un jeton **Édition complète** sur une installation ouverte (`viewer.mcp.enabled` et un jeton restent exigés). Le jeton n'est `edition` que pour les requêtes `/mcp` qui franchissent la frontière ci-dessus : il fonctionne donc depuis `http://localhost:<port>` ou `127.0.0.1` sur `:5000` et via le proxy de développement `ng serve` `:4200`, et passe en `readonly` depuis un client du réseau local, une URL à nom d'hôte ou `0.0.0.0`, ou un déploiement Docker. Tout mot de passe l'abaisse à `readonly` ; retirer le mot de passe le ravive. Les outils de suppression exigent toujours `viewer.mcp.allow_destructive`. `ng serve --host 0.0.0.0` ou tout proxy non signalé sur la même machine laisse un client du réseau local envoyant `Host: localhost` passer : seul le jeton protège alors `/mcp`. Voir [Agents IA (MCP)](AGENTS.md). La même frontière, quelle que soit la valeur de `trusted_local_editing`, régit la gestion des jetons d'assistant sur une installation ouverte : créer, lister et révoquer des jetons ne fonctionne que pour une requête qui la franchit (ou dans une session d'édition quand `viewer.edition_password` est défini). Un proxy inverse doit envoyer `X-Forwarded-For` ou `Forwarded`, sinon il est traité comme la machine locale.
 
 > **Avertissement :** le pair loopback est la seule vraie frontière. `Host`, `Origin`, `Referer` et `Sec-Fetch-Site` sont fixés par le client et ne peuvent que refuser une requête, et un proxy inverse, un tunnel ou une redirection de port sur la même machine qui n'ajoute aucun des en-têtes ci-dessus est indiscernable de votre navigateur. N'activez jamais cette option derrière un proxy inverse sur la même machine. Tant qu'elle est active, tout processus local et tout compte de la machine peut modifier.
+
+### Recherche en ligne de lieux
+
+`viewer.place_search_url` vaut par défaut `https://photon.komoot.io/api`. Indiquez une chaîne vide pour désactiver la recherche d’adresses et d’établissements, ou un point d’accès HTTP(S) Photon auto-hébergé sans identifiants, paramètres de requête ni fragment. Le navigateur ne reçoit que `place_search_enabled`, jamais l’URL configurée. Les recherches exigent l’accès en édition et un clic explicite sur **Rechercher en ligne**. Voir [Recherche en ligne de lieux](VIEWER.md#recherche-en-ligne-de-lieux) pour la confidentialité, le cache et les limites de workers. La [politique de la démo Photon](https://github.com/komoot/photon#demo-server) autorise un usage raisonnable du projet sans garantie de disponibilité ; la [documentation de l’API Photon](https://github.com/komoot/photon/blob/master/docs/api-v1.md) définit son format GeoJSON. Il n’y a ni nouvelle tentative ni redirection.
+
+Le chien de garde de transport de cinq secondes coupe le socket actif, y compris pendant l’établissement TCP/TLS et les lectures bloquées d’en-têtes, de corps et de cadrage par blocs HTTP. La résolution DNS synchrone native suit toujours les délais du résolveur du système et peut dépasser cinq secondes avant l’existence d’un socket. La recherche reste limitée à une requête à la fois tant que le DNS est en attente ; si le DNS répond après l’échéance, aucune connexion n’est ouverte. Aucun worker de requête ou de DNS détaché n’existe.
 
 ### Performance de la visionneuse
 
@@ -2886,6 +2897,8 @@ Synchronisation à sens unique des notes en étoiles et favoris Facet vers un se
 |---------|--------|-------------|
 | `url` | `""` | URL de base du serveur Immich (par ex. `http://nas:2283`) |
 | `api_key` | `""` | Clé API Immich, envoyée comme en-tête `x-api-key` |
+| `owner_id` | `""` | Identifiant exact du propriétaire Immich ; vide désactive ce filtre. Un champ absent ne satisfait pas une sélection explicite. |
+| `library_id` | `""` | Identifiant exact de la bibliothèque Immich ; vide désactive le filtre, sans sélectionner une bibliothèque null. |
 | `path_map` | `[{facet_prefix, immich_prefix}]` | Réécritures de préfixe des chemins Facet vers les valeurs `originalPath` d'Immich ; le premier `facet_prefix` correspondant est remplacé par son `immich_prefix` lors de la résolution d'une ressource |
 | `push.ratings` | `true` | Pousse les notes en étoiles. La politique de compatibilité de version d'Immich est respectée — seul 1–5 est écrit, jamais 0/−1 |
 | `push.favorites` | `true` | Pousse l'indicateur de favori |

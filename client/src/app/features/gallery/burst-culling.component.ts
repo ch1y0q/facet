@@ -1,6 +1,6 @@
 import { SEQUENCE_KINDS_KEPT_WHOLE } from '../../shared/pipes/sequence-kind.pipe';
 import { Component, DestroyRef, inject, signal, linkedSignal, computed, effect, untracked, viewChild, ElementRef, OnDestroy, HostListener, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
-import { Router, ActivatedRoute } from '@angular/router';
+import { NavigationStart, Router, ActivatedRoute } from '@angular/router';
 import { ViewActionRegistry } from '../../core/agent/view-action-registry.service';
 import { UiToolError } from '../../core/agent/ui-tool.types';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -14,6 +14,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatSliderModule } from '@angular/material/slider';
+import { MatDialog } from '@angular/material/dialog';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AlbumService, Album } from '../../core/services/album.service';
@@ -45,6 +46,7 @@ import { UserActivityJournal } from '../../core/agent/user-activity-journal.serv
 import { PageContextService } from '../../core/agent/page-context.service';
 import { AssistantCullPlanService, type CullPlanPin } from '../../core/agent/assistant-cull-plan.service';
 import { firstValueFrom } from 'rxjs';
+import { DARKROOM_SHORTCUTS } from './culling-shortcuts';
 import {
   CullingStore, RunGeneration, GroupBy, GROUP_BY_VALUES,
   CULL_GROUP_BY_KEY, CULL_SORT_KEY, CULL_SORT_DIR_KEY, updateMapSignal,
@@ -109,6 +111,11 @@ const DARKROOM_THUMB_SIZE = RENDERED_THUMBNAIL_EDGE;
  *  transform snapshots an imported binding used as a field initializer before a
  *  lazily-initialised shared chunk sets it. */
 const STORED_EDGE = STORED_THUMBNAIL_EDGE;
+/** All rejects, including frames hidden by the gallery defaults. */
+const ALL_REJECTS_SCOPE = {
+  show_rejected: '1', type: '', hide_blinks: 'false', hide_bursts: 'false',
+  hide_duplicates: 'false', hide_brackets: 'false', hide_panoramas: 'false',
+};
 
 /** Stable empty overlay map, so clearing an already-empty one is a no-op
  *  instead of a change-detection round for every darkroom navigation. */
@@ -126,11 +133,6 @@ interface SceneSummary {
   end: string | null;
   count: number;
   moment?: string | null;
-}
-
-interface ShortcutRow {
-  keys: string[];
-  labelKey: string;
 }
 
 @Component({
@@ -269,11 +271,12 @@ interface ShortcutRow {
             <!-- Not behind the albums check: a date window needs no album. The range input is an invisible
                  anchor for the custom picker's popup; it never takes focus or pointer events. -->
             <div class="relative inline-flex shrink-0">
-              <button mat-icon-button data-testid="cull-date-range" [matMenuTriggerFor]="dateRangeMenu"
+              <button mat-button class="!min-w-0 !px-3 shrink-0" data-testid="cull-date-range" [matMenuTriggerFor]="dateRangeMenu"
                       [class.!text-[var(--mat-sys-primary)]]="cull.dateRangeActive()"
                       [matTooltip]="cull.dateRangeActive() ? (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : (I18N.culling.date_range.label | translate)"
-                      [attr.aria-label]="cull.dateRangeActive() ? (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : (I18N.culling.date_range.label | translate)">
+                      [attr.aria-label]="(I18N.culling.date_range.label | translate) + (cull.dateRangeActive() ? ': ' + (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : '')">
                 <mat-icon>date_range</mat-icon>
+                <span class="hidden xl:inline text-sm">{{ cull.dateRangeActive() ? (cull.scopeFrom() | cullDateRange: cull.scopeTo()) : (I18N.culling.date_range.label | translate) }}</span>
               </button>
               <mat-date-range-input #rangeInput [rangePicker]="rangePicker" aria-hidden="true"
                                     class="absolute inset-0 overflow-hidden opacity-0 pointer-events-none">
@@ -304,11 +307,12 @@ interface ShortcutRow {
                 <span>{{ I18N.culling.date_range.all_dates | translate }}</span>
               </button>
             </mat-menu>
-            <button mat-icon-button [matMenuTriggerFor]="cullGroupByMenu"
+            <button mat-button class="!min-w-0 !px-3 shrink-0" data-testid="cull-group-by" [matMenuTriggerFor]="cullGroupByMenu"
                     [class.!text-[var(--mat-sys-primary)]]="cull.groupBy() !== 'all'"
                     [matTooltip]="I18N.culling.group_by.label | translate"
-                    [attr.aria-label]="I18N.culling.group_by.label | translate">
+                    [attr.aria-label]="(I18N.culling.group_by.label | translate) + ': ' + (cull.groupBy() | cullGroupLabel | translate)">
               <mat-icon>{{ cull.groupBy() | cullGroupIcon }}</mat-icon>
+              <span class="hidden xl:inline text-sm">{{ cull.groupBy() | cullGroupLabel | translate }}</span>
             </button>
             <mat-menu #cullGroupByMenu="matMenu">
               <button mat-menu-item (click)="onGroupByChange('all')">
@@ -343,11 +347,12 @@ interface ShortcutRow {
               </button>
             </mat-menu>
             @if (cull.groupBy() !== 'scene') {
-              <button mat-icon-button [matMenuTriggerFor]="cullSortMenu" [disabled]="cull.planActive()"
+              <button mat-button class="!min-w-0 !px-3 shrink-0" [matMenuTriggerFor]="cullSortMenu" [disabled]="cull.planActive()"
                       [class.!text-[var(--mat-sys-primary)]]="cull.sortMode() !== 'easiest'"
                       [matTooltip]="'culling.sort.' + cull.sortMode() | translate"
                       [attr.aria-label]="'culling.sort.' + cull.sortMode() | translate">
                 <mat-icon>{{ cull.sortMode() | sortIcon }}</mat-icon>
+                <span class="hidden xl:inline text-sm">{{ 'culling.sort.' + cull.sortMode() | translate }}</span>
               </button>
               <mat-menu #cullSortMenu="matMenu">
                 @for (m of sortModes; track m) {
@@ -461,6 +466,13 @@ interface ShortcutRow {
               <mat-icon>auto_fix_high</mat-icon>
             </button>
           }
+          @if (auth.isEdition() && store.config()?.cull?.trash_available) {
+            <button mat-icon-button class="shrink-0" (click)="openTrashRejects()"
+                    [matTooltip]="I18N.cull.trash_all_rejects | translate"
+                    [attr.aria-label]="I18N.cull.trash_all_rejects | translate">
+              <mat-icon>delete_sweep</mat-icon>
+            </button>
+          }
           @if (unconfirmedCount() > 0) {
             <button mat-flat-button (click)="confirmAllRemaining()" [disabled]="cull.confirming() || cull.replanning()" class="!hidden lg:!inline-flex !rounded-md shrink-0">
               <mat-icon>done_all</mat-icon>
@@ -470,38 +482,6 @@ interface ShortcutRow {
         </div>
       </ng-template>
 
-      @if (pageHelp.open()) {
-        <div class="shrink-0 p-3 mb-3 rounded-lg bg-[var(--mat-sys-surface-container)] space-y-3">
-          <p class="text-sm opacity-80">{{ I18N.culling.help_text | translate }}</p>
-          @if (cull.rankerComparisons() !== null) {
-            <span class="text-xs opacity-70 flex items-center gap-1"
-                  [matTooltip]="I18N.culling.my_taste_tooltip | translate">
-              <mat-icon class="!text-sm !w-4 !h-4 !leading-4 text-[var(--mat-sys-primary)]">auto_awesome</mat-icon>
-              {{ (cull.rankerTrained() ? I18N.culling.my_taste_trained : I18N.culling.my_taste_learning)
-                 | translate:{ count: (cull.rankerComparisons() ?? 0) } }}
-            </span>
-          }
-          <div class="flex flex-wrap gap-x-10 gap-y-3">
-            @for (section of shortcutSections; track section.titleKey) {
-              <div>
-                <div class="text-xs font-semibold uppercase opacity-50 mb-1.5">{{ section.titleKey | translate }}</div>
-                <div class="space-y-1">
-                  @for (row of section.rows; track row.labelKey) {
-                    <div class="flex items-center gap-2 text-xs">
-                      <span class="flex gap-1">
-                        @for (k of row.keys; track k) {
-                          <kbd class="px-1.5 py-0.5 rounded border border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface-container-high)] text-xs font-mono">{{ k }}</kbd>
-                        }
-                      </span>
-                      <span class="opacity-80">{{ row.labelKey | translate }}</span>
-                    </div>
-                  }
-                </div>
-              </div>
-            }
-          </div>
-        </div>
-      }
 
       <!-- Corrections change nothing until the detector runs again, and that run
            is a whole-library batch pass -- far too expensive to fire once per
@@ -544,8 +524,23 @@ interface ShortcutRow {
       <div class="flex-1 min-h-0 overflow-y-auto -mx-2 px-2 md:-mx-3 md:px-3 pb-4 max-lg:pb-24" data-culling-scroll>
       <!-- Content -->
       @if (cull.loading()) {
-        <div class="flex justify-center items-center py-20">
-          <mat-spinner diameter="40" [attr.aria-label]="I18N.ui.labels.loading | translate" />
+        <!-- Skeleton groups instead of a bare spinner: the first load of a
+             10k+ library takes seconds, and a shape the result will resemble
+             reads as "working" rather than "stuck". -->
+        <div class="space-y-3 pb-4" [attr.aria-label]="I18N.ui.labels.loading | translate" role="status">
+          @for (h of [340, 380, 300, 340]; track $index) {
+            <div class="rounded-xl border-2 border-[var(--mat-sys-surface-container-high)] overflow-hidden bg-[var(--mat-sys-surface-container)]">
+              <div class="flex gap-2 p-2" [style.height.px]="h * 0.55">
+                <div class="flex-1 rounded-md animate-pulse bg-[var(--mat-sys-surface-container-high)]"></div>
+                <div class="flex-1 rounded-md animate-pulse bg-[var(--mat-sys-surface-container-high)] [animation-delay:150ms]"></div>
+                <div class="hidden xl:block w-1/4 rounded-md animate-pulse bg-[var(--mat-sys-surface-container-high)] [animation-delay:300ms]"></div>
+              </div>
+              <div class="h-9 border-t border-[var(--mat-sys-surface-container-high)] flex items-center px-3 gap-2">
+                <div class="h-3 w-16 rounded animate-pulse bg-[var(--mat-sys-surface-container-high)]"></div>
+                <div class="h-3 w-10 rounded animate-pulse bg-[var(--mat-sys-surface-container-high)] [animation-delay:150ms]"></div>
+              </div>
+            </div>
+          }
         </div>
       } @else if (visibleGroups().length === 0) {
         <p class="text-center py-20 opacity-60">{{ emptyKey() | translate }}</p>
@@ -622,8 +617,12 @@ interface ShortcutRow {
                   </span>
                 </div>
               }
-              <!-- Photos -->
-              <div class="flex gap-2 md:gap-3 overflow-x-auto px-2 py-3 items-center transition-opacity duration-300 [&::-webkit-scrollbar]:h-2.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--mat-sys-outline-variant)] [&::-webkit-scrollbar-track]:bg-transparent"
+              <!-- Photos. w-fit + max-w-full + mx-auto: a two-photo group
+                   centres instead of squatting in the left quarter, while a
+                   wide group still caps at the row and scrolls — auto margins
+                   never clip the leading tile the way justify-center does
+                   with overflow. -->
+              <div class="flex gap-2 md:gap-3 overflow-x-auto px-2 py-3 items-center mx-auto w-fit max-w-full transition-opacity duration-300 [&::-webkit-scrollbar]:h-2.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--mat-sys-outline-variant)] [&::-webkit-scrollbar-track]:bg-transparent"
                    [class.pointer-events-none]="(group | isConfirmed:cull.confirmedGroups())"
                    [class.opacity-40]="(group | isConfirmed:cull.confirmedGroups())">
                 @for (photo of group.photos; track photo.path; let pIdx = $index) {
@@ -703,6 +702,11 @@ interface ShortcutRow {
                       @if (photo.is_rejected) {
                         <span data-testid="reject-marker" class="px-2 py-0.5 rounded bg-red-700 text-white text-xs font-bold">
                           {{ I18N.rating.rejected_badge | translate }}
+                        </span>
+                      }
+                      @if (photo.is_kept && !photo.is_rejected) {
+                        <span data-testid="kept-marker" class="px-2 py-0.5 rounded bg-green-700 text-white text-xs font-bold">
+                          {{ I18N.review.kept | translate }}
                         </span>
                       }
                       @if (photo.sequence_kind === 'bracket') {
@@ -1053,6 +1057,8 @@ interface ShortcutRow {
                                [frameKey]="lbPhoto.path"
                                [loadedSources]="loadedRenders"
                                (sharpLoaded)="onSharpLoaded($event)"
+                               (sharpFailed)="onSharpFailed($event)"
+                               (sharpPending)="onSharpPending($event)"
                                [fullResSrc]="activeStyle() ? null : (lbPhoto.path | imageUrl:true)"
                                [zoom]="zoom()"
                                [focusPoint]="(lbPhoto.path | keySubjectForPath:keySubjectMap())?.center ?? null"
@@ -1117,6 +1123,9 @@ interface ShortcutRow {
                                    [placeholderSrc]="photo.path | thumbnailUrl:storedEdge"
                                    [frameKey]="photo.path"
                                    [loadedSources]="loadedRenders"
+                                   (sharpLoaded)="onSharpLoaded($event, photo.path)"
+                                   (sharpFailed)="onSharpFailed($event, photo.path)"
+                                   (sharpPending)="onSharpPending($event, photo.path)"
                                    [fullResSrc]="photo.path | imageUrl:true"
                                    [zoom]="zoom()"
                                    [focusPoint]="(photo.path | keySubjectForPath:keySubjectMap())?.center ?? null"
@@ -1460,7 +1469,7 @@ export class BurstCullingComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly snackBar = inject(MatSnackBar);
   private readonly i18n = inject(I18nService);
-  protected readonly pageHelp = inject(PageHelpService);
+  private readonly pageHelp = inject(PageHelpService);
   private readonly headerSlot = inject(HeaderSlotService);
   private readonly albumService = inject(AlbumService);
   private readonly compareFilters = inject(CompareFiltersService);
@@ -1469,6 +1478,10 @@ export class BurstCullingComponent implements OnDestroy {
   private readonly undoService = inject(UndoService);
   protected readonly auth = inject(AuthService);
   protected readonly store = inject(GalleryStore);
+  private readonly dialog = inject(MatDialog);
+  private readonly destroyRef = inject(DestroyRef);
+  private trashOpening = false;
+  private trashNavigation = 0;
   private readonly sceneDate = new SceneDatePipe();
   /** Data state + API calls; provided per component, so it lives one darkroom visit. */
   protected readonly cull = inject(CullingStore);
@@ -1642,15 +1655,38 @@ export class BurstCullingComponent implements OnDestroy {
    *  the neighbour prefetch wait for it, so the current frame is first in the
    *  server's render queue. */
   private readonly sharpPath = signal<string | null>(null);
+  /** Failed attempts belong to individual visible panes; a new attempt clears its fallback. */
+  private readonly failedRenderPaths = signal<ReadonlySet<string>>(new Set());
   /** Neighbour preloaders in flight, kept so they are not collected mid-fetch
    *  and can be aborted when the frame changes. */
   private neighbourThumbs = new Map<string, HTMLImageElement>();
   private neighbourRenders = new Map<string, HTMLImageElement>();
 
-  /** The single pane reports the render it swapped to; map it back to a path. */
-  protected onSharpLoaded(src: string): void {
-    const path = this.lightboxGroup()?.photos[this.lightboxIndex()]?.path;
-    if (path && src === this.thumbnailUrl.transform(path, DARKROOM_THUMB_SIZE)) this.sharpPath.set(path);
+  protected onSharpLoaded(src: string, path = this.currentPath()): void {
+    this.onSharpState(src, path, 'loaded');
+  }
+
+  protected onSharpPending(src: string, path = this.currentPath()): void {
+    this.onSharpState(src, path, 'pending');
+  }
+
+  protected onSharpFailed(src: string, path = this.currentPath()): void {
+    this.onSharpState(src, path, 'failed');
+  }
+
+  /** Ignore obsolete panes and style previews; only the focused single pane
+   *  controls neighbour prefetch, while every pane owns its fallback source. */
+  private onSharpState(src: string, path: string | undefined, state: 'loaded' | 'pending' | 'failed'): void {
+    if (!path || !this.darkroomFramePaths().includes(path)
+      || src !== this.thumbnailUrl.transform(path, DARKROOM_THUMB_SIZE)) return;
+    const visible = this.darkroomFramePaths();
+    this.failedRenderPaths.update(paths => {
+      const next = new Set([...paths].filter(path => visible.includes(path)));
+      if (state === 'failed') next.add(path);
+      else next.delete(path);
+      return next.size === paths.size && [...next].every(path => paths.has(path)) ? paths : next;
+    });
+    if (this.compareMode() === 'single') this.sharpPath.set(state === 'loaded' ? path : null);
   }
 
   /** Paths of the previous and next frame in single view; none in compare mode,
@@ -1745,7 +1781,13 @@ export class BurstCullingComponent implements OnDestroy {
   });
 
   protected setCompareMode(mode: 'single' | '2up' | '4up'): void {
-    this.compareMode.set(mode);
+    const previous = this.compareMode();
+    if (mode !== previous) {
+      // Single/compare recreate their panes; 2-up/4-up retain shared panes.
+      if (mode === 'single' || previous === 'single') this.failedRenderPaths.set(new Set());
+      this.sharpPath.set(null);
+      this.compareMode.set(mode);
+    }
     this.zoom.set(FIT_ZOOM);
   }
 
@@ -1777,7 +1819,7 @@ export class BurstCullingComponent implements OnDestroy {
   private frameSource(path: string, hiRes: boolean): string {
     return hiRes
       ? this.fullResUrl.transform(path, true)
-      : this.thumbnailUrl.transform(path, DARKROOM_THUMB_SIZE);
+      : this.thumbnailUrl.transform(path, this.failedRenderPaths().has(path) ? STORED_EDGE : DARKROOM_THUMB_SIZE);
   }
 
   /** Drop the overlays and everything that could still republish them: a pass
@@ -2022,34 +2064,19 @@ export class BurstCullingComponent implements OnDestroy {
     return [...set].sort();
   });
 
-  protected readonly darkroomShortcuts: ShortcutRow[] = [
-    { keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' },
-    { keys: ['↑'], labelKey: 'culling.shortcuts.keep' },
-    { keys: ['↓'], labelKey: 'culling.shortcuts.reject' },
-    { keys: ['Z'], labelKey: 'culling.shortcuts.zoom' },
-    { keys: ['P'], labelKey: 'culling.shortcuts.peaking' },
-    { keys: ['G'], labelKey: 'culling.shortcuts.grid' },
-    { keys: ['F'], labelKey: 'slideshow.fullscreen' },
-    { keys: ['Space'], labelKey: 'culling.shortcuts.confirm_next' },
-    { keys: ['Esc'], labelKey: 'culling.shortcuts.close' },
-  ];
-
-  protected readonly shortcutSections: { titleKey: string; rows: ShortcutRow[] }[] = [
-    {
-      titleKey: 'culling.shortcuts.page_title',
-      rows: [
-        { keys: ['↑', '↓'], labelKey: 'culling.shortcuts.select' },
-        { keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' },
-        { keys: ['Space'], labelKey: 'culling.shortcuts.toggle' },
-        { keys: ['Shift+Space'], labelKey: 'culling.shortcuts.confirm_next' },
-        { keys: ['Enter'], labelKey: 'culling.shortcuts.open' },
-      ],
-    },
-    { titleKey: 'culling.shortcuts.darkroom_title', rows: this.darkroomShortcuts },
-  ];
+  protected readonly darkroomShortcuts = DARKROOM_SHORTCUTS;
 
   constructor() {
-    this.pageHelp.setDescription(null);
+    this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
+      if (event instanceof NavigationStart) this.trashNavigation++;
+    });
+    this.pageHelp.setDescription(this.I18N.culling.help_text);
+    // The help dialog's My Taste line: how many comparisons the ranker has.
+    effect(() => {
+      const count = this.cull.rankerComparisons();
+      const key = this.cull.rankerTrained() ? this.I18N.culling.my_taste_trained : this.I18N.culling.my_taste_learning;
+      this.pageHelp.note.set(count === null ? null : { key, params: { count } });
+    });
     this.cull.notice$.pipe(takeUntilDestroyed()).subscribe(notice => {
       const text = notice.params ? this.i18n.t(notice.key, notice.params) : this.i18n.t(notice.key);
       this.snackBar.open(text, '', { duration: notice.duration, horizontalPosition: 'right', verticalPosition: 'bottom' });
@@ -2188,7 +2215,10 @@ export class BurstCullingComponent implements OnDestroy {
       const sharp = this.sharpPath() === current;
       untracked(() => {
         const urls = sharp ? paths.map(p => this.thumbnailUrl.transform(p, DARKROOM_THUMB_SIZE)) : [];
-        const keep = current ? [this.thumbnailUrl.transform(current, DARKROOM_THUMB_SIZE)] : [];
+        // Keep already-started current/neighbor renders while revalidating a
+        // revisit; only a fresh success may start additional neighbor work.
+        const keep = [current, ...paths].filter((path): path is string => !!path)
+          .map(path => this.thumbnailUrl.transform(path, DARKROOM_THUMB_SIZE));
         this.neighbourRenders = this.prefetch(urls, this.neighbourRenders, url => this.loadedRenders.add(url), keep);
       });
     });
@@ -2200,10 +2230,13 @@ export class BurstCullingComponent implements OnDestroy {
       const active = this.peakingActive();
       const paths = this.darkroomFramePaths();
       const hiRes = this.darkroomHiRes();
-      // In plain single view the edge map waits for the sharp render, so it never
-      // lands on a frame that is still the stretched thumbnail. Compare mode and
+      // In plain single view wait for the render attempt. On failure, measure
+      // the stored thumbnail that the pane continues displaying. Compare mode and
       // a darktable style keep their own timing.
-      const awaitingSharp = this.compareMode() === 'single' && !this.activeStyle() && this.sharpPath() !== paths[0];
+      // Read outside untracked so a compare pane's failure or recovery rebuilds the pool.
+      const failed = this.failedRenderPaths();
+      const awaitingSharp = this.compareMode() === 'single' && !this.activeStyle()
+        && this.sharpPath() !== paths[0] && !failed.has(paths[0]);
       untracked(() => {
         if (active && paths.length > 0 && awaitingSharp) {
           // Hide, but keep the edge maps of frames already seen: stepping back to
@@ -2434,6 +2467,29 @@ export class BurstCullingComponent implements OnDestroy {
       this.selectedGroupIndex.set(0);
       this.cull.resetForReload();
     });
+  }
+
+  /** Trash files while retaining the decisions used to train My Taste. */
+  protected async openTrashRejects(): Promise<void> {
+    if (this.trashOpening || this.dialog.openDialogs.length || !this.auth.isEdition()
+      || !this.store.config()?.cull?.trash_available) return;
+    const owner = this.auth.identity();
+    const url = this.router.url;
+    const navigation = this.trashNavigation;
+    this.trashOpening = true;
+    try {
+      const { CullDialogComponent } = await import('./cull-dialog.component');
+      if (this.destroyRef.destroyed || owner !== this.auth.identity() || !this.auth.isEdition()
+        || url !== this.router.url || navigation !== this.trashNavigation
+        || !this.store.config()?.cull?.trash_available || this.dialog.openDialogs.length) return;
+      this.dialog.open(CullDialogComponent, {
+        closeOnNavigation: false,
+        width: '32rem',
+        data: { paths: [], filters: ALL_REJECTS_SCOPE, trashAvailable: true, action: 'trash_rejects', allRejects: true },
+      });
+    } finally {
+      this.trashOpening = false;
+    }
   }
 
   protected onExcludeRejectedChange(value: boolean): void {
@@ -2709,8 +2765,13 @@ export class BurstCullingComponent implements OnDestroy {
     this.zoom.set(FIT_ZOOM);
   }
 
+  private shortcutsBlocked(event: Event): boolean {
+    return event.defaultPrevented || this.dialog.openDialogs.length > 0;
+  }
+
   @HostListener('document:keydown.arrowleft', ['$event'])
   protected onArrowLeft(event: Event): void {
+    if (this.shortcutsBlocked(event)) return;
     const group = this.lightboxGroup();
     if (group) {
       event.preventDefault();
@@ -2722,6 +2783,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.arrowright', ['$event'])
   protected onArrowRight(event: Event): void {
+    if (this.shortcutsBlocked(event)) return;
     const group = this.lightboxGroup();
     if (group) {
       event.preventDefault();
@@ -2745,6 +2807,7 @@ export class BurstCullingComponent implements OnDestroy {
    *  loupe; the compare grid has no single frame to aim at and stays centred. */
   @HostListener('document:keydown.z', ['$event'])
   protected onZoomToggle(event: Event): void {
+    if (this.shortcutsBlocked(event)) return;
     if (isTypingContext(event)) return;
     if (!this.lightboxGroup()) {
       this.loupeActive.set(!this.loupeActive());
@@ -2764,6 +2827,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** P toggles focus peaking over the open darkroom's frames. */
   @HostListener('document:keydown.p', ['$event'])
   protected onPeakingKey(event: Event): void {
+    if (this.shortcutsBlocked(event)) return;
     if (!this.lightboxGroup()) return;
     if (isTypingContext(event)) return;
     event.preventDefault();
@@ -2773,6 +2837,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** G cycles the open darkroom's composition grid. */
   @HostListener('document:keydown.g', ['$event'])
   protected onGridKey(event: Event): void {
+    if (this.shortcutsBlocked(event)) return;
     if (!this.lightboxGroup()) return;
     if (isTypingContext(event)) return;
     event.preventDefault();
@@ -2782,6 +2847,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** F toggles true fullscreen on the open darkroom (mirrors the slideshow's F key). */
   @HostListener('document:keydown.f', ['$event'])
   protected onFullscreenToggle(event: Event): void {
+    if (this.shortcutsBlocked(event)) return;
     if (!this.lightboxGroup()) return;
     if (isTypingContext(event)) return;
     event.preventDefault();
@@ -2830,6 +2896,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** True when the event originates from a text/slider control we must not hijack. */
   @HostListener('document:keydown.arrowup', ['$event'])
   protected onArrowUp(event: Event): void {
+    if (this.shortcutsBlocked(event)) return;
     const group = this.lightboxGroup();
     if (group) {
       event.preventDefault();
@@ -2843,6 +2910,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.arrowdown', ['$event'])
   protected onArrowDown(event: Event): void {
+    if (this.shortcutsBlocked(event)) return;
     const group = this.lightboxGroup();
     if (group) {
       event.preventDefault();
@@ -2856,6 +2924,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.enter', ['$event'])
   protected onEnter(event: Event): void {
+    if (this.shortcutsBlocked(event)) return;
     if (this.lightboxGroup()) return;
     if (isTypingContext(event) || isControlActivation(event)) return;
     const group = this.visibleGroups()[this.selectedGroupIndex()];
@@ -2877,6 +2946,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.space', ['$event'])
   protected onSpace(event: Event): void {
+    if (this.shortcutsBlocked(event)) return;
     const group = this.lightboxGroup();
     if (group) {
       // Darkroom: confirm the open group and jump into the next one.
@@ -2904,6 +2974,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** List: confirm the selected group and move the selection to the next one. */
   @HostListener('document:keydown.shift.space', ['$event'])
   protected onShiftSpace(event: Event): void {
+    if (this.shortcutsBlocked(event)) return;
     if (this.lightboxGroup()) return;
     if (isTypingContext(event) || isControlActivation(event)) return;
     const selected = this.visibleGroups()[this.selectedGroupIndex()];
@@ -2921,6 +2992,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.escape', ['$event'])
   protected onEscape(event: Event): void {
+    if (this.shortcutsBlocked(event)) return;
     if (this.cull.autoCullPreview()) {
       event.preventDefault();
       this.cull.cancelAutoCull();

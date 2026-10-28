@@ -82,6 +82,7 @@ class CullApplyResponse(BaseModel):
 
     action: str
     dry_run: bool
+    preview_digest: Optional[str] = None
     would_copy: Optional[list[str]] = None
     would_move: Optional[list[str]] = None
     would_trash: Optional[list[str]] = None
@@ -119,6 +120,8 @@ class PhotoDeleteResponse(BaseModel):
     ``CullApplyResponse``'s field of the same name: a path that was visible,
     in ``photos``, and not a refused bracket lead, but whose file could not
     be resolved on disk (already missing) -- landing in no other bucket.
+    With ``remove_missing`` those same paths have their rows removed instead,
+    and are reported in ``removed_missing`` rather than ``skipped``.
     """
 
     dry_run: bool
@@ -129,6 +132,10 @@ class PhotoDeleteResponse(BaseModel):
     refused_bracket_lead: list[str]
     sequence_siblings: list[str]
     skipped: list[str]
+    # Paths whose file was already missing from disk and whose row was removed
+    # anyway (`remove_missing`), so the caller can tell a reconciled row from
+    # a trashed one. Empty unless the flag was set.
+    removed_missing: list[str]
     trashed: int
     errors: dict[str, str]
 

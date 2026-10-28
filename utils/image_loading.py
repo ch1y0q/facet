@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from io import BytesIO
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 from PIL import features as _pil_features
@@ -37,6 +38,14 @@ try:
     _heif_available = True
 except ImportError:
     logger.warning("pillow-heif not installed — HEIF/HEIC files will be skipped")
+
+# JPEG XL uses the imagecodecs dependency already needed for DNG previews.
+_jxl_available = False
+try:
+    from utils.jpegxl import register_bounded_jpegxl_opener
+    _jxl_available = register_bounded_jpegxl_opener()
+except ImportError:
+    logger.debug("imagecodecs JPEG XL codec unavailable — JPEG XL files will be skipped")
 
 # AVIF codec availability (soft dependency, native in Pillow >= 11.3). Checked
 # eagerly, at import time, for the same reason pillow-heif is registered
@@ -81,13 +90,16 @@ _SIXTEEN_BIT_MODES = frozenset({'I;16', 'I;16B', 'I;16L'})
 KNOWN_AVIF_EXTENSIONS = frozenset({'.avif'})
 AVIF_EXTENSIONS = KNOWN_AVIF_EXTENSIONS if _avif_available else frozenset()
 
+KNOWN_JXL_EXTENSIONS = frozenset({'.jxl'})
+JXL_EXTENSIONS = KNOWN_JXL_EXTENSIONS if _jxl_available else frozenset()
+
 # Every still-image extension the scan collector (facet.py) accepts. HEIF/AVIF
 # drop out when their decoder is missing, because a scan would have nothing to
 # decode them with.
 SCANNABLE_IMAGE_EXTENSIONS = (
     JPEG_EXTENSIONS | HEIF_EXTENSIONS | RAW_EXTENSIONS
     | PNG_EXTENSIONS | GIF_EXTENSIONS | WEBP_EXTENSIONS | BMP_EXTENSIONS
-    | TIFF_EXTENSIONS | AVIF_EXTENSIONS
+    | TIFF_EXTENSIONS | AVIF_EXTENSIONS | JXL_EXTENSIONS
 )
 
 # What watch mode observes. Deliberately the KNOWN sets rather than the decodable
@@ -97,7 +109,7 @@ SCANNABLE_IMAGE_EXTENSIONS = (
 WATCHABLE_IMAGE_EXTENSIONS = (
     JPEG_EXTENSIONS | KNOWN_HEIF_EXTENSIONS | RAW_EXTENSIONS
     | PNG_EXTENSIONS | GIF_EXTENSIONS | WEBP_EXTENSIONS | BMP_EXTENSIONS
-    | TIFF_EXTENSIONS | KNOWN_AVIF_EXTENSIONS
+    | TIFF_EXTENSIONS | KNOWN_AVIF_EXTENSIONS | KNOWN_JXL_EXTENSIONS
 )
 
 
@@ -120,6 +132,66 @@ _LIBRAW_AUTO_BRIGHT_MAXIMUM_THR = 0.75
 DISPLAY_PREVIEW_MIN_LONG_EDGE = 640
 
 _EXIF_ORIENTATION_TAG = 274
+
+# Which way the installed pillow-heif's `open_heif` hands back the pixel plane:
+# upright already (it applied the EXIF orientation itself and left the raw
+# value only in the EXIF blob) or in the sensor's stored reading (the pre-1.6
+# behaviour, where applying the orientation was the caller's job). Detected
+# once per process on a tiny synthetic HEIF rather than parsed out of a
+# version number, so an install that pins 1.5.0 and an install that runs
+# 1.6.0 both behave correctly with the same code.
+_heif_transposes: Optional[bool] = None
+
+
+def _pillow_heif_transposes() -> bool:
+    """Whether ``open_heif`` has already applied the EXIF orientation.
+
+    Builds a 6x4 frame tagged with orientation 8 (viewing it upright needs a
+    90-degree turn, which swaps the sides), saves it to HEIF and reads it back
+    through ``open_heif``: a (4, 6) plane means the decoder transposed it; a
+    (6, 4) plane means it did not. Cached for the process.
+    """
+    global _heif_transposes
+    if _heif_transposes is None:
+        _heif_transposes = False
+        try:
+            import pillow_heif
+            Image, _ = _ensure_pil()
+            probe = Image.new('RGB', (6, 4), (128, 128, 128))
+            exif = Image.Exif()
+            exif[_EXIF_ORIENTATION_TAG] = 8
+            buf = BytesIO()
+            pillow_heif.from_pillow(probe).save(buf, format='HEIF', exif=exif.tobytes())
+            buf.seek(0)
+            _heif_transposes = pillow_heif.open_heif(buf).size == (4, 6)
+        except Exception as ex:  # pragma: no cover - decoder unusable anyway
+            logger.debug("Could not probe pillow-heif orientation behaviour: %s", ex)
+            _heif_transposes = False
+    return _heif_transposes
+
+
+def _exif_with_neutral_orientation(exif_blob: bytes) -> bytes:
+    """The EXIF ``exif_blob`` with its Orientation tag rewritten to 1.
+
+    For re-attaching the metadata a HEIF carried to a plane the decoder has
+    already turned upright: keeping the original orientation value there would
+    ask the caller's ``exif_transpose`` to turn the frame a second time. The
+    rest of the blob -- camera, lens, timestamps -- passes through untouched,
+    with whatever leading ``Exif\\0\\0`` marker the blob came with preserved.
+    """
+    Image, _ = _ensure_pil()
+    marker = b''
+    blob = exif_blob
+    if blob[:6] == b'Exif\x00\x00':
+        marker, blob = blob[:6], blob[6:]
+    try:
+        exif = Image.Exif()
+        exif.load(blob)
+        exif[_EXIF_ORIENTATION_TAG] = 1
+        return marker + exif.tobytes()
+    except Exception:
+        return exif_blob
+
 
 # LibRaw sizes.flip -> counter-clockwise degrees that make the frame upright.
 _LIBRAW_FLIP_ROTATIONS = {3: 180, 5: 90, 6: 270}
@@ -620,6 +692,14 @@ def _decode_pq_native(photo, settings):
     that view's buffer dies with it, and letting it be collected early
     produces silently garbled pixels rather than an error.
 
+    The raw EXIF blob is re-attached for the metadata it carries, but its
+    Orientation tag is neutralised to 1 when the decoder has already applied
+    it (pillow-heif 1.6+ turns the plane upright itself): the caller's
+    ``exif_transpose`` would otherwise read the original value and turn the
+    already-upright frame again -- a portrait shot on orientation 8 came back
+    lying on its side. On a decoder that leaves the plane alone (1.5.x) the
+    blob is kept verbatim, because there the transpose is still needed.
+
     Any failure -- pillow-heif missing or erroring, a corrupt file, an
     SDR-depth (<=8 bit) frame slipping through -- returns None so the caller
     falls back to today's 8-bit path; the exception is logged at debug rather
@@ -636,7 +716,8 @@ def _decode_pq_native(photo, settings):
         native_img = Image.fromarray(out, 'RGB')
         exif = img.info.get('exif')
         if exif:
-            native_img.info['exif'] = exif
+            native_img.info['exif'] = (
+                _exif_with_neutral_orientation(exif) if _pillow_heif_transposes() else exif)
         return native_img
     except Exception as ex:
         logger.debug("Native-depth PQ decode failed for %s, falling back to 8-bit: %s",
@@ -758,6 +839,20 @@ def open_nonraw_image(photo, draft_edge=None):
         # convert('RGB') clip is left untouched.
         pil_img = pil_img.convert('I').point(lambda i: i * (1 / 256)).convert('L')
 
+    # JXL previews and model inputs share an explicit sRGB render. Without
+    # this transform, saving a JPEG drops the profile and changes P3 colours.
+    if Path(photo).suffix.lower() in KNOWN_JXL_EXTENSIONS and pil_img.info.get('icc_profile'):
+        from PIL import ImageCms
+        profile = ImageCms.ImageCmsProfile(BytesIO(pil_img.info['icc_profile']))
+        input_mode = 'L' if profile.profile.xcolor_space.strip() == 'GRAY' else 'RGB'
+        normalized_exif = pil_img.getexif().tobytes() if pil_img.getexif() else None
+        pil_img = ImageCms.profileToProfile(
+            pil_img.convert(input_mode), profile,
+            ImageCms.createProfile('sRGB'), outputMode='RGB',
+        )
+        if normalized_exif:
+            pil_img.info['exif'] = normalized_exif
+
     if pil_img.mode != 'RGB':
         pil_img = pil_img.convert('RGB')
 
@@ -773,6 +868,8 @@ def open_nonraw_image(photo, draft_edge=None):
         # difference from doing it earlier.
         background = Image.new('RGB', pil_img.size, (255, 255, 255))
         background.paste(pil_img, mask=alpha_channel)
+        if Path(photo).suffix.lower() in KNOWN_JXL_EXTENSIONS:
+            background.info.update(pil_img.info)
         pil_img = background
 
     return pil_img

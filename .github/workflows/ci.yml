@@ -10,8 +10,65 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect changed areas
+    # A pull request runs the full Python suites (~45 min on Linux, plus
+    # Windows) unless it changes only client/, i18n/, docs/, .claude/, the
+    # READMEs or the CHANGELOG. Such a pull request still runs the
+    # Python tests that check NON-Python files against the server (client
+    # interfaces and schema.d.ts, the agent UI schema and smart-album fixture,
+    # keys.ts and the i18n bundles, the AGENTS / THIRD_PARTY_MODELS docs) and
+    # the gen:api staleness check: about a minute. The Angular tests run only
+    # when client/, the i18n bundles (a spec imports them) or this workflow change; an API
+    # change reaches them through the regenerated client/.../schema.d.ts.
+    # Pushes to master always run everything.
+    runs-on: ubuntu-latest
+    outputs:
+      scope: ${{ steps.filter.outputs.scope }}
+      client: ${{ steps.filter.outputs.client }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - id: filter
+        # A pull_request checkout is the merge of the PR into the CURRENT base,
+        # so HEAD^1 is that base: diffing against it gives exactly the PR's own
+        # changes. pull_request.base.sha is not: it can lag behind a base that
+        # moved since the last push, and the diff then sweeps in the base's own
+        # .py changes.
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "scope=full" >> "$GITHUB_OUTPUT"
+            echo "client=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # --no-renames lists both sides of a move, so a module moved into an
+          # allowlisted area still shows the path it was deleted from.
+          changed=$(git diff --name-only --no-renames HEAD^1 HEAD)
+          echo "$changed"
+          # An allowlist, not just "a .py changed": the full suite also reads
+          # config/scoring_config.default.json, the Lua plugin, tests/fixtures,
+          # install.sh, the requirements and pyproject, so any path outside the
+          # areas below runs it, and so does any .py inside them (i18n/__init__.py).
+          if echo "$changed" | grep -qE '\.py$' ||
+            echo "$changed" | grep -qvE '^(client/|i18n/|docs/|\.claude/|README[^/]*\.md$|CHANGELOG\.md$)'; then
+            echo "scope=full" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only client, i18n and docs changed: running only the cross-file Python checks."
+            echo "scope=cross-file" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$changed" | grep -qE '^(client|i18n)/|^\.github/workflows/ci\.yml$'; then
+            echo "client=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing under client/ or i18n/ changed: skipping the Angular tests."
+            echo "client=false" >> "$GITHUB_OUTPUT"
+          fi
+
   python-tests:
     name: Python Tests
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -19,6 +76,11 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+      - name: Install ExifTool for real metadata round trips
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libimage-exiftool-perl
+          exiftool -ver
       - name: Install test dependencies
         # This line is the only dependency source for the job (it does not read
         # the lock files). jsonschema and pytest-timeout are the two exceptions
@@ -28,7 +90,14 @@ jobs:
         # versions are the ones verified against the suite.
         run: pip install pytest pytest-asyncio pytest-cov fastapi[standard] httpx pyjwt mcp==2.3.0 websockets pillow pillow-heif numpy scipy scikit-learn opencv-python-headless tqdm aiosqlite sqlite-vec imagehash psutil watchdog send2trash tifffile imagecodecs lupa jsonschema==4.26.0 pytest-timeout==2.4.0 pytest-xdist==3.8.0
       - name: Run tests
-        run: python -m pytest -n 4 --durations=30 --tb=short -q --cov=api --cov=processing --cov=analyzers --cov=config --cov=utils --cov-report=term-missing
+        env:
+          SCOPE: ${{ needs.changes.outputs.scope }}
+        run: |
+          if [ "$SCOPE" = "full" ]; then
+            python -m pytest -n 4 --durations=30 --tb=short -q --cov=api --cov=processing --cov=analyzers --cov=config --cov=utils --cov-report=term-missing
+          else
+            python -m pytest -n 4 --tb=short -q -m cross_file
+          fi
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
@@ -62,7 +131,8 @@ jobs:
     name: Python Tests (Windows)
     # Runs after the Linux suite: no point spending a Windows runner on a tree
     # that is already red, and this is the last gate rather than a parallel one.
-    needs: python-tests
+    needs: [changes, python-tests]
+    if: needs.changes.outputs.scope == 'full'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -70,6 +140,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+      - name: Install ExifTool for real metadata round trips
+        run: |
+          choco install exiftool --yes --no-progress
+          exiftool -ver
       - name: Install test dependencies
         # Same list as python-tests: the files below import tifffile, imagecodecs
         # and lupa, and jsonschema keeps tests/test_config_schema.py from skipping.
@@ -79,11 +153,11 @@ jobs:
         # ones kept green on Windows, and the rest of the suite is not run on
         # this platform. A file is added to this list in the PR that makes it
         # green there. tests/test_scan.py (the library lock picks a different
-        # backend here: msvcrt byte-range locks, which have no shared mode) and
+        # backend here: native LockFileEx shared/exclusive byte-range locks) and
         # tests/test_device.py (CUDA/MPS/CPU resolution) are the original
         # platform surface; the others cover path, permission, symlink and
         # subprocess handling that differs on Windows.
-        run: python -m pytest tests/test_scan.py tests/test_device.py tests/test_auto_cull_cli.py tests/test_config_merge.py tests/test_config_path_env.py tests/test_config_writes.py tests/test_manifest_builder.py tests/test_system_memory.py tests/test_weight_optimizer_sources.py tests/test_xmp_export.py tests/test_visibility_fail_open.py tests/test_cull.py tests/test_raw_decode.py tests/test_config_schema.py -q --tb=short
+        run: python -m pytest tests/test_scan.py tests/test_device.py tests/test_auto_cull_cli.py tests/test_config_merge.py tests/test_config_path_env.py tests/test_config_writes.py tests/test_manifest_builder.py tests/test_system_memory.py tests/test_weight_optimizer_sources.py tests/test_xmp_export.py tests/test_exiftool_process.py tests/test_xmp_keyword_ownership.py tests/test_xmp_face_ownership.py tests/test_visibility_fail_open.py tests/test_cull.py tests/test_raw_decode.py tests/test_config_schema.py tests/test_sidecar_job_receipts.py tests/test_embedding_revision.py tests/test_jpegxl.py tests/test_jpegxl_headers.py tests/test_jpegxl_basic_info.py -q --tb=short
 
   lock-resolve:
     name: Dependency locks resolve (${{ matrix.lock }})
@@ -126,6 +200,8 @@ jobs:
 
   angular-tests:
     name: Angular Tests
+    needs: changes
+    if: needs.changes.outputs.client == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:

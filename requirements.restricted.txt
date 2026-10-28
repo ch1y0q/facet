@@ -20,5 +20,5 @@ insightface>=0.7.0
 # score ranges. Q-ReAlign does not need pyiqa: it loads natively via transformers.
 pyiqa>=0.1.16
 # pyiqa's liqe/clipiqa archs depend on PyPI openai-clip, which still imports
-# pkg_resources at runtime (LIQE/CLIPIQA); setuptools 81 removed pkg_resources.
-setuptools<81
+# pkg_resources at runtime (LIQE/CLIPIQA); setuptools 82 removed pkg_resources.
+setuptools<82

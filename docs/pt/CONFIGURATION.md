@@ -1004,6 +1004,8 @@ em luz linear e codificada com a OETF sRGB — o estreitamento para 8 bits ocorr
 apenas nessa última etapa. Este bloco controla esse mapeamento. Aplica-se **somente** a
 imagens cujo perfil de cor NCLX declara a transferência PQ (característica 16);
 HEIF SDR, HLG e JPEG passam sem alterações, independentemente de `enabled`.
+Quadros que a câmera gravou girados (uma orientação EXIF diferente de 1) saem em pé: o decodificador aplica a orientação ele mesmo — inclusive pelo caminho de profundidade nativa, onde pillow-heif 1.6 e mais recentes giram o plano antes do mapeamento de tons e o valor EXIF bruto é neutralizado em vez de reaplicado.
+
 
 ```json
 "hdr_pq_tonemap": {
@@ -1103,6 +1105,8 @@ Agrupa fotos similares tiradas em sucessão rápida.
 ## Notificações de atualização
 
 Avisa quem administra a instalação de que saiu uma versão mais recente do Facet. Não confundir com o «Está disponível uma nova versão — Recarregar» do navegador, que muda a página para um pacote já descarregado: aqui trata-se de uma versão que ninguém instalou ainda.
+
+A versão em execução aparece sempre no fim do menu do usuário, para todos. Uma imagem construída com `--build-arg FACET_BUILD=<branch>@<commit>` mostra também essa linha, para distinguir duas instalações da mesma versão feitas de branches diferentes (`/api/config` traz ambos como `version` e `build`, mas só para quem pode ler a biblioteca: numa instalação protegida por senha, um visitante que não entrou não recebe nenhum dos dois).
 
 Deliberadamente discreto. A verificação corre no servidor e o resultado fica em cache, pelo que uma instalação pergunta ao GitHub no máximo uma vez por `interval_days`, independentemente de quantas pessoas tenham o viewer aberto. O pedido não leva mais nada consigo — sem token, sem identificadores, nada da fototeca. Uma falha é silenciosa: um GitHub inacessível aparece como «nenhuma atualização conhecida», nunca como erro. Só os utilizadores em modo edição são avisados, porque atualizar é tarefa de quem gere a instalação, e cada navegador mostra o aviso no máximo uma vez por semana.
 
@@ -1696,7 +1700,7 @@ Exibição e comportamento da galeria web.
       "hide_brackets": true,
       "hide_panoramas": true,
       "hide_details": true,
-      "tooltip_mode": "hover",
+      "tooltip_mode": "panel",
       "hide_rejected": true,
       "sort": "aggregate",
       "sort_direction": "DESC",
@@ -1718,6 +1722,7 @@ Exibição e comportamento da galeria web.
 | `default_category` | `""` | Filtro de categoria padrão |
 | `edition_password` | `""` | Senha para desbloquear o modo de edição (vazio = toda edição é recusada; a instalação é somente leitura, exceto para um navegador local direto ou um assistente local com edição completa sob `trusted_local_editing`) |
 | `trusted_local_editing` | `false` | Concede direitos de edição, sem senha de edição, a um navegador no mesmo computador que acessa o visualizador diretamente por loopback. Só se aplica enquanto `password` E `edition_password` estiverem vazias numa instalação de usuário único; cobre todas as rotas sujeitas a edição, incluindo o disparo da varredura, e permite que a caixa «Ligar um assistente» crie um token de assistente com edição completa para as requisições `/mcp` do mesmo computador. **Nunca ative atrás de um proxy reverso no mesmo host.** Veja [Edição Local Confiável](#edição-local-confiável) |
+| `place_search_url` | `"https://photon.komoot.io/api"` | Endpoint do Photon por trás da pesquisa explícita **Pesquisar online** da galeria; `""` a desativa. Veja [Pesquisa online de lugares](#pesquisa-online-de-lugares). |
 | **comparison_mode** | | |
 | `min_comparisons_for_optimization` | `50` | Número mínimo de comparações decisivas (uma foto venceu; empates não contam) da categoria antes de sugerir pesos |
 | `pair_selection_strategy` | `"learning"` | Estratégia de pares: `learning` (partida a frio por diversidade de embeddings + discordância de classificação uma vez treinado), `uncertainty`, `boundary`, `active`, `random` |
@@ -1773,7 +1778,7 @@ Exibição e comportamento da galeria web.
 | `low_light_max_luminance` | `0.2` | Limiar de pouca luz |
 | **defaults** | | |
 | `type` | `""` | Filtro de tipo de foto padrão (ex.: `"portraits"`, `"landscapes"`, ou `""` para Todas) |
-| `sort` | `"aggregate"` | Coluna de ordenação padrão |
+| `sort` | `"aggregate"` | Coluna de ordenação padrão. A galeria abre, em vez disso, na última ordenação escolhida no menu de ordenação quando este navegador lembra uma (veja [Ordenação](VIEWER.md#ordenação)) |
 | `sort_direction` | `"DESC"` | Direção de ordenação padrão (`"ASC"` ou `"DESC"`) |
 | `hide_blinks` | `true` | Oculta fotos com piscar por padrão |
 | `hide_bursts` | `true` | Mostra apenas a melhor da rajada por padrão |
@@ -1781,7 +1786,7 @@ Exibição e comportamento da galeria web.
 | `hide_brackets` | `true` | Mostra apenas a exposição base de cada bracketing por padrão |
 | `hide_panoramas` | `true` | Mostrar por predefinição apenas um fotograma representativo por panorâmica |
 | `hide_details` | `true` | Oculta os detalhes da foto nos cartões por padrão |
-| `tooltip_mode` | `"hover"` | Gatilho do tooltip: `"hover"`, `"click"`, `"off"` ou `"panel"` (barra fixada em vez de um tooltip flutuante — veja `panel_activation` abaixo). Substitui o antigo booleano `hide_tooltip`. |
+| `tooltip_mode` | `"panel"` | Gatilho do tooltip: `"hover"`, `"click"`, `"off"` ou `"panel"` (barra fixada em vez de um tooltip flutuante — veja `panel_activation` abaixo). Substitui o antigo booleano `hide_tooltip`. |
 | `panel_activation` | `"both"` | Gesto que atualiza a foto selecionada na barra fixada quando `tooltip_mode` é `"panel"`: `"hover"`, `"click"` ou `"both"`. Sem efeito nos outros modos de tooltip. O padrão `"both"` preserva o comportamento original do painel |
 | `hide_rejected` | `true` | Oculta fotos rejeitadas por padrão |
 | `gallery_mode` | `"mosaic"` | Layout padrão da galeria (`"grid"` ou `"mosaic"`) |
@@ -1846,7 +1851,7 @@ não possam divergir.
 | `badge_percent` | `5` | Percentagem de píxeis, no pior dos canais R/G/B, acima da qual o cartão recebe selo. Medido em 28 fotos de amostra: mediana de 0,31 % e p90 de 2,35 %, pelo que 5 % dispara em cerca de 1 foto em 25 |
 | `indicator_percent` | `1` | Limiar dos marcadores R/G/B do histograma. Mais fino do que o selo porque já se está a olhar para uma única foto |
 | `histogram_mode` | `"rgb"` | Predefinição do histograma do **painel de detalhe**: `"luma"`, `"rgb"`, ou um único canal (`"r"` / `"g"` / `"b"`). A escolha do utilizador para esta superfície fica em `localStorage` sob `facet_histogram_mode` e prevalece sobre este valor |
-| `tooltip_histogram_mode` | `"luma"` | Predefinição do histograma do **tooltip ao pairar/fixado**, os mesmos cinco valores. Deliberadamente independente de `histogram_mode` e persistido sob a sua própria chave de `localStorage` (`facet_histogram_mode_tooltip`): o painel de detalhe serve para estudar uma única foto, onde o detalhe por canal justifica o espaço; o tooltip serve para percorrer muitas fotos rapidamente, onde uma curva de luminância simples costuma ler-se mais depressa. Ajustar um nunca reajusta o outro, e o alternador para o mudar só aparece enquanto o tooltip está fixado (barra fixada, ou `tooltip_mode: "click"`) — em modo de simples pairar, mostra apenas o seu modo resolvido em modo só de leitura |
+| `tooltip_histogram_mode` | `"luma"` | Predefinição do histograma do separador Histograma do **painel lateral** (`tooltip_mode: "panel"`), os mesmos cinco valores. Deliberadamente independente de `histogram_mode` e persistido sob a sua própria chave de `localStorage` (`facet_histogram_mode_tooltip`): o detalhe da foto serve para estudar uma única foto, onde o detalhe por canal justifica o espaço; o painel lateral serve para percorrer muitas fotos rapidamente, onde uma curva de luminância simples costuma ler-se mais depressa. Ajustar um nunca reajusta o outro. As bolhas **Passar o mouse** e **Clicar** não mostram histograma |
 
 **O recorte é medido por canal, exatamente nos bins 0 e 255.** Fica em
 `photos.channel_clip_shadow_pct` / `channel_clip_highlight_pct` como a percentagem
@@ -2002,6 +2007,12 @@ Uma requisição confiável tem todos os direitos de edição: toda rota que, de
 **Assistentes.** A mesma opção permite que a caixa «Ligar um assistente» crie um token de **Edição completa** numa instalação aberta (`viewer.mcp.enabled` e um token continuam necessários). O token é `edition` apenas para requisições `/mcp` que passam a fronteira acima, por isso funciona a partir de `http://localhost:<port>` ou `127.0.0.1` em `:5000` e pelo proxy de desenvolvimento do `ng serve` `:4200`, e passa a `readonly` a partir de um cliente da rede local, de um URL com nome de host ou `0.0.0.0`, ou numa implantação Docker. Qualquer senha baixa-o para `readonly`; remover a senha reativa-o. As ferramentas de eliminação continuam a precisar de `viewer.mcp.allow_destructive`. `ng serve --host 0.0.0.0` ou qualquer proxy não assinalado no mesmo computador deixa passar um cliente da rede local que envie `Host: localhost`; resta apenas o token a proteger `/mcp`. Veja [Agentes de IA (MCP)](AGENTS.md). A mesma fronteira, seja qual for o valor de `trusted_local_editing`, regula a gestão dos tokens do assistente numa instalação aberta: criar, listar e revogar tokens só funciona com um pedido que a passe (ou numa sessão de edição quando `viewer.edition_password` está definido). Um proxy inverso tem de enviar `X-Forwarded-For` ou `Forwarded`; caso contrário é tratado como a máquina local.
 
 > **Aviso:** o par de loopback é a única fronteira real. `Host`, `Origin`, `Referer` e `Sec-Fetch-Site` são definidos pelo cliente e só podem recusar uma requisição, e um proxy reverso, túnel ou redirecionamento de porta no mesmo host que não adicione nenhum dos cabeçalhos acima é indistinguível do seu navegador. Nunca ative esta opção atrás de qualquer proxy reverso no mesmo host. Enquanto estiver ativa, qualquer processo local e qualquer conta do computador pode editar.
+
+### Pesquisa online de lugares
+
+`viewer.place_search_url` tem como padrão `https://photon.komoot.io/api`. Defina uma string vazia para desativar a pesquisa de endereços e estabelecimentos, ou use um endpoint HTTP(S) do Photon auto-hospedado sem credenciais, parâmetros de consulta ou fragmento. O navegador recebe apenas `place_search_enabled`, nunca a URL configurada. As pesquisas exigem acesso de edição e um clique explícito em **Pesquisar online**. Para privacidade, cache e limites de workers, veja [Pesquisa online de lugares](VIEWER.md#pesquisa-online-de-lugares). A [política da demo do Photon](https://github.com/komoot/photon#demo-server) permite uso razoável do projeto sem garantia de disponibilidade; a [documentação da API do Photon](https://github.com/komoot/photon/blob/master/docs/api-v1.md) define seu formato GeoJSON. Não há novas tentativas nem redirecionamentos.
+
+O watchdog de transporte de cinco segundos encerra o socket ativo, incluindo o estabelecimento TCP/TLS e as leituras bloqueadas de cabeçalhos, corpo e delimitação em blocos HTTP. A resolução DNS nativa síncrona ainda segue os tempos do resolvedor do sistema operacional e pode passar de cinco segundos antes de existir um socket. A pesquisa continua limitada a uma requisição por vez enquanto o DNS está pendente; se o DNS responder após o prazo, nenhuma conexão é aberta. Não existem workers de requisição ou de DNS desanexados.
 
 ### Desempenho do Visualizador
 
@@ -2887,6 +2898,8 @@ Sincronização unidirecional das avaliações por estrelas e favoritos do Facet
 |--------------|--------|-----------|
 | `url` | `""` | URL base do servidor Immich (ex.: `http://nas:2283`) |
 | `api_key` | `""` | Chave de API do Immich, enviada como o cabeçalho `x-api-key` |
+| `owner_id` | `""` | ID exato do proprietário Immich; vazio desativa o filtro. Um campo ausente não satisfaz uma seleção explícita. |
+| `library_id` | `""` | ID exato da biblioteca Immich; vazio desativa o filtro, sem selecionar uma biblioteca null. |
 | `path_map` | `[{facet_prefix, immich_prefix}]` | Reescritas de prefixo dos caminhos do Facet para os valores de `originalPath` do Immich; o primeiro `facet_prefix` correspondente é trocado pelo seu `immich_prefix` ao resolver um ativo |
 | `push.ratings` | `true` | Envia as avaliações por estrelas. A política segura de versão do Immich é respeitada — apenas 1–5 é gravado, nunca 0/−1 |
 | `push.favorites` | `true` | Envia a marcação de favorito |

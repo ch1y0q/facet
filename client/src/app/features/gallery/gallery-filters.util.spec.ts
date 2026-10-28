@@ -17,6 +17,9 @@ import {
   smartAlbumFilterJson,
   applySavedAlbumFilters,
   exclusiveHidePatch,
+  reviewStatusPatch,
+  setScopePatch,
+  activeFilterKeys,
   countActiveFilters,
   loadDisplayOptionsFromStorage,
   saveDisplayOptionsToStorage,
@@ -28,6 +31,31 @@ import {
 function filters(overrides: Partial<GalleryFilters> = {}): GalleryFilters {
   return { ...DEFAULT_FILTERS, ...overrides };
 }
+
+describe('activeFilterKeys', () => {
+  it('is empty for defaults', () => {
+    expect(activeFilterKeys(DEFAULT_FILTERS)).toEqual([]);
+  });
+  it('names string and flag filters in a stable order, whatever order they were set in', () => {
+    const a = activeFilterKeys(filters({ is_monochrome: true, tag: 'beach', camera: 'Canon' }));
+    const b = activeFilterKeys(filters({ camera: 'Nikon', tag: 'x', is_monochrome: true }));
+    expect(a).toEqual(['camera', 'tag', 'is_monochrome']);
+    expect(b).toEqual(a);
+  });
+  it('lists every flag after the string filters, in declaration order', () => {
+    const f = filters({
+      faces_need_names: true, manual_faces_need_review: true, is_monochrome: true, duplicates_only: true,
+      blinks_only: true, show_rejected: true, favorites_only: true,
+      semanticQuery: 'dog', similar_to: '/a.jpg', camera: 'Canon',
+    });
+    expect(activeFilterKeys(f)).toEqual([
+      'camera', 'similar_to', 'semanticQuery',
+      'favorites_only', 'show_rejected', 'blinks_only', 'duplicates_only', 'is_monochrome',
+      'manual_faces_need_review', 'faces_need_names',
+    ]);
+    expect(countActiveFilters(f)).toBe(10);
+  });
+});
 
 describe('countActiveFilters', () => {
   it('returns 0 for defaults', () => {
@@ -103,12 +131,13 @@ describe('buildApiParams semantic search', () => {
 });
 
 describe('buildSyncParams', () => {
-  it('is empty when filters equal defaults', () => {
-    expect(buildSyncParams(DEFAULT_FILTERS, undefined)).toEqual({});
+  it('carries only the sort when filters equal defaults', () => {
+    expect(buildSyncParams(DEFAULT_FILTERS, undefined)).toEqual({ sort: 'aggregate' });
   });
-  it('includes sort only when it differs from the effective default', () => {
+  it('writes the sort even when it equals the viewer default, so a remembered sort cannot override a link', () => {
     expect(buildSyncParams(filters({ sort: 'date_taken' }), undefined)['sort']).toBe('date_taken');
-    expect(buildSyncParams(filters({ sort: 'date_taken' }), { sort: 'date_taken' })['sort']).toBeUndefined();
+    expect(buildSyncParams(filters({ sort: 'date_taken' }), { sort: 'date_taken' })['sort']).toBe('date_taken');
+    expect(buildSyncParams(filters({ sort: 'aggregate' }), { sort: 'aggregate' })['sort']).toBe('aggregate');
   });
   it('includes similarity_mode only when non-visual and similar_to is set', () => {
     expect(
@@ -231,6 +260,17 @@ describe('smartAlbumFilterJson', () => {
     expect(saved).toEqual({ camera: 'X100V' });
   });
 
+  it.each([true, false])('saves and reopens rejected-only=%s as a boolean without broadening the view', showRejected => {
+    const stored = smartAlbumFilterJson(filters({ show_rejected: showRejected, review_status: 'kept', camera: 'Canon' }));
+    const saved = JSON.parse(stored);
+    expect(saved.show_rejected).toBe(showRejected ? true : undefined);
+    const reopened = applySavedAlbumFilters(filters(), stored, '42');
+    expect(reopened).toMatchObject({ show_rejected: showRejected, review_status: 'kept', camera: 'Canon', album_id: '42' });
+    expect(buildApiParams(reopened, true, 0.15)).toMatchObject({ review_status: 'kept', camera: 'Canon' });
+    expect(buildApiParams(reopened, true, 0.15)['show_rejected']).toBe(showRejected ? '1' : undefined);
+    expect(JSON.parse(smartAlbumFilterJson(reopened))).toEqual(saved);
+  });
+
   it('keeps an ordinary sort', () => {
     const saved = JSON.parse(smartAlbumFilterJson(filters({ sort: 'date_taken', sort_direction: 'ASC' })));
     expect(saved.sort).toBe('date_taken');
@@ -274,9 +314,50 @@ describe('applySavedAlbumFilters and the hide_rejected / favorites_only exclusio
 
 describe('exclusiveHidePatch', () => {
   it('clears the companion of whichever is turned on, and nothing when both are off', () => {
-    expect(exclusiveHidePatch({ hide_rejected: true })).toEqual({ favorites_only: false });
-    expect(exclusiveHidePatch({ favorites_only: true })).toEqual({ hide_rejected: false });
+    expect(exclusiveHidePatch({ hide_rejected: true })).toEqual({ favorites_only: false, show_rejected: false });
+    expect(exclusiveHidePatch({ favorites_only: true })).toEqual({ hide_rejected: false, show_rejected: false });
     expect(exclusiveHidePatch({ hide_rejected: false, favorites_only: false })).toEqual({});
+  });
+  it('show_rejected clears both companions and nothing else', () => {
+    expect(exclusiveHidePatch({ show_rejected: true })).toEqual({ hide_rejected: false, favorites_only: false });
+    expect(exclusiveHidePatch({ show_rejected: false })).toEqual({});
+    expect(exclusiveHidePatch({ blinks_only: true })).toEqual({});
+  });
+});
+
+describe('reviewStatusPatch', () => {
+  it('a review status clears the semantic and similar queries', () => {
+    expect(reviewStatusPatch({ review_status: 'kept' })).toEqual({ similar_to: '', semanticQuery: '', show_rejected: false });
+  });
+  it('undecided also sorts oldest first', () => {
+    expect(reviewStatusPatch({ review_status: 'undecided' }))
+      .toEqual({ similar_to: '', semanticQuery: '', show_rejected: false, sort: 'date_taken', sort_direction: 'ASC' });
+  });
+  it('a semantic or similar query clears the review status, and unrelated updates change nothing', () => {
+    expect(reviewStatusPatch({ semanticQuery: 'dog' })).toEqual({ review_status: '' });
+    expect(reviewStatusPatch({ similar_to: '/a.jpg' })).toEqual({ review_status: '' });
+    expect(reviewStatusPatch({ review_status: '', semanticQuery: '' })).toEqual({});
+  });
+  it('a review status clears "Only rejected" without sorting when the caller opts out', () => {
+    expect(reviewStatusPatch({ review_status: 'undecided' }, false))
+      .toEqual({ similar_to: '', semanticQuery: '', show_rejected: false });
+    const seeded = applyQueryParams(DEFAULT_FILTERS, { review_status: 'undecided', show_rejected: 'true' });
+    expect(seeded.show_rejected).toBe(false);
+    expect(applyQueryParams(DEFAULT_FILTERS, { show_rejected: 'true' }).show_rejected).toBe(true);
+  });
+});
+
+describe('setScopePatch', () => {
+  const cleared = { sequence_group_id: '', sequence_kind: '', burst_group_id: '', duplicate_group_id: '' };
+  it('burst and duplicate release their own hide toggle', () => {
+    expect(setScopePatch('burst', '3')).toEqual({ ...cleared, burst_group_id: '3', hide_bursts: false });
+    expect(setScopePatch('duplicate', '5')).toEqual({ ...cleared, duplicate_group_id: '5', hide_duplicates: false });
+  });
+  it('a bracket releases hide_brackets, any other sequence kind hide_panoramas', () => {
+    expect(setScopePatch('sequence', '4', 'bracket'))
+      .toEqual({ ...cleared, sequence_kind: 'bracket', sequence_group_id: '4', hide_brackets: false });
+    expect(setScopePatch('sequence', '9', 'hdr_panorama'))
+      .toEqual({ ...cleared, sequence_kind: 'hdr_panorama', sequence_group_id: '9', hide_panoramas: false });
   });
 });
 
@@ -366,6 +447,30 @@ describe('anyHideToggleActive', () => {
 
   it.each(keys)('returns true when only %s is on', key => {
     expect(anyHideToggleActive({ ...allOff, [key]: '1' })).toBe(true);
+  });
+});
+
+ describe('review status codec', () => {
+  it.each(['undecided', 'kept', 'rejected'] as const)('round trips %s and overrides hide rejected', review_status => {
+    const f = filters({ review_status });
+    expect(applyQueryParams(DEFAULT_FILTERS, buildSyncParams(f, undefined)).review_status).toBe(review_status);
+    expect(buildApiParams(f, false, undefined)).toMatchObject({ review_status });
+    expect(buildApiParams(f, false, undefined)['hide_rejected']).toBeUndefined();
+  });
+  it('ignores invalid review statuses', () => {
+    expect(applyQueryParams(DEFAULT_FILTERS, { review_status: 'bad' }).review_status).toBe('');
+  });
+});
+
+describe('review URL normalization', () => {
+  it('drops relevance after a review status clears a semantic query', () => {
+    expect(applyQueryParams(DEFAULT_FILTERS, { review_status: 'kept', semanticQuery: 'sunset', sort: RELEVANCE_SORT }))
+      .toMatchObject({ semanticQuery: '', sort: 'aggregate' });
+  });
+
+  it('clears ranked searches and retains ordinary filters', () => {
+    expect(applyQueryParams(DEFAULT_FILTERS, { review_status: 'kept', semanticQuery: 'sunset', similar_to: '/a.jpg', search: 'beach', album_id: '3' }))
+      .toMatchObject({ review_status: 'kept', semanticQuery: '', similar_to: '', search: 'beach', album_id: '3' });
   });
 });
 
@@ -466,5 +571,45 @@ describe('no geolocation filter', () => {
     expect(buildApiParams(f, false, undefined)).toMatchObject({ no_gps: '1' });
     expect(applyQueryParams(DEFAULT_FILTERS, buildSyncParams(f, undefined)).no_gps).toBe('1');
     expect(countActiveFilters(f)).toBe(1);
+  });
+});
+
+
+describe('manual face review filter', () => {
+  it('round trips the URL and smart album, and scopes membership and all-filtered actions', () => {
+    const f = filters({ manual_faces_need_review: true });
+    expect(countActiveFilters(f)).toBe(1);
+    expect(buildApiParams(f, false, undefined)['manual_faces_need_review']).toBe('1');
+    expect(buildByPathsFilters(f, false, '', undefined)['manual_faces_need_review']).toBe('1');
+    const url = buildSyncParams(f, undefined);
+    expect(url['manual_faces_need_review']).toBe('true');
+    expect(applyQueryParams(filters(), url as Record<string, string>).manual_faces_need_review).toBe(true);
+    const stored = smartAlbumFilterJson(f);
+    expect(JSON.parse(stored).manual_faces_need_review).toBe(true);
+    expect(applySavedAlbumFilters(filters(), stored, '7').manual_faces_need_review).toBe(true);
+  });
+});
+
+describe('faces without names filter', () => {
+  it('round trips the URL and smart album, and scopes membership and all-filtered actions', () => {
+    const f = filters({ faces_need_names: true });
+    expect(countActiveFilters(f)).toBe(1);
+    expect(buildApiParams(f, false, undefined)['faces_need_names']).toBe('1');
+    expect(buildByPathsFilters(f, false, '', undefined)['faces_need_names']).toBe('1');
+    const url = buildSyncParams(f, undefined);
+    expect(url['faces_need_names']).toBe('true');
+    expect(applyQueryParams(filters(), url as Record<string, string>).faces_need_names).toBe(true);
+    const stored = smartAlbumFilterJson(f);
+    expect(JSON.parse(stored).faces_need_names).toBe(true);
+    expect(applySavedAlbumFilters(filters(), stored, '7').faces_need_names).toBe(true);
+  });
+});
+
+describe('review and location URL coexistence', () => {
+  it('retains both ordinary filters while clearing incompatible ranked and radius modes', () => {
+    const f = applyQueryParams(DEFAULT_FILTERS, { review_status: 'kept', no_gps: '1', semanticQuery: 'sunset', similar_to: '/a.jpg', gps_lat: '0', gps_lng: '0', gps_radius_km: '5' });
+    expect(f).toMatchObject({ review_status: 'kept', no_gps: '1', semanticQuery: '', similar_to: '', gps_lat: '', gps_lng: '', gps_radius_km: '' });
+    expect(applyQueryParams(DEFAULT_FILTERS, buildSyncParams(f, undefined))).toMatchObject({ review_status: 'kept', no_gps: '1' });
+    expect(buildApiParams(f, false, undefined)).toMatchObject({ review_status: 'kept', no_gps: '1' });
   });
 });

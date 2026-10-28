@@ -151,8 +151,16 @@ def _build_library(path, junk: str):
             rows[k * 800 + 7][-1] = rng.choice(['document', 'screenshot', 'receipt'])
     marks = ", ".join("?" for _ in _PHOTO_COLS.split(","))
     with sqlite3.connect(path) as conn:
+        # The insert trigger costs more than the 86 indexes together; one rebuild after the
+        # bulk load leaves photos_fts identical, and init_database restores the trigger.
+        conn.execute("PRAGMA synchronous=OFF")
+        conn.execute("PRAGMA cache_size=-200000")
+        conn.execute("DROP TRIGGER photos_fts_ai")
         conn.executemany(
             f"INSERT INTO photos ({_PHOTO_COLS}) VALUES ({marks})", rows)
+        conn.execute("INSERT INTO photos_fts(photos_fts) VALUES ('rebuild')")
+        conn.commit()
+        init_database(str(path))
         conn.execute("ANALYZE photos")
         conn.commit()
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -357,6 +365,23 @@ def test_default_gallery_statements_use_the_covering_indexes(gallery, traced, sp
     control = _plans(sparse_db, found)
     assert not any("COVERING INDEX idx_gallery_" in line for line in control["count"])
     assert not _uses(control["page"], "idx_gallery_aggregate")
+
+
+@pytest.mark.parametrize("scope", ["", "&path_prefix=/photos/"])
+def test_review_progress_count_is_a_covering_read(gallery, traced, sparse_db, scope):
+    client = gallery(sparse_db)
+    traced.clear()
+    resp = client.get(f"/api/photos/review_progress?{HIDES}{scope}")
+    assert resp.status_code == 200, resp.text
+    [sql] = [s for s in traced if "AS undecided" in s]
+    plan = _plan(sparse_db, sql)
+    assert _uses(plan, "idx_review_progress") and any("COVERING INDEX" in line for line in plan), plan
+    assert not _bare_scan(plan), plan
+
+    # Control: without it the count reads table rows (is_kept is in no gallery index).
+    _drop_registry(sparse_db, ["idx_review_progress"])
+    control = _plan(sparse_db, sql)
+    assert not any("COVERING INDEX" in line for line in control), control
 
 
 @pytest.mark.parametrize("sort, direction, index", [

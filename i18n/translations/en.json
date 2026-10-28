@@ -72,7 +72,8 @@
     "switch_language": "Switch language",
     "theme": "Theme",
     "dark_mode": "Dark mode",
-    "light_mode": "Light mode"
+    "light_mode": "Light mode",
+    "version": "Facet {version}"
   },
   "dialog": {
     "cancel": "Cancel",
@@ -129,7 +130,8 @@
       "inpage_hint": "When on, an assistant running in this browser can search and, if your session allows it, change your library through the page. Off by default; it only applies to this browser.",
       "inpage_changed": "Assistant changed {count} photo",
       "inpage_changed_plural": "Assistant changed {count} photos"
-    }
+    },
+    "ok": "OK"
   },
   "pagination": {
     "scroll_for_more": "Scroll for more",
@@ -138,20 +140,16 @@
   "tooltip": {
     "not_computed": "Not computed",
     "category": "Category",
-    "aggregate": "Aggregate",
-    "quality_section": "Quality",
     "aesthetic": "Aesthetic",
     "quality_score": "Quality Score",
     "face_quality": "Face Quality",
     "face_sharpness": "Face Sharpness",
     "eye_sharpness": "Eye Sharpness",
     "tech_sharpness": "Tech Sharpness",
-    "composition_section": "Composition",
     "composition": "Composition",
     "pattern": "Pattern",
     "power_points": "Power Points",
     "leading_lines": "Leading Lines",
-    "technical_section": "Technical",
     "exposure": "Exposure",
     "color": "Color",
     "contrast": "Contrast",
@@ -161,7 +159,6 @@
     "noise": "Noise",
     "bonus_section": "Bonus",
     "isolation": "Isolation",
-    "exif_section": "EXIF",
     "camera": "Camera",
     "lens": "Lens",
     "focal": "Focal",
@@ -187,7 +184,6 @@
     "qrealign_score": "Q-ReAlign",
     "aesthetic_v25": "Aesthetic V2.5",
     "deqa_score": "DeQA",
-    "saliency_section": "Subject Saliency",
     "subject_sharpness": "Subject Sharpness",
     "subject_prominence": "Prominence",
     "subject_placement": "Placement",
@@ -200,11 +196,15 @@
     "color_harmony": "Color Harmony",
     "caption": "Caption",
     "filter_by_person": "Filter by {name}",
-    "set_section": "Set",
     "histogram": "Histogram"
   },
   "photoCard": {
-    "embed_to_file": "Write metadata to file"
+    "embed_to_file": "Write metadata to file",
+    "duplicate_set": "Open duplicate group",
+    "burst_set": "Open burst group",
+    "sequence_set": "Open bracket/panorama set",
+    "open_detail": "Open photo page",
+    "key_hint": "1-5 rate · F fav · X reject · Space select · Enter open"
   },
   "notifications": {
     "copied": "Copied!",
@@ -459,6 +459,7 @@
     "exposure": "Exposure",
     "composition": "Composition",
     "subject_saliency": "Subject Saliency",
+    "content": "Content",
     "camera": "Camera"
   },
   "sort_options": {
@@ -571,7 +572,8 @@
     "mark_rejected": "Mark as rejected",
     "unmark_rejected": "Remove rejected mark",
     "rejected_badge": "Rejected",
-    "rating_badge": "Rated {stars}"
+    "rating_badge": "Rated {stars}",
+    "stars_out_of_five": "Rated {stars} out of 5"
   },
   "similar": {
     "title": "Similar Photos",
@@ -982,7 +984,8 @@
       "avg_monochrome": "Monochrome (%)",
       "avg_dynamic_range": "Avg. Dynamic Range",
       "usage_timeline": "Usage Timeline"
-    }
+    },
+    "gear_metric_label": "Chart metric"
   },
   "login": {
     "title": "Login",
@@ -1017,7 +1020,8 @@
     "folders": "Folders",
     "map": "Map",
     "capsules": "Capsules",
-    "junk_sweep": "Junk Sweep"
+    "junk_sweep": "Junk Sweep",
+    "help": "Help"
   },
   "auth": {
     "logout": "Log out",
@@ -1030,13 +1034,18 @@
     "user_menu": "User menu"
   },
   "gallery": {
-    "help": "Browse and filter your library. Sort by score, date or your personal taste; use the sidebar filters (people, tags, camera, category, score range, moments) and the search to find photos.",
+    "help": "Sort by score, date or your personal taste\nFilter with the sidebar: people, tags, camera, categories\nSearch by filename or description",
     "hidden_banner": {
       "message": "{n} photos hidden by current filters",
       "some_hidden": "Some photos are hidden by your filters",
       "show_all": "Show all",
       "restore": "Restore filters",
       "showing_all": "Showing every photo — blinks, bursts and duplicates included"
+    },
+    "filters_notice": {
+      "message": "{count} filter active",
+      "message_plural": "{count} filters active",
+      "reset": "Reset all filters"
     },
     "render_migration": {
       "message": "{n} RAW photos still show a thumbnail from the previous rendering.",
@@ -1052,6 +1061,7 @@
     },
     "all_photos": "All Photos",
     "sort": "Sort by",
+    "sort_current": "Sort by: {label}",
     "sort_aggregate": "Aggregate",
     "sort_aesthetic": "Aesthetic",
     "sort_date": "Date",
@@ -1203,7 +1213,6 @@
       "find_filter": "Find a filter…",
       "clear_find_filter": "Clear filter search",
       "no_filters_match": "No filters match",
-      "advanced_metrics": "Advanced metrics",
       "refine": "Refine",
       "view": "View",
       "color_quality": "Color & Quality",
@@ -1296,7 +1305,32 @@
       "badge_shadow": "Clipped shadows: {percent}% of pixels"
     },
     "channel_clip_highlight_range": "Clipped Highlights %",
-    "channel_clip_shadow_range": "Clipped Shadows %"
+    "channel_clip_shadow_range": "Clipped Shadows %",
+    "blinks_only": "Blinks Only",
+    "duplicates_only": "Duplicates Only",
+    "card_actions": {
+      "title": "Customize card buttons",
+      "hint": "Choose which buttons a photo card shows on hover, and in what order. Set buttons only appear on photos that belong to such a group.",
+      "move_up": "Move up",
+      "move_down": "Move down",
+      "reset": "Reset to defaults"
+    },
+    "review_progress": {
+      "title": "Review progress",
+      "counts": "{undecided} undecided · {kept} kept · {rejected} rejected",
+      "complete": "{percent}% of {total} reviewed",
+      "start": "Review undecided",
+      "resume": "Continue reviewing",
+      "browser": "Resume the remembered queue on this browser.",
+      "hide_from_menu": "Hide review progress",
+      "show_from_menu": "Show review progress"
+    },
+    "manual_faces_need_review": "Manual faces need review",
+    "manual_faces_review_hint": "Based on the last scan or face-editor check, not continuous monitoring. Open a photo’s face editor to review saved marks.",
+    "faces_need_names": "Faces without names",
+    "faces_need_names_hint": "Includes unassigned faces and unnamed person groups. Use + to assign a face, or name a group in People. Photos with no detected faces are excluded.",
+    "faces_need_names_readonly_hint": "Includes unassigned faces and unnamed person groups. Someone with edition access can assign faces or name groups. Photos with no detected faces are excluded.",
+    "help_none": "This page has no help text yet."
   },
   "composition_patterns": {
     "none": "None",
@@ -1596,7 +1630,10 @@
       "sequences": "Detecting brackets",
       "tagging": "Tagging",
       "vec": "Indexing",
-      "done": "Done"
+      "done": "Done",
+      "moments": "Detecting moments",
+      "junk": "Detecting junk",
+      "recompute": "Recomputing scores"
     },
     "title": "Scan Photos",
     "start_button": "Start Scan",
@@ -1685,10 +1722,14 @@
     "split_select_face": "Select face {index}",
     "no_faces": "No faces found for this person",
     "split_done": "Person split",
-    "split_error": "Failed to split person"
+    "split_error": "Failed to split person",
+    "empty_hint": "People come from faces you assign on a photo page (edition mode). Open any photo with faces and pick Assign face to person to create the first one."
   },
   "person_selector": {
-    "create_new": "Create new person"
+    "create_new": "Create new person",
+    "ordering_hint": "Recently assigned in this browser first, then people with the most faces in photos you can see.",
+    "face_count": "{count} faces",
+    "face_count_one": "1 face"
   },
   "slideshow": {
     "start": "Slideshow",
@@ -1965,7 +2006,6 @@
     "similarity_threshold": "Similarity Threshold",
     "burst_help": "Photos taken in rapid succession are grouped together. Click photos to keep them (green border), unselected photos (red border) will be hidden. The best photo is auto-selected based on sharpness and quality.",
     "similar_help": "Visually similar photos across your library are grouped using AI embeddings. Review each group, keep the best shots, and discard near-duplicates. Adjust the threshold slider to control how similar photos must be to form a group.",
-    "help": "Help",
     "help_text": "Cull near-duplicate shots fast. Pick a granularity — Bursts, Similar, Scenes, or All merged — and a sort order; Strictness sets how aggressively the auto-selection keeps only the best frame, and in Similar mode the Similarity slider tunes how alike photos must be to group. Click a photo to keep or unkeep it, double-click to keep only that one, or turn on the Loupe (Z) to pixel-peep. Open the Darkroom (Enter) for full-screen review with 2-up/4-up Compare. Use Up/Down to pick a group and Space to confirm it and move on; Skip and Confirm start a 7-second cooldown you can Cancel before the group closes, and confirming hides the rejected photos from the gallery. Scope the feed to an album or scene, toggle Exclude rejected, and note that every cull decision trains your personal \"My Taste\" ranking. See the shortcuts below for all keys.",
     "type_burst": "Burst",
     "type_similar": "Similar",
@@ -2396,7 +2436,9 @@
     "cluster_photos": "{count} photos",
     "score": "Score: {score}",
     "date_from": "From",
-    "date_to": "To"
+    "date_to": "To",
+    "no_gps_title": "No photos with a location",
+    "no_gps_hint": "Nothing in scope carries GPS coordinates. Open a photo and use its Location panel to place it — placed photos appear here."
   },
   "photo_detail": {
     "back": "Back",
@@ -2424,7 +2466,6 @@
     "location": "Location",
     "social_crop": "Social crop",
     "set": {
-      "title": "Set",
       "ev_span": "EV span",
       "kind_duplicate": "Duplicate",
       "open_in_gallery": "Open this set in the gallery",
@@ -2443,6 +2484,15 @@
       "error": "Delete failed"
     },
     "gps": {
+      "online_query": "Address or business",
+      "online_notice": "Search online sends this query to the configured Photon provider. Saved places and coordinates work offline. Selecting a result previews it; Save applies it.",
+      "osm_attribution": "© OpenStreetMap contributors",
+      "opens_new_tab": "(opens in new tab)",
+      "online_search": "Search online",
+      "online_disabled": "Online search is disabled.",
+      "online_loading": "Searching online…",
+      "online_empty": "No places found. Try another query or enter coordinates.",
+      "online_error": "Online search failed or is busy. Wait a moment and try again, or enter coordinates.",
       "preview_hint": "Choose a location, then Save to apply it to this photo.",
       "search": "Search saved places",
       "loading": "Loading places…",
@@ -2462,7 +2512,22 @@
       "load_error": "Could not load places.",
       "place_error": "Could not update place. Check the name, limit and connection.",
       "save_error": "Could not save the photo location. Please try again.",
-      "use_file_location": "Use the file's location"
+      "use_file_location": "Use the file's location",
+      "batch_title": "Set location",
+      "only_missing": "Only photos missing a location",
+      "preview_batch": "Preview location changes",
+      "batch_preview": "{changed} photo will change; {skipped} skipped.",
+      "batch_preview_plural": "{changed} photos will change; {skipped} skipped.",
+      "batch_applied": "Updated {changed} photo; {skipped} skipped.",
+      "batch_applied_plural": "Updated {changed} photos; {skipped} skipped.",
+      "batch_error": "Could not apply location. Select at most 1000 photos and preview again; the selection or saved place may have changed.",
+      "batch_limit": "Select at most 1000 photos. Existing locations are replaced when protection is off. Original files are unchanged.",
+      "batch_hint": "Choose a location, then preview the changes before saving the selection."
+    },
+    "distribution": {
+      "top": "Top {pct}% of the library",
+      "range": "Library range {min}–{max}",
+      "top_in_range": "Top {pct}% of the library · library range {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2487,7 +2552,8 @@
       "success": "Category set to {category}.",
       "cleared": "Override cleared. Recompute to apply the filter-based category.",
       "explainer_toggle": "Why isn't this a different category?",
-      "target_category_label": "Compare against"
+      "target_category_label": "Compare against",
+      "target_category_hint": "Pick a category to see which of its filters keep this photo out, and what would let it in."
     }
   },
   "download": {
@@ -2502,7 +2568,7 @@
     "mode_copy": "Copy selects to a folder",
     "mode_symlink": "Symlink selects to a folder",
     "overwrite": "Overwrite existing .xmp sidecars",
-    "overwrite_hint": "Off by default: a darktable-authored .xmp is preserved and Facet writes a .facet.xmp instead.",
+    "overwrite_hint": "With ExifTool, existing sidecars are merged. Without it, an existing .xmp is preserved and Facet writes .facet.xmp unless overwrite is enabled.",
     "target_dir": "Target folder",
     "run": "Export",
     "running": "Exporting…",
@@ -2520,6 +2586,32 @@
       "invalid_json": "This file is not valid JSON",
       "imported": "Lightroom state imported: {matched} matched, {unmatched} not found, {changed} changed",
       "import_failed": "Could not import the Lightroom state file"
+    },
+    "jobs": {
+      "running": "Exporting sidecars",
+      "completed": "Export completed",
+      "cancelled": "Export cancelled",
+      "failed": "Export failed",
+      "interrupted": "Export interrupted",
+      "progress": "{processed} / {total} files processed",
+      "counts": "{written} written · {skipped} skipped · {errors} errors",
+      "close": "Close",
+      "close_hint": "The export continues if you close this dialog. Reopen it to find recent exports.",
+      "cancel": "Stop after current file",
+      "cancelling": "Stopping after current file…",
+      "cancel_hint": "Completed sidecars remain. The current file may finish before the export stops.",
+      "retry": "Retry unfinished files",
+      "retry_hint": "Retries failed, skipped and unfinished files using current metadata. An interrupted file may be written again if its progress was not saved.",
+      "refresh": "Refresh status",
+      "recent": "Recent sidecar exports",
+      "none": "No recent sidecar exports.",
+      "read_failed": "Could not read export progress. Refresh to check again.",
+      "errors": {
+        "metadata_repair": "Existing metadata needs repair before exporting.",
+        "write_failed": "Could not write metadata. Check the server logs.",
+        "exiftool_upgrade": "ExifTool 13.23 to 13.27 corrupts XMP sidecars. Upgrade ExifTool to 13.28 or newer.",
+        "stopped": "Export stopped unexpectedly. Check the server logs and retry the remaining photos."
+      }
     }
   },
   "undo": {
@@ -2533,6 +2625,9 @@
     "selected": "selected",
     "copy_keeps": "Copy keeps to folder",
     "move_rejects": "Move rejects to folder",
+    "trash_all_rejects": "Trash all rejects (to OS trash)",
+    "all_rejects_scope": "All rejected photos visible to you across the whole library. Current album, dates and gallery filters are ignored. Files are shared: this uses your rejection decisions and may trash photos other users kept, favourited or rated.",
+    "all_rejects_limit": "Trash all rejects supports up to 10,000 photos at a time. In the gallery, show rejected photos only, narrow by date or album, and use Cull to folder → Trash rejects to process smaller batches. Turn off group-hiding filters to include every rejected frame.",
     "trash_rejects": "Trash rejects (to OS trash)",
     "trash_disabled": "Trashing is disabled — an administrator can enable it via viewer.cull.allow_trash.",
     "trash_missing_pkg": "OS-trash is unavailable on this server — the send2trash package is not installed.",
@@ -2547,6 +2642,7 @@
     "preview": "Preview",
     "apply": "Apply",
     "cancel": "Cancel",
+    "partial_error": "Some files could not be processed. Preview again to review the remaining files.",
     "done": "Cull applied",
     "error": "Cull failed",
     "delete_action": "Delete…",
@@ -2554,7 +2650,8 @@
     "delete_confirm_body": "{count} photos will be sent to your operating system's trash. They stay recoverable until you empty it.",
     "delete_partial_result": "{deleted} deleted, {failed} failed",
     "delete_failed": "Delete failed — nothing was sent to trash",
-    "delete_disabled_view_scope_tooltip": "Select photos explicitly to delete them — a whole-view selection can’t be used here"
+    "delete_disabled_view_scope_tooltip": "Select photos explicitly to delete them — a whole-view selection can’t be used here",
+    "remove_missing_rows": "Also remove library entries whose file is already missing from disk"
   },
   "shortcuts": {
     "title": "Keyboard shortcuts",
@@ -2573,6 +2670,9 @@
     "rate": "Rate (1–5 stars)",
     "reject": "Reject",
     "favorite": "Toggle favorite",
+    "focus_search": "Focus the search box",
+    "toggle_filters": "Show / hide the filter sidebar",
+    "toggle_layout": "Switch grid / mosaic",
     "comp_left_wins": "Left photo wins",
     "comp_right_wins": "Right photo wins"
   },
@@ -2766,5 +2866,80 @@
       "ui_suggest_culling": "Marked suggestions on the culling plan",
       "ui_show_comparison": "Showed a comparison"
     }
+  },
+  "review": {
+    "status": "Review status",
+    "all": "All decisions",
+    "needs_review": "Needs review",
+    "kept": "Kept",
+    "rejected": "Rejected",
+    "keep": "Keep",
+    "reset": "Reset decision",
+    "updated": "Updated {count} photo decisions",
+    "shortcut": "Keep photo"
+  },
+  "capture_date": {
+    "title": "Correct capture date",
+    "invalid": "Choose a nonzero shift of at most 366 days; select at most 1000 photos.",
+    "counts": "{changed} changed · {skipped} skipped",
+    "samples": "First 20 changes. Unknown, incomplete, unsupported or overflowing dates are skipped.",
+    "photo": "Photo",
+    "before": "Before",
+    "after": "After",
+    "error": "Could not complete the action. Check access and files, then preview again.",
+    "reset_hint": "The “Use file date” button removes the manual override. If the file has no date, the capture date becomes unknown.",
+    "use_file": "Use file date",
+    "preview": "Preview",
+    "apply": "Apply correction ({count})",
+    "hint": "Shift stored camera walltime; no timezone or daylight-saving inference. Originals stay unchanged until explicit metadata export.",
+    "mode_shift": "Shift by",
+    "mode_exact": "Set exact time",
+    "mode": "Correction mode",
+    "direction": "Direction",
+    "earlier": "Earlier",
+    "later": "Later",
+    "days": "Days",
+    "hours": "Hours",
+    "minutes": "Minutes",
+    "seconds": "Seconds",
+    "unit_d": "d",
+    "unit_h": "h",
+    "unit_min": "min",
+    "unit_s": "s",
+    "quick": "Quick adjust",
+    "summary_earlier": "{amount} earlier",
+    "summary_later": "{amount} later",
+    "exact_label": "Correct date and time of the reference photo",
+    "reference": "Reference photo:"
+  },
+  "organization_history": {
+    "title": "Organization history",
+    "hint": "Your last 50 organization entries in this viewer database. GPS and capture dates affect everyone; review decisions, stars and favorites belong to your account. Original files are never changed.",
+    "gps": "Location",
+    "date": "Capture date",
+    "review": "Review",
+    "revert": "Revert this entry",
+    "reverted": "Already reverted",
+    "empty": "No available history entries.",
+    "part": "Part {part} of {parts}: this entry restores only its {count} photos. Older parts may have expired.",
+    "success": "Photos restored: {count}",
+    "conflict": "Photos changed since this action. Nothing was restored.",
+    "unavailable": "This entry is no longer available. Nothing was restored.",
+    "error": "Could not load or restore history.",
+    "latitude": "Latitude",
+    "longitude": "Longitude",
+    "manual_gps": "Manual location",
+    "capture_date": "Capture date",
+    "manual_date": "Manual date",
+    "stars": "Stars",
+    "favorite": "Favorite",
+    "rejected": "Rejected",
+    "kept": "Kept",
+    "yes": "Yes",
+    "no": "No",
+    "unknown": "Unknown",
+    "photo_count": "Photos: {count}",
+    "field": "Field",
+    "entry_action": "{action} · {kind} · {date} · #{id}"
   }
 }

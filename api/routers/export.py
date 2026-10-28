@@ -1,6 +1,6 @@
 """Export router — write Facet ratings/picks out to editors and export selects.
 
-Three endpoints, all edition-gated:
+Edition-gated export endpoints:
 
 * ``POST /api/photo/export_xmp``      — write one XMP sidecar.
 * ``POST /api/export/sidecars``       — write sidecars for many photos
@@ -11,30 +11,38 @@ Three endpoints, all edition-gated:
 
 Effective (per-user-resolved) ratings are read via ``build_photo_select_columns``
 + ``get_photos_from_clause`` so multi-user star/favorite/reject overrides are
-honored. Disk paths are resolved through ``resolve_photo_disk_path`` (scan-dir
+honored. Background sidecar jobs add bounded progress, cancellation and recovery.
+Disk paths are resolved through ``resolve_photo_disk_path`` (scan-dir
 allowlist) before any file is written. The original image files are never
 modified — only ``.xmp`` sidecars are written, or copies/symlinks created.
 """
 
+from contextlib import contextmanager
+import hashlib
+import json
 import logging
 import os
 import shutil
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
+from api import sidecar_jobs
 from api.auth import CurrentUser, require_edition
 from api.config import VIEWER_CONFIG, cull_allow_trash, get_all_scan_directories, invalidate_stats_cache
 from api.database import get_db
 from api.db_helpers import (
+    LIBRARY_BUSY_DETAIL,
+    LIBRARY_BUSY_RETRY_AFTER_SECONDS,
     PANORAMA_KINDS_SQL,
     get_photos_from_clause,
     get_preference_columns,
     get_visibility_clause,
 )
 from api.models.scan import CullApplyResponse, PhotoDeleteResponse
-from api.path_validation import resolve_photo_disk_path
+from api.models.sidecar_jobs import SidecarJobStatus
+from api.path_validation import PhotoFileMissing, resolve_photo_disk_path
 from api.raw_processing import find_companion_raw
 from db.maintenance import delete_photo_rows
 from processing.xmp_export import (
@@ -42,6 +50,8 @@ from processing.xmp_export import (
     XmpRating,
     person_names_from_regions,
     write_metadata,
+    DefectiveExifToolError,
+    MetadataPreconditionError,
 )
 from utils.sequence import BRACKET as BRACKET_KIND
 
@@ -54,15 +64,10 @@ router = APIRouter(tags=["export"])
 # (999). Matches the chunked-fetch size used in gallery.py.
 _PATH_QUERY_CHUNK = 500
 
-# Cap on the photos one sidecar export may touch when the set comes from a
-# filter instead of an explicit list. Matches ExportSidecarsRequest.paths'
-# own max_length so both request forms are bounded identically -- the filter
-# branch is the UI-reachable one now that the gallery can select a whole view
-# without sending its paths. The work per photo is two exiftool processes
-# (~0.13s measured), and the endpoint is a sync `def`, so it pins one FastAPI
-# threadpool worker for the whole run: an uncapped library-wide export would
-# hold that worker for hours. Refused rather than truncated -- half-exporting a
-# selection the user believed was whole is worse than a clear refusal.
+# Explicit lists and filter-resolved sidecar exports share a 10,000-photo cap.
+# Filters are counted before materializing paths, and oversized scopes are
+# refused rather than truncated. This also bounds background job plans and
+# external metadata work (up to two exiftool processes per photo).
 _SIDECAR_FILTER_MAX = 10000
 
 # Same shape of problem, for POST /api/cull/apply's filter branch: `_selected_paths`
@@ -160,6 +165,10 @@ class CullApplyRequest(_PathsOrFiltersRequest):
     # sequence_group_id), not a same-stem disk lookup.
     include_sequence_siblings: bool = False
     dry_run: bool = True
+    # Optional optimistic precondition: clients can bind Apply to a dry-run's
+    # resolved files/options. This is not a filesystem identity or lock token.
+    preview_digest: Optional[str] = Field(default=None, min_length=64, max_length=64,
+                                          pattern=r'^[a-f0-9]{64}$')
 
 
 # POST /api/photo/delete's request. Deliberately does NOT subclass
@@ -181,6 +190,13 @@ class PhotoDeleteRequest(BaseModel):
     # It is also what unblocks a refused bracket-lead delete (decision 7),
     # since that refusal now simply falls out of the general widening.
     include_sequence_siblings: bool = False
+    # Off by default: a file that no longer resolves on disk keeps its row,
+    # because "every file missing" is exactly what a disconnected library
+    # volume looks like and sweeping those rows away would delete the whole
+    # library's index over a dropped mount. Opt in to reconcile such rows
+    # in the same call -- reported in the response's `removed_missing`,
+    # never folded into `deleted` (no file was trashed).
+    remove_missing: bool = False
     dry_run: bool = True
 
 
@@ -202,10 +218,10 @@ def _fetch_rating_rows(conn, paths, user_id):
     select = (
         "photos.path as path, photos.tags as tags, "
         "photos.caption as caption, photos.category as category, "
-        "photos.aggregate as aggregate, "
+        "photos.aggregate as aggregate, photos.gps_latitude, photos.gps_longitude, photos.gps_manually_set, photos.date_taken, photos.date_manually_set, "
         f"{pref_cols['star_rating']} as star_rating, "
         f"{pref_cols['is_favorite']} as is_favorite, "
-        f"{pref_cols['is_rejected']} as is_rejected"
+        f"{pref_cols['is_rejected']} as is_rejected, {pref_cols['is_kept']} as is_kept"
     )
     placeholders = ",".join("?" * len(paths))
     query = (
@@ -214,10 +230,10 @@ def _fetch_rating_rows(conn, paths, user_id):
     )
     rows = conn.execute(query, from_params + list(paths) + vis_params).fetchall()
     result = {row["path"]: dict(row) for row in rows}
-    from db.manual_tags import load_manual_tags_map, merge_effective_tags
+    from db.manual_tags import enrich_effective_tags, load_manual_tags_map
     manual = load_manual_tags_map(conn, list(result))
-    for path, data in result.items():
-        data["tags"] = merge_effective_tags(data["tags"], manual.get(path, ()))
+    for data in result.values():
+        enrich_effective_tags(data, manual)
     return result
 
 
@@ -382,7 +398,12 @@ def _write_sidecars_for_paths(conn, paths, user_id, overwrite):
             logger.exception("Failed to write metadata for %s", path)
             errors += 1
             if first_error is None:
-                first_error = str(ex)[:300]
+                if isinstance(ex, MetadataPreconditionError):
+                    first_error = sidecar_jobs.METADATA_REPAIR_MESSAGE
+                elif isinstance(ex, DefectiveExifToolError):
+                    first_error = sidecar_jobs.EXIFTOOL_UPGRADE_MESSAGE
+                else:
+                    first_error = sidecar_jobs.WRITE_FAILURE_MESSAGE
     return {
         "ok": True,
         "written": written,
@@ -594,6 +615,34 @@ def _resolve_cull_files(paths, include_companions):
             files.extend(_companion_files(real))
         items.append((path, files))
     return items, skipped
+
+
+def _reconcilable_missing(paths):
+    """The ``paths`` whose file is genuinely gone, safe for ``remove_missing``.
+
+    A path qualifies only when it passed the scan-directory containment check
+    and its file is absent (``PhotoFileMissing``) -- a containment refusal is
+    the same 404 to every other caller but its file may well be on disk -- and
+    when the folder that held it is still there with something in it. An
+    unmounted library volume reads as every file missing; its folders are gone
+    or its mount point is empty, so its rows stay ``skipped`` rather than lose
+    their ratings, faces and album membership to one delete click.
+    """
+    missing = []
+    for path in paths:
+        try:
+            resolve_photo_disk_path(path)
+        except PhotoFileMissing as ex:
+            parent = os.path.dirname(ex.real_path)
+            try:
+                with os.scandir(parent) as entries:
+                    if any(entries):
+                        missing.append(path)
+            except OSError:
+                continue
+        except HTTPException:
+            continue
+    return missing
 
 
 def _chunked_path_rows(conn, paths, sql_fn, params_fn):
@@ -912,6 +961,10 @@ def api_export_xmp(
     try:
         result = write_metadata(real_disk, _rating_from(row, regions_map),
                                 overwrite=body.overwrite, embed_original=False)
+    except MetadataPreconditionError as ex:
+        raise HTTPException(status_code=412, detail="Existing metadata needs repair before exporting") from ex
+    except DefectiveExifToolError as ex:
+        raise HTTPException(status_code=412, detail=sidecar_jobs.EXIFTOOL_UPGRADE_MESSAGE) from ex
     except (OSError, RuntimeError):
         logger.exception("Failed to write metadata for %s", body.path)
         raise HTTPException(status_code=500, detail="Failed to write metadata")
@@ -944,6 +997,10 @@ def api_embed_metadata(
     real_disk = resolve_photo_disk_path(body.path)
     try:
         result = write_metadata(real_disk, _rating_from(row, regions_map), embed_original=True)
+    except MetadataPreconditionError as ex:
+        raise HTTPException(status_code=412, detail="Existing metadata needs repair before exporting") from ex
+    except DefectiveExifToolError as ex:
+        raise HTTPException(status_code=412, detail=sidecar_jobs.EXIFTOOL_UPGRADE_MESSAGE) from ex
     except (OSError, RuntimeError):
         logger.exception("Failed to embed metadata for %s", body.path)
         raise HTTPException(status_code=500, detail="Failed to embed metadata")
@@ -971,6 +1028,84 @@ def api_export_sidecars(
         return _write_sidecars_for_paths(conn, paths, user_id, body.overwrite)
 
 
+@contextmanager
+def _sidecar_job_request(response):
+    """Private job responses share storage/refusal mapping, including retry reads."""
+    from api.database import DEFAULT_DB_PATH
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        yield DEFAULT_DB_PATH
+    except sidecar_jobs.JobNotFound as ex:
+        raise HTTPException(404, "Export job not found", headers={"Cache-Control": "no-store"}) from ex
+    except OSError as ex:
+        logger.exception('Sidecar export job storage is unavailable')
+        raise HTTPException(503, "Export job storage is unavailable; check server logs and library cache permissions",
+                            headers={"Cache-Control": "no-store"}) from ex
+    except HTTPException as ex:
+        ex.headers = {**(ex.headers or {}), "Cache-Control": "no-store"}
+        raise
+
+
+def _start_sidecar_export_job(db_path, paths, user_id, overwrite):
+    from facet import LibraryLockError, LibraryLockUnusableError
+    def work(path):
+        with get_db() as conn:
+            return _write_sidecars_for_paths(conn, [path], user_id, overwrite)
+    try:
+        return sidecar_jobs.start(db_path, user_id, paths, work, overwrite=overwrite)
+    except LibraryLockUnusableError as ex:
+        logger.error('Sidecar export library lock is unavailable', exc_info=True)
+        raise HTTPException(503, "Library lock is unavailable; check server logs and library cache permissions") from ex
+    except LibraryLockError as ex:
+        logger.warning('Sidecar export admission refused: %s', LIBRARY_BUSY_DETAIL)
+        raise HTTPException(503, LIBRARY_BUSY_DETAIL,
+                            headers={"Retry-After": str(LIBRARY_BUSY_RETRY_AFTER_SECONDS)}) from ex
+
+
+@router.post("/api/export/sidecar_jobs", status_code=202, response_model=SidecarJobStatus)
+def api_start_sidecar_job(body: ExportSidecarsRequest, response: Response, user: CurrentUser = Depends(require_edition)):
+    """Start a bounded sidecar export; poll its private receipt for progress."""
+    with _sidecar_job_request(response) as db_path:
+        if not body.paths and body.filters is None:
+            raise HTTPException(400, "Either paths or filters is required")
+        with get_db() as conn:
+            paths = _selected_paths(conn, body, user.user_id, max_filter_paths=_SIDECAR_FILTER_MAX,
+                                    filter_label="sidecar export")
+        return _start_sidecar_export_job(db_path, paths, user.user_id, body.overwrite)
+
+
+@router.get("/api/export/sidecar_jobs", response_model=list[SidecarJobStatus])
+def api_recent_sidecar_jobs(response: Response, user: CurrentUser = Depends(require_edition)):
+    """List this principal's recent export receipts, including interrupted jobs."""
+    with _sidecar_job_request(response) as db_path:
+        return sidecar_jobs.recent(db_path, user.user_id)
+
+
+@router.post("/api/export/sidecar_jobs/{job_id}/retry", status_code=202, response_model=SidecarJobStatus)
+def api_retry_sidecar_job(job_id: str, response: Response, user: CurrentUser = Depends(require_edition)):
+    """Explicitly retry unfinished export files using current visibility and metadata."""
+    with _sidecar_job_request(response) as db_path:
+        try:
+            paths, overwrite = sidecar_jobs.remaining(db_path, job_id, user.user_id)
+        except ValueError as ex:
+            raise HTTPException(409, "Export is still running") from ex
+        return _start_sidecar_export_job(db_path, paths, user.user_id, overwrite)
+
+
+@router.get("/api/export/sidecar_jobs/{job_id}", response_model=SidecarJobStatus)
+def api_sidecar_job_status(job_id: str, response: Response, user: CurrentUser = Depends(require_edition)):
+    """Read progress for one of this principal's sidecar exports."""
+    with _sidecar_job_request(response) as db_path:
+        return sidecar_jobs.status(db_path, job_id, user.user_id)
+
+
+@router.post("/api/export/sidecar_jobs/{job_id}/cancel", response_model=SidecarJobStatus)
+def api_cancel_sidecar_job(job_id: str, response: Response, user: CurrentUser = Depends(require_edition)):
+    """Stop an export between complete files; completed writes are retained."""
+    with _sidecar_job_request(response) as db_path:
+        return sidecar_jobs.cancel(db_path, job_id, user.user_id)
+
+
 def _require_trash_available():
     """Re-derive the OS-trash gate from server state, never trusted from the
     client: off via config (403) or ``send2trash`` missing from the venv
@@ -995,6 +1130,28 @@ def _require_trash_available():
                             detail="send2trash ships with Facet — upgrade the image or run pip install send2trash, "
                                     "then restart the server so the UI stops hiding this option")
     return send2trash
+
+
+def _check_cull_preview(body: CullApplyRequest, files: list[str], target_dir: Optional[str] = None) -> str:
+    """Check the current resolved operation before its first filesystem write.
+
+    A digest binds names and action settings, not file bytes or identities;
+    filesystem changes after this preflight are still handled per file.
+    """
+    operation = {
+        'action': body.action, 'files': sorted(files), 'target_dir': target_dir,
+        'include_companions': body.include_companions,
+        'include_sequence_siblings': body.include_sequence_siblings,
+    }
+    hasher = hashlib.sha256()
+    encoder = json.JSONEncoder(sort_keys=True, ensure_ascii=True, separators=(',', ':'))
+    for chunk in encoder.iterencode(operation):
+        hasher.update(chunk.encode('utf-8'))
+    digest = hasher.hexdigest()
+    if body.preview_digest is not None and body.preview_digest != digest:
+        raise HTTPException(status_code=409,
+                            detail='Culling preview changed. Preview again before applying.')
+    return digest
 
 
 @router.post("/api/cull/apply", response_model=CullApplyResponse, response_model_exclude_unset=True)
@@ -1077,8 +1234,11 @@ def api_cull_apply(
     items, skipped = _resolve_cull_files(action_paths, body.include_companions)
     files = [f for _, fs in items for f in fs]
 
+    preview_digest = None
+
     def respond(dry_run, errors, **verb):
         return {
+            **({'preview_digest': preview_digest} if dry_run else {}),
             "action": body.action,
             "dry_run": dry_run,
             **verb,
@@ -1092,6 +1252,7 @@ def api_cull_apply(
 
     if body.action == "copy_keeps":
         safe_target = _validate_target_dir_required(body.target_dir)
+        preview_digest = _check_cull_preview(body, files, safe_target)
         if body.dry_run:
             return respond(True, [], would_copy=files)
         copied, errors, _ = _copy_files_into(files, safe_target)
@@ -1099,6 +1260,7 @@ def api_cull_apply(
 
     if body.action == "move_rejects":
         safe_target = _validate_target_dir_required(body.target_dir)
+        preview_digest = _check_cull_preview(body, files, safe_target)
         if body.dry_run:
             return respond(True, [], would_move=files)
         moved, errors, succeeded = _move_into(files, safe_target)
@@ -1107,6 +1269,7 @@ def api_cull_apply(
 
     # trash_rejects
     send2trash = _require_trash_available()
+    preview_digest = _check_cull_preview(body, files)
     if body.dry_run:
         return respond(True, [], would_trash=files)
     trashed = errors = 0
@@ -1184,7 +1347,15 @@ def api_photo_delete(
     not resolve on disk (already missing) -- neither trashed nor
     row-deleted, so it is reported rather than silently dropped from every
     bucket. Reconciling it is ``--cleanup-missing-photos``'s job, same as any
-    other missing-on-disk row.
+    other missing-on-disk row -- or, with ``remove_missing``, THIS call's:
+    the flag moves such paths out of ``skipped`` into ``removed_missing``
+    (never ``deleted``, which keeps meaning "row gone via a successful
+    trash") and deletes their rows in the same transaction as the trashed
+    paths', lead re-pick included. It stays an opt-in because a request
+    where EVERY file reads as missing is exactly what a disconnected
+    library volume looks like, and even opted in, ``_reconcilable_missing``
+    keeps a path ``skipped`` when the allowlist refused it or the folder
+    that held it is gone or empty -- the shape of an offline volume.
     """
     send2trash = _require_trash_available()
 
@@ -1222,11 +1393,22 @@ def api_photo_delete(
         items, skipped = _resolve_cull_files(action_paths, body.include_companions)
         files = [f for _, fs in items for f in fs]
 
+        # With `remove_missing`, a skipped path (visible, in `photos`, file
+        # already gone from disk) has its row removed in the same transaction
+        # as the trashed paths' rows, and is reported in `removed_missing`
+        # rather than `skipped`. Off by default -- see PhotoDeleteRequest.
+        removed_missing: list[str] = []
+        if body.remove_missing and skipped:
+            removed_missing = _reconcilable_missing(skipped)
+            reconciled = set(removed_missing)
+            skipped = [p for p in skipped if p not in reconciled]
+
         if body.dry_run:
             return PhotoDeleteResponse(
                 dry_run=True, would_trash=files, deleted=[], not_found=not_found,
                 not_visible=not_visible, refused_bracket_lead=refused_bracket_lead,
-                sequence_siblings=sequence_siblings, skipped=skipped, trashed=0, errors={},
+                sequence_siblings=sequence_siblings, skipped=skipped,
+                removed_missing=removed_missing, trashed=0, errors={},
             )
 
         errors: dict[str, str] = {}
@@ -1259,6 +1441,10 @@ def api_photo_delete(
         if companion_files_trashed:
             removed_db_paths |= _photo_membership(conn, list(companion_files_trashed))
 
+        # The reconciled missing rows join the same restricted delete as the
+        # trashed paths: one lead re-pick pass, one `delete_photo_rows`, one
+        # commit -- a missing row and a trashed row are equally gone.
+        removed_db_paths |= set(removed_missing)
         _reassign_dead_leads(conn, removed_db_paths, user_id, commit=False)
         delete_photo_rows(conn, list(removed_db_paths), preserve_auto_retrain_counters=True)
         conn.commit()
@@ -1292,9 +1478,10 @@ def api_photo_delete(
             )
 
     return PhotoDeleteResponse(
-        dry_run=False, deleted=sorted(removed_db_paths), not_found=not_found,
-        not_visible=not_visible, refused_bracket_lead=refused_bracket_lead,
-        sequence_siblings=sequence_siblings, skipped=skipped, trashed=len(succeeded), errors=errors,
+        dry_run=False, deleted=sorted(removed_db_paths - set(removed_missing)),
+        not_found=not_found, not_visible=not_visible, refused_bracket_lead=refused_bracket_lead,
+        sequence_siblings=sequence_siblings, skipped=skipped,
+        removed_missing=removed_missing, trashed=len(succeeded), errors=errors,
     )
 
 

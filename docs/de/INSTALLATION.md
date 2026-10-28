@@ -800,7 +800,7 @@ Netzwerk), sehen Sie `Failed to download SAMP-Net weights: HTTP Error 404: Not F
 | `psutil` | Auto-Tuning der Stapelverarbeitung (Systemüberwachung) |
 | `aiosqlite` | Asynchrones SQLite für die FastAPI-Lese-Endpunkte |
 | `sqlite-vec` | KNN auf Festplatte für die semantische Suche (greift auf den In-Memory-NumPy-Cache zurück, falls nicht vorhanden oder falls das SQLite dieses Pythons keine Erweiterungen laden kann; die Suche nach ähnlichen Fotos nutzt es nicht, sie durchsucht exakt); `pip install -e .[vec]` |
-| `tifffile`, `imagecodecs` | Von Lightroom Classic 13+ zusammengefügte DNGs (HDR/Panorama/Verbessern), deren Vorschauen JPEG XL sind |
+| `tifffile`, `imagecodecs` | JPEG-XL-Fotos und Vorschauen zusammengefügter Lightroom-Classic-13+-DNGs (HDR/Panorama/Verbessern) |
 
 Alle diese sind in `requirements.txt` enthalten; kein Profil benötigt zusätzliche
 Basis-Pakete.

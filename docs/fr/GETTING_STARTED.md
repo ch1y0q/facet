@@ -74,12 +74,12 @@ depuis le navigateur :
   Multi-utilisateurs : il faut le rôle superadmin.
 - Ajoutez le dossier à `viewer.scan_directories` pour que le lanceur ait quelque chose à proposer.
 
-Un bouton **Scanner de nouvelles photos** apparaît alors dans l'en-tête, juste après le
-sélecteur **Tri** (dans la barre du bas sur petit écran), et pas seulement sur la galerie vide. Règles
+Un bouton **Scanner de nouvelles photos** apparaît alors au bout de l'en-tête, juste avant le
+menu du compte (à l'extrémité droite de la barre du bas sur petit écran), et pas seulement sur la galerie vide. Règles
 complètes : [Déclenchement d'un scan](VIEWER.md#déclenchement-dun-scan). Le premier
 scan télécharge une seule fois les modèles d'IA ([Premier lancement](INSTALLATION.md#premier-lancement-à-quoi-sattendre)).
 
-![Bouton de scan dans l'en-tête, après le sélecteur de tri](../screenshots/getting-started-scan-button.jpg)
+![Bouton de scan au bout de l'en-tête](../screenshots/getting-started-scan-button.jpg)
 
 ### Étape 2 : repérer doublons, rafales et photos quasi identiques
 

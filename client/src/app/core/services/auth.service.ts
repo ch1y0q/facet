@@ -2,6 +2,8 @@ import { DestroyRef, Injectable, inject, signal, computed } from '@angular/core'
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { clearReviewQueues, REVIEW_QUEUE_STORAGE_KEY } from './review-queue.storage';
+import { clearPersonAssignmentHistory } from './person-assignment-history.storage';
 
 export interface AuthStatus {
   authenticated: boolean;
@@ -99,7 +101,10 @@ export class AuthService {
     // rotated token no longer carries — an amber Edition icon over a session
     // the server 403s. The event never fires in the tab that wrote the value.
     const onStorage = (event: StorageEvent) => {
-      if (event.key === this.TOKEN_KEY) void this.revalidate();
+      if (event.key === this.TOKEN_KEY) {
+        if (event.newValue === null) clearReviewQueues();
+        void this.revalidate();
+      } else if (event.key === REVIEW_QUEUE_STORAGE_KEY && event.newValue === null) clearReviewQueues();
     };
     window.addEventListener('storage', onStorage);
     inject(DestroyRef).onDestroy(() => window.removeEventListener('storage', onStorage));
@@ -205,6 +210,8 @@ export class AuthService {
     // fire-and-forget — local state is dropped regardless.
     this.http.post('/api/auth/logout', {}).subscribe({ error: () => undefined });
     localStorage.removeItem(this.TOKEN_KEY);
+    clearPersonAssignmentHistory();
+    clearReviewQueues();
     this.status.set(null);
     this.clearThumbnailCaches();
     this.router.navigate(['/login']);

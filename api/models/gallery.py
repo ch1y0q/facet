@@ -104,6 +104,7 @@ class Photo(BaseModel):
     star_rating: CoercedInt = None
     is_favorite: CoercedInt = None
     is_rejected: CoercedInt = None
+    is_kept: CoercedInt = None
     duplicate_group_id: CoercedInt = None
     is_duplicate_lead: CoercedInt = None
     burst_group_id: CoercedInt = None
@@ -111,6 +112,7 @@ class Photo(BaseModel):
     caption_translated: Optional[str] = None
     gps_latitude: Optional[float] = None
     gps_longitude: Optional[float] = None
+    date_manually_set: CoercedInt = None
     gps_manually_set: CoercedInt = None
     dominant_hue: Optional[float] = None
     color_temp: Optional[str] = None
@@ -164,6 +166,15 @@ class PhotosResponse(PaginationEnvelope):
     photos: list[Photo]
     sort_col: str
     hidden_summary: Optional[HiddenSummary] = None
+
+
+class ReviewProgressResponse(BaseModel):
+    """Mutually exclusive decisions across the complete visible review scope."""
+
+    total: int
+    undecided: int
+    kept: int
+    rejected: int
 
 
 class PhotoCountResponse(BaseModel):
@@ -238,6 +249,10 @@ class GalleryParams(BaseModel):
     hide_panoramas: str = '0'
     burst_only: str = ''
     no_blink: str = ''
+    # Positive "only X" filters, the counterpart of the hide toggles above.
+    # duplicates_only keeps every member of a duplicate group, leads included.
+    blinks_only: str = ''
+    duplicates_only: str = ''
     search: str = ''
     tag: str = ''
     person: str = ''
@@ -274,6 +289,8 @@ class GalleryParams(BaseModel):
     date_to: str = ''
     # Content flags
     is_monochrome: str = ''
+    manual_faces_need_review: str = ''
+    faces_need_names: str = ''
     category: str = ''
     narrative_moment: str = ''
     junk_kind: str = ''         # exact kind, or 'any' for any junk
@@ -294,6 +311,7 @@ class GalleryParams(BaseModel):
     favorites_only: str = ''
     hide_rejected: str = ''
     show_rejected: str = ''
+    review_status: Literal['', 'undecided', 'kept', 'rejected'] = ''
     # Extended scores
     min_dynamic_range: str = ''
     max_dynamic_range: str = ''

@@ -65,8 +65,11 @@ const GEAR_METRIC_OPTIONS = [
       <mat-card-header class="!flex !items-center !justify-between !gap-4">
         <mat-card-title class="shrink-0">{{ titleKey() | translate }}</mat-card-title>
         <mat-form-field class="flex-1 min-w-0 !-mt-2" subscriptSizing="dynamic">
-          <mat-label>{{ titleKey() | translate }}</mat-label>
-          <mat-select [ngModel]="selectedMetric()" (ngModelChange)="selectedMetric.set($event)">
+          <!-- No mat-label: the card title next to it already names the chart,
+               and repeating it read as a rendering glitch. The aria-label gives
+               the select the accessible name the visible label used to. -->
+          <mat-select [ngModel]="selectedMetric()" (ngModelChange)="selectedMetric.set($event)"
+                      [aria-label]="'stats.gear_metric_label' | translate">
             @for (opt of metricOptions; track opt.key) {
               <mat-option [value]="opt.key">{{ 'stats.gear_metrics.' + opt.key | translate }}</mat-option>
             }
@@ -171,7 +174,23 @@ export class GearChartCardComponent {
             maintainAspectRatio: false,
             plugins: {
               legend: { display: true, position: 'bottom', labels: { color: '#d4d4d4', usePointStyle: true, boxWidth: 8 } },
-              tooltip: { mode: 'index', intersect: false },
+              tooltip: {
+                mode: 'index',
+                intersect: false,
+                callbacks: {
+                  // Each point is a whole month bucketed at the first of the
+                  // month, so Chart.js's default title ("Mar 1, 2026, 12:00:00
+                  // a.m.") reports a moment that was never measured. Same
+                  // month-year form the x ticks use; T00:00:00 keeps the
+                  // string parsed in the local zone, not UTC.
+                  title: (items) => {
+                    const x = (items[0]?.raw as { x?: string } | undefined)?.x ?? '';
+                    const d = new Date(x + 'T00:00:00');
+                    return Number.isNaN(d.getTime()) ? x
+                      : new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' }).format(d);
+                  },
+                },
+              },
             },
             scales: {
               x: { type: 'time', time: { unit: 'month' }, grid: { color: '#262626' }, ticks: { color: '#a3a3a3' } },

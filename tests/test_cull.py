@@ -11,6 +11,7 @@ disk (no scan dirs in tests -> file-exists check only).
 
 import os
 import sqlite3
+from pathlib import Path
 from contextlib import contextmanager
 from unittest import mock
 
@@ -340,6 +341,116 @@ class TestCullApplyFilterScope:
         assert resp.status_code == 200
         assert resp.json()["would_copy"] == [field]
 
+    def test_the_darkroom_all_rejects_scope_reaches_hidden_rejects_only(self, client, tmp_path):
+        """The darkroom's "Trash rejects" button sends this scope (``ALL_REJECTS_SCOPE``
+        in burst-culling.component.ts); a rejected non-lead burst frame, hidden by
+        default, must still be reached, and no kept photo may enter the scope."""
+        kept = _make_file(tmp_path, "kept.jpg")
+        rejected = _make_file(tmp_path, "rejected.jpg")
+        burst_reject = _make_file(tmp_path, "burst.jpg")
+        db = str(tmp_path / "rejects.db")
+        init_database(db)
+        conn = sqlite3.connect(db)
+        conn.executemany(
+            "INSERT INTO photos (path, filename, is_rejected, burst_group_id, is_burst_lead) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [(kept, "kept.jpg", 0, 1, 1), (rejected, "rejected.jpg", 1, None, 0),
+             (burst_reject, "burst.jpg", 1, 1, 0)],
+        )
+        conn.commit()
+        conn.close()
+        scope = {"show_rejected": "1", "type": "", "hide_blinks": "false", "hide_bursts": "false",
+                 "hide_duplicates": "false", "hide_brackets": "false", "hide_panoramas": "false"}
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch.dict(gallery_module.VIEWER_CONFIG, {
+                'defaults': {**gallery_module.VIEWER_CONFIG['defaults'], 'type': 'restricted-default'},
+            }),
+            mock.patch.dict(gallery_module.TYPE_FILTERS, {'restricted-default': {'camera': 'Canon'}}),
+            mock.patch(f"{_EXPORT_MODULE}._allowed_export_roots", return_value=[str(tmp_path)]),
+        ):
+            resp = client.post("/api/cull/apply", json={
+                "filters": scope, "action": "move_rejects",
+                "target_dir": str(tmp_path / "out"), "dry_run": True,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert sorted(body["would_move"]) == sorted([rejected, burst_reject])
+        assert body["excluded_by_state"] == 0
+
+    def test_all_rejects_trash_apply_uses_callers_state_and_preserves_library_rows(
+        self, client, tmp_path, monkeypatch,
+    ):
+        """A culling reject remains actionable even when it is rated/favourited.
+
+        Files are shared, while reject state belongs to the authenticated caller:
+        another user's reject alone must not qualify, and another user's Keep
+        does not veto a caller's reject under the existing cull policy.
+        """
+        from api import config as api_config
+
+        plain = _make_file(tmp_path, 'plain-reject.jpg', b'plain')
+        rated = _make_file(tmp_path, 'rated-reject.jpg', b'rated')
+        shared = _make_file(tmp_path, 'shared-reject.jpg', b'shared')
+        other_only = _make_file(tmp_path, 'other-user-reject.jpg', b'other')
+        kept = _make_file(tmp_path, 'kept.jpg', b'kept')
+        paths = [plain, rated, shared, other_only, kept]
+        db = _db(tmp_path, [(path, 1) for path in paths])
+        monkeypatch.setitem(api_config._FULL_CONFIG, 'users', {
+            'test': {'role': 'admin', 'directories': [str(tmp_path)]},
+            'other': {'role': 'user', 'directories': [str(tmp_path)]},
+        })
+        with sqlite3.connect(db) as conn:
+            conn.executemany(
+                'INSERT INTO user_preferences '
+                '(user_id, photo_path, is_rejected, is_kept, is_favorite, star_rating) '
+                'VALUES (?, ?, ?, ?, ?, ?)',
+                [('test', plain, 1, 0, 0, 0), ('test', rated, 1, 0, 1, 5),
+                 ('test', shared, 1, 0, 0, 0), ('test', other_only, 0, 1, 0, 0),
+                 ('test', kept, 0, 1, 1, 4), ('other', other_only, 1, 0, 0, 0),
+                 ('other', shared, 0, 1, 1, 5)],
+            )
+            original_preferences = conn.execute(
+                'SELECT * FROM user_preferences ORDER BY user_id, photo_path',
+            ).fetchall()
+        trash_dir = tmp_path / 'fake-os-trash'
+        trash_dir.mkdir()
+        send = mock.Mock(side_effect=lambda path: Path(path).replace(trash_dir / Path(path).name))
+        request = {
+            'filters': {'show_rejected': '1', 'type': '', 'hide_blinks': 'false',
+                        'hide_bursts': 'false', 'hide_duplicates': 'false',
+                        'hide_brackets': 'false', 'hide_panoramas': 'false'},
+            'action': 'trash_rejects', 'include_companions': False,
+        }
+        with (
+            mock.patch(f'{_EXPORT_MODULE}.get_db', _db_cm(db)),
+            mock.patch(f'{_EXPORT_MODULE}.VIEWER_CONFIG', {'cull': {'allow_trash': True}}),
+            mock.patch.dict('sys.modules', {'send2trash': mock.Mock(send2trash=send)}),
+        ):
+            preview = client.post('/api/cull/apply', json=request)
+            assert preview.status_code == 200, preview.text
+            assert set(preview.json()['would_trash']) == {plain, rated, shared}
+            send.assert_not_called()
+            assert all(Path(path).is_file() for path in paths)
+            result = client.post('/api/cull/apply', json={
+                **request, 'dry_run': False, 'preview_digest': preview.json()['preview_digest'],
+            })
+        assert result.status_code == 200, result.text
+        assert result.json()['trashed'] == 3
+        assert result.json()['errors'] == 0
+        assert [call.args[0] for call in send.call_args_list].count(rated) == 1
+        assert set(call.args[0] for call in send.call_args_list) == {plain, rated, shared}
+        for path, content in ((plain, b'plain'), (rated, b'rated'), (shared, b'shared')):
+            assert not Path(path).exists()
+            assert (trash_dir / Path(path).name).read_bytes() == content
+        assert Path(other_only).read_bytes() == b'other'
+        assert Path(kept).read_bytes() == b'kept'
+        assert _remaining_paths(db) == set(paths)
+        with sqlite3.connect(db) as conn:
+            assert conn.execute(
+                'SELECT * FROM user_preferences ORDER BY user_id, photo_path',
+            ).fetchall() == original_preferences
+
     def test_exclude_narrows_the_filter_set(self, client, tmp_path):
         keep = _make_file(tmp_path, "keep.jpg")
         drop = _make_file(tmp_path, "drop.jpg")
@@ -447,6 +558,88 @@ class TestCullApplyFilterScope:
         assert resp.status_code == 404, resp.text
         assert os.path.isfile(inside)
         assert not os.path.exists(str(tmp_path / "k"))
+
+
+class TestCullApplyOnlyFilters:
+    """A whole-view cull of ``blinks_only`` / ``duplicates_only`` / ``show_rejected``
+    must resolve the rows ``GET /api/photos`` shows for the same filters: the
+    default-on hide toggles would otherwise drop members of the set the filter
+    names, on an endpoint that moves and trashes files. Every case asserts both
+    the explicit expected set and equality with the grid's own path set. The seed
+    mirrors ``tests/test_gallery.py::TestOnlyFilters._seed`` (plus a rejected
+    burst member), which pins the grid side.
+
+    Rows go into the shared session database through ``seed_photos_prefix``
+    under a per-test ``tmp_path`` prefix, so the real files the cull needs
+    on disk and the rows live under one prefix and are cleaned up together.
+    """
+
+    @staticmethod
+    def _seed(tmp_path, seed_photos_prefix):
+        extras = {
+            "plain": {},
+            "blink": {"is_blink": 1},
+            "dup_lead": {"duplicate_group_id": 7, "is_duplicate_lead": 1},
+            "dup_copy": {"duplicate_group_id": 7, "is_duplicate_lead": 0},
+            "dup_burst": {"duplicate_group_id": 7, "is_duplicate_lead": 0,
+                          "burst_group_id": 3, "is_burst_lead": 0},
+            "rejected": {"is_rejected": 1},
+            "burst_reject": {"is_rejected": 1, "burst_group_id": 4, "is_burst_lead": 0},
+            # the burst lead, so burst_reject is a hidden non-lead member
+            "lead": {"burst_group_id": 4, "is_burst_lead": 1},
+        }
+        paths = {n: _make_file(tmp_path, n + ".jpg") for n in extras}
+        seed_photos_prefix(os.path.join(str(tmp_path), ""), [
+            {"path": paths[n], "filename": n + ".jpg", **extra} for n, extra in extras.items()
+        ])
+        return paths
+
+    def _check(self, client, tmp_path, action, filters, expected):
+        prefix = os.path.join(str(tmp_path), "")
+        filters = {"hide_blinks": "1", **filters}
+        with mock.patch(f"{_EXPORT_MODULE}._allowed_export_roots", return_value=[str(tmp_path)]):
+            resp = client.post("/api/cull/apply", json={
+                "filters": filters, "action": action,
+                "target_dir": str(tmp_path / "k"), "dry_run": True,
+            })
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        culled = set(body["would_copy"] if action == "copy_keeps" else body["would_move"])
+        grid = client.get("/api/photos", params={**filters, "per_page": 100})
+        assert grid.status_code == 200, grid.text
+        shown = {p["path"] for p in grid.json()["photos"] if p["path"].startswith(prefix)}
+        assert culled == expected
+        assert shown == expected, "the grid disagrees with the cull scope"
+
+    def test_blinks_only_resolves_the_blink_rows(self, client, tmp_path, seed_photos_prefix):
+        p = self._seed(tmp_path, seed_photos_prefix)
+        self._check(client, tmp_path, "copy_keeps", {"blinks_only": "1"}, {p["blink"]})
+
+    def test_blinks_only_accepts_the_boolean_spelling(self, client, tmp_path, seed_photos_prefix):
+        p = self._seed(tmp_path, seed_photos_prefix)
+        self._check(client, tmp_path, "copy_keeps", {"blinks_only": "true"}, {p["blink"]})
+
+    def test_duplicates_only_overrides_the_hide_toggles(self, client, tmp_path, seed_photos_prefix):
+        p = self._seed(tmp_path, seed_photos_prefix)
+        want = {p["dup_lead"], p["dup_copy"], p["dup_burst"]}
+        self._check(client, tmp_path, "copy_keeps", {"duplicates_only": "1"}, want)
+        self._check(client, tmp_path, "copy_keeps",
+                    {"duplicates_only": "1", "hide_bursts": "1", "hide_duplicates": "1"}, want)
+
+    def test_show_rejected_reaches_a_hidden_burst_member(self, client, tmp_path, seed_photos_prefix):
+        p = self._seed(tmp_path, seed_photos_prefix)
+        self._check(client, tmp_path, "move_rejects",
+                    {"show_rejected": "true", "hide_bursts": "1"},
+                    {p["rejected"], p["burst_reject"]})
+
+    def test_only_filters_combine_with_other_filters(self, client, tmp_path, seed_photos_prefix):
+        p = self._seed(tmp_path, seed_photos_prefix)
+        conn = sqlite3.connect(os.environ["DB_PATH"])
+        conn.execute("UPDATE photos SET category = 'street' WHERE path = ?", (p["dup_copy"],))
+        conn.commit()
+        conn.close()
+        self._check(client, tmp_path, "copy_keeps",
+                    {"duplicates_only": "1", "category": "street"}, {p["dup_copy"]})
 
 
 class TestCullApplyFilterScopeIsBounded:
@@ -1219,6 +1412,107 @@ class TestPhotoDelete:
         assert os.path.isfile(path)
         assert path in _remaining_paths(db)
 
+    def test_missing_file_is_skipped_and_row_kept_by_default(self, client, tmp_path):
+        """The conservative default: a row whose file is already gone keeps its
+        row and lands in `skipped` -- reconciling it is an explicit opt-in."""
+        path = str(tmp_path / "gone.jpg")  # never created
+        db = _db(tmp_path, [(path, 0)])
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [path], "dry_run": False})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["skipped"] == [path]
+        assert body["removed_missing"] == []
+        assert body["deleted"] == []
+        assert path in _remaining_paths(db)
+
+    def test_remove_missing_deletes_the_row_of_a_gone_file(self, client, tmp_path):
+        path = str(tmp_path / "gone.jpg")  # never created
+        live = _make_file(tmp_path, "live.jpg")
+        db = _db(tmp_path, [(path, 0), (live, 0)])
+        fake_send2trash = mock.MagicMock()
+        fake_module = mock.Mock(send2trash=fake_send2trash)
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": fake_module}),
+        ):
+            resp = client.post("/api/photo/delete", json={
+                "paths": [path, live], "remove_missing": True, "dry_run": False,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        # The missing row is reconciled, the live one trashed -- and the two
+        # buckets never mix: nothing was trashed for the missing path.
+        assert body["removed_missing"] == [path]
+        assert body["skipped"] == []
+        assert body["deleted"] == [live]
+        assert body["trashed"] == 1
+        assert fake_send2trash.call_args_list == [mock.call(live)]
+        assert path not in _remaining_paths(db)
+        assert live not in _remaining_paths(db)
+
+    def test_remove_missing_keeps_a_row_the_allowlist_refused(self, client, tmp_path):
+        """A file outside the scan directories is the same 404 as a gone one to
+        the resolver, but it is still on disk: its row must stay ``skipped``."""
+        outside = _make_file(tmp_path, "outside.jpg")
+        allowed = tmp_path / "library"
+        allowed.mkdir()
+        db = _db(tmp_path, [(outside, 0)])
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch("api.path_validation.get_all_scan_directories", return_value=[str(allowed)]),
+        ):
+            resp = client.post("/api/photo/delete", json={
+                "paths": [outside], "remove_missing": True, "dry_run": False,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["removed_missing"] == []
+        assert body["skipped"] == [outside]
+        assert outside in _remaining_paths(db)
+
+    @pytest.mark.parametrize("make_mount", [False, True], ids=["folder-gone", "empty-mount-point"])
+    def test_remove_missing_keeps_rows_of_an_offline_volume(self, client, tmp_path, make_mount):
+        """An unmounted volume reads as every file missing; its folder is gone or
+        its mount point is empty, so nothing is reconciled."""
+        mount = tmp_path / "volume"
+        if make_mount:
+            mount.mkdir()
+        path = str(mount / "a.jpg")
+        db = _db(tmp_path, [(path, 0)])
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+        ):
+            resp = client.post("/api/photo/delete", json={
+                "paths": [path], "remove_missing": True, "dry_run": False,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["removed_missing"] == []
+        assert body["skipped"] == [path]
+        assert path in _remaining_paths(db)
+
+    def test_remove_missing_dry_run_previews_the_rows_without_deleting(self, client, tmp_path):
+        path = str(tmp_path / "gone.jpg")
+        db = _db(tmp_path, [(path, 0)])
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+        ):
+            resp = client.post("/api/photo/delete", json={"paths": [path], "remove_missing": True})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["dry_run"] is True
+        assert body["removed_missing"] == [path]
+        assert body["skipped"] == []
+        assert path in _remaining_paths(db)
+
     def test_not_found_path_never_reaches_disk_resolution(self, client, tmp_path):
         """B3: a path that exists on disk but was never scanned into the DB
         must come back as not_found and never be resolved/trashed."""
@@ -1291,6 +1585,35 @@ class TestPhotoDelete:
         leads = _lead_paths(db, _PANORAMA, 1)
         assert len(leads) == 1
         assert leads[0] in (f1, f2)  # exactly one surviving frame promoted
+
+    def test_reconciling_a_missing_panorama_lead_repicks_a_surviving_lead(self, client, tmp_path):
+        """A lead whose file is already gone, removed via remove_missing with no
+        trash call at all, must still hand the lead to a surviving frame."""
+        lead = str(tmp_path / "lead.jpg")  # never created
+        f1 = _make_file(tmp_path, "f1.jpg")
+        f2 = _make_file(tmp_path, "f2.jpg")
+        db = _db(tmp_path, [
+            (lead, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 1}),
+            (f1, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 0}),
+            (f2, 0, {"sequence_kind": _PANORAMA, "sequence_group_id": 1, "is_sequence_lead": 0}),
+        ])
+        fake_send2trash = mock.MagicMock()
+        with (
+            mock.patch(f"{_EXPORT_MODULE}.get_db", _db_cm(db)),
+            mock.patch(f"{_EXPORT_MODULE}.VIEWER_CONFIG", {"cull": {"allow_trash": True}}),
+            mock.patch.dict("sys.modules", {"send2trash": mock.Mock(send2trash=fake_send2trash)}),
+        ):
+            resp = client.post("/api/photo/delete", json={
+                "paths": [lead], "remove_missing": True, "dry_run": False,
+            })
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["removed_missing"] == [lead]
+        assert body["deleted"] == []
+        assert fake_send2trash.call_count == 0
+        assert lead not in _remaining_paths(db)
+        leads = _lead_paths(db, _PANORAMA, 1)
+        assert len(leads) == 1 and leads[0] in (f1, f2)
 
     def test_partial_trash_failure_restricts_row_delete_to_succeeded(self, client, tmp_path):
         """G14: the row delete must be restricted to paths whose trash
@@ -1411,6 +1734,22 @@ class TestPhotoDelete:
             conn.close()
         assert rows.get("auto_retrain_pending:global") == "47"  # survives
         assert "similarity_groups_x" not in rows  # ordinary aggregate still wiped
+
+
+class TestPhotoDeleteResponseContract:
+    def test_removed_missing_is_required_so_no_producer_can_omit_it(self):
+        """The route serialises with ``response_model_exclude_unset``: a default
+        would let a producer drop the field and the client (which indexes it
+        unguarded) would crash on the response."""
+        from pydantic import ValidationError
+        from api.models.scan import PhotoDeleteResponse
+        fields = dict(
+            dry_run=True, deleted=[], not_found=[], not_visible=[], refused_bracket_lead=[],
+            sequence_siblings=[], skipped=[], trashed=0, errors={},
+        )
+        with pytest.raises(ValidationError):
+            PhotoDeleteResponse(**fields)
+        assert PhotoDeleteResponse(removed_missing=[], **fields).removed_missing == []
 
 
 class TestPhotoDeleteBracketLead:
@@ -1675,3 +2014,177 @@ class TestPhotoDeleteGate:
             "paths": ["/a.jpg"], "dry_run": True,
         })
         assert resp.status_code in (401, 403)
+
+
+class TestCullPreviewPrecondition:
+    @pytest.mark.parametrize('change', [
+        'new_reject', 'kept_again', 'missing_original', 'new_companion', 'missing_companion',
+    ])
+    def test_scope_or_files_changed_refuses_before_any_trash(self, client, tmp_path, change):
+        rejected = _make_file(tmp_path, 'rejected.jpg')
+        other = _make_file(tmp_path, 'other.jpg')
+        companion = str(tmp_path / 'rejected.xmp')
+        if change == 'missing_companion':
+            with open(companion, 'wb') as handle:
+                handle.write(b'original sidecar')
+        db = _db(tmp_path, [(rejected, 1), (other, 0)])
+        send = mock.Mock(side_effect=os.unlink)
+        request = {
+            'filters': {'show_rejected': '1', 'hide_blinks': 'false',
+                        'hide_bursts': 'false', 'hide_duplicates': 'false',
+                        'hide_brackets': 'false', 'hide_panoramas': 'false'},
+            'action': 'trash_rejects', 'include_companions': 'companion' in change,
+        }
+        with (
+            mock.patch(f'{_EXPORT_MODULE}.get_db', _db_cm(db)),
+            mock.patch(f'{_EXPORT_MODULE}.VIEWER_CONFIG', {'cull': {'allow_trash': True}}),
+            mock.patch.dict('sys.modules', {'send2trash': mock.Mock(send2trash=send)}),
+        ):
+            preview = client.post('/api/cull/apply', json=request)
+            assert preview.status_code == 200
+            digest = preview.json()['preview_digest']
+            assert len(digest) == 64
+            if change in ('new_reject', 'kept_again'):
+                with sqlite3.connect(db) as conn:
+                    conn.execute('UPDATE photos SET is_rejected=? WHERE path=?',
+                                 (1 if change == 'new_reject' else 0,
+                                  other if change == 'new_reject' else rejected))
+            elif change == 'missing_original':
+                os.unlink(rejected)
+            elif change == 'new_companion':
+                with open(companion, 'wb') as handle:
+                    handle.write(b'new sidecar')
+            else:
+                os.unlink(companion)
+            remaining = {path: Path(path).read_bytes()
+                         for path in (rejected, other, companion) if os.path.exists(path)}
+            response = client.post('/api/cull/apply', json={
+                **request, 'dry_run': False, 'preview_digest': digest,
+            })
+        assert response.status_code == 409
+        assert response.json()['detail'] == 'Culling preview changed. Preview again before applying.'
+        send.assert_not_called()
+        assert all(os.path.exists(path) and Path(path).read_bytes() == content
+                   for path, content in remaining.items())
+        assert _remaining_paths(db) == {rejected, other}
+
+    def test_fresh_preview_after_conflict_allows_reviewed_files_and_retains_rows(self, client, tmp_path):
+        rejected = _make_file(tmp_path, 'rejected.jpg')
+        other = _make_file(tmp_path, 'other.jpg')
+        db = _db(tmp_path, [(rejected, 1), (other, 0)])
+        send = mock.Mock(side_effect=os.unlink)
+        request = {'paths': [rejected, other], 'action': 'trash_rejects'}
+        with (
+            mock.patch(f'{_EXPORT_MODULE}.get_db', _db_cm(db)),
+            mock.patch(f'{_EXPORT_MODULE}.VIEWER_CONFIG', {'cull': {'allow_trash': True}}),
+            mock.patch.dict('sys.modules', {'send2trash': mock.Mock(send2trash=send)}),
+        ):
+            first = client.post('/api/cull/apply', json=request).json()['preview_digest']
+            with sqlite3.connect(db) as conn:
+                conn.execute('UPDATE photos SET is_rejected=1 WHERE path=?', (other,))
+            refusal = client.post('/api/cull/apply', json={**request, 'dry_run': False, 'preview_digest': first})
+            assert refusal.status_code == 409
+            send.assert_not_called()
+            fresh = client.post('/api/cull/apply', json=request)
+            assert fresh.status_code == 200
+            assert fresh.json()['preview_digest'] != first
+            result = client.post('/api/cull/apply', json={
+                **request, 'dry_run': False, 'preview_digest': fresh.json()['preview_digest'],
+            })
+        assert result.status_code == 200
+        assert result.json()['trashed'] == 2
+        assert set(call.args[0] for call in send.call_args_list) == {rejected, other}
+        assert not os.path.exists(rejected) and not os.path.exists(other)
+        assert _remaining_paths(db) == {rejected, other}
+
+    def test_partial_trash_failure_requires_fresh_preview_before_retry(self, client, tmp_path):
+        first = _make_file(tmp_path, 'first.jpg', b'first')
+        failed = _make_file(tmp_path, 'failed.jpg', b'retry me')
+        last = _make_file(tmp_path, 'last.jpg', b'last')
+        paths = [first, failed, last]
+        db = _db(tmp_path, [(path, 1) for path in paths])
+        trash_dir = tmp_path / 'fake-os-trash'
+        trash_dir.mkdir()
+        fail_once = True
+
+        def trash_file(path):
+            nonlocal fail_once
+            if path == failed and fail_once:
+                fail_once = False
+                raise OSError('temporary trash failure')
+            Path(path).replace(trash_dir / Path(path).name)
+
+        send = mock.Mock(side_effect=trash_file)
+        request = {'paths': paths, 'action': 'trash_rejects', 'include_companions': False}
+        with (
+            mock.patch(f'{_EXPORT_MODULE}.get_db', _db_cm(db)),
+            mock.patch(f'{_EXPORT_MODULE}.VIEWER_CONFIG', {'cull': {'allow_trash': True}}),
+            mock.patch.dict('sys.modules', {'send2trash': mock.Mock(send2trash=send)}),
+        ):
+            preview = client.post('/api/cull/apply', json=request)
+            assert preview.status_code == 200, preview.text
+            digest = preview.json()['preview_digest']
+            assert preview.json()['would_trash'] == paths
+            send.assert_not_called()
+            partial = client.post('/api/cull/apply', json={
+                **request, 'dry_run': False, 'preview_digest': digest,
+            })
+            assert partial.status_code == 200, partial.text
+            assert partial.json()['trashed'] == 2
+            assert partial.json()['errors'] == 1
+            assert send.call_args_list == [mock.call(path) for path in paths]
+            assert Path(failed).read_bytes() == b'retry me'
+            assert not Path(first).exists() and not Path(last).exists()
+            assert (trash_dir / 'first.jpg').read_bytes() == b'first'
+            assert (trash_dir / 'last.jpg').read_bytes() == b'last'
+            assert _remaining_paths(db) == set(paths)
+
+            stale_retry = client.post('/api/cull/apply', json={
+                **request, 'dry_run': False, 'preview_digest': digest,
+            })
+            assert stale_retry.status_code == 409, stale_retry.text
+            assert send.call_count == 3
+            assert Path(failed).read_bytes() == b'retry me'
+            fresh = client.post('/api/cull/apply', json=request)
+            assert fresh.status_code == 200, fresh.text
+            assert fresh.json()['would_trash'] == [failed]
+            assert set(fresh.json()['skipped']) == {first, last}
+            assert fresh.json()['preview_digest'] != digest
+            assert send.call_count == 3
+            retry = client.post('/api/cull/apply', json={
+                **request, 'dry_run': False, 'preview_digest': fresh.json()['preview_digest'],
+            })
+        assert retry.status_code == 200, retry.text
+        assert retry.json()['trashed'] == 1
+        assert retry.json()['errors'] == 0
+        assert send.call_args_list == [mock.call(path) for path in paths] + [mock.call(failed)]
+        assert not any(Path(path).exists() for path in paths)
+        assert (trash_dir / 'failed.jpg').read_bytes() == b'retry me'
+        assert _remaining_paths(db) == set(paths)
+
+    def test_changed_move_destination_does_not_write_either_folder(self, client, tmp_path):
+        source = _make_file(tmp_path, 'rejected.jpg')
+        db = _db(tmp_path, [(source, 1)])
+        first = str(tmp_path / 'first')
+        second = str(tmp_path / 'second')
+        request = {'paths': [source], 'action': 'move_rejects', 'target_dir': first}
+        with (
+            mock.patch(f'{_EXPORT_MODULE}.get_db', _db_cm(db)),
+            mock.patch(f'{_EXPORT_MODULE}._allowed_export_roots', return_value=[str(tmp_path)]),
+        ):
+            digest = client.post('/api/cull/apply', json=request).json()['preview_digest']
+            result = client.post('/api/cull/apply', json={
+                **request, 'target_dir': second, 'dry_run': False, 'preview_digest': digest,
+            })
+        assert result.status_code == 409
+        assert os.path.isfile(source)
+        assert not os.path.exists(first) and not os.path.exists(second)
+
+    @pytest.mark.parametrize('digest', ['x' * 64, '../unsafe', 'a' * 65])
+    def test_invalid_digest_is_rejected(self, client, tmp_path, digest):
+        source = _make_file(tmp_path, 'rejected.jpg')
+        response = client.post('/api/cull/apply', json={
+            'paths': [source], 'action': 'trash_rejects', 'dry_run': False, 'preview_digest': digest,
+        })
+        assert response.status_code == 422
+        assert os.path.isfile(source)

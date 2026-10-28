@@ -16,7 +16,7 @@ Facet is a local photo-analysis and culling engine. It scores each image across 
 
 ## How It Works
 
-1. **Scan** — Point Facet at a folder of photos. Each image is analyzed for quality, composition, and faces. Supports JPG, HEIF/HEIC/HIF (Canon HDR PQ `.HIF` stills are decoded with the SMPTE ST 2084 PQ transfer function and tone-mapped to SDR sRGB automatically), 10 RAW formats (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF), and PNG, GIF, WebP, BMP, TIFF, and AVIF stills (AVIF needs a Pillow built with AVIF support, native from 11.3). A RAW LibRaw can't decode — such as a Lightroom "Merge to HDR/Panorama" DNG (`-HDR.dng`, `-Pano.dng`) or a camera newer than the installed LibRaw — falls back to its largest embedded preview via `exiftool` (needs a preview at least 1024 px on the long edge; scores then come from that preview, not a full RAW decode). Lightroom Classic 13+ merges (and Enhance) store that preview as JPEG XL; Facet decodes it directly.
+1. **Scan** — Point Facet at a folder of photos. Each image is analyzed for quality, composition, and faces. Supports JPG, HEIF/HEIC/HIF (Canon HDR PQ `.HIF` stills are decoded with the SMPTE ST 2084 PQ transfer function and tone-mapped to SDR sRGB automatically), 10 RAW formats (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF), and PNG, GIF, WebP, BMP, TIFF, and AVIF stills (AVIF needs a Pillow built with AVIF support, native from 11.3), plus JPEG XL (`.jxl`) through the existing `imagecodecs` dependency, included in standard installs and Docker. A RAW LibRaw can't decode — such as a Lightroom "Merge to HDR/Panorama" DNG (`-HDR.dng`, `-Pano.dng`) or a camera newer than the installed LibRaw — falls back to its largest embedded preview via `exiftool` (needs a preview at least 1024 px on the long edge; scores then come from that preview, not a full RAW decode). Lightroom Classic 13+ merges (and Enhance) store that preview as JPEG XL; Facet decodes it directly.
 2. **Browse** — Open the web gallery to explore your library with filters, search, and multiple view modes.
 3. **Cull** — Facet detects bursts, flags blinks, groups similar photos, and surfaces top picks. Exposure brackets and panorama/HDR sets are recognized and kept whole rather than culled apart.
 
@@ -28,7 +28,7 @@ GPU is auto-detected and optional. Facet runs CPU-only or with up to 24 GB VRAM.
 
 Each photo is scored across 9 dimensions: aesthetic quality, composition, face quality, eye sharpness, technical sharpness, color, exposure, subject saliency, and dynamic range. Photos are categorized by content (portrait, landscape, macro, street, etc. — 30+ categories) and scored with category-specific weights. A **Top Picks** filter ranks the library by a combined score.
 
-Hover over any photo for a tooltip with the score breakdown and EXIF data.
+Hover over any photo to see its score breakdown and EXIF data in the gallery's side panel, or switch to a hover bubble that gives a glance at the key scores.
 
 <img src="docs/screenshots/hover-tooltip.jpg" alt="Hover tooltip with score breakdown" width="100%">
 
@@ -105,7 +105,7 @@ Hover over any photo for a tooltip with the score breakdown and EXIF data.
 - **My Taste sort** — sort the gallery by the personal ranker's learned score, with a confidence badge showing learned coverage and held-out accuracy
 - **Learning from labels** — culling decisions, star ratings, favorites, and rejections feed the weight optimizer (`--sync-label-comparisons`, `--mine-insights`)
 - **Snapshots** — save, restore, and compare weight configurations
-- **Histogram** — RGB/luminance histogram with clipping indicators, in the photo tooltip and detail view
+- **Histogram** — RGB/luminance histogram with clipping indicators, in the gallery side panel and detail view
 - **AI captions** `[GPU]` `[16gb/24gb]` — text descriptions, editable `[Edition]` and translatable to 5 languages (viewing is open; generation and editing need edition)
 
 <table><tr>
@@ -234,6 +234,7 @@ First time here? Follow the **[Getting Started](docs/GETTING_STARTED.md)** walkt
 | [Viewer](docs/VIEWER.md) | Web gallery features and usage |
 | [Interop](docs/INTEROP.md) | Round-tripping ratings/tags with Lightroom, Capture One, digiKam, darktable |
 | [Immich](docs/IMMICH.md) | Syncing ratings and favorites with Immich, plus the inbound webhook |
+| [Relink](docs/RELINK.md) | Relink moved photos |
 | [AI Agents](docs/AGENTS.md) | Letting an MCP-capable assistant search the library with a personal token |
 | [Deployment](docs/DEPLOYMENT.md) | Production deployment (Synology NAS, Linux, Docker) |
 | [Contributing](CONTRIBUTING.md) | Development setup, architecture, code style |

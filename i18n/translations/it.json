@@ -72,7 +72,8 @@
     "switch_language": "Cambia lingua",
     "theme": "Tema",
     "dark_mode": "Modalità scura",
-    "light_mode": "Modalità chiara"
+    "light_mode": "Modalità chiara",
+    "version": "Facet {version}"
   },
   "dialog": {
     "cancel": "Annulla",
@@ -129,7 +130,8 @@
       "inpage_hint": "Se attivo, un assistente in esecuzione in questo browser può cercare e, se la sessione lo consente, modificare la libreria tramite la pagina. Disattivato per impostazione predefinita; vale solo per questo browser.",
       "inpage_changed": "L’assistente ha modificato {count} foto",
       "inpage_changed_plural": "L’assistente ha modificato {count} foto"
-    }
+    },
+    "ok": "OK"
   },
   "pagination": {
     "scroll_for_more": "Scorri per vedere altro",
@@ -138,20 +140,16 @@
   "tooltip": {
     "not_computed": "Non calcolato",
     "category": "Categoria",
-    "aggregate": "Aggregato",
-    "quality_section": "Qualita",
     "aesthetic": "Estetica",
     "quality_score": "Punteggio qualita",
     "face_quality": "Qualita volto",
     "face_sharpness": "Nitidezza volto",
     "eye_sharpness": "Nitidezza occhi",
     "tech_sharpness": "Nitidezza tecnica",
-    "composition_section": "Composizione",
     "composition": "Composizione",
     "pattern": "Modello",
     "power_points": "Punti di forza",
     "leading_lines": "Linee guida",
-    "technical_section": "Tecnica",
     "exposure": "Esposizione",
     "color": "Colore",
     "contrast": "Contrasto",
@@ -161,7 +159,6 @@
     "noise": "Rumore",
     "bonus_section": "Bonus",
     "isolation": "Isolamento",
-    "exif_section": "EXIF",
     "camera": "Fotocamera",
     "lens": "Obiettivo",
     "focal": "Focale",
@@ -184,7 +181,6 @@
     "qrealign_score": "Q-ReAlign",
     "aesthetic_v25": "Estetica V2.5",
     "deqa_score": "DeQA",
-    "saliency_section": "Salienza del soggetto",
     "subject_sharpness": "Nitidezza soggetto",
     "subject_prominence": "Prominenza",
     "subject_placement": "Posizionamento",
@@ -200,11 +196,15 @@
     "star_rating": "Valutazione",
     "topiq_score": "TOPIQ",
     "filter_by_person": "Filtra per {name}",
-    "set_section": "Gruppo",
     "histogram": "Istogramma"
   },
   "photoCard": {
-    "embed_to_file": "Scrivi i metadati nel file"
+    "embed_to_file": "Scrivi i metadati nel file",
+    "duplicate_set": "Apri gruppo di duplicati",
+    "burst_set": "Apri gruppo di raffica",
+    "sequence_set": "Apri bracket/panorama",
+    "open_detail": "Apri pagina foto",
+    "key_hint": "1-5 valuta · F preferita · X scarta · Spazio seleziona · Invio apri"
   },
   "notifications": {
     "copied": "Copiato!",
@@ -459,6 +459,7 @@
     "exposure": "Esposizione",
     "composition": "Composizione",
     "subject_saliency": "Salienza soggetto",
+    "content": "Contenuto",
     "camera": "Fotocamera"
   },
   "sort_options": {
@@ -571,7 +572,8 @@
     "mark_rejected": "Segna come scartata",
     "unmark_rejected": "Rimuovi segno di scarto",
     "rejected_badge": "Scartata",
-    "rating_badge": "Valutazione {stars}"
+    "rating_badge": "Valutazione {stars}",
+    "stars_out_of_five": "Valutato {stars} su 5"
   },
   "similar": {
     "title": "Foto simili",
@@ -982,7 +984,8 @@
       "avg_monochrome": "Monocromatico (%)",
       "avg_dynamic_range": "Gamma dinamica media",
       "usage_timeline": "Cronologia utilizzo"
-    }
+    },
+    "gear_metric_label": "Metrica del grafico"
   },
   "login": {
     "title": "Accesso",
@@ -1017,7 +1020,8 @@
     "folders": "Cartelle",
     "map": "Mappa",
     "capsules": "Capsule",
-    "junk_sweep": "Pulizia"
+    "junk_sweep": "Pulizia",
+    "help": "Aiuto"
   },
   "auth": {
     "logout": "Esci",
@@ -1030,13 +1034,18 @@
     "user_menu": "Menu utente"
   },
   "gallery": {
-    "help": "Sfoglia e filtra la tua libreria. Ordina per punteggio, data o per i tuoi gusti personali; usa i filtri della barra laterale (persone, tag, fotocamera, categoria, intervallo di punteggio, momenti) e la ricerca per trovare le foto.",
+    "help": "Ordina per punteggio, data o il tuo gusto personale\nFiltra con la barra laterale: persone, tag, fotocamera, categorie\nCerca per nome file o descrizione",
     "hidden_banner": {
       "message": "{n} foto nascoste dai filtri attivi",
       "some_hidden": "Alcune foto sono nascoste dai tuoi filtri",
       "show_all": "Mostra tutte",
       "restore": "Ripristina i filtri",
       "showing_all": "Vengono mostrate tutte le foto, inclusi occhi chiusi, raffiche e duplicati"
+    },
+    "filters_notice": {
+      "message": "{count} filtro attivo",
+      "message_plural": "{count} filtri attivi",
+      "reset": "Reimposta tutti i filtri"
     },
     "render_migration": {
       "message": "{n} foto RAW mostrano ancora una miniatura del rendering precedente.",
@@ -1052,6 +1061,7 @@
     },
     "all_photos": "Tutte le foto",
     "sort": "Ordina per",
+    "sort_current": "Ordina per: {label}",
     "sort_aggregate": "Aggregato",
     "sort_aesthetic": "Estetica",
     "sort_date": "Data",
@@ -1203,7 +1213,6 @@
       "find_filter": "Cerca un filtro…",
       "clear_find_filter": "Cancella ricerca filtro",
       "no_filters_match": "Nessun filtro corrisponde",
-      "advanced_metrics": "Metriche avanzate",
       "refine": "Affina",
       "view": "Visualizzazione",
       "color_quality": "Colore e qualità",
@@ -1296,7 +1305,32 @@
       "badge_shadow": "Ombre tagliate: {percent}% dei pixel"
     },
     "channel_clip_highlight_range": "% alte luci tagliate",
-    "channel_clip_shadow_range": "% ombre tagliate"
+    "channel_clip_shadow_range": "% ombre tagliate",
+    "blinks_only": "Solo occhi chiusi",
+    "duplicates_only": "Solo duplicati",
+    "card_actions": {
+      "title": "Personalizza i pulsanti della scheda",
+      "hint": "Scegli quali pulsanti mostra una foto al passaggio del mouse e in quale ordine. I pulsanti di gruppo compaiono solo sulle foto che appartengono a un gruppo.",
+      "move_up": "Sposta su",
+      "move_down": "Sposta giù",
+      "reset": "Ripristina predefiniti"
+    },
+    "review_progress": {
+      "title": "Avanzamento revisione",
+      "counts": "{undecided} da decidere · {kept} conservate · {rejected} rifiutate",
+      "complete": "{percent}% di {total} revisionate",
+      "start": "Rivedi le indecise",
+      "resume": "Continua revisione",
+      "browser": "Riprendi la coda memorizzata in questo browser.",
+      "hide_from_menu": "Nascondi avanzamento revisione",
+      "show_from_menu": "Mostra avanzamento revisione"
+    },
+    "manual_faces_need_review": "Volti manuali da verificare",
+    "manual_faces_review_hint": "In base all’ultima scansione o verifica nell’editor dei volti, senza monitoraggio continuo. Apri l’editor dei volti di una foto per verificare i riquadri salvati.",
+    "faces_need_names": "Volti senza nome",
+    "faces_need_names_hint": "Include volti non assegnati e gruppi di persone senza nome. Usa + per assegnare un volto o dai un nome a un gruppo in Persone. Le foto senza volti rilevati sono escluse.",
+    "faces_need_names_readonly_hint": "Include volti non assegnati e gruppi senza nome. Chi dispone dell’accesso in modifica può assegnare i volti o nominare i gruppi. Le foto senza volti rilevati sono escluse.",
+    "help_none": "Questa pagina non ha ancora un testo di aiuto."
   },
   "composition_patterns": {
     "none": "Nessuno",
@@ -1596,7 +1630,10 @@
       "sequences": "Rilevamento dei bracketing",
       "tagging": "Etichettatura",
       "vec": "Indicizzazione",
-      "done": "Completato"
+      "done": "Completato",
+      "moments": "Rilevamento dei momenti",
+      "junk": "Rilevamento delle foto indesiderate",
+      "recompute": "Ricalcolo dei punteggi"
     },
     "title": "Scansiona foto",
     "start_button": "Avvia scansione",
@@ -1685,10 +1722,14 @@
     "split_select_face": "Seleziona volto {index}",
     "no_faces": "Nessun volto trovato per questa persona",
     "split_done": "Persona divisa",
-    "split_error": "Impossibile dividere la persona"
+    "split_error": "Impossibile dividere la persona",
+    "empty_hint": "Le persone provengono dai volti che assegni nella pagina della foto (modalità modifica). Apri una foto con volti e scegli Assegna volto alla persona per creare la prima."
   },
   "person_selector": {
-    "create_new": "Crea nuova persona"
+    "create_new": "Crea nuova persona",
+    "ordering_hint": "Prima le persone assegnate di recente in questo browser, poi quelle con più volti nelle foto che puoi vedere.",
+    "face_count": "{count} volti",
+    "face_count_one": "1 volto"
   },
   "slideshow": {
     "start": "Presentazione",
@@ -1965,7 +2006,6 @@
     "similarity_threshold": "Soglia di similarità",
     "burst_help": "Le foto scattate in rapida successione vengono raggruppate insieme. Clicca sulle foto da tenere (bordo verde), le foto non selezionate (bordo rosso) verranno nascoste. La foto migliore viene selezionata automaticamente in base a nitidezza e qualità.",
     "similar_help": "Le foto visivamente simili nella tua libreria vengono raggruppate utilizzando embedding IA. Esamina ogni gruppo, tieni gli scatti migliori e scarta i quasi-duplicati. Regola il cursore della soglia per controllare quanto simili devono essere le foto per formare un gruppo.",
-    "help": "Aiuto",
     "help_text": "Scarta in fretta gli scatti quasi identici. Scegli una granularità — Raffiche, Simili, Scene o Tutto unito — e un ordinamento; il Rigore regola con quanta aggressività la selezione automatica tiene solo il fotogramma migliore, e in modalità Simili il cursore Similarità regola quanto devono assomigliarsi le foto per raggrupparsi. Clicca una foto per tenerla o scartarla, fai doppio clic per tenere solo quella, oppure attiva la Lente (Z) per esaminare i pixel. Apri la Camera oscura (Invio) per la revisione a schermo intero con Confronta 2 o 4. Usa Su/Giù per scegliere un gruppo e Spazio per confermarlo e proseguire; Salta e Conferma avviano un conto alla rovescia di 7 secondi che puoi Annullare prima che il gruppo si chiuda, e la conferma nasconde le foto scartate dalla galleria. Limita il flusso a un album o una scena, attiva Escludi rifiutate e ricorda che ogni decisione di scarto allena la tua classifica personale «I miei gusti». Consulta le scorciatoie qui sotto per tutti i tasti.",
     "type_burst": "Raffica",
     "type_similar": "Simile",
@@ -2396,7 +2436,9 @@
     "cluster_photos": "{count} foto",
     "score": "Punteggio: {score}",
     "date_from": "Da",
-    "date_to": "A"
+    "date_to": "A",
+    "no_gps_title": "Nessuna foto con posizione",
+    "no_gps_hint": "Nulla nell'ambito porta coordinate GPS. Apri una foto e usa il suo pannello Posizione per posizionarla — le foto posizionate appaiono qui."
   },
   "photo_detail": {
     "back": "Indietro",
@@ -2424,7 +2466,6 @@
     "location": "Posizione",
     "social_crop": "Ritaglio social",
     "set": {
-      "title": "Gruppo",
       "ev_span": "Intervallo EV",
       "kind_duplicate": "Duplicato",
       "open_in_gallery": "Apri questo gruppo nella galleria",
@@ -2443,6 +2484,15 @@
       "error": "Eliminazione non riuscita"
     },
     "gps": {
+      "online_query": "Indirizzo o attività",
+      "online_notice": "La ricerca online invia questa richiesta al fornitore Photon configurato. I luoghi salvati e le coordinate funzionano offline. La selezione mostra un’anteprima; Salva la applica.",
+      "osm_attribution": "© Collaboratori di OpenStreetMap",
+      "opens_new_tab": "(si apre in una nuova scheda)",
+      "online_search": "Cerca online",
+      "online_disabled": "La ricerca online è disattivata.",
+      "online_loading": "Ricerca online…",
+      "online_empty": "Nessun luogo trovato. Prova un’altra ricerca o inserisci le coordinate.",
+      "online_error": "Ricerca online non riuscita o occupata. Attendi e riprova, oppure inserisci le coordinate.",
       "preview_hint": "Scegli un luogo, poi Salva per applicarlo a questa foto.",
       "search": "Cerca luoghi salvati",
       "loading": "Caricamento dei luoghi…",
@@ -2462,7 +2512,22 @@
       "load_error": "Impossibile caricare i luoghi.",
       "place_error": "Impossibile aggiornare il luogo. Controlla nome, limite e connessione.",
       "save_error": "Impossibile salvare il luogo della foto. Riprova.",
-      "use_file_location": "Usa la posizione del file"
+      "use_file_location": "Usa la posizione del file",
+      "batch_title": "Imposta posizione",
+      "only_missing": "Solo foto senza posizione",
+      "preview_batch": "Anteprima delle modifiche",
+      "batch_preview": "{changed} foto sarà modificata; {skipped} ignorate.",
+      "batch_preview_plural": "{changed} foto saranno modificate; {skipped} ignorate.",
+      "batch_applied": "{changed} foto aggiornata; {skipped} ignorate.",
+      "batch_applied_plural": "{changed} foto aggiornate; {skipped} ignorate.",
+      "batch_error": "Impossibile applicare la posizione. Seleziona al massimo 1000 foto e ripeti l’anteprima; la selezione o il luogo salvato potrebbe essere cambiato.",
+      "batch_limit": "Seleziona al massimo 1000 foto. Senza protezione le posizioni esistenti vengono sostituite. I file originali restano invariati.",
+      "batch_hint": "Scegli una posizione e visualizza le modifiche prima di salvare la selezione."
+    },
+    "distribution": {
+      "top": "Top {pct}% della libreria",
+      "range": "Intervallo della libreria {min}–{max}",
+      "top_in_range": "Top {pct}% della libreria · intervallo della libreria {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2487,7 +2552,8 @@
       "success": "Categoria impostata su {category}.",
       "cleared": "Sovrascrittura rimossa. Ricalcola per applicare la categoria basata sui filtri.",
       "explainer_toggle": "Perché non è una categoria diversa?",
-      "target_category_label": "Confronta con"
+      "target_category_label": "Confronta con",
+      "target_category_hint": "Scegli una categoria per vedere quali filtri escludono questa foto e cosa le permetterebbe di rientrarvi."
     }
   },
   "download": {
@@ -2502,7 +2568,7 @@
     "mode_copy": "Copia la selezione in una cartella",
     "mode_symlink": "Collega (symlink) la selezione in una cartella",
     "overwrite": "Sovrascrivi i file .xmp esistenti",
-    "overwrite_hint": "Disattivato per impostazione predefinita: un .xmp creato da darktable viene conservato e Facet scrive invece un .facet.xmp.",
+    "overwrite_hint": "Con ExifTool i sidecar esistenti vengono uniti. Senza, il .xmp viene conservato e Facet scrive .facet.xmp se la sovrascrittura non è abilitata.",
     "target_dir": "Cartella di destinazione",
     "run": "Esporta",
     "running": "Esportazione…",
@@ -2520,6 +2586,32 @@
       "invalid_json": "Questo file non è un JSON valido",
       "imported": "Stato Lightroom importato: {matched} corrispondenza/e, {unmatched} non trovata/e, {changed} modificata/e",
       "import_failed": "Impossibile importare il file di stato Lightroom"
+    },
+    "jobs": {
+      "running": "Esportazione sidecar",
+      "completed": "Esportazione completata",
+      "cancelled": "Esportazione annullata",
+      "failed": "Esportazione non riuscita",
+      "interrupted": "Esportazione interrotta",
+      "progress": "{processed} / {total} file elaborati",
+      "counts": "{written} scritti · {skipped} saltati · {errors} errori",
+      "close": "Chiudi",
+      "close_hint": "L’esportazione continua dopo la chiusura. Riapri la finestra per vedere le esportazioni recenti.",
+      "cancel": "Ferma dopo il file corrente",
+      "cancelling": "Arresto dopo il file corrente…",
+      "cancel_hint": "I sidecar scritti restano. Il file corrente può terminare prima dell’arresto.",
+      "retry": "Riprova i file incompleti",
+      "retry_hint": "Riprova i file non riusciti, saltati e incompleti con i metadati attuali. Un file interrotto può essere riscritto se il progresso non era stato salvato.",
+      "refresh": "Aggiorna stato",
+      "recent": "Esportazioni sidecar recenti",
+      "none": "Nessuna esportazione sidecar recente.",
+      "read_failed": "Impossibile leggere il progresso. Aggiorna lo stato per riprovare.",
+      "errors": {
+        "metadata_repair": "I metadati esistenti devono essere riparati prima dell’esportazione.",
+        "write_failed": "Impossibile scrivere i metadati. Controlla i log del server.",
+        "exiftool_upgrade": "ExifTool dalla 13.23 alla 13.27 danneggia i file XMP. Aggiorna ExifTool alla 13.28 o successiva.",
+        "stopped": "L’esportazione si è interrotta in modo imprevisto. Controlla i log del server e riprova con le foto rimanenti."
+      }
     }
   },
   "undo": {
@@ -2533,6 +2625,9 @@
     "selected": "selezionati",
     "copy_keeps": "Copia i mantenuti in una cartella",
     "move_rejects": "Sposta gli scartati in una cartella",
+    "trash_all_rejects": "Cestina tutte le foto scartate",
+    "all_rejects_scope": "Tutte le foto scartate visibili al tuo account nell’intera libreria. Album, date e filtri attuali vengono ignorati. I file sono condivisi: contano le tue decisioni di scarto e potresti cestinare foto conservate, preferite o valutate da altri utenti.",
+    "all_rejects_limit": "Questa azione supporta al massimo 10.000 foto alla volta. Nella galleria, mostra solo le foto scartate, restringi per data o album e usa la selezione verso una cartella con l’azione cestino per elaborare gruppi più piccoli. Disattiva i filtri che nascondono i gruppi per includere ogni fotogramma scartato.",
     "trash_rejects": "Cestina gli scartati",
     "trash_disabled": "Il cestino è disabilitato — un amministratore può abilitarlo tramite viewer.cull.allow_trash.",
     "trash_missing_pkg": "Il cestino non è disponibile su questo server — il pacchetto send2trash non è installato.",
@@ -2547,6 +2642,7 @@
     "preview": "Anteprima",
     "apply": "Applica",
     "cancel": "Annulla",
+    "partial_error": "Non è stato possibile elaborare alcuni file. Crea una nuova anteprima per controllare i file rimanenti.",
     "done": "Scarto applicato",
     "error": "Scarto non riuscito",
     "delete_action": "Elimina…",
@@ -2554,7 +2650,8 @@
     "delete_confirm_body": "{count} foto verranno inviate al cestino del sistema operativo. Restano recuperabili finché non lo svuoti.",
     "delete_partial_result": "{deleted} eliminate, {failed} fallite",
     "delete_failed": "Eliminazione non riuscita — nulla è stato inviato al cestino",
-    "delete_disabled_view_scope_tooltip": "Seleziona le foto esplicitamente per eliminarle — qui non è possibile usare una selezione dell'intera vista"
+    "delete_disabled_view_scope_tooltip": "Seleziona le foto esplicitamente per eliminarle — qui non è possibile usare una selezione dell'intera vista",
+    "remove_missing_rows": "Rimuovi anche le voci della libreria il cui file è già mancante dal disco"
   },
   "shortcuts": {
     "title": "Scorciatoie da tastiera",
@@ -2573,6 +2670,9 @@
     "rate": "Valuta (1–5 stelle)",
     "reject": "Rifiuta",
     "favorite": "Attiva/disattiva preferito",
+    "focus_search": "Vai alla casella di ricerca",
+    "toggle_filters": "Mostra / nascondi la barra dei filtri",
+    "toggle_layout": "Alterna griglia / mosaico",
     "comp_left_wins": "Vince la foto a sinistra",
     "comp_right_wins": "Vince la foto a destra"
   },
@@ -2766,5 +2866,80 @@
       "ui_suggest_culling": "Suggerimenti segnati sul piano di selezione",
       "ui_show_comparison": "Confronto mostrato"
     }
+  },
+  "review": {
+    "status": "Stato revisione",
+    "all": "Tutte le decisioni",
+    "needs_review": "Da esaminare",
+    "kept": "Conservate",
+    "rejected": "Scartate",
+    "keep": "Conserva",
+    "reset": "Reimposta decisione",
+    "updated": "Decisioni aggiornate per {count} foto",
+    "shortcut": "Conserva foto"
+  },
+  "capture_date": {
+    "title": "Correggi data di scatto",
+    "invalid": "Scegli uno spostamento diverso da zero di al massimo 366 giorni; seleziona al massimo 1000 foto.",
+    "counts": "{changed} modificate · {skipped} ignorate",
+    "samples": "Prime 20 modifiche. Le date sconosciute, incomplete, non supportate o fuori intervallo vengono ignorate.",
+    "photo": "Foto",
+    "before": "Prima",
+    "after": "Dopo",
+    "error": "Impossibile completare l’azione. Verifica accesso e file, poi ripeti l’anteprima.",
+    "reset_hint": "Il pulsante «Usa data del file» rimuove la correzione manuale. Se il file non ha una data, la data di scatto diventa sconosciuta.",
+    "use_file": "Usa data del file",
+    "preview": "Anteprima",
+    "apply": "Applica correzione ({count})",
+    "hint": "Sposta l’ora locale della fotocamera senza dedurre fuso orario o ora legale. Gli originali cambiano solo con l’esportazione esplicita dei metadati.",
+    "mode_shift": "Sposta di",
+    "mode_exact": "Imposta ora esatta",
+    "mode": "Modalità di correzione",
+    "direction": "Direzione",
+    "earlier": "Prima",
+    "later": "Dopo",
+    "days": "Giorni",
+    "hours": "Ore",
+    "minutes": "Minuti",
+    "seconds": "Secondi",
+    "unit_d": "g",
+    "unit_h": "h",
+    "unit_min": "min",
+    "unit_s": "s",
+    "quick": "Regolazione rapida",
+    "summary_earlier": "{amount} prima",
+    "summary_later": "{amount} dopo",
+    "exact_label": "Data e ora corrette della foto di riferimento",
+    "reference": "Foto di riferimento:"
+  },
+  "organization_history": {
+    "title": "Cronologia delle modifiche",
+    "hint": "Le ultime 50 voci in questo database del visualizzatore. Luoghi e date valgono per tutti; decisioni, stelle e preferiti appartengono al tuo account. I file originali non cambiano.",
+    "gps": "Luogo",
+    "date": "Data di scatto",
+    "review": "Revisione",
+    "revert": "Ripristina questa voce",
+    "reverted": "Già ripristinata",
+    "empty": "Nessuna voce disponibile.",
+    "part": "Parte {part} di {parts}: questa voce ripristina solo le sue {count} foto. Le parti precedenti potrebbero essere scadute.",
+    "success": "Foto ripristinate: {count}",
+    "conflict": "Alcune foto sono cambiate dopo questa azione. Nulla è stato ripristinato.",
+    "unavailable": "Questa voce non è più disponibile. Nulla è stato ripristinato.",
+    "error": "Impossibile caricare o ripristinare la cronologia.",
+    "latitude": "Latitudine",
+    "longitude": "Longitudine",
+    "manual_gps": "Posizione manuale",
+    "capture_date": "Data di scatto",
+    "manual_date": "Data manuale",
+    "stars": "Stelle",
+    "favorite": "Preferita",
+    "rejected": "Scartata",
+    "kept": "Conservata",
+    "yes": "Sì",
+    "no": "No",
+    "unknown": "Sconosciuto",
+    "photo_count": "Foto: {count}",
+    "field": "Campo",
+    "entry_action": "{action} · {kind} · {date} · #{id}"
   }
 }

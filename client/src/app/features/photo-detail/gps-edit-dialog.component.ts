@@ -1,10 +1,14 @@
-import { Component, inject, signal, computed, viewChild, ElementRef, DestroyRef, afterNextRender, ChangeDetectionStrategy } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { HttpContext } from '@angular/common/http';
+import { Component, inject, signal, computed, effect, viewChild, ElementRef, DestroyRef, afterNextRender, ChangeDetectionStrategy } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subject, takeUntil } from 'rxjs';
+import { AuthService } from '../../core/services/auth.service';
+import { StalenessGuardFactory } from '../../core/services/staleness-guard.service';
 import * as L from 'leaflet';
 import { createLeafletMap } from '../../shared/leaflet';
 import type { components } from '../../core/api/schema';
@@ -13,7 +17,10 @@ import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { FixedPipe } from '../../shared/pipes/fixed.pipe';
+import { normalizeOnlineQuery } from './online-query';
+import { PluralKeyPipe } from '../../shared/pipes/plural-key.pipe';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
+import { HANDLE_PLACE_SEARCH_ERRORS_LOCALLY } from '../../core/utils/place-search-error.util';
 
 export interface GpsEditDialogData {
   path: string;
@@ -22,27 +29,47 @@ export interface GpsEditDialogData {
   lng: number | null;
   /** The photo's location was set in the viewer, so a rescan keeps it. */
   manuallySet?: boolean;
+  onBatchApplied?: () => void;
+  batch?: Pick<components['schemas']['BatchPhotoRequest'], 'photo_paths' | 'filters' | 'exclude'>;
 }
 
 export type SavedPlace = components['schemas']['SavedPlace'];
 export type RecentPlace = components['schemas']['RecentPlace'];
+type BatchGpsDraft = NonNullable<GpsEditDialogData['batch']> & { gps_latitude: number | null; gps_longitude: number | null; only_missing: boolean; saved_place_id?: number | null };
 type GpsResult = components['schemas']['GpsUpdateResponse'];
 
 @Component({
   selector: 'app-gps-edit-dialog',
   standalone: true,
-  imports: [FormsModule, MatDialogModule, MatButtonModule, MatIconModule, MatSnackBarModule, TranslatePipe, FixedPipe],
+  imports: [FormsModule, MatDialogModule, MatButtonModule, MatIconModule, MatSnackBarModule, TranslatePipe, FixedPipe, PluralKeyPipe],
   changeDetection: ChangeDetectionStrategy.Eager,
   template: `
     <h2 mat-dialog-title class="!flex items-center gap-2">
       <mat-icon>location_on</mat-icon><span class="truncate">{{ data.filename }}</span>
     </h2>
     <mat-dialog-content class="!px-4 !pb-2">
-      <p class="text-sm mb-3">{{ I18N.photo_detail.gps.preview_hint | translate }}</p>
+      <p class="text-sm mb-3">{{ (data.batch ? I18N.photo_detail.gps.batch_hint : I18N.photo_detail.gps.preview_hint) | translate }}</p>
       <label class="block text-sm mb-3">
         {{ I18N.photo_detail.gps.search | translate }}
         <input class="block w-full border rounded p-2 bg-transparent" type="search" [ngModel]="search()" (ngModelChange)="search.set($event)">
       </label>
+      <label class="block text-sm mb-2">
+        {{ I18N.photo_detail.gps.online_query | translate }}
+        <!-- Native maxlength counts UTF-16 units; the request guard limits code points to 200. -->
+        <input class="block w-full border rounded p-2 bg-transparent" type="search" maxlength="400" [ngModel]="onlineQuery()" (ngModelChange)="setOnlineQuery($event)">
+      </label>
+      <p class="text-xs mb-2">{{ I18N.photo_detail.gps.online_notice | translate }}</p>
+      <p class="text-xs mb-2"><a href="https://photon.komoot.io" target="_blank" rel="noopener noreferrer">Photon<span class="sr-only"> {{ I18N.photo_detail.gps.opens_new_tab | translate }}</span></a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">{{ I18N.photo_detail.gps.osm_attribution | translate }}<span class="sr-only"> {{ I18N.photo_detail.gps.opens_new_tab | translate }}</span></a></p>
+      <button mat-button (click)="searchOnline()" [disabled]="saving() || onlineBusy() || !onlineQueryValid() || !onlineEnabled() || !auth.isEdition()">{{ I18N.photo_detail.gps.online_search | translate }}</button>
+      @if (!onlineEnabled()) { <p role="status">{{ I18N.photo_detail.gps.online_disabled | translate }}</p> }
+      @if (onlineBusy()) { <p role="status">{{ I18N.photo_detail.gps.online_loading | translate }}</p> }
+      @if (onlineError()) { <p role="alert">{{ onlineError() | translate }}</p> }
+      @if (onlineSearched() && !onlineResults().length) { <p role="status">{{ I18N.photo_detail.gps.online_empty | translate }}</p> }
+      <ul class="max-h-40 overflow-auto mb-3">
+        @for (result of onlineResults(); track $index) {
+          <li><button mat-button class="!h-auto !py-2 !text-left" (click)="selectOnlineResult(result)">{{ result.label }}</button></li>
+        }
+      </ul>
       @if (loadingPlaces()) { <p role="status">{{ I18N.photo_detail.gps.loading | translate }}</p> }
       @if (placesError()) {
         <p role="alert">{{ placesError() | translate }}</p>
@@ -94,24 +121,37 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
       </div>
       @if (placeBusy()) { <p role="status">{{ I18N.photo_detail.gps.updating | translate }}</p> }
       @if (placeError()) { <p role="alert">{{ placeError() | translate }}</p> }
+      @if (data.batch) {
+        <label class="flex items-center gap-2 mt-3"><input type="checkbox" [ngModel]="onlyMissing()" (ngModelChange)="onlyMissing.set($event)">{{ I18N.photo_detail.gps.only_missing | translate }}</label>
+        <p class="text-sm mt-2">{{ I18N.photo_detail.gps.batch_limit | translate }}</p>
+        @if (previewCurrent()) { @if (batchPreview(); as preview) {
+          <p role="status" class="mt-2">{{ preview.result.changed | pluralKey:I18N.photo_detail.gps.batch_preview:I18N.photo_detail.gps.batch_preview_plural | translate:{ changed: preview.result.changed, skipped: preview.result.skipped } }}</p>
+        } }
+      }
       @if (saveError()) { <p role="alert">{{ saveError() | translate }}</p> }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
-      <button mat-button (click)="clearLocation()" class="!mr-auto">{{ I18N.photo_detail.gps_clear | translate }}</button>
+      @if (!data.batch) { <button mat-button (click)="clearLocation()" class="!mr-auto">{{ I18N.photo_detail.gps_clear | translate }}</button> }
       @if (data.manuallySet) {
         <button mat-button (click)="useFileLocation()" [disabled]="saving() || placeBusy()">{{ I18N.photo_detail.gps.use_file_location | translate }}</button>
       }
       <button mat-button (click)="cancel()">{{ I18N.ui.buttons.cancel | translate }}</button>
-      <button mat-flat-button (click)="save()" [disabled]="saving() || placeBusy() || !coordinatesValid() || unchanged()">{{ I18N.ui.buttons.save | translate }}</button>
+      @if (data.batch) {
+        <button mat-button (click)="previewBatch()" [disabled]="saving() || placeBusy() || !batchCoordinatesValid()">{{ I18N.photo_detail.gps.preview_batch | translate }}</button>
+      }
+      <button mat-flat-button (click)="save()" [disabled]="saving() || placeBusy() || (data.batch ? !canApplyBatch() : (!coordinatesValid() || unchanged()))">{{ I18N.ui.buttons.save | translate }}</button>
     </mat-dialog-actions>
   `,
 })
 export class GpsEditDialogComponent {
   protected readonly I18N = i18nKeys();
+  protected readonly auth = inject(AuthService);
+  private readonly owner = this.auth.identity();
   private readonly api = inject(ApiService);
   private readonly store = inject(GalleryStore);
   private readonly dialogRef = inject(MatDialogRef<GpsEditDialogComponent>);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly staleness = inject(StalenessGuardFactory).create(this.destroyRef, { onNavigate: () => this.invalidateOwner() });
   private readonly snackBar = inject(MatSnackBar);
   private readonly i18n = inject(I18nService);
   readonly data: GpsEditDialogData = inject(MAT_DIALOG_DATA);
@@ -121,10 +161,30 @@ export class GpsEditDialogComponent {
   readonly selectedLat = signal<number | null>(this.data.lat);
   readonly selectedLng = signal<number | null>(this.data.lng);
   readonly saving = signal(false);
+  readonly onlyMissing = signal(true);
+  private readonly batchTarget = this.data.batch ? structuredClone(this.data.batch) : null;
+  readonly batchCoordinatesValid = computed(() => this.coordinatesValid() && this.selectedLat() !== null && this.selectedLng() !== null);
+  private readonly batchBody = computed(() => ({
+    ...this.batchTarget, gps_latitude: this.selectedLat(), gps_longitude: this.selectedLng(),
+    only_missing: this.onlyMissing(),
+    ...(this.selectedPlaceId() === null ? {} : { saved_place_id: this.selectedPlaceId() }),
+  }));
+  readonly batchPreview = signal<{ body: BatchGpsDraft; result: components['schemas']['BatchGpsResponse'] } | null>(null);
+  readonly previewCurrent = computed(() => !!this.batchPreview() && JSON.stringify(this.batchBody()) === JSON.stringify(this.batchPreview()!.body));
+  readonly canApplyBatch = computed(() => this.batchCoordinatesValid() && this.previewCurrent() && this.batchPreview()!.result.changed > 0);
 
   readonly places = signal<SavedPlace[]>([]);
   readonly recent = signal<RecentPlace[]>([]);
   readonly search = signal('');
+  readonly onlineQuery = signal('');
+  readonly onlineResults = signal<components['schemas']['PlaceSearchResult'][]>([]);
+  readonly onlineBusy = signal(false);
+  readonly onlineSearched = signal(false);
+  readonly onlineError = signal('');
+  readonly onlineEnabled = computed(() => this.store.config()?.place_search_enabled ?? false);
+  readonly onlineQueryValid = computed(() => normalizeOnlineQuery(this.onlineQuery()) !== null);
+  private onlineSequence = 0;
+  private readonly cancelOnline = new Subject<void>();
   readonly placeName = signal('');
   readonly editName = signal('');
   readonly editingId = signal<number | null>(null);
@@ -153,9 +213,39 @@ export class GpsEditDialogComponent {
   private map: L.Map | null = null;
   private marker: L.Marker | null = null;
 
+  private current(): boolean {
+    return !this.dismissed && !this.destroyed && !this.destroyRef.destroyed && this.sessionCurrent();
+  }
+
+  /** Same session and page as at opening. A committed write is still published
+   *  after a plain Cancel/Escape; only a later session or navigation drops it. */
+  private sessionCurrent(): boolean {
+    return this.staleness.session();
+  }
+
+  private dismiss(): void {
+    this.dismissed = true;
+    this.batchPreview.set(null);
+    this.invalidateOnline();
+  }
+
+  private invalidateOwner(): void {
+    this.dismiss();
+    this.places.set([]);
+    this.recent.set([]);
+    this.dialogRef.close();
+  }
+
   constructor() {
+    effect(() => {
+      if (this.auth.identity() !== this.owner || !this.auth.isEdition()) this.invalidateOwner();
+    });
+    effect(() => { this.auth.status(); this.invalidateOnline(); });
+    this.dialogRef.beforeClosed().pipe(takeUntilDestroyed()).subscribe(() => this.dismiss());
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;
+      this.invalidateOnline();
+      this.cancelOnline.complete();
       if (this.map) { this.map.remove(); this.map = null; }
     });
     void this.loadPlaces();
@@ -168,13 +258,55 @@ export class GpsEditDialogComponent {
     });
   }
 
+  private invalidateOnline(): void {
+    this.onlineSequence++;
+    this.cancelOnline.next();
+    this.onlineBusy.set(false);
+    this.onlineResults.set([]);
+    this.onlineSearched.set(false);
+    this.onlineError.set('');
+  }
+
+  setOnlineQuery(query: string): void {
+    this.invalidateOnline();
+    this.onlineQuery.set(query);
+  }
+
+  async searchOnline(): Promise<void> {
+    if (!this.current() || this.saving() || this.onlineBusy() || !this.onlineQueryValid() || !this.onlineEnabled()) return;
+    this.invalidateOnline();
+    const sequence = this.onlineSequence;
+    const auth = this.auth.status();
+    this.onlineBusy.set(true);
+    try {
+      const response = await firstValueFrom(this.api.get<components['schemas']['PlaceSearchResponse']>('/places/search', { q: normalizeOnlineQuery(this.onlineQuery()) ?? '' }, new HttpContext().set(HANDLE_PLACE_SEARCH_ERRORS_LOCALLY, true)).pipe(takeUntil(this.cancelOnline)));
+      if (sequence !== this.onlineSequence || auth !== this.auth.status() || this.destroyed || this.dismissed) return;
+      this.onlineResults.set(response.results.filter(result => this.validOnlineResult(result)).slice(0, 5));
+      this.onlineSearched.set(true);
+    } catch {
+      if (sequence === this.onlineSequence && auth === this.auth.status() && !this.destroyed && !this.dismissed) this.onlineError.set(I18N.photo_detail.gps.online_error);
+    } finally {
+      if (sequence === this.onlineSequence) this.onlineBusy.set(false);
+    }
+  }
+
+  private validOnlineResult(result: components['schemas']['PlaceSearchResult']): boolean {
+    return typeof result?.label === 'string' && result.label.trim().length > 0 && Array.from(result.label).length <= 600 &&
+      typeof result.latitude === 'number' && typeof result.longitude === 'number' && Number.isFinite(result.latitude) && Number.isFinite(result.longitude) && Math.abs(result.latitude) <= 90 && Math.abs(result.longitude) <= 180;
+  }
+
+  selectOnlineResult(result: components['schemas']['PlaceSearchResult']): void {
+    if (!this.current() || this.saving()) return;
+    this.selectRecent(result);
+  }
+
   private initMap(): void {
     const container = this.mapContainer().nativeElement;
     const lat = this.selectedLat() ?? 48.8566;
     const lng = this.selectedLng() ?? 2.3522;
     const zoom = this.selectedLat() !== null ? 13 : 5;
 
-    this.map = createLeafletMap(container, undefined, () => { if (!this.destroyed) this.mapFailed.set(true); }).setView([lat, lng], zoom);
+    this.map = createLeafletMap(container, undefined, () => { if (this.current()) this.mapFailed.set(true); }).setView([lat, lng], zoom);
     // Force Leaflet to recalculate container size after dialog renders
     this.map.invalidateSize();
 
@@ -185,6 +317,7 @@ export class GpsEditDialogComponent {
     this.map.on('click', (e: L.LeafletMouseEvent) => {
       const wrapped = e.latlng.wrap();
       if (this.destroyed) return;
+      this.invalidateOnline();
       this.selectedPlaceId.set(null);
       this.selectedLat.set(wrapped.lat);
       this.selectedLng.set(wrapped.lng);
@@ -199,6 +332,7 @@ export class GpsEditDialogComponent {
   }
 
   clearLocation(): void {
+    this.invalidateOnline();
     this.selectedPlaceId.set(null);
     this.selectedLat.set(null);
     this.selectedLng.set(null);
@@ -209,14 +343,14 @@ export class GpsEditDialogComponent {
   }
 
   async loadPlaces(): Promise<void> {
-    if (this.loadingPlaces() || this.placeBusy()) return;
+    if (!this.current() || this.loadingPlaces() || this.placeBusy()) return;
     this.loadingPlaces.set(true);
     this.placesError.set('');
     try {
       const result = await firstValueFrom(this.api.get<components['schemas']['PlacesResponse']>('/places'));
-      if (!this.destroyed) { this.places.set(result.places); this.recent.set(result.recent); }
-    } catch { if (!this.destroyed) this.placesError.set(I18N.photo_detail.gps.load_error); }
-    finally { this.loadingPlaces.set(false); }
+      if (this.current()) { this.places.set(result.places); this.recent.set(result.recent); }
+    } catch { if (this.current()) this.placesError.set(I18N.photo_detail.gps.load_error); }
+    finally { if (this.current()) this.loadingPlaces.set(false); }
   }
 
   selectPlace(place: SavedPlace): void {
@@ -225,6 +359,7 @@ export class GpsEditDialogComponent {
   }
 
   selectRecent(point: Pick<RecentPlace, 'latitude' | 'longitude'>): void {
+    this.invalidateOnline();
     this.selectedPlaceId.set(null);
     this.selectedLat.set(point.latitude);
     this.selectedLng.set(point.longitude);
@@ -233,12 +368,14 @@ export class GpsEditDialogComponent {
   }
 
   setLatitude(value: number | null): void {
+    this.invalidateOnline();
     if (value !== this.selectedLat()) this.selectedPlaceId.set(null);
     this.selectedLat.set(value);
     this.syncMarker();
   }
 
   setLongitude(value: number | null): void {
+    this.invalidateOnline();
     if (value !== this.selectedLng()) this.selectedPlaceId.set(null);
     this.selectedLng.set(value);
     this.syncMarker();
@@ -255,82 +392,126 @@ export class GpsEditDialogComponent {
   }
 
   async createPlace(): Promise<void> {
-    if (!this.canCreatePlace()) return;
+    if (!this.current() || !this.canCreatePlace()) return;
     const body = { name: this.placeName().trim(), latitude: this.selectedLat(), longitude: this.selectedLng() };
     this.placeBusy.set(true);
     this.placeError.set('');
     try {
       const place = await firstValueFrom(this.api.post<SavedPlace>('/places', body));
-      if (!this.destroyed) {
+      if (this.current()) {
         this.places.update(places => [...places, place]);
         this.placeName.set('');
         if (this.selectedLat() === place.latitude && this.selectedLng() === place.longitude) this.selectedPlaceId.set(place.id);
       }
-    } catch { if (!this.destroyed) this.placeError.set(I18N.photo_detail.gps.place_error); }
-    finally { this.placeBusy.set(false); }
+    } catch { if (this.current()) this.placeError.set(I18N.photo_detail.gps.place_error); }
+    finally { if (this.current()) this.placeBusy.set(false); }
   }
 
   async renamePlace(place: SavedPlace): Promise<void> {
-    if (this.placeBusy() || this.loadingPlaces() || !this.editNameValid()) return;
+    if (!this.current() || this.placeBusy() || this.loadingPlaces() || !this.editNameValid()) return;
     const body = { name: this.editName().trim(), latitude: place.latitude, longitude: place.longitude };
     this.placeBusy.set(true);
     this.placeError.set('');
     try {
       const updated = await firstValueFrom(this.api.put<SavedPlace>(`/places/${place.id}`, body));
-      if (!this.destroyed) { this.places.update(places => places.map(p => p.id === updated.id ? updated : p)); this.editingId.set(null); }
-    } catch { if (!this.destroyed) this.placeError.set(I18N.photo_detail.gps.place_error); }
-    finally { this.placeBusy.set(false); }
+      if (this.current()) { this.places.update(places => places.map(p => p.id === updated.id ? updated : p)); this.editingId.set(null); }
+    } catch { if (this.current()) this.placeError.set(I18N.photo_detail.gps.place_error); }
+    finally { if (this.current()) this.placeBusy.set(false); }
   }
 
   async deletePlace(place: SavedPlace): Promise<void> {
-    if (this.placeBusy() || this.loadingPlaces()) return;
+    if (!this.current() || this.placeBusy() || this.loadingPlaces()) return;
     this.placeBusy.set(true);
     this.placeError.set('');
     try {
       await firstValueFrom(this.api.delete(`/places/${place.id}`));
-      if (!this.destroyed) {
+      if (this.current()) {
         this.places.update(places => places.filter(p => p.id !== place.id));
         if (this.selectedPlaceId() === place.id) this.selectedPlaceId.set(null);
       }
-    } catch { if (!this.destroyed) this.placeError.set(I18N.photo_detail.gps.place_error); }
-    finally { this.placeBusy.set(false); }
+    } catch { if (this.current()) this.placeError.set(I18N.photo_detail.gps.place_error); }
+    finally { if (this.current()) this.placeBusy.set(false); }
   }
 
-  cancel(): void { this.dismissed = true; this.dialogRef.close(undefined); }
+  cancel(): void { this.dismiss(); this.dialogRef.close(undefined); }
 
   async useFileLocation(): Promise<void> {
-    if (this.saving() || this.placeBusy()) return;
+    if (!this.current() || this.saving() || this.placeBusy()) return;
+    this.invalidateOnline();
     this.saving.set(true);
     this.saveError.set('');
     try {
       const result = await firstValueFrom(this.api.delete<GpsResult>(`/photo/gps?path=${encodeURIComponent(this.data.path)}`));
+      // The write is done on the server, so the store follows it even after a plain dismissal,
+      // but never into a later session or page.
+      if (!this.sessionCurrent()) return;
       this.store.patchPhoto(this.data.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 0 });
-      if (this.store.filters().no_gps) void this.store.loadPhotos();
-      if (!this.destroyed && !this.dismissed) this.dialogRef.close({ ...result, gps_manually_set: 0 });
+      void this.store.refreshPaths(null);
+      if (this.current()) this.dialogRef.close({ ...result, gps_manually_set: 0 });
     } catch {
+      if (!this.current()) return;
       this.snackBar.open(this.i18n.t(I18N.notifications.connection_error), '', { duration: 3000 });
-      if (!this.destroyed) this.saveError.set(I18N.photo_detail.gps.save_error);
-    } finally { this.saving.set(false); }
+      this.saveError.set(I18N.photo_detail.gps.save_error);
+    } finally { if (this.current()) this.saving.set(false); }
+  }
+
+  async previewBatch(): Promise<void> {
+    if (!this.current() || !this.batchTarget || this.saving() || this.placeBusy() || !this.batchCoordinatesValid()) return;
+    const body = structuredClone(this.batchBody());
+    this.saving.set(true);
+    this.batchPreview.set(null);
+    this.saveError.set('');
+    try {
+      const result = await firstValueFrom(this.api.post<components['schemas']['BatchGpsResponse']>('/photos/batch_gps', { ...body, preview: true }));
+      if (this.current()) this.batchPreview.set({ body, result });
+    } catch { if (this.current()) this.saveError.set(I18N.photo_detail.gps.batch_error); }
+    finally { if (this.current()) this.saving.set(false); }
+  }
+
+  private async saveBatch(): Promise<void> {
+    if (!this.current() || !this.canApplyBatch() || this.saving() || this.placeBusy()) return;
+    const preview = this.batchPreview()!;
+    this.invalidateOnline();
+    this.saving.set(true);
+    this.saveError.set('');
+    try {
+      const result = await firstValueFrom(this.api.post<components['schemas']['BatchGpsResponse']>('/photos/batch_gps', {
+        ...preview.body, preview: false, preview_token: preview.result.preview_token,
+      }));
+      // A committed write remains server truth, but an expired dialog cannot
+      // publish into a later session or navigation.
+      if (!this.sessionCurrent()) return;
+      this.data.onBatchApplied?.();
+      void this.store.refreshPaths(null);
+      this.snackBar.open(this.i18n.t(result.changed === 1 ? I18N.photo_detail.gps.batch_applied : I18N.photo_detail.gps.batch_applied_plural, { changed: result.changed, skipped: result.skipped }), '', { duration: 4000 });
+      if (this.current()) this.dialogRef.close(result);
+    } catch {
+      if (this.current()) { this.batchPreview.set(null); this.saveError.set(I18N.photo_detail.gps.batch_error); }
+    } finally { if (this.current()) this.saving.set(false); }
   }
 
   async save(): Promise<void> {
-    if (this.saving() || this.placeBusy() || !this.coordinatesValid()) return;
+    if (this.batchTarget) { await this.saveBatch(); return; }
+    if (!this.current() || this.saving() || this.placeBusy() || !this.coordinatesValid()) return;
     const body = {
       path: this.data.path,
       gps_latitude: this.selectedLat(),
       gps_longitude: this.selectedLng(),
       ...(this.selectedPlaceId() === null ? {} : { saved_place_id: this.selectedPlaceId() }),
     };
+    this.invalidateOnline();
     this.saving.set(true);
     this.saveError.set('');
     try {
       const result = await firstValueFrom(this.api.put<GpsResult>('/photo/gps', body));
+      if (!this.sessionCurrent()) return;
       this.store.patchPhoto(body.path, { gps_latitude: result.gps_latitude, gps_longitude: result.gps_longitude, gps_manually_set: 1 });
-      if (this.store.filters().no_gps) void this.store.loadPhotos();
-      if (!this.destroyed && !this.dismissed) this.dialogRef.close(result);
+      void this.store.refreshPaths(null);
+      if (this.current()) this.dialogRef.close(result);
     } catch {
+      if (!this.current()) return;
       this.snackBar.open(this.i18n.t(I18N.notifications.connection_error), '', { duration: 3000 });
-      if (!this.destroyed) this.saveError.set(I18N.photo_detail.gps.save_error);
-    } finally { this.saving.set(false); }
+      this.saveError.set(I18N.photo_detail.gps.save_error);
+    } finally { if (this.current()) this.saving.set(false); }
   }
 }

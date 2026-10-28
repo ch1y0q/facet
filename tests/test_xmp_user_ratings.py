@@ -6,6 +6,7 @@ keywords go to the global ``photo_manual_tags`` side table; single-user mode is 
 """
 
 import sqlite3
+import pytest
 
 from db.schema import init_database
 from processing.xmp_export import export_sidecars
@@ -115,7 +116,7 @@ class TestExportPerUser:
         )
         captured = {}
 
-        def fake_write(path, rating, *, embed_original=False, timeout=60):
+        def fake_write(path, rating, *, embed_original=False, reconcile_keywords=False, timeout=60):
             captured["rating"] = rating
             return {"embedded": False}
 
@@ -139,7 +140,7 @@ class TestExportPerUser:
         )
         captured = {}
 
-        def fake_write(path, rating, *, embed_original=False, timeout=60):
+        def fake_write(path, rating, *, embed_original=False, reconcile_keywords=False, timeout=60):
             captured["rating"] = rating
             return {"embedded": False}
 
@@ -165,7 +166,7 @@ class TestExportPerUser:
             "VALUES (?,-1,X'',1,?,?,50,0,100,80,100,80,?)",
             (str(img), str(uuid4()), pid, source_identity(str(img))))
         captured = {}
-        def fake_write(path, rating, *, embed_original=False, timeout=60):
+        def fake_write(path, rating, *, embed_original=False, reconcile_keywords=False, timeout=60):
             captured['rating'] = rating
             return {'embedded': False}
         monkeypatch.setattr('processing.xmp_export.write_metadata', fake_write)
@@ -174,3 +175,8 @@ class TestExportPerUser:
         regions = captured['rating'].regions
         assert len(regions) == 1
         assert (regions[0].name, regions[0].x, regions[0].y, regions[0].w, regions[0].h) == ('Manual Person', 0.75, 0.5, 0.5, 1)
+
+
+@pytest.fixture(autouse=True)
+def _user_directories(tmp_path, monkeypatch):
+    monkeypatch.setattr('api.db_helpers.get_user_directories', lambda user: [str(tmp_path)])

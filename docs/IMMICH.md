@@ -94,7 +94,7 @@ The key is sent as an `x-api-key` header on every request. Put it in `scoring_co
 
 ## Step 3 — map the paths
 
-Add one pair per root you share. The first pair whose `facet_prefix` matches a photo wins:
+Add one pair per root you share. The first literal string prefix match wins; directory boundaries are not inferred. End directory prefixes with `/`, and place narrow mappings before broad mappings:
 
 ```json
 "immich": {
@@ -130,7 +130,7 @@ python facet.py --immich-sync --dry-run
 python facet.py --immich-sync
 ```
 
-The sync reports `matched` / `unmatched` / `updated` / `skipped (unrated)` / albums created. A first run with a large `unmatched` count almost always means the path map is wrong — see [Troubleshooting](#troubleshooting).
+The sync reports `matched` / `unmatched` / `updated` / `skipped (unrated)` / `identity_conflicts` / albums created. In a dry run, `updated` is the number of verified assets that would be updated; no remote or local sync-state writes occur. A first run with a large `unmatched` count almost always means the path map is wrong — see [Troubleshooting](#troubleshooting).
 
 What gets pushed:
 
@@ -221,7 +221,7 @@ In Immich ≥ 3.0: **Administration → Workflows → Create Workflow**.
 | `403` | Wrong token. |
 | `404` | The feature is disabled (no token configured). |
 
-Facet reads `originalPath` out of the payload and is deliberately liberal about where it sits — a bare asset object, `{"asset": {…}}`, a list, or any of those nested under `data` / `items` / `assets` all work. If the payload carries the asset `id`, Facet uses it and skips a lookup round-trip.
+Facet reads `originalPath` out of the payload and is deliberately liberal about where it sits — a bare asset object, `{"asset": {…}}`, a list, or any of those nested under `data` / `items` / `assets` all work. If the payload carries the asset `id`, Facet rereads that ID from the configured Immich server and verifies its exact mapped path and optional owner/library scope before updating. A mismatched ID is counted as `failed`.
 
 Pending paths are reported by the next sync:
 
@@ -246,6 +246,8 @@ The full `immich` block, with the shipped defaults:
 "immich": {
   "url": "",
   "api_key": "",
+  "owner_id": "",
+  "library_id": "",
   "path_map": [
     { "facet_prefix": "", "immich_prefix": "" }
   ],
@@ -269,6 +271,8 @@ The full `immich` block, with the shipped defaults:
 |-----|---------|---------|
 | `url` | `""` | Immich base URL, `http` or `https`. A trailing slash is trimmed. |
 | `api_key` | `""` | API key, sent as `x-api-key`. Empty aborts any sync with a clear error. |
+| `owner_id` | `""` | Optional exact Immich `ownerId` to select. Missing/mismatched response fields do not match. |
+| `library_id` | `""` | Optional exact Immich `libraryId` to select. Empty selects no specific library; it does not mean a null library. |
 | `path_map` | one empty pair | Prefix rewrites between Facet paths and Immich `originalPath` values. First match wins; used in both directions. |
 | `push.ratings` | `true` | Push star ratings 1–5 (and their clears). |
 | `push.favorites` | `true` | Push `isFavorite` (and its clears). |
@@ -331,7 +335,11 @@ Facet only sends a clear for a photo it has actually pushed before; that memory 
 
 ### Ratings appear on the wrong photos
 
-Two files with the same `originalPath` cannot happen inside Immich, but two *Facet* roots mapping onto one Immich prefix can collide. Check that your `path_map` pairs do not overlap: the first matching pair wins, so a broad pair listed before a narrow one swallows it.
+Facet refuses a path that resolves to multiple remote asset IDs, including matches on later search pages, and refuses multiple selected Facet paths mapping onto one remote path. These are reported as `identity_conflicts`; no rating, favorite, album membership or confirmed push-state update is made for those paths. Unambiguous photos can still sync. Resolve overlapping roots or select the intended remote `owner_id` and `library_id`, then retry. Never assume owner identity from a person's name or from the path alone.
+
+Identity checks use the configured server URL and API key. Responses must include `id` and `originalPath`; configured owner/library scopes must match response fields. A webhook-supplied ID is verified by fetching that asset and searching all pages for the same exact path: a duplicate path, mismatched ID or invalid pagination prevents the update. A successful update response confirms HTTP acceptance; queued metadata work may still be pending.
+
+Webhook batches also refuse every eligible entry when different Facet paths claim the same mapped target or remote ID. All identities are resolved before any update; inconsistent aliases count as `failed` and do not advance confirmed push state.
 
 ### `rating: 0 is not valid`
 

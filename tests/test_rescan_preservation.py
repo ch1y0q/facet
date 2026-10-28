@@ -69,7 +69,7 @@ def scored_db(tmp_path):
     # Simulate everything a user / later pass attaches to the photo.
     with get_connection(db, row_factory=False) as conn:
         conn.execute(
-            "UPDATE photos SET star_rating=5, is_favorite=1, caption=?, "
+            "UPDATE photos SET star_rating=5, is_favorite=1, is_kept=1, caption=?, "
             "vlm_critique=?, narrative_moment=?, learned_score=? WHERE path='/p/a.jpg'",
             ("a lovely view", "great composition", "nature", 8.5),
         )
@@ -84,8 +84,8 @@ def scored_db(tmp_path):
             "INSERT INTO learned_scores (photo_path, learned_score) VALUES ('/p/a.jpg', 8.5)"
         )
         conn.execute(
-            "INSERT INTO user_preferences (user_id, photo_path, star_rating) "
-            "VALUES ('alice', '/p/a.jpg', 4)"
+            "INSERT INTO user_preferences (user_id, photo_path, star_rating, is_kept) "
+            "VALUES ('alice', '/p/a.jpg', 4, 1)"
         )
         conn.commit()
     return db, facet
@@ -98,12 +98,14 @@ def test_rescan_preserves_user_and_derived_data(scored_db):
 
     with get_connection(db, row_factory=True) as conn:
         row = conn.execute(
-            "SELECT aggregate, star_rating, is_favorite, caption, vlm_critique, "
+            "SELECT aggregate, star_rating, is_favorite, is_kept, caption, vlm_critique, "
             "narrative_moment, learned_score FROM photos WHERE path='/p/a.jpg'"
         ).fetchone()
         assert row['aggregate'] == 9.9                 # scored column refreshed
         assert row['star_rating'] == 5                 # rating preserved
         assert row['is_favorite'] == 1
+        assert row['is_kept'] == 1
+        assert conn.execute("SELECT is_kept FROM user_preferences WHERE user_id='alice'").fetchone()[0] == 1
         assert row['caption'] == "a lovely view"       # expensive AI preserved
         assert row['vlm_critique'] == "great composition"
         assert row['narrative_moment'] == "nature"
@@ -249,3 +251,48 @@ def test_real_full_save_refreshes_unedited_exif_gps(scored_db):
     with get_connection(db, row_factory=False) as conn:
         assert conn.execute('SELECT gps_latitude,gps_longitude,gps_manually_set FROM photos WHERE path=?',
                             ('/p/a.jpg',)).fetchone() == (1, 2, 0)
+
+
+@pytest.mark.parametrize('mode', ['full', 'partial_faces', 'partial_no_faces'])
+@pytest.mark.parametrize('change', ['unchanged', 'metadata', 'replacement', 'unavailable'])
+def test_scan_validates_manual_review_without_write_lock(scored_db, tmp_path, monkeypatch, mode, change):
+    import sqlite3
+    from db import manual_faces
+    db, facet = scored_db
+    path = str(tmp_path / 'manual.png')
+    _IMG.save(path)
+    identity = manual_faces.source_identity(path)
+    with get_connection(db, row_factory=False) as conn:
+        conn.execute('INSERT INTO photos(path,filename) VALUES (?,?)', (path, 'manual.png'))
+        fid = conn.execute("INSERT INTO faces(photo_path,face_index,embedding,is_manual,manual_source) "
+                           "VALUES (?,-1,X'',1,?)", (path, identity)).lastrowid
+        conn.commit()
+    if change == 'metadata':
+        from PIL.PngImagePlugin import PngInfo
+        meta = PngInfo()
+        meta.add_text('Description', 'metadata rewrite')
+        _IMG.save(path, pnginfo=meta)
+    elif change == 'replacement':
+        Image.new('RGB', (64, 64), 'green').save(path)
+    elif change == 'unavailable':
+        from pathlib import Path
+        Path(path).unlink()
+    original = manual_faces.is_current
+    visited = []
+    def unlocked(disk_path, source, *args):
+        visited.append(disk_path)
+        with sqlite3.connect(db, timeout=0) as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            conn.rollback()
+        return original(disk_path, source)
+    monkeypatch.setattr(manual_faces, 'is_current', unlocked)
+    results = [_base_result(path, 6), _base_result('/p/a.jpg', 7)]
+    if mode == 'full':
+        facet.save_photos_batch([(r, _IMG) for r in results])
+    else:
+        facet.save_photos_partial([(r, _IMG, ('aggregate',)) for r in results],
+                                  refresh_faces=mode == 'partial_faces')
+    assert visited == [path]
+    with get_connection(db, row_factory=False) as conn:
+        assert conn.execute('SELECT manual_review_required FROM faces WHERE id=?', (fid,)).fetchone() == (
+            int(change in ('replacement', 'unavailable')),)

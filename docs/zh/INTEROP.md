@@ -4,20 +4,29 @@
 
 实用的分步指南，帮助你在 Facet 与摄影师真正在用的外部后期软件和数字资产管理（DAM）工具之间双向流转 Facet 的星级、颜色标签和标签。本页假设你已经知道 Facet *确实* 会写出 XMP —— `--export-sidecars` / `--import-sidecars` 选项的完整说明和字段对应关系（`xmp:Rating`、`xmp:Label`、`dc:subject`）请见[命令 — 预览与导出](COMMANDS.md#预览与导出)。
 
-在查看器中设置的位置只保存在 Facet 的数据库中：不会写入 XMP 附属文件或图像文件。
+只有在查看器中明确导出元数据或运行 `--export-sidecars` 时，才会导出手动位置和审阅决定。GPS 使用标准 `exif:GPSLatitude` / `exif:GPSLongitude`；扫描得到的旧坐标不会覆盖文件中的 GPS。`--embed-originals` 还会将 EXIF GPS 写入支持的原始文件。更正后的拍摄日期会导出为 `exif:DateTimeOriginal`（使用 `--embed-originals` 时，还会作为 EXIF `DateTimeOriginal` 写入支持的原始文件）；点击**使用文件日期**后，下一次导出会将其从 sidecar 中移除，但不会触碰其他编辑器写入的日期。
+
+命名空间 `https://github.com/ncoevoet/facet/ns/1.0/` 定义 `facet:ReviewDecision`（`kept`、`rejected`、`undecided`）和 `facet:GPSState`（`set`、`cleared`），以及 `facet:DateState`（`set`），用于标记 Facet 导出到 sidecar 的拍摄日期。`facet:KeywordState` 是一条 JSON 记录（`version` 为 1，含 `owned`、`deleted`、`ai`、`manual` 四个名称列表），记录哪些扁平关键字由 Facet 写入：`--reconcile-keywords` 只移除 Facet 拥有的名称，导入也不会把旧的 AI 标签变成手动标签。`facet:RegionOwner`（`Facet`）标记由 Facet 写入的 MWG 人脸区域，ExifTool 只替换这些区域。保留独立于星级和收藏；淘汰会清除保留、星级和收藏。`--import-sidecars` 在标准审阅字段一致或缺失时应用私人决定。如果标准淘汰状态与私人字段不一致，说明外部编辑器更改了标准字段而保留了旧的私人标签：此时忽略私人决定，标准字段仍按现有的扫描时间规则判断是否导入。只包含决定的导入仍可明确应用，无需比较扫描时间。与标准审阅字段一同导出的决定采用同样的“较新者优先”检查，但尚无审阅状态（无星级、收藏、保留或拒绝）的照片除外：这样重新扫描的照片库仍能恢复其决定，而较旧的导出无法撤销此后做出的决定。已有手动 GPS 默认保留；使用 `--overwrite-manual-gps` 才会覆盖。明确清除的位置可以导入；缺失字段或无效坐标不会清除位置。`--user alice` 遵守该用户的可见目录和私人决定；GPS 仍为共享数据。未指定用户时使用全局状态。ExifTool 保留其他软件的元数据；没有 ExifTool 时，保留原有附属文件并写入 `.facet.xmp`。只有明确请求嵌入时才修改原始文件。
+
+全局导入（不指定 `--user`）无需访问查看器的登录密钥，使用 `--dry-run` 的预览也是如此。
+
+ExifTool 导出需要 Facet 随附的标签定义。如果这些定义不可用，导出会在修改照片或附属文件之前停止；请重新安装 Facet 以恢复它们。
 
 ## RAW 附属文件命名陷阱
 
-Facet 把附属文件命名为 `<image><ext>.xmp` —— 例如 `IMG_1234.CR2.xmp` 紧挨着 `IMG_1234.CR2` —— 与 darktable 和 digiKam 使用的约定相同。**Lightroom Classic 和 Capture One 的期望恰好相反：`IMG_1234.xmp`，去掉 RAW 扩展名。** 这两个软件都不会发现 Facet 为专有 RAW 文件（CR2、CR3、NEF、ARW、RAF、RW2、ORF、SRW、PEF —— 除 DNG 以外的全部格式）写出的附属文件，而 Facet 自己的 `--import-sidecars` 同样找不到 Adobe 生态的软件为同一个 RAW 文件写出的附属文件。这是两个生态之间的命名不一致，不是任何一方的 bug。
+Facet 在 `IMG_1234.CR2` 旁导出 `IMG_1234.CR2.xmp`，继续使用 darktable 的完整文件名约定。Lightroom Classic 和 Capture One 通常为专有 RAW 使用 `IMG_1234.xmp`。下面的导入策略不会改变导出文件名。JPEG/HEIC/TIFF/PNG/DNG 可通过 `--embed-originals` 使用文件内嵌通道；GIF/WebP/BMP/AVIF/JPEG XL 和专有 RAW 仍需匹配的附属文件命名。
 
-它**不**影响：
-- **JPEG、HEIC、TIFF、PNG、DNG** —— 加上 `--embed-originals`，Facet 就会（通过 exiftool）把元数据*直接写入文件本身*，这样也就不存在 Lightroom／Capture One 会漏掉的附属文件名了。
-- **digiKam** —— 两种命名约定都会检查，无论哪一种都能找到 Facet 的附属文件（见下文 [digiKam](#digikam)）。
-- **darktable** —— 使用与 Facet 相同的 `<image><ext>.xmp` 约定（见下文 [darktable](#darktable)）。
+使用 `--import-sidecars --sidecar-naming full|basename|auto` 明确选择发现策略：
 
-**GIF、WebP、BMP 与 AVIF 是例外 —— 命名差异对它们的影响最大。** 它们不在 Facet 的可嵌入集合内，`--embed-originals` 对它们没有任何作用，唯一的往返载体就是按 Facet 命名方式生成的 XMP 附属文件（`photo.webp.xmp`）。因此上面这种命名差异对这四种格式的影响，与对专有 RAW 完全一样：digiKam 与 darktable 能找到附属文件，Lightroom Classic 与 Capture One 找不到。
+- `full`（默认）：读取 `<image.ext>.xmp` 或 `<image.ext>.facet.xmp` 中文件修改时间较新的一个；时间相同时优先使用前者。
+- `basename`：只去掉图像最后一个扩展名，读取 `<image>.xmp`。忽略完整名称及其回退文件。
+- `auto`：只存在一种命名系列时接受该系列。两种系列同时存在时跳过照片并报告歧义，不按修改时间解决冲突。请明确选择 `full` 或 `basename`。
 
-所以，对于 Lightroom 或 Capture One 的工作流：凡是属于可嵌入集合的文件（JPEG、HEIC、TIFF、PNG、DNG）都用 `--embed-originals`；而对于专有 RAW 文件，以及 GIF、WebP、BMP 与 AVIF，要预料到附属文件的往返是静默的（不报错，只是什么都没读到）。如果你拍摄 RAW+JPEG，配套的 JPEG 就是实际可用的互操作载体 —— RAW 原封不动地留在磁盘上，而 Facet 的数据库保留具有权威性的星级。
+若已索引照片或相邻图像文件共享基本名，例如 `same.CR3` 和 `same.jpg`，`basename` 与 `auto` 都会拒绝导入，即使所选目录或用户范围只包含其中一张。请为它们使用独立的完整名称附属文件。`same_v1.jpg` 的基本名不同。命名不匹配、歧义、不可读或无效的数据包都会报告；解析失败后不会尝试另一命名系列。CLI 汇总中的歧义计入跳过数量，命名不匹配计入没有所选附属文件的数量。同时统计在 `basename` 下被忽略的完整名称附属文件，以及在 `full` 下被忽略的基本名附属文件。
+
+双扩展名派生文件（如 `IMG.CR2.jpg`）不得读取属于 `IMG.CR2` 的 `IMG.CR2.xmp`；保护也适用于其他图像的 `.facet.xmp` 回退文件。所有策略每次导入仅显示每类命名提示的一个示例；汇总仍计入所有受影响的照片。
+
+导入不需要 ExifTool；导出合并、嵌入和 MWG 人脸矩形需要 ExifTool。没有它时，保留已有编辑器附属文件，XML 回退写入 `<image.ext>.facet.xmp`，不含 MWG 矩形。此文件需要明确交接给其他编辑器，不是各软件普遍自动发现的文件名。这些策略不会重命名文件。
 
 ## Lightroom Classic
 
@@ -102,12 +111,11 @@ Facet 的星级为 0 表示“没有意见”（见 `xmp_export.score_to_rating`
 **星级、标签和关键字（通过 XMP）。** 另外，在这个方向上仍然是单向的：
 
 1. 在 Lightroom 中选中照片，选择**元数据 → 将元数据存储到文件**（Ctrl/Cmd+S）。这会把目录中的星级／颜色标签／关键字刷写进 XMP 附属文件（RAW），或直接嵌入文件本身（DNG/JPEG/PSD/TIFF）。
-2. `python facet.py --import-sidecars`（可选择限定到某个路径）把它们读回 Facet 的数据库。附属文件中 Facet 尚未拥有的关键字会被存为[手动标签](#手动标签与-xmp-关键字)。
+2. `python facet.py --import-sidecars /path --sidecar-naming basename` 读取已保存的 RAW 附属文件；共享基本名的 RAW/JPEG 会被拒绝。此命令不提取内嵌元数据。外部关键字会成为手动标签。
 
 ### 冲突规则
 
-- **星级和颜色标签遵循“最新者胜”**，比较的是附属文件的 `xmp:MetadataDate` 与照片的 `scanned_at`（Facet 最后一次为它评分的时间）—— 而不是逐条评分的编辑时间戳。比上次扫描更新的附属文件，可能覆盖你在那次扫描*之后*在 Facet 里改过的星级。请让往返保持简单：导出 → Lightroom 读取 → 在 Lightroom 中编辑 → Lightroom 保存 → 导入，中间不要在 Facet 里重新评星。
-- **标签和关键字只会合并，绝不会被替换。** 导出时，Facet 会把它的 AI 标签和手动标签（去重后）写在附属文件已有内容旁边；导入时，附属文件中的关键字会成为手动标签，且从不触碰 AI 标签——Lightroom 的关键字永远不会清掉 Facet 的自动标签，反之亦然。移除操作会产生什么效果，参见[手动标签与 XMP 关键字](#手动标签与-xmp-关键字)。
+- **标签和关键字默认合并。** 导出会添加 Facet 关键字；`--reconcile-keywords` 还会移除仅属于 Facet 的过时名称。导入会添加手动标签，不会替换 AI 标签。[手动标签与 XMP 关键字](#手动标签与-xmp-关键字)。
 - **多用户**（`--export-sidecars --user alice` / `--import-sidecars --user alice`）：评分会写入 Alice 的 `user_preferences` 行，而不是全局列。无论 `--user` 如何，关键字都保持全局——手动标签由所有用户共享。
 - 导入的关键字会进入 `photo_manual_tags` 表，标签筛选直接读取该表，因此 `--import-sidecars` 之后不再需要运行 `python database.py --migrate-tags`。
 
@@ -119,19 +127,19 @@ Capture One 从不像 Lightroom 的自动保存那样写入原始文件或写入
 2. 在 Capture One 中，把 **Preferences → General → Sync Metadata** 保持为默认值（不要选“Full Sync”）。
 3. 选中导入的图像，右键点击，选择 **Load Metadata**，把附属文件（或内嵌元数据）里的星级／颜色标签／关键字一次性拉进 Capture One 的目录字段。
 
-就那次拍摄而言，请把 Facet 当作 AI 生成的星级和标签的上游权威来源：做一次性的 `Load Metadata` 拉取，之后在 Capture One 内部继续选片，不要把它的元数据同步再接回 Facet 的附属文件。如果你想把 Capture One 的选片结果带回 Facet，请从 Capture One 显式导出为 XMP，再对那个文件夹运行 `--import-sidecars`，把它当成一个独立而有意为之的步骤，而不是自动同步 —— 并且别忘了上文的 [RAW 附属文件命名陷阱](#raw-附属文件命名陷阱)：这只对 JPEG/HEIC/TIFF/PNG/DNG 有效，因为 Capture One 同样把 RAW 附属文件命名为 `<image>.xmp`，而不是 Facet 的 `<image><ext>.xmp`。
+将 Facet 作为 AI 星级和标签来源：执行一次 `Load Metadata`，然后在 Capture One 中继续操作，不启用自动双向同步。要明确导入已保存的 XMP，对于去掉图像扩展名的 RAW 附属文件运行 `--import-sidecars /path/to/shoot --sidecar-naming basename`，完整名称则用 `full`。共享基本名的 RAW/JPEG 会被拒绝。此命令只读取附属文件，不读取内嵌元数据。
 
 ## digiKam
 
-从 digiKam 9.1.0（2026-06-07 发布）起，digiKam 原生读取 XMP 附属文件 —— digiKam 这一侧不需要 exiftool —— 而且它会查找两种命名约定（先找 `<image><ext>.xmp`，再回退到 `<image>.xmp`），因此它能找到 Facet 为 RAW 文件写出的附属文件，不受上文那个陷阱影响。运行 `python facet.py --export-sidecars` 之后，在 digiKam 中打开（或刷新）该文件夹，只要 **Settings → Configure digiKam → Metadata → Read from sidecar files** 处于启用状态（默认如此），它就会自动取到星级、颜色标签、关键字和命名的人脸区域。
+digiKam 的[附属文件设置](https://docs.digikam.org/en/setup_application/metadata_settings.html#sidecars-settings)选择一种命名约定：通常为 `filename.ext.xmp`；启用 **Sidecar file names are compatible with commercial programs** 后则为 `filename.xmp`。不要假定它会同时尝试两种名称。读取 Facet 导出时，请使用完整名称设置并启用 **Read from sidecar files**，再明确将文件元数据重新读入 digiKam 数据库并核对所选字段。从 digiKam 导入 Facet 时，按保存的设置选择 `--sidecar-naming full` 或 `basename`。星级、颜色标签和选片标记语义不同；文件名一致不等于已验证跨应用往返。
 
 ### Batch Queue Manager 挂钩
 
-你可以用 **Custom Script** 工具，把 Facet 的重新导入折进 digiKam 的批处理队列管理器（Batch Queue Manager，BQM）流程，这样你在 digiKam 中评星或打颜色标签的照片就能回流到 Facet 的数据库，全程不用离开 digiKam。请启用 **Settings → Configure digiKam → Metadata → Write to sidecar files**，让 digiKam 立刻把你的修改持久化到 `<image>.xmp`，然后新建一个队列，其中唯一的工具就是 Custom Script：
+可在 digiKam 批处理队列管理器（BQM）的 **Custom Script** 工具中运行 Facet 导入。先启用附属文件写入，保存命名设置，并在导入前应用待处理的元数据更改；延迟同步可能推迟写入。下面示例假设使用完整名称；只有商业命名的照片集合不存在基本名歧义时，才将 `full` 改为 `basename`：
 
 ```bash
 #!/bin/bash
-python /path/to/facet.py --import-sidecars "$(dirname "$INPUT")"
+python /path/to/facet.py --import-sidecars --sidecar-naming full "$(dirname "$INPUT")"
 cp "$INPUT" "$OUTPUT"
 ```
 
@@ -141,7 +149,7 @@ cp "$INPUT" "$OUTPUT"
 
 darktable 在[配置 — 查看器](CONFIGURATION.md#查看器)（`viewer.raw_processor.darktable` 导出配置文件／样式）和[查看器 — 下载](VIEWER.md#api-端点)（`type=darktable` 转换）中已经享有一等公民的待遇。在 XMP 一侧：darktable 会自己写出 `<image><ext>.xmp` 来保存它的编辑历史，而 Facet 由 exiftool 驱动的附属文件写入器会就地合并进同一个文件 —— `darktable:history`／蒙版节点会被保留，绝不会被覆盖。这里不需要单独的操作指南：上文为 Lightroom 描述的双向附属文件行为（导出／导入、最新者胜、标签求并集）同样适用，而且没有 RAW 命名不一致的问题，因为 darktable 和 Facet 在 `<image><ext>.xmp` 上是一致的。
 
-**exiftool 版本。** 写入 sidecar 需要 exiftool **13.28 或更高版本**。13.23 至 13.27 版本会损坏带有 darktable 编辑历史的 XMP sidecar（以 `=` 结尾的属性值后紧跟另一个属性时会被错误解析，而 exiftool 仍返回退出码 0），因此 Facet 拒绝使用这些版本写入，并报告错误提示升级。Docker 镜像内置固定版本的 exiftool，不受影响；发行版软件包则可能受影响（Debian trixie 的 `libimage-exiftool-perl` 为 13.25）。
+**exiftool 版本。** 建议使用 ExifTool **13.28 或更高版本**。人脸变更需要 **12.65 或更高版本**；较旧或未知版本会警告并跳过人脸变更，仍导出其他元数据。13.23 至 13.27 版本会损坏带有 darktable 编辑历史的 XMP sidecar（以 `=` 结尾的属性值后紧跟另一个属性时会被错误解析，而 exiftool 仍返回退出码 0），因此 Facet 拒绝使用这些版本写入，并报告错误提示升级。Docker 镜像内置固定版本的 exiftool，不受影响；发行版软件包则可能受影响（Debian trixie 的 `libimage-exiftool-perl` 为 13.25）。
 
 **注意：darktable 自己的 XMP 重新加载并不可靠。** 与 Facet 的写入路径无关，重新导入一张 darktable 已经编辑过的图像，可能会让 darktable 用一份空白历史覆盖附属文件里的编辑历史，而不是把它加载回来 —— 这是一个仍未解决的上游 bug（[darktable#20537](https://github.com/darktable-org/darktable/issues/20537)，报告于 2026-03-15），“check for new/updated xmp files on start”这个首选项并不能防住它。Facet 不是原因（上文经由 exiftool 的合并已经保留了 `darktable:history`），但风险恰恰落在本页的往返流程所依赖的回读步骤上。实用的规避办法，遵循与上文 Capture One 指南相同的“一次性”纪律：执行 `--export-sidecars` 之后，不要对已经编辑过的文件夹做批量重新导入 —— 只为 Facet 刚刚触及的那些图像重新加载附属文件，确认编辑历史还在，再去信任这一批的其余部分。
 
@@ -151,9 +159,10 @@ Facet 把你自己输入的标签（参见[查看器——手动标签](VIEWER.m
 
 - **导出。** 每个写关键字的环节都按先 AI 标签、再手动标签、最后人物姓名的顺序输出，并且不区分大小写地去重：`--export-sidecars`、照片库的 XMP 导出和“将元数据写入文件”操作，以及 Lightroom 清单（`--export-manifest`、`/api/lightroom/manifest`）。
 - **导入。** `--import-sidecars` 只读取 `dc:subject`。每个关键字都会像手动输入的标签一样被规范化（去除首尾空白、转小写、最多 64 个字符、每张照片最多 50 个手动标签）。它会被存为来源为 `xmp` 的手动标签，除非它已经是照片当前的某个 AI 标签、等于照片的某个人物姓名、是分层路径 `a|b`、含逗号或控制字符，或会超出上限。导入的关键字不再写入 `photos.tags`，所以重新打标不会再覆盖它们。
-- **移除标签不会影响 Facet 已写出的附属文件。** Facet 会合并进现有附属文件，且从不从中删除关键字：因此在 Facet 中移除手动标签后它仍留在附属文件里，而 Facet 自己导出的关键字会在下一次 `--import-sidecars` 时作为手动标签回来。要彻底去掉它，请在附属文件中（或在拥有该关键字的编辑器中）清除该关键字。没有墓碑标记（tombstone）机制。
+- **删除必须明确选择。** 默认导出仍只添加关键字。安装 ExifTool 后，`--export-sidecars /路径 --reconcile-keywords` 仅移除 Facet 曾声明拥有、而当前 Facet 关键字中已不存在的名称。原有外部名称（包括同名词）保持不变；旧文件没有归属标记，就不授予任何归属。`facet:KeywordState` 保存归属及删除标记。名称在文件中重新出现，或 Facet 再次写入该名称时，旧删除标记失效。外部重新添加的手动关键字可以再次导入，后续导出将其视为外部名称。使用 `--user` 时关键字仍为共享数据。
+- **导出以 Facet 当前关键字为准。** 两种模式都会重新写入仍在 Facet 中、但被其他编辑器从文件移除的词。如需接受外部删除，也须在 Facet 中删除该词；不会自动删除数据库标签或进行双向同步。`2024`、`1.50`、`1e3`、`true`、`false` 和 `null` 等名称保留原有拼写，即使 ExifTool 将其表示为 JSON 数字或布尔值。现有文件读取失败或结构无效时，任何导出都会在写入前拒绝。每份列表最多 10,000 个名称，每个名称最多 1,024 个字符；超限会拒绝写入并保留删除标记。没有 ExifTool 时，协调操作在写入前拒绝。
 - **Lightroom 清单则会传播移除。** 插件的关键字选项会在 Apply 时把每张照片的 `Facet ›` 子关键字改写成与清单一致；在 Facet 中移除的标签因此会在下一次 Apply 时从 Lightroom 中消失。
-- **重新打标可能让已导出的 AI 标签作为手动标签回来。** 如果 Facet 导出的某个 AI 标签后来被重新打标改掉，它就不再匹配照片当前的 AI 标签，下一次导入会把它存为手动标签。
+- **重新标记保留 AI 来源。** 新数据包区分 AI 与手动标签；旧 AI 标签不会因重新标记而变为手动标签。无标记的旧数据包仍按原有方式添加。没有 ExifTool 时，协调操作会在写入前拒绝；层级关键字仍只添加。
 - **旧版 Facet 导入的关键字留在原处。** 在手动标签出现之前，导入会把关键字直接合并进 `photos.tags`，在那里它们与 AI 标签无法区分，也没有任何迁移会移动它们。这样的关键字会一直显示为 AI 标签，直到 `photos.tags` 被清空或照片被重新打标；而由于导入会跳过已在 `photos.tags` 中的关键字，它也不会重新出现为手动标签。要转换它，请先清空或重新打标 `photos.tags`，再重新运行 `--import-sidecars`；或者直接手动添加该标签。
 - **被移动或重命名的文件会失去它的手动标签。** 它们与照片路径绑定，而移动或重命名后该路径指向的是另一张照片。
 - **`--export-csv` 和 `--export-json` 仍然只含 AI 数据。** 它们的 `tags` 值是原始的 AI 列，不含手动标签。
@@ -162,11 +171,33 @@ Facet 把你自己输入的标签（参见[查看器——手动标签](VIEWER.m
 
 | 字段 | Facet 写入 | Facet 读回 | 冲突规则 |
 |---|---|---|---|
-| 星级／淘汰 | `xmp:Rating`（`-1` = 已淘汰） | `xmp:Rating` | 最新者胜，对比 `scanned_at` |
-| 颜色标签 | `xmp:Label`（`Red` = 已淘汰，`Yellow` = 收藏） | `xmp:Label` | 最新者胜，对比 `scanned_at` |
-| 标签／关键字 | `dc:subject`（扁平，AI 标签 + 手动标签，包含已命名人脸的人物姓名） | `dc:subject`（存为手动标签） | 合并，绝不替换；在 Facet 中的移除不会回写到附属文件（参见[手动标签与 XMP 关键字](#手动标签与-xmp-关键字)） |
+| 星级／淘汰 | `xmp:Rating`（`-1` = 已淘汰） | `xmp:Rating` | 审核字段编辑时间；旧数据使用扫描时间 |
+| 颜色标签 | `xmp:Label`（`Red` = 已淘汰，`Yellow` = 收藏） | `xmp:Label` | 审核字段编辑时间；旧数据使用扫描时间 |
+| 标签／关键字 | `dc:subject`（扁平，AI 标签 + 手动标签，包含已命名人脸的人物姓名） | `dc:subject`（存为手动标签） | 默认只添加；`--reconcile-keywords` 仅移除属于 Facet 的过时名称；导入仍只添加 ([手动标签与 XMP 关键字](#手动标签与-xmp-关键字)) |
 | 层级标签 | `lr:hierarchicalSubject`（`Category\|<cat>`、`People\|<name>`） | 不再导入 | 仅导出 |
-| 照片描述 | `dc:description`（+ 经由 exiftool 的 `IPTC:Caption-Abstract`） | 不再导入 | 仅导出 |
-| 命名的人脸区域 | MWG `mwg-rs:RegionList`（中心归一化，`Type=Face`） | 不再导入 | 仅导出；由 digiKam 原生读取，Lightroom **不**读取（一个已知的 Adobe 限制 —— Lightroom 只消费它自己写出的 MWG 区域） |
+| 照片描述 | `dc:description` 默认语言（+ 经由 exiftool 的 `IPTC:Caption-Abstract`） | 不再导入 | 仅导出 |
+| 命名的人脸区域 | MWG `mwg-rs:RegionList` + `facet:RegionOwner=Facet`（中心归一化，`Type=Face`） | 不再导入 | 仅导出；由 digiKam 原生读取，Lightroom **不**读取（一个已知的 Adobe 限制 —— Lightroom 只消费它自己写出的 MWG 区域） |
 
 完整的 CLI 参考（`--export-sidecars`、`--import-sidecars`、`--embed-originals`、`--score-to-stars`、`--user`）请见[命令 — 预览与导出](COMMANDS.md#预览与导出)。
+
+当过时的 `facet:GPSState=cleared` 标记与标准 GPS 字段并存时，以完整且有效的经纬度为准。含有非空值但不完整或无效的坐标存在歧义，将被忽略，绝不会清除位置。仅当坐标均缺失或为空且存在明确的清除标记时才清除 GPS。已有手动 GPS 仍受保护，除非明确要求覆盖。
+
+使用 ExifTool 导出说明时，只更新 `dc:description` 的 `x-default` 语言，保留现有附属文件或图像中的其他语言。Facet 说明为空时，现有说明保持不变。没有 ExifTool 时，XML 包含默认语言；若已有附属文件，默认改写到 `<image>.facet.xmp`。显式覆盖仍会替换整个目标数据包。
+
+ExifTool 仅替换 Extensions 中带 `facet:RegionOwner=Facet` 标记的 MWG 矩形。未标记的区域（包括旧版 Facet 导出）会保留，因为名称和坐标不能证明归属。升级后，旧的未标记人脸可能与新的带标记副本同时出现；清除人脸仍会保留旧副本。重复导出只替换带标记副本，不会继续累积重复区域。外部区域及其未知扩展保持不变。当前人脸尺寸不一致，或外部区域的图像尺寸不同或未知时，会警告并跳过全部人脸变更，但仍导出评分、标签、关键词和 GPS。无法读取或无效的现有人脸元数据会在写入前拒绝单张导出或嵌入，并返回 HTTP 412。无 ExifTool 的 XML 后备方式不导出人脸矩形。带标记区域即使被外部编辑仍归 Facet 管理；如需作为独立标注，请先移除归属标记。嵌入前会检查原图及附属文件的已知前提条件。分开写入多个文件并非原子操作；后续外部修改或 I/O 故障仍可能留下部分结果。
+
+ExifTool 版本检查不可用、失败或返回无效结果时，会在下一次检查时重试。版本未知期间，Facet 跳过人脸区域修改，仍可导出其他元数据；后续检查成功且该版本支持人脸导出时，会恢复人脸导出。已知有缺陷的版本仍会在写入前被拒绝。
+
+## 附属文件导入预览与冲突
+
+`--import-sidecars /路径 --dry-run` 输出 JSON，列出所选文件、前后值、标签增加、来源和跳过原因。现有数据库以只读方式打开，不迁移、不提交。正式应用会在写事务中重新读取文件和数据库；预览 JSON 不是应用令牌。
+
+如果数据库不存在、无法读取或无效，预览会显示错误消息并以退出码 1 结束；不会创建或修复数据库。`--dry-run-count` 仅限制扫描样本数，不限制导入预览。
+
+`--sidecar-fields review,gps,keywords` 选择字段组。`review` 将星级、收藏、拒绝和 Keep 作为整体，避免半个决定生效。没有 `--overwrite-manual-gps` 时仍保护手动 GPS。关键字仍只添加，且使用 `--user` 时仍共享。
+
+升级后，SQLite 触发器为每张照片、账户及审核字段保存一条最新凭据，包括重置和删除偏好行。较旧数据包产生 `newer_local_edit`，保留整个审核组；`--overwrite-sidecar-review` 可明确覆盖。XMP 凭据记录文件与时间；`local` 表示未知 SQL 写入者，并不表示已验证的人类作者。不增加描述、人脸、层级或无标记外部 GPS 导入。
+
+没有凭据表示编辑时间未知：此时按扫描时间规则处理，`untracked_legacy_edit` 会如此标明，不推测人工编辑时间。预览无需迁移即可读取较旧的数据库；缺少 Keep 字段表示未决定。来源时间取 `xmp:MetadataDate`，缺失或无效时取文件修改时间。最多展示范围内 1,000 张照片及每张 100 条诊断，并提供省略计数；范围和用户可见性在规划前生效。
+
+编辑凭据仅属于其所在数据库。新导出的查看器数据库不包含扫描端凭据或 XMP 路径；增量导出仅保留查看器已有的凭据，不复制扫描端的编辑权限。查看器中的显式重置（包括删除的用户偏好）会保留；没有查看器编辑的扫描端值仍正常更新。由 1.24.0 之前未发布的构建创建的查看器数据库，可能已包含复制的扫描端凭据。现在这些凭据按查看器编辑保留，因此相应字段不再跟随扫描端更新，也不推测时间戳。重建前请备份并检查该数据库；完整重建不会保留查看器本地修改。

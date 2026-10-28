@@ -10,6 +10,9 @@ from fastapi.testclient import TestClient
 from api import create_app
 from i18n import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES
 
+# Reads client, i18n or docs files: runs on every pull request (see ci.yml).
+pytestmark = pytest.mark.cross_file
+
 
 @pytest.fixture()
 def client():
@@ -137,3 +140,33 @@ class TestBundleParity:
             and set(PLACEHOLDER.findall(value)) != set(PLACEHOLDER.findall(bundle[key]))
         }
         assert not mismatched, f"{lang}.json placeholder mismatches (key: en, {lang}): {dict(list(mismatched.items())[:5])}"
+
+    @pytest.mark.parametrize("lang", TRANSLATED_LANGUAGES)
+    def test_card_key_hint_names_localised_keys(self, lang):
+        """The card hint names the Space and Enter keys; a translated bundle that keeps
+        the English cap label ('Space') shows a foreign word on the user's keyboard."""
+        hint = _load_bundle(lang)['photoCard']['key_hint']
+        assert 'Space' not in hint, f"{lang}.json photoCard.key_hint still names the key 'Space'"
+
+    @pytest.mark.parametrize('lang', SUPPORTED_LANGUAGES)
+    def test_default_sort_groups_have_translated_headings(self, lang):
+        root = os.path.dirname(os.path.dirname(TRANSLATIONS_DIR))
+        with open(os.path.join(root, 'config', 'scoring_config.default.json'), encoding='utf-8') as handle:
+            groups = json.load(handle)['viewer']['sort_options']
+        labels = _load_bundle(lang)['sort_groups']
+        for group in groups:
+            key = re.sub(r'\s+', '_', group.lower())
+            assert labels.get(key), f'{lang}: missing sort_groups.{key}'
+
+    def test_every_default_sort_column_has_an_option_icon(self):
+        """The sort menus fall back to a generic 'sort' glyph for a column the pipe does
+        not map, so a new configured sort would silently ship without its own icon."""
+        root = os.path.dirname(os.path.dirname(TRANSLATIONS_DIR))
+        pipe = os.path.join(root, 'client', 'src', 'app', 'shared', 'pipes', 'sort-option-icon.pipe.ts')
+        with open(pipe, encoding='utf-8') as handle:
+            mapped = set(re.findall(r"^  (\w+): '", handle.read(), re.MULTILINE))
+        with open(os.path.join(root, 'config', 'scoring_config.default.json'), encoding='utf-8') as handle:
+            groups = json.load(handle)['viewer']['sort_options']
+        columns = {option['column'] for options in groups.values() for option in options}
+        assert columns
+        assert not columns - mapped, f'sort columns without an option icon: {sorted(columns - mapped)}'

@@ -29,9 +29,14 @@ import tempfile
 # Under pytest-xdist every worker is its own process and imports this module itself, so
 # each gets its own file; the worker id in the name only makes that visible (and a
 # leftover attributable). The controller process creates one it never uses.
+# LibraryLock and other caches live beside the database, so distinct filenames
+# in the shared system temp directory do not isolate xdist workers. Give each
+# session its own parent before any module captures DB_PATH.
+_TEST_DB_DIRECTORY = tempfile.mkdtemp(
+    prefix="intraswitch_facet_" + os.environ.get("PYTEST_XDIST_WORKER", "main") + "_")
 _TEST_DB_FILE = tempfile.NamedTemporaryFile(
     prefix="intraswitch_facet_" + os.environ.get("PYTEST_XDIST_WORKER", "main") + "_",
-    suffix=".db", delete=False)
+    suffix=".db", dir=_TEST_DB_DIRECTORY, delete=False)
 _TEST_DB_FILE.close()
 os.environ["DB_PATH"] = _TEST_DB_FILE.name
 
@@ -84,6 +89,21 @@ def _reset_index_build_status():
     schema_startup._set_status(state=schema_startup.STATE_READY, done=0, total=0)
     yield
     schema_startup._set_status(state=schema_startup.STATE_READY, done=0, total=0)
+
+
+def reset_place_search():
+    """The provider cache, throttle and in-flight flag are process-wide."""
+    from api import place_search
+    with place_search._lock:
+        place_search._cache.clear()
+        place_search._next_request = 0
+        place_search._inflight = False
+
+
+@pytest.fixture(autouse=True)
+def _reset_place_search():
+    reset_place_search()
+    yield
 
 
 @pytest.fixture(autouse=True)
@@ -320,7 +340,8 @@ def seed_photos_prefix():
     keyed by column name — rows may have different column sets from each
     other, since each is inserted with its own column list (a full contract
     row and a bare-bones sequence-set frame both fit through the same call).
-    Every ``prefix`` a test passes is deleted in teardown, so callers with
+    Every ``prefix`` a test passes is deleted in teardown, along with the ``user_preferences``,
+    ``rating_provenance`` and ``comparisons`` rows under it, so callers with
     different row shapes can share one connection and one cleanup pass
     instead of each hand-rolling "seed under a prefix, delete the prefix".
     """
@@ -344,6 +365,10 @@ def seed_photos_prefix():
     finally:
         for prefix in prefixes:
             conn.execute("DELETE FROM photos WHERE path LIKE ?", (prefix + "%",))
+            conn.execute("DELETE FROM user_preferences WHERE photo_path LIKE ?", (prefix + "%",))
+            conn.execute("DELETE FROM rating_provenance WHERE photo_path LIKE ?", (prefix + "%",))
+            conn.execute("DELETE FROM comparisons WHERE photo_a_path LIKE ? OR photo_b_path LIKE ?",
+                         (prefix + "%", prefix + "%"))
         conn.commit()
         conn.close()
 
@@ -465,6 +490,13 @@ def symlink_or_skip(link, target):
         pytest.skip(f"cannot create a symlink here: {ex}")
 
 
+def initialize_photo_database(conn):
+    """Populate an existing in-memory connection with the production schema."""
+    with tempfile.TemporaryDirectory() as directory:
+        db_path = os.path.join(directory, "schema.db")
+        init_database(db_path)
+        with sqlite3.connect(db_path) as source:
+            source.backup(conn)
 # ---------------------------------------------------------------------------
 # Agent (MCP) app: REAL auth, REAL lifespan
 # ---------------------------------------------------------------------------
@@ -762,3 +794,58 @@ def fake_tab(monkeypatch):
     yield make
     for tab in tabs:
         tab.stop()
+
+
+@pytest.fixture()
+def off_event_loop():
+    """Wrap a sync callable so it fails the test when run on the event loop.
+
+    ``asyncio.get_running_loop()`` returns the loop from a coroutine and raises
+    ``RuntimeError`` from a worker thread, so a wrapped function reached through
+    ``asyncio.to_thread`` passes and one called directly from async code fails.
+    Returns ``guard(function, message)``.
+    """
+    import asyncio
+    import functools
+
+    def guard(function, message):
+        @functools.wraps(function)
+        def guarded(*args, **kwargs):
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return function(*args, **kwargs)
+            pytest.fail(message)
+        return guarded
+
+    return guard
+
+
+LITERAL_KEYWORD_NAMES = ['true', 'false', 'null', '1.50', '1e3', '2024']
+
+
+@pytest.fixture()
+def seed_keywords():
+    """Factory: ``seed_keywords(targets, names=None, *extra)`` writes ``names`` as
+    ``XMP-dc:Subject`` on each target with the real ExifTool (``extra`` are more
+    exiftool arguments) and returns the names.
+
+    The default names are the ones an ExifTool JSON read would coerce to
+    booleans / numbers / null, so a round trip must preserve their spelling.
+    """
+    import subprocess
+
+    def seed(targets, names=None, *extra):
+        names = list(LITERAL_KEYWORD_NAMES if names is None else names)
+        for target in targets:
+            subprocess.run(['exiftool', '-overwrite_original', *[f'-XMP-dc:Subject={name}' for name in names],
+                            *extra, str(target)], check=True, capture_output=True)
+        return names
+
+    return seed
+
+
+def added_region(args):
+    """The first ``-XMP-mwg-rs:RegionList+=`` JSON value in an exiftool argv, decoded."""
+    addition = next(arg for arg in args if arg.startswith('-XMP-mwg-rs:RegionList+='))
+    return json.loads(addition.split('=', 1)[1])

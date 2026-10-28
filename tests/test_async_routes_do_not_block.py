@@ -35,6 +35,8 @@ from api.auth import (
     CurrentUser, get_optional_user, require_auth, require_authenticated, require_edition,
     require_scan_access, require_superadmin,
 )
+from tests._sidecar_helpers import settle_sidecar_job
+from tests.conftest import reset_place_search
 from tests.test_route_coverage import (
     AUTH_ROUTES, PARAMETERISED_ROUTES, POST_ROUTES, PUBLIC_ROUTES, SUPERADMIN_ROUTES,
 )
@@ -55,6 +57,8 @@ def _on_event_loop() -> bool:
 def _guarded_openers():
     """(owner, attribute) pairs whose call blocks: a DB open, an image decode, a child."""
     openers = [(sqlite3, "connect"), (subprocess, "run"), (subprocess, "check_output")]
+    from api import place_search
+    openers.append((place_search, "_fetch"))
     from PIL import Image
     openers.append((Image, "open"))
     try:
@@ -119,6 +123,15 @@ def _cold_caches():
     close_change_token_sentinels()
     from api.routers.burst_culling import _invalidate_culling_groups_cache
     _invalidate_culling_groups_cache()
+    reset_place_search()
+
+
+@pytest.fixture(autouse=True)
+def offline_place_search(monkeypatch):
+    """Exercise the blocking provider boundary without making network requests."""
+    from api import place_search
+    monkeypatch.setitem(place_search.VIEWER_CONFIG, 'place_search_url', 'https://example.org/api')
+    monkeypatch.setattr(place_search, '_fetch', lambda *_: {'type': 'FeatureCollection', 'features': []})
 
 
 def _user_app(user):
@@ -173,6 +186,16 @@ def _requests():
 REQUESTS = list(_requests())
 
 
+@pytest.fixture()
+def seeded_sidecar_job():
+    """A real caller-owned receipt so status/cancel/retry reach their handlers."""
+    from api import sidecar_jobs
+    from api.database import DEFAULT_DB_PATH
+    status = sidecar_jobs.start(DEFAULT_DB_PATH, EDITION.user_id, [], lambda path: None)
+    settle_sidecar_job(DEFAULT_DB_PATH, status['id'], EDITION.user_id)
+    return status['id']
+
+
 def _drive(requests, statuses=None):
     """Run ``requests`` with cold caches under the guard; return the hits per request.
 
@@ -186,9 +209,20 @@ def _drive(requests, statuses=None):
             apps[key] = TestClient(_user_app(user) if user else create_app(),
                                    raise_server_exceptions=False)
         client = apps[key]
+        if path == '/api/photos/capture_date/apply':
+            # Reach the apply transaction instead of stopping at a stale token.
+            draft = {k: v for k, v in body.items() if k != 'preview_token'}
+            preview = client.post('/api/photos/capture_date/preview', json=draft)
+            assert preview.status_code == 200, preview.text
+            body = {**draft, 'preview_token': preview.json()['preview_token']}
         _cold_caches()
         with loop_guard() as hits:
             resp = client.request(method, path, params=params, json=body)
+        # Successful admission returns before media work. Settle that real worker
+        # before the next mutation, rather than testing an accidental lock refusal.
+        if method == 'POST' and path.startswith('/api/export/sidecar_jobs') and resp.status_code == 202:
+            from api.database import DEFAULT_DB_PATH
+            settle_sidecar_job(DEFAULT_DB_PATH, resp.json()['id'], user.user_id)
         if statuses is not None:
             statuses.append((method, path, resp.status_code))
         found.extend(f"{method} {path}: {hit}" for hit in hits)
@@ -202,6 +236,7 @@ _PLACEHOLDER_ALBUM_ID = 1
 _SHARE_TOKEN = 'x'  # the token ASYNC_EXTRA_ROUTES sends to /api/shared/album
 # Required parameters the request lists leave out (they only assert "no 5xx").
 _REQUIRED_PARAMS = {
+    '/api/places/search': {'q': 'Berlin'},
     '/api/timeline/dates': {'year': 2026},
     '/api/timeline/months': {'year': 2026},
 }
@@ -245,7 +280,20 @@ def seeded_album(seeded_photos):
         conn.close()
 
 
-def _bind(requests, photo_path, album_id):
+@pytest.fixture()
+def seeded_history(seeded_photos):
+    """A real, current entry owned by the request's principal, ready to revert."""
+    client = TestClient(_user_app(EDITION))
+    result = client.put('/api/photo/gps', json={
+        'path': seeded_photos[0]['path'], 'gps_latitude': 77, 'gps_longitude': 88,
+    })
+    assert result.status_code == 200, result.text
+    history = client.get('/api/organization_history')
+    assert history.status_code == 200, history.text
+    return history.json()['entries'][0]['id']
+
+
+def _bind(requests, photo_path, album_id, history_id, job_id):
     """``requests`` with the photo and album placeholders replaced by real rows."""
     def value(v):
         if v == _PLACEHOLDER_PHOTO:
@@ -256,6 +304,12 @@ def _bind(requests, photo_path, album_id):
 
     album_segment = f"/{_PLACEHOLDER_ALBUM_ID}/"
     for method, path, params, body, user in requests:
+        if path.startswith('/api/export/sidecar_jobs/not-a-job'):
+            path = path.replace('/not-a-job', '/' + job_id, 1)
+        if method == 'POST' and path == '/api/export/sidecar_jobs':
+            body = {'paths': [photo_path]}
+        if path == '/api/organization_history/1/revert':
+            path = f'/api/organization_history/{history_id}/revert'
         if path.startswith('/api/'):
             path = path.replace(_PLACEHOLDER_PHOTO, photo_path)
             if path.startswith(('/api/albums/', '/api/shared/album/')):
@@ -265,6 +319,8 @@ def _bind(requests, photo_path, album_id):
             params['album_id'] = album_id
         if isinstance(body, dict):
             body = {k: value(v) for k, v in body.items()}
+            if path in ('/api/photos/capture_date/preview', '/api/photos/capture_date/apply'):
+                body = {**body, 'photo_paths': [photo_path]}
         yield method, path, params, body, user
 
 
@@ -274,12 +330,12 @@ def _answered_as_expected(method, path, status):
 
 
 def test_no_route_runs_a_blocking_opener_on_the_event_loop(seeded_photos, seeded_album,
-                                                           monkeypatch):
+                                                           seeded_history, seeded_sidecar_job, monkeypatch):
     from api.routers import scan
     monkeypatch.setitem(scan.VIEWER_CONFIG, 'features',
                         {**scan.VIEWER_CONFIG.get('features', {}), 'show_scan_button': True})
     statuses = []
-    assert _drive(list(_bind(REQUESTS, seeded_photos[0]["path"], seeded_album)), statuses) == []
+    assert _drive(list(_bind(REQUESTS, seeded_photos[0]["path"], seeded_album, seeded_history, seeded_sidecar_job)), statuses) == []
     assert [st for st in statuses if not _answered_as_expected(*st)] == []
     assert len(statuses) == len(REQUESTS)
 
@@ -322,7 +378,7 @@ def test_the_guard_flags_a_blocking_opener_on_the_loop():
 
 
 @contextmanager
-def _slow_db(seconds):
+def _slow_db(seconds, entered=None):
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript("""
@@ -331,11 +387,16 @@ def _slow_db(seconds):
             comparison_count INTEGER, category TEXT, updated_at TEXT, user_id TEXT);
         CREATE TABLE stats_cache (key TEXT PRIMARY KEY, value TEXT, updated_at REAL);
     """)
+    if entered is not None:
+        entered.set()
     time.sleep(seconds)  # a cold full-table COUNT(*) on a large library
     try:
         yield conn
     finally:
         conn.close()
+
+
+_RANKER_STALL_SECONDS = 4.0
 
 
 @pytest.mark.asyncio
@@ -345,16 +406,72 @@ async def test_a_slow_ranker_status_does_not_hold_other_requests():
         user_id="test", edition_authenticated=True)
     transport = httpx.ASGITransport(app=app)
     try:
-        with mock.patch("api.routers.ranker.get_db", lambda: _slow_db(1.5)):
+        entered = threading.Event()
+        with mock.patch("api.routers.ranker.get_db", lambda: _slow_db(_RANKER_STALL_SECONDS, entered)):
             async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
                 started = time.monotonic()
                 slow = asyncio.create_task(client.get("/api/ranker/status"))
-                await asyncio.sleep(0.05)
+                # /health must be sent while the handler is inside its stall, not
+                # before the handler has started (when it would pass trivially).
+                assert await asyncio.to_thread(entered.wait, 10)
                 health = await client.get("/health")
                 health_seconds = time.monotonic() - started
+                held_by_ranker = slow.done()
                 status = await slow
     finally:
         app.dependency_overrides.clear()
     assert health.status_code == 200
     assert status.status_code == 200, status.text
-    assert health_seconds < 0.75, f"/health waited {health_seconds:.2f}s behind the ranker"
+    # The ordering is the claim: /health answered while the ranker was still
+    # stalled. A wall-clock bound alone flaked on a loaded CI runner (1.00s
+    # against 0.75s), so the bound only has to sit well under the stall.
+    assert not held_by_ranker, "/health only answered after the ranker finished"
+    assert health_seconds < _RANKER_STALL_SECONDS * 0.75, f"/health waited {health_seconds:.2f}s behind the ranker"
+
+
+def test_the_guard_flags_place_provider_on_the_loop():
+    from api import place_search
+    from fastapi import FastAPI
+    app = FastAPI()
+
+    @app.get('/search-on-loop')
+    async def search_on_loop():
+        return place_search.search('Berlin', ('installation', ''))
+
+    @app.get('/search-off-loop')
+    async def search_off_loop():
+        return await asyncio.to_thread(place_search.search, 'Berlin', ('installation', ''))
+
+    client = TestClient(app, raise_server_exceptions=False)
+    _cold_caches()
+    with loop_guard() as hits:
+        assert client.get('/search-off-loop').status_code == 200
+    assert hits == []
+    # A cached result must not hide the provider boundary in the next request.
+    _cold_caches()
+    with loop_guard() as hits:
+        assert client.get('/search-on-loop').status_code == 500
+    assert len(hits) == 1 and hits[0].startswith('api.place_search._fetch')
+
+
+def test_background_sidecar_file_work_does_not_run_on_the_event_loop(tmp_path, seed_photos_prefix, monkeypatch):
+    from PIL import Image
+    from api.routers import export
+    image = tmp_path / 'loop-safe-export.jpg'
+    Image.new('RGB', (10, 10)).save(image)
+    seed_photos_prefix(str(tmp_path), [{'path': str(image), 'filename': image.name, 'star_rating': 4}])
+    calls = []
+    real_write = export._write_sidecars_for_paths
+    def record_write(*args, **kwargs):
+        calls.append((threading.current_thread().name, _on_event_loop()))
+        return real_write(*args, **kwargs)
+    monkeypatch.setattr(export, '_write_sidecars_for_paths', record_write)
+    with loop_guard() as hits:
+        response = TestClient(_user_app(EDITION)).post('/api/export/sidecar_jobs', json={'paths': [str(image)]})
+        assert response.status_code == 202, response.text
+        from api.database import DEFAULT_DB_PATH
+        status = settle_sidecar_job(DEFAULT_DB_PATH, response.json()['id'], EDITION.user_id)
+    assert hits == []
+    assert calls == [('facet-sidecar-export', False)]
+    assert status['written'] == 1 and status['errors'] == 0
+    assert os.path.isfile(str(image) + '.xmp')

@@ -1,8 +1,14 @@
+import { HttpContext, provideHttpClient, withInterceptors, withXhr } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { HANDLE_PLACE_SEARCH_ERRORS_LOCALLY } from '../../core/utils/place-search-error.util';
+import { errorInterceptor } from '../../core/interceptors/error.interceptor';
+import { retryInterceptor } from '../../core/interceptors/retry.interceptor';
+import { signal } from '@angular/core';
 import type { Mock } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NEVER, of, throwError, Subject } from 'rxjs';
 import { GalleryStore } from '../gallery/gallery.store';
-import { Router, ActivatedRoute } from '@angular/router';
+import { Router, ActivatedRoute, NavigationStart } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
 import { AlbumService } from '../../core/services/album.service';
 import { makePhoto } from '../../../testing/photo.fixture';
@@ -22,10 +28,14 @@ vi.doMock('leaflet', () => leafletMock);
 describe('GpsEditDialogComponent', () => {
   let GpsEditDialogComponentClass: typeof GpsEditDialogComponent;
   let component: GpsEditDialogComponent;
-  let mockDialogRef: { close: Mock };
+  let mockDialogRef: { close: Mock; beforeClosed: Mock };
   let mockApi: { put: Mock; get: Mock; post: Mock; delete: Mock };
-  let mockStore: { patchPhoto: Mock; filters: Mock; loadPhotos: Mock };
+  let mockStore: { patchPhoto: Mock; filters: Mock; loadPhotos: Mock; refreshPaths: Mock; config: Mock };
   let mockSnackBar: { open: Mock };
+  const navigation = new Subject<NavigationStart>();
+  const closing = new Subject<void>();
+  const authStatus = signal({ authenticated: true, edition_authenticated: true, user_id: 'editor' });
+  const identity = () => `${authStatus().authenticated ? 1 : 0}|${authStatus().user_id}`;
   let fixture: ComponentFixture<GpsEditDialogComponent>;
 
   beforeAll(async () => {
@@ -34,9 +44,10 @@ describe('GpsEditDialogComponent', () => {
 
   function createComponent(data: GpsEditDialogData, render = false, places: SavedPlace[] = []) {
     TestBed.resetTestingModule();
-    mockDialogRef = { close: vi.fn() };
+    authStatus.set({ authenticated: true, edition_authenticated: true, user_id: 'editor' });
+    mockDialogRef = { close: vi.fn(), beforeClosed: vi.fn(() => closing) };
     mockApi = { put: vi.fn(() => of({ gps_latitude: data.lat, gps_longitude: data.lng })), get: vi.fn(() => of({ places, recent: [] })), post: vi.fn(), delete: vi.fn() };
-    mockStore = { patchPhoto: vi.fn(), filters: vi.fn(() => ({ no_gps: '' })), loadPhotos: vi.fn() };
+    mockStore = { patchPhoto: vi.fn(), filters: vi.fn(() => ({ no_gps: '' })), loadPhotos: vi.fn(), refreshPaths: vi.fn(), config: vi.fn(() => ({ place_search_enabled: true })) };
     mockSnackBar = { open: vi.fn() };
 
     TestBed.configureTestingModule({
@@ -44,8 +55,10 @@ describe('GpsEditDialogComponent', () => {
       providers: [
         GpsEditDialogComponentClass,
         { provide: MatDialogRef, useValue: mockDialogRef },
+        { provide: Router, useValue: { url: '/', events: navigation } },
         { provide: MAT_DIALOG_DATA, useValue: data },
         { provide: ApiService, useValue: mockApi },
+        { provide: AuthService, useValue: { identity, status: authStatus, isEdition: () => authStatus().edition_authenticated } },
         { provide: GalleryStore, useValue: mockStore },
         { provide: MatSnackBar, useValue: mockSnackBar },
         { provide: I18nService, useValue: { t: (k: string) => k, translations: () => ({}) } },
@@ -58,6 +71,349 @@ describe('GpsEditDialogComponent', () => {
       fixture.detectChanges();
     } else component = TestBed.inject(GpsEditDialogComponentClass);
   }
+
+  describe('online lookup with the real API and error/retry interceptors', () => {
+    let http: HttpTestingController;
+    let events: Subject<NavigationStart>;
+    let logout: Mock;
+    let revalidate: Mock;
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      authStatus.set({ authenticated: true, edition_authenticated: true, user_id: 'editor' });
+      events = new Subject(); logout = vi.fn(); revalidate = vi.fn(() => Promise.resolve(null));
+      mockSnackBar = { open: vi.fn() };
+      TestBed.configureTestingModule({ imports: [GpsEditDialogComponentClass], providers: [
+        provideHttpClient(withXhr(), withInterceptors([errorInterceptor, retryInterceptor])), provideHttpClientTesting(),
+        { provide: MAT_DIALOG_DATA, useValue: { path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null } },
+        { provide: MatDialogRef, useValue: { close: vi.fn(), beforeClosed: () => NEVER } },
+        { provide: Router, useValue: { url: '/', events } },
+        { provide: AuthService, useValue: { identity, status: authStatus, isEdition: () => authStatus().edition_authenticated, logout, revalidate } },
+        { provide: GalleryStore, useValue: { patchPhoto: vi.fn(), filters: () => ({ no_gps: '' }), config: () => ({ place_search_enabled: true }) } },
+        { provide: MatSnackBar, useValue: mockSnackBar },
+        { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
+      ] });
+      TestBed.overrideProvider(MatSnackBar, { useValue: mockSnackBar });
+      http = TestBed.inject(HttpTestingController);
+      fixture = TestBed.createComponent(GpsEditDialogComponentClass);
+      component = fixture.componentInstance;
+      http.expectOne('/api/places').flush({ places: [], recent: [] });
+      fixture.detectChanges(); await fixture.whenStable();
+      component.setOnlineQuery('Private address');
+    });
+    afterEach(() => { fixture.destroy(); http.verify({ ignoreCancelled: true }); });
+    const request = () => http.expectOne(req => req.url === '/api/places/search');
+
+    it.each([
+      ['one non-BMP', '😀', false], ['two non-BMP', '😀😀', false], ['three non-BMP', '😀😀😀', true],
+      ['two BMP', 'ab', false], ['three BMP', 'abc', true],
+      ['200 mixed codepoints', 'a'.repeat(199) + '😀', true],
+      ['200 non-BMP codepoints', '😀'.repeat(200), true], ['201 non-BMP codepoints', '😀'.repeat(201), false],
+    ] as const)('matches the HTTP query boundary for %s', async (_name, query, valid) => {
+      component.setOnlineQuery(query); fixture.detectChanges();
+      expect(component.onlineQueryValid()).toBe(valid);
+      if (valid) {
+        const input = fixture.nativeElement.querySelector('input[type="search"][maxlength]') as HTMLInputElement;
+        expect(input.maxLength).toBeGreaterThanOrEqual(query.length);
+      }
+      const task = component.searchOnline();
+      if (valid) {
+        const lookup = request(); expect(lookup.request.params.get('q')).toBe(query);
+        lookup.flush({ results: [] });
+      } else http.expectNone(req => req.url === '/api/places/search');
+      await task;
+      expect(mockSnackBar.open).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [429, 'Wait before searching again'], [502, 'Online place search is unavailable'], [503, 'Online place search is disabled'],
+    ])('handles expected %s inline without a global toast or private crash report', async (status, detail) => {
+      const task = component.searchOnline();
+      const lookup = request();
+      expect(lookup.request.params.get('q')).toBe('Private address');
+      lookup.flush({ detail }, { status: status as number, statusText: 'Lookup refused' });
+      await task; fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('[role="alert"]')?.textContent).toContain('photo_detail.gps.online_error');
+      expect(mockSnackBar.open).not.toHaveBeenCalled();
+      expect(logout).not.toHaveBeenCalled(); expect(revalidate).not.toHaveBeenCalled();
+      http.expectNone('/api/client-errors');
+      http.expectNone(req => req.url === '/api/places/search');
+    });
+
+    it.each([[500, 'Unexpected fault'], [502, 'Unexpected gateway response']])('still reports unexpected %s failures without the private query', async (status, detail) => {
+      const task = component.searchOnline();
+      request().flush({ detail }, { status: status as number, statusText: 'Unexpected failure' });
+      const report = http.expectOne('/api/client-errors');
+      expect(JSON.stringify(report.request.body)).not.toContain('Private address');
+      expect(report.request.body.extra).toEqual({ request_url: '/api/places/search', request_method: 'GET', status });
+      report.flush({}); await task;
+      expect(mockSnackBar.open).toHaveBeenCalledWith('errors.server_error', '', expect.anything());
+    });
+
+    it.each([401, 403])('preserves global authentication handling for %s', async status => {
+      const task = component.searchOnline();
+      request().flush({ detail: 'Access denied' }, { status, statusText: 'Authentication refused' });
+      await task; await fixture.whenStable();
+      if (status === 401) expect(logout).toHaveBeenCalledOnce();
+      else { expect(revalidate).toHaveBeenCalledOnce(); expect(mockSnackBar.open).toHaveBeenCalled(); }
+      http.expectNone('/api/client-errors');
+    });
+
+    it('keeps the default global behavior for an API lookup without a local handler', () => {
+      TestBed.inject(ApiService).get('/places/search', { q: 'Private address' }).subscribe({ error: () => {} });
+      request().flush({ detail: 'Online place search is disabled' }, { status: 503, statusText: 'Disabled' });
+      http.expectOne('/api/client-errors').flush({});
+      expect(mockSnackBar.open).toHaveBeenCalledWith('errors.server_error', '', expect.anything());
+    });
+
+    it('does not suppress another endpoint even when the local lookup context is reused', () => {
+      const context = new HttpContext().set(HANDLE_PLACE_SEARCH_ERRORS_LOCALLY, true);
+      TestBed.inject(ApiService).get('/photos', {}, context).subscribe({ error: () => {} });
+      http.expectOne('/api/photos').flush({ detail: 'Wait before searching again' }, { status: 429, statusText: 'Throttled' });
+      http.expectNone('/api/client-errors');
+      expect(mockSnackBar.open).toHaveBeenCalledWith('errors.rate_limited', '', expect.anything());
+    });
+
+    it('allows an explicit retry after a handled failure without automatic HTTP retries', async () => {
+      const first = component.searchOnline();
+      request().flush({ detail: 'Online place search is unavailable' }, { status: 502, statusText: 'Unavailable' });
+      await first;
+      http.expectNone('/api/client-errors');
+      http.expectNone(req => req.url === '/api/places/search');
+      const retry = component.searchOnline();
+      request().flush({ results: [{ label: 'Result', latitude: 1, longitude: 2 }] });
+      await retry;
+      expect(component.onlineError()).toBe('');
+      expect(component.onlineResults()).toEqual([{ label: 'Result', latitude: 1, longitude: 2 }]);
+      expect(mockSnackBar.open).not.toHaveBeenCalled();
+    });
+
+    it('cancels an obsolete lookup on real navigation without reporting a failure', async () => {
+      const pending = component.searchOnline(); const lookup = request();
+      events.next(new NavigationStart(1, '/other'));
+      expect(lookup.cancelled).toBe(true);
+      await pending;
+      expect(component.onlineError()).toBe('');
+      expect(mockSnackBar.open).not.toHaveBeenCalled();
+      http.expectNone('/api/client-errors');
+    });
+  });
+
+  it('invalidates a visible batch preview and saved places when ownership is lost', async () => {
+    createComponent({ path: '', filename: '', lat: 1, lng: 2, batch: { photo_paths: ['/alice'] } });
+    mockApi.post.mockReturnValue(of({ changed: 1, skipped: 0, preview_token: 't' }));
+    await component.previewBatch();
+    authStatus.set({ authenticated: true, edition_authenticated: true, user_id: 'bob' });
+    TestBed.tick();
+    expect(component.batchPreview()).toBeNull(); expect(component.places()).toEqual([]);
+    mockApi.post.mockClear(); await component.save(); await component.previewBatch(); await component.createPlace();
+    expect(mockApi.post).not.toHaveBeenCalled();
+  });
+  it('keeps the dialog open when the same session is revalidated into a new status object', async () => {
+    createComponent({ path: '', filename: '', lat: 1, lng: 2, batch: { photo_paths: ['/alice'] } });
+    mockApi.post.mockReturnValue(of({ changed: 1, skipped: 0, preview_token: 't' }));
+    await component.previewBatch();
+    authStatus.set({ ...authStatus() });
+    TestBed.tick();
+    expect(mockDialogRef.close).not.toHaveBeenCalled();
+    expect(component.batchPreview()).not.toBeNull();
+  });
+  for (const loss of ['identity', 'edition', 'dismissal', 'navigation', 'destroy']) {
+    function invalidate() {
+      if (loss === 'identity') authStatus.set({ authenticated: true, edition_authenticated: true, user_id: 'bob' });
+      if (loss === 'edition') authStatus.set({ authenticated: true, edition_authenticated: false, user_id: 'editor' });
+      if (loss === 'dismissal') closing.next();
+      if (loss === 'navigation') { navigation.next(new NavigationStart(1, '/other')); navigation.next(new NavigationStart(2, '/')); }
+      if (loss === 'destroy') TestBed.resetTestingModule();
+    }
+    it(`discards batch preview and blocks commands after ${loss}`, async () => {
+      createComponent({ path: '', filename: '', lat: 1, lng: 2, batch: { photo_paths: ['/alice'] } });
+      const pending = new Subject<unknown>(); mockApi.post.mockReturnValue(pending);
+      const task = component.previewBatch();
+      invalidate(); pending.next({ changed: 1, skipped: 0, preview_token: 't' }); await task;
+      expect(component.batchPreview()).toBeNull();
+      mockApi.post.mockReturnValue(of({ changed: 1 })); mockApi.post.mockClear();
+      await component.previewBatch(); await component.save(); await component.useFileLocation();
+      expect(mockApi.post).not.toHaveBeenCalled(); expect(mockApi.delete).not.toHaveBeenCalled();
+    });
+    // A plain dismissal or teardown still publishes a write the server committed;
+    // only a changed session or page drops it.
+    const publishes = loss === 'dismissal' || loss === 'destroy';
+    it.each(['batch', 'save', 'reset'])(`${publishes ? 'publishes' : 'suppresses'} late %s writes after ${loss}`, async mode => {
+      const applied = vi.fn();
+      createComponent({ path: '/alice', filename: '', lat: 1, lng: 2, manuallySet: true,
+        ...(mode === 'batch' ? { batch: { photo_paths: ['/alice'] }, onBatchApplied: applied } : {}) });
+      mockApi.post.mockReturnValue(of({ changed: 1, skipped: 0, preview_token: 't' }));
+      if (mode === 'batch') await component.previewBatch();
+      const pending = new Subject<unknown>();
+      mockApi.post.mockReturnValue(pending); mockApi.put.mockReturnValue(pending); mockApi.delete.mockReturnValue(pending);
+      const task = mode === 'reset' ? component.useFileLocation() : component.save();
+      invalidate(); mockDialogRef.close.mockClear();
+      pending.next({ changed: 1, gps_latitude: 1, gps_longitude: 2 }); await task;
+      expect(mockDialogRef.close).not.toHaveBeenCalled();
+      const write = { batch: mockApi.post, save: mockApi.put, reset: mockApi.delete }[mode];
+      expect(write).toHaveBeenCalledTimes(mode === 'batch' ? 2 : 1);
+      if (mode === 'batch') expect(mockApi.post).toHaveBeenLastCalledWith('/photos/batch_gps', expect.objectContaining({ preview: false, preview_token: 't' }));
+      if (publishes) {
+        expect(mockStore.refreshPaths).toHaveBeenCalledExactlyOnceWith(null);
+        if (mode !== 'batch') expect(mockStore.patchPhoto).toHaveBeenCalledTimes(1);
+        if (mode === 'batch') expect(applied).toHaveBeenCalledTimes(1);
+        return;
+      }
+      expect(mockStore.patchPhoto).not.toHaveBeenCalled(); expect(mockStore.refreshPaths).not.toHaveBeenCalled();
+      if (mode === 'batch') expect(applied).not.toHaveBeenCalled();
+      expect(mockSnackBar.open).not.toHaveBeenCalled();
+    });
+  }
+
+  it('sends the cleared only-missing flag and the chosen saved place with preview and apply', async () => {
+    createComponent({ path: '', filename: 'selection', lat: null, lng: null, batch: { photo_paths: ['/one.jpg'] } });
+    component.selectPlace({ id: 7, name: 'Home', latitude: 1, longitude: 2 } as SavedPlace);
+    mockApi.post.mockReturnValue(of({ changed: 1, skipped: 0, preview_token: 'token' }));
+    await component.previewBatch();
+    component.onlyMissing.set(false);
+    expect(component.canApplyBatch()).toBe(false);
+    await component.previewBatch();
+    await component.save();
+    const sent = { photo_paths: ['/one.jpg'], only_missing: false, saved_place_id: 7 };
+    expect(mockApi.post).toHaveBeenCalledWith('/photos/batch_gps', expect.objectContaining({ ...sent, preview: true }));
+    expect(mockApi.post).toHaveBeenLastCalledWith('/photos/batch_gps', expect.objectContaining({ ...sent, preview: false, preview_token: 'token' }));
+  });
+
+  it('keeps a blank or partial batch draft from previewing or clearing photos', async () => {
+    createComponent({ path: '', filename: 'selection', lat: null, lng: null, batch: { photo_paths: ['/partial.jpg'] } });
+    expect(component.batchCoordinatesValid()).toBe(false);
+    await component.previewBatch();
+    await component.save();
+    component.setLatitude(1);
+    expect(component.batchCoordinatesValid()).toBe(false);
+    await component.previewBatch();
+    expect(mockApi.post).not.toHaveBeenCalled();
+    expect(mockApi.put).not.toHaveBeenCalled();
+  });
+
+  it('requires a fresh batch preview, captures its target and publishes a dismissed completion', async () => {
+    const target = { photo_paths: ['/one.jpg', '/two.jpg'] };
+    const onBatchApplied = vi.fn();
+    createComponent({ path: '', filename: 'selection', lat: null, lng: null, batch: target, onBatchApplied });
+    component.selectRecent({ latitude: 1, longitude: 2 });
+    await component.save();
+    expect(mockApi.post).not.toHaveBeenCalled();
+    mockApi.post.mockReturnValue(of({ changed: 1, skipped: 1, preview_token: 'token' }));
+    await component.previewBatch();
+    expect(component.canApplyBatch()).toBe(true);
+    component.setLatitude(3);
+    expect(component.canApplyBatch()).toBe(false);
+    component.setLatitude(1);
+    const pending = new Subject<{ changed: number; skipped: number; preview_token: string }>();
+    mockApi.post.mockReturnValue(pending);
+    const saving = component.save();
+    target.photo_paths.push('/later.jpg');
+    component.cancel();
+    TestBed.resetTestingModule();
+    pending.next({ changed: 1, skipped: 1, preview_token: 'token' });
+    pending.complete();
+    await saving;
+    expect(mockApi.post).toHaveBeenLastCalledWith('/photos/batch_gps', expect.objectContaining({
+      photo_paths: ['/one.jpg', '/two.jpg'], preview: false, preview_token: 'token', only_missing: true,
+    }));
+    expect(mockStore.refreshPaths).toHaveBeenCalledExactlyOnceWith(null);
+    expect(mockStore.loadPhotos).not.toHaveBeenCalled();
+    expect(onBatchApplied).toHaveBeenCalledTimes(1);
+    expect(mockDialogRef.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates a batch preview after apply fails and keeps the draft', async () => {
+    createComponent({ path: '', filename: 'selection', lat: null, lng: null, batch: { filters: { no_gps: '1' } } });
+    component.selectRecent({ latitude: 1, longitude: 2 });
+    mockApi.post.mockReturnValue(of({ changed: 2, skipped: 0, preview_token: 'token' }));
+    await component.previewBatch();
+    mockApi.post.mockReturnValue(throwError(() => ({ status: 409 })));
+    await component.save();
+    expect(component.canApplyBatch()).toBe(false);
+    expect(component.selectedLat()).toBe(1);
+    expect(mockDialogRef.close).not.toHaveBeenCalled();
+  });
+
+  const place: SavedPlace = { id: 1, name: 'Home', latitude: 1, longitude: 2 } as SavedPlace;
+
+  it.each(['identity', 'edition', 'navigation'])('closes the dialog and clears the saved places after %s loss', loss => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 }, false, [place]);
+    TestBed.tick();
+    mockDialogRef.close.mockClear();
+    if (loss === 'identity') authStatus.set({ authenticated: true, edition_authenticated: true, user_id: 'bob' });
+    if (loss === 'edition') authStatus.set({ authenticated: true, edition_authenticated: false, user_id: 'editor' });
+    if (loss === 'navigation') navigation.next(new NavigationStart(1, '/other'));
+    TestBed.tick();
+    expect(mockDialogRef.close).toHaveBeenCalled();
+    expect(component.places()).toEqual([]);
+    expect(component.recent()).toEqual([]);
+  });
+
+  it('keeps the dialog and an in-flight save when the status is revalidated for the same user', async () => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
+    TestBed.tick();
+    const pending = new Subject<{ gps_latitude: number; gps_longitude: number }>();
+    mockApi.put.mockReturnValue(pending);
+    const saving = component.save();
+    authStatus.set({ authenticated: true, edition_authenticated: true, user_id: 'editor' });
+    TestBed.tick();
+    pending.next({ gps_latitude: 3, gps_longitude: 4 });
+    pending.complete();
+    await saving;
+    expect(mockDialogRef.close).toHaveBeenCalledExactlyOnceWith({ gps_latitude: 3, gps_longitude: 4 });
+  });
+
+  it('searches only explicitly, previews a result, then saves without the previous bookmark', async () => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null });
+    component.setOnlineQuery('Berlin');
+    expect(mockApi.get).toHaveBeenCalledTimes(1);
+    const result = { label: 'Berlin', latitude: 52.5, longitude: 13.4 };
+    mockApi.get.mockReturnValue(of({ results: [result] }));
+    await component.searchOnline();
+    expect(mockApi.get).toHaveBeenLastCalledWith('/places/search', { q: 'Berlin' }, expect.any(HttpContext));
+    expect(component.selectedLat()).toBeNull();
+    component.selectedPlaceId.set(99);
+    component.selectOnlineResult(result);
+    expect(component.selectedPlaceId()).toBeNull();
+    expect(mockApi.put).not.toHaveBeenCalled();
+    await component.save();
+    expect(mockApi.put).toHaveBeenCalledWith('/photo/gps', { path: '/photo.jpg', gps_latitude: 52.5, gps_longitude: 13.4 });
+    expect(mockStore.refreshPaths).toHaveBeenCalledWith(null);
+  });
+
+  it('cancels and discards pending search on query edits, draft edits, dismissal and auth changes', async () => {
+    for (const invalidate of ['query', 'draft', 'dismiss', 'auth']) {
+      createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
+      const pending = new Subject<{ results: { label: string; latitude: number; longitude: number }[] }>();
+      mockApi.get.mockReturnValue(pending);
+      component.setOnlineQuery('Berlin');
+      const searching = component.searchOnline();
+      if (invalidate === 'query') component.setOnlineQuery('Paris');
+      if (invalidate === 'draft') component.setLatitude(7);
+      if (invalidate === 'dismiss') component.cancel();
+      if (invalidate === 'auth') { authStatus.set({ authenticated: true, edition_authenticated: false, user_id: 'editor' }); TestBed.tick(); }
+      expect(pending.observed).toBe(false);
+      pending.next({ results: [{ label: 'Old', latitude: 3, longitude: 4 }] });
+      await searching;
+      expect(component.onlineResults()).toEqual([]);
+      expect(mockApi.put).not.toHaveBeenCalled();
+    }
+  });
+
+  it('keeps offline coordinates and saved places usable after lookup failure and rejects invalid results', async () => {
+    createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
+    component.setOnlineQuery('Berlin');
+    mockApi.get.mockReturnValue(throwError(() => new Error('offline')));
+    await component.searchOnline();
+    expect(component.onlineError()).toBeTruthy();
+    mockApi.get.mockReturnValue(of({ results: [{ label: 'bad', latitude: NaN, longitude: 2 }, { label: 'Berlin', latitude: 52, longitude: 13 }] }));
+    await component.searchOnline();
+    expect(component.onlineResults()).toEqual([{ label: 'Berlin', latitude: 52, longitude: 13 }]);
+    expect(component.selectedLat()).toBe(1);
+    component.selectRecent({ latitude: 0, longitude: 0 });
+    expect(component.selectedLat()).toBe(0);
+  });
 
   it('should initialize with provided coordinates', () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 48.8566, lng: 2.3522 });
@@ -88,7 +444,7 @@ describe('GpsEditDialogComponent', () => {
     expect(mockStore.patchPhoto).not.toHaveBeenCalled();
   });
 
-  it('captures inputs, prevents duplicate saves and patches actual GPS even after destruction', async () => {
+  it('captures inputs, prevents duplicate saves and still publishes the saved location after destruction', async () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
     const pending = new Subject<{ gps_latitude: number; gps_longitude: number }>();
     mockApi.put.mockReturnValue(pending);
@@ -101,11 +457,11 @@ describe('GpsEditDialogComponent', () => {
     await saving;
     expect(mockApi.put).toHaveBeenCalledTimes(1);
     expect(mockApi.put).toHaveBeenCalledWith('/photo/gps', { path: '/photo.jpg', gps_latitude: 1, gps_longitude: 2 });
-    expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { gps_latitude: 3, gps_longitude: 4, gps_manually_set: 1 });
+    expect(mockStore.patchPhoto).toHaveBeenCalledExactlyOnceWith('/photo.jpg', { gps_latitude: 3, gps_longitude: 4, gps_manually_set: 1 });
     expect(mockDialogRef.close).not.toHaveBeenCalled();
   });
 
-  it('cancelling a pending save closes once and still applies confirmed GPS to the gallery', async () => {
+  it('cancelling a pending save closes once and still applies the saved location to the gallery', async () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 });
     const pending = new Subject<{ gps_latitude: number; gps_longitude: number }>();
     mockApi.put.mockReturnValue(pending);
@@ -115,7 +471,7 @@ describe('GpsEditDialogComponent', () => {
     pending.complete();
     await saving;
     expect(mockDialogRef.close).toHaveBeenCalledExactlyOnceWith(undefined);
-    expect(mockStore.patchPhoto).toHaveBeenCalledWith('/photo.jpg', { gps_latitude: 3, gps_longitude: 4, gps_manually_set: 1 });
+    expect(mockStore.patchPhoto).toHaveBeenCalledExactlyOnceWith('/photo.jpg', { gps_latitude: 3, gps_longitude: 4, gps_manually_set: 1 });
   });
 
   it('rejects incomplete, nonfinite and out of range points but accepts zero', () => {
@@ -190,7 +546,7 @@ describe('GpsEditDialogComponent', () => {
     expect(mockApi.put).toHaveBeenCalledWith('/photo/gps', { path: '/photo.jpg', gps_latitude: 0, gps_longitude: 0 });
   });
 
-  it('ignores map clicks after destruction and reports a rejected pending save', async () => {
+  it('ignores map clicks and rejected saves after destruction', async () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 1, lng: 2 }, true);
     const click = leafletMockMap.on.mock.calls.filter(call => call[0] === 'click').at(-1)![1];
     const pending = new Subject();
@@ -203,7 +559,7 @@ describe('GpsEditDialogComponent', () => {
     expect(component.selectedLat()).toBe(1);
     expect(mockDialogRef.close).not.toHaveBeenCalled();
     expect(mockStore.patchPhoto).not.toHaveBeenCalled();
-    expect(mockSnackBar.open).toHaveBeenCalled();
+    expect(mockSnackBar.open).not.toHaveBeenCalled();
   });
 
   it('a map click places the point without re-centring or re-zooming the map', async () => {
@@ -241,7 +597,8 @@ describe('GpsEditDialogComponent', () => {
     createComponent({ path: '/photo.jpg', filename: 'photo.jpg', lat: 0, lng: 0 });
     mockStore.filters.mockReturnValue({ no_gps: '1' });
     await component.save();
-    expect(mockStore.loadPhotos).toHaveBeenCalledOnce();
+    expect(mockStore.refreshPaths).toHaveBeenCalledWith(null);
+    expect(mockStore.loadPhotos).not.toHaveBeenCalled();
   });
 
   describe('clearLocation', () => {
@@ -360,12 +717,99 @@ describe('GpsEditDialogComponent', () => {
       expect(component.saveError()).toBe('photo_detail.gps.save_error');
     });
   });
+  describe('batch completion with the real gallery store', () => {
+    let store: GalleryStore;
+    let serverPhotos = [makePhoto({ path: '/old.jpg' })];
+    let pending: Subject<{ changed: number; skipped: number; preview_token: string }>;
+
+    beforeEach(async () => {
+      TestBed.resetTestingModule();
+      serverPhotos = [makePhoto({ path: '/old.jpg' })];
+      pending = new Subject();
+      mockApi = {
+        get: vi.fn((url: string) => of(url === '/places' ? { places: [], recent: [] } : {
+          photos: serverPhotos, total: serverPhotos.length, page: 1, per_page: 64, total_pages: 1, has_more: false,
+        })),
+        put: vi.fn(), delete: vi.fn(),
+        post: vi.fn((url: string, body: { preview?: boolean }) => url === '/photos/batch_gps'
+          ? body.preview ? of({ changed: 1, skipped: 0, preview_token: 'token' }) : pending
+          : of({ photos: serverPhotos, total: serverPhotos.length, missing: [] })),
+      };
+      TestBed.configureTestingModule({ providers: [
+        GpsEditDialogComponentClass, GalleryStore,
+        { provide: MAT_DIALOG_DATA, useValue: { path: '', filename: 'selection', lat: null, lng: null, batch: { photo_paths: ['/old.jpg'] } } },
+        { provide: MatDialogRef, useValue: { close: vi.fn(), beforeClosed: vi.fn(() => closing) } },
+        { provide: ApiService, useValue: mockApi },
+        { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
+        { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
+        { provide: AuthService, useValue: { identity, status: authStatus, isEdition: () => true } },
+        { provide: AlbumService, useValue: { list: () => of({ albums: [] }), update: () => of({}) } },
+        { provide: I18nService, useValue: { t: (key: string) => key } },
+        { provide: MatSnackBar, useValue: { open: vi.fn() } },
+      ] });
+      component = TestBed.inject(GpsEditDialogComponentClass);
+      store = TestBed.inject(GalleryStore);
+      store.filters.update(f => ({ ...f, no_gps: '1', camera: 'Canon' }));
+      await store.loadPhotos();
+      component.selectRecent({ latitude: 1, longitude: 2 });
+      await component.previewBatch();
+    });
+
+    async function finish(saving: Promise<void>) {
+      pending.next({ changed: 1, skipped: 0, preview_token: 'token' });
+      pending.complete();
+      await saving;
+      // Drain the store's serialized refresh queue to inspect the settled view.
+      await store.refreshPaths([]);
+    }
+
+    it('preserves a newer whole-view selection and exclusions after dismissed save completes', async () => {
+      const saving = component.save();
+      component.cancel();
+      serverPhotos = [makePhoto({ path: '/new.jpg' }), makePhoto({ path: '/excluded.jpg' })];
+      store.filters.update(f => ({ ...f, no_gps: '', camera: 'Nikon' }));
+      await store.loadPhotos();
+      store.selectWholeView();
+      store.excludedPaths.set(new Set(['/excluded.jpg']));
+      await finish(saving);
+      expect(store.viewScopeSelected()).toBe(true);
+      expect([...store.excludedPaths()]).toEqual(['/excluded.jpg']);
+      expect(store.filters().camera).toBe('Nikon');
+      expect(store.photos().map(p => p.path)).toEqual(['/new.jpg', '/excluded.jpg']);
+    });
+
+    it('keeps the newer pinned list and refreshes it after dismissed completion', async () => {
+      const saving = component.save();
+      component.cancel();
+      serverPhotos = [makePhoto({ path: '/pin.jpg', gps_latitude: 0, gps_longitude: 0 })];
+      await store.showPaths(['/pin.jpg']);
+      serverPhotos = [makePhoto({ path: '/pin.jpg', gps_latitude: 5, gps_longitude: 6 })];
+      await finish(saving);
+      expect(store.pinnedPaths()).toEqual(['/pin.jpg']);
+      expect(store.photos().map(p => p.path)).toEqual(['/pin.jpg']);
+      expect(store.photos()[0].gps_latitude).toBe(5);
+      expect(mockApi.post).toHaveBeenLastCalledWith('/photos/by_paths', { paths: ['/pin.jpg'] });
+    });
+
+    it('recomputes the current missing-GPS membership and count after apply', async () => {
+      const saving = component.save();
+      serverPhotos = [];
+      await finish(saving);
+      expect(store.photos()).toEqual([]);
+      expect(store.total()).toBe(0);
+      expect(store.filters()).toMatchObject({ no_gps: '1', camera: 'Canon' });
+      // Review progress is fetched after the page, so the page is the last /photos call, not the last call.
+      const pageCalls = mockApi.get.mock.calls.filter(call => call[0] === '/photos');
+      expect(pageCalls.at(-1)).toEqual(['/photos', expect.objectContaining({ no_gps: '1', camera: 'Canon' })]);
+    });
+  });
+
   describe('missing-location membership with the real gallery store', () => {
     let store: GalleryStore;
     const photo = makePhoto({ path: '/photo.jpg', gps_latitude: null, gps_longitude: null, gps_manually_set: 1 });
     let serverPhotos = [photo];
 
-    beforeEach(() => {
+    beforeEach(async () => {
       TestBed.resetTestingModule();
       serverPhotos = [photo];
       mockApi = {
@@ -374,16 +818,17 @@ describe('GpsEditDialogComponent', () => {
         })),
         put: vi.fn(), delete: vi.fn(), post: vi.fn(() => of({})),
       };
-      mockDialogRef = { close: vi.fn() };
+      authStatus.set({ authenticated: true, edition_authenticated: true, user_id: 'editor' });
+      mockDialogRef = { close: vi.fn(), beforeClosed: vi.fn(() => closing) };
       TestBed.configureTestingModule({
         providers: [
           GpsEditDialogComponentClass, GalleryStore,
           { provide: MAT_DIALOG_DATA, useValue: { path: '/photo.jpg', filename: 'photo.jpg', lat: null, lng: null, manuallySet: true } },
           { provide: MatDialogRef, useValue: mockDialogRef },
           { provide: ApiService, useValue: mockApi },
+          { provide: AuthService, useValue: { identity, status: authStatus, isEdition: () => authStatus().edition_authenticated } },
           { provide: Router, useValue: { navigate: vi.fn(), events: NEVER } },
           { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
-          { provide: AuthService, useValue: { isEdition: () => true } },
           { provide: AlbumService, useValue: { list: () => of({ albums: [] }), update: () => of({}) } },
           { provide: I18nService, useValue: { t: (key: string) => key } },
         ],
@@ -393,6 +838,7 @@ describe('GpsEditDialogComponent', () => {
       store.filters.update(f => ({ ...f, no_gps: '1', camera: 'Canon' }));
       store.photos.set([photo]);
       store.total.set(1);
+      await store.loadPhotos();
     });
 
     it('returns a photo to missing-location results after saving coordinates and then clearing them', async () => {
@@ -401,6 +847,7 @@ describe('GpsEditDialogComponent', () => {
       mockApi.put.mockReturnValueOnce(of({ gps_latitude: 0, gps_longitude: 0 }));
       serverPhotos = [];
       await component.save();
+      await store.refreshPaths(null);
       expect(store.photos()).toEqual([]);
       expect(store.total()).toBe(0);
 
@@ -408,8 +855,31 @@ describe('GpsEditDialogComponent', () => {
       mockApi.put.mockReturnValueOnce(of({ gps_latitude: null, gps_longitude: null }));
       serverPhotos = [photo];
       await component.save();
+      await store.refreshPaths(null);
       expect(store.photos().map(p => p.path)).toEqual(['/photo.jpg']);
       expect(store.total()).toBe(1);
+      expect(store.filters()).toMatchObject({ no_gps: '1', camera: 'Canon' });
+    });
+
+    it('preserves a newly pinned selection when an online-place save finishes in a changed view', async () => {
+      store.config.set({ ...store.config()!, place_search_enabled: true });
+      const result = { label: 'Berlin', latitude: 52.5, longitude: 13.4 };
+      component.selectOnlineResult(result);
+      const pending = new Subject<{ gps_latitude: number; gps_longitude: number }>();
+      mockApi.put.mockReturnValue(pending);
+      const saving = component.save();
+      const other = makePhoto({ path: '/other.jpg', gps_latitude: 3, gps_longitude: 4 });
+      store.pinnedPaths.set(['/other.jpg']);
+      store.photos.set([other]);
+      store.selectedPaths.set(new Set(['/other.jpg']));
+      mockApi.post.mockReturnValue(of({ photos: [other] }));
+      pending.next({ gps_latitude: 52.5, gps_longitude: 13.4 });
+      pending.complete();
+      await saving;
+      await store.refreshPaths(null);
+      expect(store.pinnedPaths()).toEqual(['/other.jpg']);
+      expect(store.selectedPaths()).toEqual(new Set(['/other.jpg']));
+      expect(store.photos().map(p => p.path)).toEqual(['/other.jpg']);
       expect(store.filters()).toMatchObject({ no_gps: '1', camera: 'Canon' });
     });
 
@@ -421,6 +891,7 @@ describe('GpsEditDialogComponent', () => {
       serverPhotos = visible ? [{ ...photo, gps_manually_set: 0 }] : [];
       mockApi.delete.mockReturnValue(of(result));
       await component.useFileLocation();
+      await store.refreshPaths(null);
       expect(store.photos().map(p => p.path)).toEqual(visible ? ['/photo.jpg'] : []);
       expect(store.total()).toBe(visible ? 1 : 0);
       expect(mockApi.get).toHaveBeenCalledWith('/photos', expect.objectContaining({ no_gps: '1', camera: 'Canon' }));

@@ -21,7 +21,7 @@ from api.model_cache import AcceleratorBusy
 from api.models.gallery import (
     BY_PATHS_MISSING_CAP, GALLERY_PAGING_KEYS, GalleryParams, Photo, PhotoCountResponse,
     PhotoPathsResponse, PhotosByPathsRequest, PhotosByPathsResponse, PhotosResponse,
-    SimilarPhotosResponse, gallery_filter_keys, query_value,
+    ReviewProgressResponse, SimilarPhotosResponse, gallery_filter_keys, query_value,
 )
 from api.models.discovery import PhotoSetResponse, PhotoTypeCountsResponse, ViewerConfigResponse
 from api.db_helpers import (
@@ -252,6 +252,18 @@ def _apply_text_filters(where_clauses, sql_params, params, conn, include_manual=
             except ValueError:
                 pass
 
+    if params.get('faces_need_names') in ('1', 'true'):
+        from db.schema import person_not_hidden_clause
+        where_clauses.append(
+            'EXISTS (SELECT 1 FROM faces f LEFT JOIN persons p ON p.id=f.person_id '
+            'WHERE f.photo_path=photos.path AND (f.person_id IS NULL OR '
+            f"(p.id IS NOT NULL AND {person_not_hidden_clause('p')} AND TRIM(COALESCE(p.name,''))='')))")
+
+    if params.get('manual_faces_need_review') in ('1', 'true'):
+        where_clauses.append(
+            'EXISTS (SELECT 1 FROM faces WHERE photo_path=photos.path '
+            'AND is_manual=1 AND manual_review_required=1)')
+
     if params.get('is_monochrome') == '1':
         where_clauses.append("is_monochrome = 1")
 
@@ -440,9 +452,29 @@ def _apply_visibility_and_hide_filters(where_clauses, sql_params, params, user_i
         hide_brackets_val = ''
         hide_panoramas_val = ''
 
+    # A positive only-blinks / only-duplicates / only-rejected filter must show
+    # every photo it names: the hide toggles default on and would silently drop
+    # members of what the filter promises (a blink that is a non-lead burst
+    # member, a duplicate that is also a detected blink, a rejected frame of a
+    # burst whose lead was kept), the same surprise the set-scope guard above
+    # suppresses the toggles for.
+    blinks_only = params.get('blinks_only') in ('1', 'true')
+    duplicates_only = params.get('duplicates_only') in ('1', 'true')
+    if blinks_only or duplicates_only or params.get('show_rejected') in ('1', 'true'):
+        hide_blinks_val = ''
+        hide_bursts_val = ''
+        hide_duplicates_val = ''
+        hide_brackets_val = ''
+        hide_panoramas_val = ''
+
     where_clauses.extend(build_hide_clauses(
         hide_blinks_val, hide_bursts_val, hide_duplicates_val, hide_brackets_val,
         hide_panoramas_val))
+
+    if blinks_only:
+        where_clauses.append("is_blink = 1")
+    if duplicates_only:
+        where_clauses.append("duplicate_group_id IS NOT NULL")
 
 
 def _apply_preference_filters(where_clauses, sql_params, params, user_id):
@@ -456,9 +488,24 @@ def _apply_preference_filters(where_clauses, sql_params, params, user_id):
                 sql_params.append(min_rating)
         except ValueError:
             pass
-    if params.get('favorites_only') == '1':
+    # 'true' alongside '1': the hide family accepts both spellings (the client
+    # URL carries booleans as true/false), and an agent passing a JSON boolean
+    # arrives lowercased the same way -- favourites-only and rejected-only used
+    # to silently accept '1' alone, so a `show_rejected=true` query showed the
+    # whole library as if the filter were absent.
+    if params.get('favorites_only') in ('1', 'true'):
         where_clauses.append(f"{pref_cols['is_favorite']} = 1")
-    if params.get('show_rejected') == '1':
+    review_status = params.get('review_status')
+    if review_status in ('undecided', 'kept', 'rejected'):
+        rejected = f"COALESCE({pref_cols['is_rejected']}, 0)"
+        kept = f"COALESCE({pref_cols['is_kept']}, 0)"
+        if review_status == 'rejected':
+            where_clauses.append(f"{rejected} = 1")
+        else:
+            where_clauses.append(f"{rejected} = 0")
+            where_clauses.append(f"{kept} = {1 if review_status == 'kept' else 0}")
+        return
+    if params.get('show_rejected') in ('1', 'true'):
         where_clauses.append(f"{pref_cols['is_rejected']} = 1")
     elif params.get('hide_rejected') in ('1', 'true'):
         where_clauses.append(f"({pref_cols['is_rejected']} = 0 OR {pref_cols['is_rejected']} IS NULL)")
@@ -958,6 +1005,49 @@ async def api_select_bottom_percent(
     }
 
 
+@router.get("/api/photos/review_progress", response_model=ReviewProgressResponse)
+async def api_review_progress(
+    request: Request,
+    user: Optional[CurrentUser] = Depends(get_optional_user),
+):
+    """Decision counts for the whole content scope, ignoring its active decision tab.
+
+    ``scope_review_status`` retains a smart album's own decision criterion when
+    the gallery's temporary review-status filter is cleared for the denominator.
+    """
+    qp = dict(request.query_params)
+    qp['review_status'] = qp.pop('scope_review_status', '')
+    qp['hide_rejected'] = '0'
+    qp['show_rejected'] = '0'
+    try:
+        async with get_async_db() as conn:
+            user_id = user.user_id if user else None
+            from_clause, where_str, params = await gallery_scope_sql_async(conn, qp, user_id)
+            semantic_q, threshold = _semantic_params(qp)
+            if semantic_q is not None:
+                _require_semantic_search_enabled()
+                _, where_str, params = await _apply_semantic_gate(
+                    conn, semantic_q, threshold, user_id, where_str, params, "review progress")
+            pref = get_preference_columns(user_id)
+            rejected = f"COALESCE({pref['is_rejected']}, 0)"
+            kept = f"COALESCE({pref['is_kept']}, 0)"
+            cur = await conn.execute(
+                f"SELECT COUNT(*) AS total, "
+                f"COALESCE(SUM(CASE WHEN {rejected}=0 AND {kept}=0 THEN 1 ELSE 0 END),0) AS undecided, "
+                f"COALESCE(SUM(CASE WHEN {rejected}=0 AND {kept}=1 THEN 1 ELSE 0 END),0) AS kept, "
+                f"COALESCE(SUM(CASE WHEN {rejected}=1 THEN 1 ELSE 0 END),0) AS rejected "
+                f"FROM {from_clause}{where_str}", params,
+            )
+            row = await cur.fetchone()
+            await cur.close()
+            return dict(row)
+    except ValidationError as e:
+        _raise_422_for_invalid_gallery_params(e, logger, "Review progress validation failed: %s")
+    except sqlite3.Error:
+        logger.exception("Failed to count review progress")
+        raise HTTPException(status_code=500, detail='Internal server error')
+
+
 @router.get("/api/photos/count", response_model=PhotoCountResponse,
             response_model_exclude_unset=True)
 async def api_photos_count(
@@ -1103,6 +1193,31 @@ _RELEVANCE_FROM = "(SELECT rowid AS pos, value AS sem_path FROM json_each(?)) AS
 _RELEVANCE_CLAUSE = "photos.path = sem.sem_path"
 
 
+def _require_semantic_search_enabled():
+    if not VIEWER_CONFIG.get('features', {}).get('show_semantic_search', True):
+        raise HTTPException(status_code=400, detail="Semantic search is disabled")
+
+
+async def _apply_semantic_gate(conn, semantic_q, threshold, user_id, where_str, params, label):
+    """Narrow a scope to the semantic candidates: ``(candidates, where_str, params)``.
+
+    Never degrades to the whole library: a gate that cannot be resolved is a 503 (busy accelerator or any
+    non-SQLite failure); a ``sqlite3.Error`` propagates to the caller's own handler. ``label`` names the
+    surface in the log.
+    """
+    try:
+        candidates = await semantic_candidates(conn, semantic_q, threshold, user_id)
+    except AcceleratorBusy:
+        logger.warning("Semantic %s gave up waiting for the MPS lock: %s", label, semantic_q)
+        raise HTTPException(status_code=503, detail="Search model is busy with another task, try again in a moment")
+    except sqlite3.Error:
+        raise
+    except Exception:
+        logger.exception("Semantic %s failed for query: %s", label, semantic_q)
+        raise HTTPException(status_code=503, detail="Semantic search failed")
+    return candidates, _with_semantic_clause(where_str), [*params, candidates.paths_json]
+
+
 def _with_semantic_clause(where_str: str) -> str:
     return f"{where_str} AND{_SEMANTIC_CLAUSE}" if where_str else f" WHERE{_SEMANTIC_CLAUSE}"
 
@@ -1150,8 +1265,8 @@ async def api_photos(
     semantic_q, semantic_threshold = _semantic_params(qp)
     if relevance and semantic_q is None:
         raise HTTPException(status_code=400, detail="sort=relevance needs semantic_q")
-    if semantic_q is not None and not VIEWER_CONFIG.get('features', {}).get('show_semantic_search', True):
-        raise HTTPException(status_code=400, detail="Semantic search is disabled")
+    if semantic_q is not None:
+        _require_semantic_search_enabled()
 
     try:
         async with get_async_db() as conn:
@@ -1165,19 +1280,8 @@ async def api_photos(
             )
             candidates = None
             if semantic_q is not None:
-                # Never degrade to the whole library: a gate that cannot be resolved is a 503.
-                try:
-                    candidates = await semantic_candidates(conn, semantic_q, semantic_threshold, user_id)
-                except AcceleratorBusy:
-                    logger.warning("Semantic gallery search gave up waiting for the MPS lock: %s", semantic_q)
-                    raise HTTPException(status_code=503, detail="Search model is busy with another task, try again in a moment")
-                except sqlite3.Error:
-                    raise
-                except Exception:
-                    logger.exception("Semantic gallery search failed for query: %s", semantic_q)
-                    raise HTTPException(status_code=503, detail="Semantic search failed")
-                where_str = _with_semantic_clause(where_str)
-                all_params = all_params + [candidates.paths_json]
+                candidates, where_str, all_params = await _apply_semantic_gate(
+                    conn, semantic_q, semantic_threshold, user_id, where_str, all_params, "gallery search")
 
             total_count = await get_cached_count_async(conn, where_str, all_params, from_clause=from_clause)
             total_pages, offset = paginate(total_count, page, per_page)
@@ -1576,7 +1680,7 @@ async def api_similar_photos(
 
     # Read before the source SELECT: a commit landing between the two then
     # invalidates the cached ranking instead of being hidden behind it.
-    change_token = db_change_token(str(_database.DEFAULT_DB_PATH))
+    change_token = await asyncio.to_thread(db_change_token, str(_database.DEFAULT_DB_PATH))
     try:
         async with get_async_db() as conn:
             cur = await conn.execute(f"""
@@ -1690,6 +1794,8 @@ def api_config(user: Optional[CurrentUser] = Depends(get_optional_user)):
     from api.model_cache import vlm_known_unavailable
     from api.raw_processing import get_cull_styles
     from api.routers.search import search_threshold_default
+    from api.place_search import endpoint as place_search_endpoint
+    from utils.version import build_label, current_version
     from api.types import QUALITY_LEVELS, TYPE_LABELS, available_sort_options, populated_gated_cols, unavailable_columns
 
     features = dict(VIEWER_CONFIG.get('features', {}))
@@ -1742,12 +1848,18 @@ def api_config(user: Optional[CurrentUser] = Depends(get_optional_user)):
         'moment_confidence_min': VIEWER_CONFIG.get('moment_confidence_min', 0),
         'notification_duration_ms': VIEWER_CONFIG.get('notification_duration_ms', 2000),
         'search_threshold_default': search_threshold_default(),
+        'place_search_enabled': bool(place_search_endpoint()),
         'translation_target_language': _FULL_CONFIG.get('translation', {}).get('target_language', ''),
         'is_multi_user': is_multi_user_enabled(),
         'edition_enabled': is_edition_enabled(),
         'edition_authenticated': is_edition_authenticated(user),
         'render_migration': _render_migration_status(),
     }
+    # The exact release and build tell a visitor which known issues apply, so a
+    # locked install names them only to a caller who can already read the library.
+    if user is not None and user.is_authenticated:
+        config['version'] = current_version()
+        config['build'] = build_label() or None
     try:
         config['face_merge_threshold'] = server_scoring_config().get_face_clustering_settings()['merge_threshold']
     except ValueError:

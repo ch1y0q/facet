@@ -108,6 +108,15 @@ def test_older_schema_omits_unsupported_scores_without_fabricated_nulls(
         ]
         cols = ",".join('"' + c + '"' for c in kept)
         conn.execute("CREATE TABLE photos_reduced AS SELECT " + cols + " FROM photos")
+        # This fixture models older photo columns, before history/edit receipts.
+        # Remove both modern trigger families before the table swap: preference
+        # triggers otherwise reference photos while it is temporarily absent.
+        triggers = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger' "
+            "AND (name GLOB 'organization_*' OR name GLOB 'metadata_review_*')"
+        ).fetchall()
+        for (name,) in triggers:
+            conn.execute('DROP TRIGGER "' + name.replace('"', '""') + '"')
         conn.execute("DROP TABLE photos")
         conn.execute("ALTER TABLE photos_reduced RENAME TO photos")
     kwargs = (

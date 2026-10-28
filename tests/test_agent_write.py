@@ -21,6 +21,9 @@ from api.agent.internal_client import ROUTE_ALLOWLIST
 from api.agent.tools_write import WRITE_TOOL_LEVELS
 from tests.conftest import _TEST_DB_FILE, AGENT_DIR, intercept_internal_call
 
+# Reads client, i18n or docs files: runs on every pull request (see ci.yml).
+pytestmark = pytest.mark.cross_file
+
 ROWS = [
     {"path": AGENT_DIR + f"w{i}.jpg", "filename": f"w{i}.jpg", "aggregate": 5.0 + i,
      "star_rating": 1, "is_favorite": 0, "is_rejected": 0} for i in range(4)
@@ -717,12 +720,18 @@ class TestExportMetadata:
     def test_more_than_100_paths_is_too_large(self, library):
         assert self.export(library, [f"/x/{i}.jpg" for i in range(101)])["error"] == "too_large"
 
-    def test_an_exiftool_refusal_is_reported_not_swallowed(self, library, monkeypatch):
+    def test_an_exiftool_refusal_is_reported_without_private_details(self, library, monkeypatch, caplog):
+        paths = [library.r1, library.k1]
+        before = [Path(path).read_bytes() for path in paths]
         def refuse(*args, **kwargs):
-            raise RuntimeError("exiftool 13.25 corrupts XMP sidecars (bug in 13.23-13.27)")
+            raise RuntimeError("exiftool 13.25 corrupts XMP sidecars (bug in 13.23-13.27) at /private/server/secret.jpg")
         monkeypatch.setattr("api.routers.export.write_metadata", refuse)
-        data = self.export(library, [library.r1, library.k1])["data"]
-        assert data["written"] == 0 and data["errors"] == 2 and "13.23-13.27" in data["first_error"]
+        data = self.export(library, paths)["data"]
+        assert (data["written"], data["errors"], data["skipped"]) == (0, 2, 0)
+        assert data["first_error"] == "Failed to write metadata; check server logs"
+        assert "/private/server/" not in json.dumps(data)
+        assert "13.23-13.27" in caplog.text
+        assert [Path(path).read_bytes() for path in paths] == before
 
     def test_the_call_uses_the_dedicated_timeout_not_call_timeout_s(self, library, monkeypatch):
         seen = {}
@@ -895,6 +904,48 @@ class TestSmartAlbumParity:
         if case not in ("type_top_picks", "empty"):
             assert 0 < page
 
+    @pytest.mark.parametrize("show_rejected", [True, False])
+    @pytest.mark.parametrize("review_status", [None, "kept", "undecided", "rejected"])
+    def test_rejected_filter_albums_preserve_boolean_shape_and_membership(
+            self, edition, seed_photos_prefix, album_cleanup, album_headers, show_rejected, review_status):
+        env, token = edition
+        prefix = ALBUM_DIR + "rejected-parity/"
+        seed_photos_prefix(prefix, [{"path": prefix + state + ".jpg", "filename": state + ".jpg",
+            "is_kept": int(state == "kept"), "is_rejected": int(state == "rejected")}
+            for state in ["undecided", "kept", "rejected"]])
+        filters = {"path_prefix": prefix, "show_rejected": show_rejected}
+        if review_status:
+            filters["review_status"] = review_status
+        created = env.call(token, "create_album", {"name": "rejected parity", "filters": filters})
+        assert created["ok"], created
+        data = created["data"]
+        album_cleanup.append(data["id"])
+        stored = json.loads(data["smart_filter_json"])
+        assert stored.get("show_rejected") is (True if show_rejected else None)
+        expected = [review_status] if review_status else (["rejected"] if show_rejected else ["kept", "undecided"])
+        assert data["photo_count"] == len(expected)
+        reopened = env.client.get(f"/api/albums/{data['id']}", headers=album_headers)
+        assert reopened.status_code == 200, reopened.text
+        assert json.loads(reopened.json()["smart_filter_json"]) == stored
+        members = env.client.get(f"/api/albums/{data['id']}/photos", headers=album_headers)
+        assert members.status_code == 200, members.text
+        # Album membership ignores viewer display hides; reopening the gallery applies them.
+        member_states = expected if show_rejected or review_status else ["kept", "undecided", "rejected"]
+        assert sorted(photo["path"] for photo in members.json()["photos"]) == sorted(prefix + state + ".jpg" for state in member_states)
+        from api.agent.album_filters import query_form
+        from api.agent.tools_read import _hide_defaults
+        page = env.client.get("/api/photos", params={**_hide_defaults({}), **query_form(stored)}, headers=album_headers)
+        assert page.status_code == 200, page.text
+        assert sorted(photo["path"] for photo in page.json()["photos"]) == sorted(prefix + state + ".jpg" for state in expected)
+
+    def test_conflicting_positive_filters_cannot_create_an_album_that_reopens_broader(self, edition, album_photos):
+        env, token = edition
+        before = db_row("SELECT COUNT(*) FROM albums")[0]
+        result = env.call(token, "create_album", {"name": "conflict", "filters": {
+            "show_rejected": True, "favorites_only": True}})
+        assert result["error"] == "invalid_input", result
+        assert db_row("SELECT COUNT(*) FROM albums")[0] == before
+
     def test_every_configured_category_agrees(self, edition, album_photos, album_cleanup, album_headers, monkeypatch):
         from api.types import TYPE_FILTERS
         monkeypatch.setattr(limits, "check_rate", lambda *args: (True, 0.0))  # ~70 calls, past the write window
@@ -942,7 +993,7 @@ class TestSmartAlbumParity:
 
     @pytest.mark.parametrize("filters", [
         {"exclude_tags": "x"}, {"require_tags": "x"}, {"is_silhouette": True}, {"junk_kind": "blurry"},
-        {"narrative_moment": "other"}, {"min_rating": 3}, {"min_aggregate": 5}, {"show_rejected": True},
+        {"narrative_moment": "other"}, {"min_rating": 3}, {"min_aggregate": 5},
         {"hide_bursts": False}, {"hide_rejected": True}, {"gps_lat": 1.0}, {"album_id": 5},
     ])
     def test_unsupported_filters_are_refused_and_create_nothing(self, edition, album_photos, filters):
@@ -1084,3 +1135,13 @@ class TestCreateAlbumFromPaths:
         assert body["ok"], body
         album_cleanup.append(body["data"]["id"])
         assert body["changed_paths"] == P[:2]
+
+
+def test_manual_review_filter_is_boolean_in_stored_album_and_in_query_contract():
+    from api.agent import album_filters
+    from api.agent.tools_common import MCP_FILTER_KEYS
+    assert 'manual_faces_need_review' in MCP_FILTER_KEYS
+    refusal, stored = album_filters.to_stored({'manual_faces_need_review': '1'})
+    assert refusal is None
+    assert stored == {'manual_faces_need_review': True}
+    assert album_filters.query_form(stored) == {'manual_faces_need_review': '1'}

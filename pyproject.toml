@@ -7,17 +7,18 @@
 # non-ASCII filenames — so this floor keeps the build path patched rather than
 # incidentally safe, in case an `exclude` is ever added.
 #
-# This is deliberately NOT the same pin as the RUNTIME one. `requirements.txt`
-# caps setuptools <81 because pyiqa's LIQE/CLIPIQA reach PyPI `openai-clip`,
-# whose `clip/clip.py` still does `from pkg_resources import packaging`, and
-# setuptools 81 removed pkg_resources. PEP 517 build isolation resolves this
+# This is deliberately NOT the same pin as the RUNTIME one.
+# `requirements.restricted.txt` and the restricted lock files cap setuptools
+# <82 because pyiqa's LIQE/CLIPIQA reach PyPI `openai-clip`, whose
+# `clip/clip.py` still does `from pkg_resources import packaging`, and
+# setuptools 82 removed pkg_resources. PEP 517 build isolation resolves this
 # list separately from the installed environment, so the two do not conflict.
 requires = ["setuptools>=83.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "facet-photo"
-version = "1.23.1"
+version = "1.25.0"
 description = "AI-powered photo analysis and gallery — score, cull, organise, and explore your photo library with computer vision and face recognition"
 readme = "README.md"
 license = "MIT"
@@ -73,7 +74,7 @@ dependencies = [
     # and Pillow cannot decode JPEG XL, so utils.image_loading reads the
     # preview through tifffile, which decodes JPEG XL tiles via imagecodecs.
     "tifffile>=2024.1.1",
-    "imagecodecs>=2024.1.1",
+    "imagecodecs>=2024.1.1",  # also backs the standalone JPEG XL Pillow opener
     "numpy>=1.24.0",
     "scipy>=1.10.0",
     "hdbscan>=0.8.40",
@@ -158,10 +159,10 @@ faces-insightface = [
 ]
 iqa = [
     # RESTRICTED: pyiqa model weights (TOPIQ, LIQE, ...) carry
-    # non-commercial terms. setuptools<81 is here, not in the base set, because
-    # pyiqa's PyPI openai-clip imports pkg_resources (removed in setuptools 81).
+    # non-commercial terms. setuptools<82 is here, not in the base set, because
+    # pyiqa's PyPI openai-clip imports pkg_resources (removed in setuptools 82).
     "pyiqa>=0.1.16",
-    "setuptools<81",
+    "setuptools<82",
 ]
 commercial = [
     # Runtime deps of mediapipe, declared WITHOUT mediapipe itself: mediapipe must
@@ -197,6 +198,7 @@ filterwarnings = [
     "ignore::DeprecationWarning:pkg_resources",
 ]
 markers = [
+    "cross_file: checks a client, i18n or docs file against the server; the only Python tests a pull request touching nothing else runs",
     "raw_brand_samples: real-file coverage for non-Canon RAW brands (decodes 20-30MB fixtures; skips cleanly when fixtures are absent)",
 ]
 
@@ -246,6 +248,7 @@ exclude = ["venv*", "client*", "docs*", "photos_all*", "pretrained_models*"]
 [tool.setuptools.package-data]
 "*" = ["*.json"]
 "i18n" = ["*.json"]
+"processing" = ["facet_exiftool.config"]
 # Pre-built Angular client included in package
 "api" = ["../client/dist/client/browser/**/*"]
 

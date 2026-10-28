@@ -27,6 +27,7 @@ export interface CullingPhoto {
   cull_reason?: CullReason;
   /** The viewing user's own state (per-user in multi-user mode), 0/1 straight from SQLite. */
   is_rejected?: number | null;
+  is_kept?: number | null;
   is_favorite?: number | null;
   star_rating?: number | null;
   /** Set when the frame belongs to a deliberate multi-frame sequence ('bracket'). */
@@ -504,6 +505,7 @@ export class CullGroupIconPipe implements PipeTransform {
 @Pipe({ name: 'cullGroupLabel' })
 export class CullGroupLabelPipe implements PipeTransform {
   private static readonly KEYS: Record<string, string> = {
+    all: 'culling.group_by.all',
     burst: 'culling.group_by.bursts',
     similar: 'culling.group_by.similar',
     scene: 'culling.group_by.scenes',

@@ -22,6 +22,13 @@ export const GALLERY_MODE_KEY = 'facet_gallery_mode';
 export const DRAWER_STATE_KEY = 'facet_filter_drawer_open';
 export const DISPLAY_OPTIONS_KEY = 'facet_display_options';
 export const CARD_WIDTH_KEY = 'facet_card_width';
+/** The gallery's last synced query, for the nav-icon return from another page:
+ *  sessionStorage, so it survives tab-wide navigation but not a new session. */
+export const GALLERY_SESSION_QUERY_KEY = 'facet_gallery_session_query';
+/** The last sort the user picked, remembered across visits (localStorage):
+ *  a fresh landing sorts by what you used last, not the viewer default. The
+ *  URL always wins — a shared or bookmarked link means what it says. */
+export const LAST_SORT_KEY = 'facet_last_sort';
 
 export interface GalleryFilters {
   page: number;
@@ -169,9 +176,18 @@ export interface GalleryFilters {
   hide_duplicates: boolean;
   hide_brackets: boolean;
   hide_panoramas: boolean;
+  review_status: '' | 'undecided' | 'kept' | 'rejected';
   hide_rejected: boolean;
   favorites_only: boolean;
+  // Positive "only X" filters, the counterpart of the hide toggles above.
+  // duplicates_only keeps every member of a duplicate group, leads included;
+  // the server suppresses the hide toggles while either of the two is set.
+  show_rejected: boolean;
+  blinks_only: boolean;
+  duplicates_only: boolean;
   is_monochrome: boolean;
+  manual_faces_need_review: boolean;
+  faces_need_names: boolean;
   search: string;
   // Color facet (opt-in extraction; always-on filter)
   color_temp: string;   // warm | cool | neutral
@@ -281,15 +297,66 @@ export function applySavedAlbumFilters(current: GalleryFilters, savedJson: strin
  *  `hide_rejected` and list fewer photos than it holds). */
 export function exclusiveHidePatch(updates: Partial<GalleryFilters>): Partial<GalleryFilters> {
   const patch: Partial<GalleryFilters> = {};
-  if (updates.hide_rejected) patch.favorites_only = false;
-  if (updates.favorites_only) patch.hide_rejected = false;
+  if (updates.hide_rejected) {
+    patch.favorites_only = false;
+    patch.show_rejected = false;
+  }
+  if (updates.favorites_only) {
+    patch.hide_rejected = false;
+    patch.show_rejected = false;
+  }
+  // "Only rejected" is the inverse reading of "hide rejected": the two never
+  // hold together, and neither does a favourites-only view of rejects.
+  if (updates.show_rejected) {
+    patch.hide_rejected = false;
+    patch.favorites_only = false;
+  }
+  return patch;
+}
+
+/** The review-status rules every filter write applies: a review status and a semantic/similar
+ *  query are mutually exclusive (the one just set wins), and entering "undecided" sorts oldest
+ *  first so the queue reads in shooting order. Shared by `updateFilter`, `updateFilters` and
+ *  `applyQueryParams`; the last passes `withSort = false` because a URL carries its own sort. */
+export function reviewStatusPatch(updates: Partial<GalleryFilters>, withSort = true): Partial<GalleryFilters> {
+  const patch: Partial<GalleryFilters> = {};
+  // "Only rejected" releases every hide toggle server-side, and its checkbox is disabled while a
+  // review status is set, so a stale one would flood the queue with set members nobody can hide.
+  if (updates.review_status) { patch.similar_to = ''; patch.semanticQuery = ''; patch.show_rejected = false; }
+  else if (updates.semanticQuery || updates.similar_to) patch.review_status = '';
+  if (withSort && updates.review_status === 'undecided') { patch.sort = 'date_taken'; patch.sort_direction = 'ASC'; }
+  return patch;
+}
+
+/** The filters that scope the gallery to one photo set, clearing any other set scope first (a
+ *  photo can belong to a burst AND a duplicate group at once, and only one scope can be active)
+ *  and releasing the hide toggle that would collapse the set's members. `sequenceKind` is the
+ *  `(sequence_kind, sequence_group_id)` kind for bracket / panorama / hdr_panorama. */
+export function setScopePatch(
+  kind: 'burst' | 'duplicate' | 'sequence', groupId: string, sequenceKind = '',
+): Partial<GalleryFilters> {
+  const patch: Partial<GalleryFilters> = {
+    sequence_group_id: '', sequence_kind: '', burst_group_id: '', duplicate_group_id: '',
+  };
+  if (kind === 'burst') {
+    patch.burst_group_id = groupId;
+    patch.hide_bursts = false;
+  } else if (kind === 'duplicate') {
+    patch.duplicate_group_id = groupId;
+    patch.hide_duplicates = false;
+  } else {
+    patch.sequence_kind = sequenceKind;
+    patch.sequence_group_id = groupId;
+    if (sequenceKind === 'bracket') patch.hide_brackets = false;
+    else patch.hide_panoramas = false;
+  }
   return patch;
 }
 
 /** Common string-typed filter keys shared across URL sync, API params, and filter counting. */
 export const RANGE_AND_SELECT_KEYS: (keyof GalleryFilters)[] = [
   'type', 'camera', 'lens', 'tag', 'person_id', 'composition_pattern', 'search',
-  'color_temp', 'hue_bucket', 'quality_tier', 'sequence_override',
+  'color_temp', 'hue_bucket', 'quality_tier', 'sequence_override', 'review_status',
   'min_score', 'max_score', 'min_aesthetic', 'max_aesthetic',
   'min_quality_score', 'max_quality_score', 'min_topiq', 'max_topiq',
   'min_face_quality', 'max_face_quality', 'min_composition', 'max_composition',
@@ -428,16 +495,22 @@ export const DEFAULT_FILTERS: GalleryFilters = {
   similarity_mode: 'visual',
   min_similarity: '70',
   hide_details: true,
-  tooltip_mode: 'hover',
+  tooltip_mode: 'panel',
   panel_activation: 'both',
   hide_blinks: true,
   hide_bursts: true,
   hide_duplicates: true,
   hide_brackets: true,
   hide_panoramas: true,
+  review_status: '',
   hide_rejected: true,
   favorites_only: false,
+  show_rejected: false,
+  blinks_only: false,
+  duplicates_only: false,
   is_monochrome: false,
+  manual_faces_need_review: false,
+  faces_need_names: false,
   search: '',
   color_temp: '',
   hue_bucket: '',
@@ -471,16 +544,19 @@ export function saveDisplayOptionsToStorage(filters: GalleryFilters): void {
   } catch { /* ignore */ }
 }
 
+/** The keys of the active (non-default) filters, in a stable order. */
+export function activeFilterKeys(f: GalleryFilters): (keyof GalleryFilters)[] {
+  const stringKeys: (keyof GalleryFilters)[] = [...RANGE_AND_SELECT_KEYS, 'similar_to', 'semanticQuery'];
+  const flagKeys: (keyof GalleryFilters)[] = [
+    'favorites_only', 'show_rejected', 'blinks_only', 'duplicates_only', 'is_monochrome',
+    'manual_faces_need_review', 'faces_need_names',
+  ];
+  return [...stringKeys, ...flagKeys].filter(key => !!f[key]);
+}
+
 /** Count the number of active (non-default) filters for the badge. */
 export function countActiveFilters(f: GalleryFilters): number {
-  let count = 0;
-  const stringKeys: (keyof GalleryFilters)[] = [...RANGE_AND_SELECT_KEYS, 'similar_to', 'semanticQuery'];
-  for (const key of stringKeys) {
-    if (f[key]) count++;
-  }
-  if (f.favorites_only) count++;
-  if (f.is_monochrome) count++;
-  return count;
+  return activeFilterKeys(f).length;
 }
 
 /** Apply URL query params over a base filter state. */
@@ -497,6 +573,8 @@ export function applyQueryParams(
   for (const key of stringKeys) {
     if (params[key]) (result as Record<string, unknown>)[key] = params[key];
   }
+  if (!['', 'undecided', 'kept', 'rejected'].includes(result.review_status)) result.review_status = '';
+  if (result.review_status) Object.assign(result, reviewStatusPatch(result, false));
   result.no_gps = ['1', 'true'].includes(result.no_gps) ? '1' : '';
   if (result.no_gps) {
     result.gps_lat = ''; result.gps_lng = ''; result.gps_radius_km = '';
@@ -537,7 +615,13 @@ export function applyQueryParams(
     result.hide_panoramas = params['hide_panoramas'] !== 'false';
   if (params['hide_rejected'] !== undefined) result.hide_rejected = params['hide_rejected'] !== 'false';
   if (params['favorites_only'] !== undefined) result.favorites_only = params['favorites_only'] === 'true';
+  if (params['show_rejected'] !== undefined) result.show_rejected = params['show_rejected'] === 'true';
+  if (result.review_status) result.show_rejected = false; // the URL's flag lands after reviewStatusPatch above
+  if (params['blinks_only'] !== undefined) result.blinks_only = params['blinks_only'] === 'true';
+  if (params['duplicates_only'] !== undefined) result.duplicates_only = params['duplicates_only'] === 'true';
   if (params['is_monochrome'] !== undefined) result.is_monochrome = params['is_monochrome'] === 'true';
+  if (params['manual_faces_need_review'] !== undefined) result.manual_faces_need_review = params['manual_faces_need_review'] === 'true';
+  if (params['faces_need_names'] !== undefined) result.faces_need_names = params['faces_need_names'] === 'true';
   if (params['tooltip_mode'] && TOOLTIP_MODES.includes(params['tooltip_mode'] as TooltipMode)) {
     result.tooltip_mode = params['tooltip_mode'] as TooltipMode;
   }
@@ -548,18 +632,19 @@ export function applyQueryParams(
   return result;
 }
 
-/** Build the query-param map for URL sync — only values that differ from defaults. */
+/** Build the query-param map for URL sync — only values that differ from defaults, plus the sort, which is always written. */
 export function buildSyncParams(
   f: GalleryFilters,
   defaults: FilterDefaults | undefined,
   searchThresholdDefault?: number | null,
 ): Record<string, string> {
   const params: Record<string, string> = {};
-  // A semantic query implies Relevance (DESC), so that is the sort left unwritten while one is set;
-  // any other sort is written even when it equals the viewer default, or the link would reload as Relevance.
-  const impliedSort = f.semanticQuery ? RELEVANCE_SORT : (defaults?.sort ?? 'aggregate');
+  // A semantic query implies Relevance (DESC), so that is the only sort left unwritten. Every other
+  // sort is written even when it equals the viewer default: a URL without one falls back to the
+  // browser's remembered sort (see GalleryStore.loadConfig), so an unwritten default would reopen a
+  // link, bookmark or reload on whatever sort the opening browser last picked.
   const impliedDirection = f.semanticQuery ? 'DESC' : (defaults?.sort_direction ?? 'DESC');
-  if (f.sort !== impliedSort) params['sort'] = f.sort;
+  if (!(f.semanticQuery && f.sort === RELEVANCE_SORT)) params['sort'] = f.sort;
   if (f.sort_direction !== impliedDirection)
     params['sort_direction'] = f.sort_direction;
 
@@ -591,12 +676,17 @@ export function buildSyncParams(
     params['hide_panoramas'] = String(f.hide_panoramas);
   if (f.hide_rejected !== (defaults?.hide_rejected ?? true))
     params['hide_rejected'] = String(f.hide_rejected);
-  if (f.tooltip_mode !== (defaults?.tooltip_mode ?? 'hover'))
+  if (f.tooltip_mode !== (defaults?.tooltip_mode ?? 'panel'))
     params['tooltip_mode'] = f.tooltip_mode;
   if (f.panel_activation !== (defaults?.panel_activation ?? 'both'))
     params['panel_activation'] = f.panel_activation;
   if (f.favorites_only) params['favorites_only'] = 'true';
+  if (f.show_rejected) params['show_rejected'] = 'true';
+  if (f.blinks_only) params['blinks_only'] = 'true';
+  if (f.duplicates_only) params['duplicates_only'] = 'true';
   if (f.is_monochrome) params['is_monochrome'] = 'true';
+  if (f.manual_faces_need_review) params['manual_faces_need_review'] = 'true';
+  if (f.faces_need_names) params['faces_need_names'] = 'true';
 
   return params;
 }
@@ -627,9 +717,14 @@ export function buildApiParams(
   if (f.hide_duplicates) params['hide_duplicates'] = true;
   if (f.hide_brackets) params['hide_brackets'] = true;
   if (f.hide_panoramas) params['hide_panoramas'] = true;
-  if (f.hide_rejected) params['hide_rejected'] = true;
+  if (f.hide_rejected && !f.review_status) params['hide_rejected'] = true;
   if (f.favorites_only) params['favorites_only'] = '1';
+  if (f.show_rejected) params['show_rejected'] = '1';
+  if (f.blinks_only) params['blinks_only'] = '1';
+  if (f.duplicates_only) params['duplicates_only'] = '1';
   if (f.is_monochrome) params['is_monochrome'] = '1';
+  if (f.manual_faces_need_review) params['manual_faces_need_review'] = '1';
+  if (f.faces_need_names) params['faces_need_names'] = '1';
 
   // Semantic search is a filter of `GET /photos`. The threshold travels only when
   // the slider left the server's seed, so the server resolves its own calibrated

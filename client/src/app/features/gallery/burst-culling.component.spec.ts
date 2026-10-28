@@ -5,6 +5,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Subject, of, throwError } from 'rxjs';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatDialog } from '@angular/material/dialog';
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { ApiService } from '../../core/services/api.service';
@@ -16,6 +17,7 @@ import { UserActivityJournal } from '../../core/agent/user-activity-journal.serv
 import { PageContextService } from '../../core/agent/page-context.service';
 import { AssistantCullPlanService } from '../../core/agent/assistant-cull-plan.service';
 import { BurstCullingComponent } from './burst-culling.component';
+import { CullDialogComponent } from './cull-dialog.component';
 import { AssistantChangesService, AssistantChangeBatch } from '../../core/agent/assistant-changes.service';
 import { SyncedZoomComponent, LoadedSources, SHARP_PRELOAD_DEBOUNCE_MS } from './synced-zoom.component';
 import { ThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
@@ -2872,8 +2874,9 @@ describe('BurstCullingComponent', () => {
       rendered['lightboxIndex'].set(0);
       rendered['peakingActive'].set(true);
       rendered['gridMode'].set('thirds');
-      rendered['sharpPath'].set('/f1.jpg');
-
+      fixture.detectChanges();
+      const pane = fixture.debugElement.query(By.directive(SyncedZoomComponent)).componentInstance as SyncedZoomComponent;
+      pane.sharpLoaded.emit(pane.src());
       fixture.detectChanges();
       await flush();
       await new Promise(resolve => setTimeout(resolve, SHARP_PRELOAD_DEBOUNCE_MS + 50));
@@ -3283,6 +3286,98 @@ describe('BurstCullingComponent modals (rendered)', () => {
     Element.prototype.scrollIntoView = scrollIntoView;
   });
 
+  it('opens the all-rejects preview from the toolbar without applying it', async () => {
+    vi.spyOn(TestBed.inject(GalleryStore), 'config').mockReturnValue({ cull: { trash_available: true } } as any);
+    fixture.detectChanges();
+    const button = fixture.debugElement.query(By.css('button[aria-label="cull.trash_all_rejects"]'));
+    expect(button).toBeTruthy();
+    const open = vi.spyOn(TestBed.inject(MatDialog), 'open').mockReturnValue({} as any);
+    const post = TestBed.inject(ApiService).post as Mock;
+    post.mockClear();
+    (button.nativeElement as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+    expect(open.mock.calls[0][1]?.data).toEqual({
+      paths: [], trashAvailable: true, action: 'trash_rejects', allRejects: true,
+      filters: {
+        show_rejected: '1', type: '', hide_blinks: 'false', hide_bursts: 'false',
+        hide_duplicates: 'false', hide_brackets: 'false', hide_panoramas: 'false',
+      },
+    });
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it.each(['identity', 'permission', 'availability', 'navigation', 'destroy'])(
+    'does not open a stale trash preview after %s changes during lazy import', async change => {
+      const config = vi.spyOn(TestBed.inject(GalleryStore), 'config')
+        .mockReturnValue({ cull: { trash_available: true } } as any);
+      const auth = TestBed.inject(AuthService);
+      const owner = vi.spyOn(auth, 'identity').mockReturnValue('alice');
+      const open = vi.spyOn(TestBed.inject(MatDialog), 'open').mockReturnValue({} as any);
+      const pending = (component as unknown as { openTrashRejects(): Promise<void> }).openTrashRejects();
+      if (change === 'identity') owner.mockReturnValue('bob');
+      else if (change === 'permission') vi.spyOn(auth, 'isEdition').mockReturnValue(false);
+      else if (change === 'availability') config.mockReturnValue({ cull: { trash_available: false } } as any);
+      else if (change === 'navigation') await TestBed.inject(Router).navigateByUrl('/?elsewhere=1');
+      else fixture.destroy();
+      await pending;
+      expect(open).not.toHaveBeenCalled();
+    },
+  );
+
+  it('coalesces repeated trash clicks while the lazy dialog loads', async () => {
+    vi.spyOn(TestBed.inject(GalleryStore), 'config').mockReturnValue({ cull: { trash_available: true } } as any);
+    const open = vi.spyOn(TestBed.inject(MatDialog), 'open').mockReturnValue({} as any);
+    const launch = component as unknown as { openTrashRejects(): Promise<void> };
+    await Promise.all([launch.openTrashRejects(), launch.openTrashRejects()]);
+    expect(open).toHaveBeenCalledOnce();
+  });
+
+  it.each([false, undefined])('hides trash rejects when trash availability is %s', available => {
+    vi.spyOn(TestBed.inject(GalleryStore), 'config').mockReturnValue({ cull: { trash_available: available } } as any);
+    fixture.detectChanges();
+    expect(fixture.debugElement.query(By.css('button[aria-label="cull.trash_all_rejects"]'))).toBeNull();
+  });
+
+  it('hides trash rejects in read-only mode', () => {
+    vi.spyOn(TestBed.inject(GalleryStore), 'config').mockReturnValue({ cull: { trash_available: true } } as any);
+    vi.spyOn(TestBed.inject(AuthService), 'isEdition').mockReturnValue(false);
+    fixture.detectChanges();
+    expect(fixture.debugElement.query(By.css('button[aria-label="cull.trash_all_rejects"]'))).toBeNull();
+  });
+
+  it('does not let an already-handled Escape close the underlying darkroom', () => {
+    openDarkroom();
+    const group = component.lightboxGroup();
+    const event = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true });
+    event.preventDefault();
+    document.dispatchEvent(event);
+    expect(component.lightboxGroup()).toBe(group);
+  });
+
+  it('keeps modal keyboard events out of the darkroom and Escape closes only the modal', async () => {
+    openDarkroom();
+    const group = component.lightboxGroup();
+    const selections = new Map(store.selectionsMap());
+    const ref = TestBed.inject(MatDialog).open(CullDialogComponent, {
+      data: { paths: [], filters: { show_rejected: '1' }, trashAvailable: true, action: 'trash_rejects' },
+    });
+    await fixture.whenStable();
+    const heading = document.querySelector('mat-dialog-container h2')!;
+    expect(heading).toBeTruthy();
+    for (const key of ['ArrowUp', 'ArrowDown', 'ArrowRight', 'ArrowLeft', ' ', 'Enter', 'z', 'p', 'g', 'f']) {
+      heading.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    }
+    expect(component.lightboxGroup()).toBe(group);
+    expect(component.lightboxIndex()).toBe(0);
+    expect(store.selectionsMap()).toEqual(selections);
+    expect(store.confirmedGroups().size).toBe(0);
+    heading.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+    await fixture.whenStable();
+    expect(ref.getState()).not.toBe(0);
+    expect(component.lightboxGroup()).toBe(group);
+    ref.close();
+  });
+
   const autoCullDialog = () =>
     fixture.debugElement.query(By.css('[aria-labelledby="autoCullTitle"]'));
 
@@ -3330,6 +3425,27 @@ describe('BurstCullingComponent modals (rendered)', () => {
     }]);
     fixture.detectChanges();
     expect(fixture.debugElement.queryAll(By.css('[data-testid="reject-marker"]'))).toHaveLength(1);
+  });
+
+  it('shows only Rejected for a legacy photo with conflicting review flags', () => {
+    store.groups.set([{
+      group_id: 1, type: 'burst', reason: '', best_path: '/p1.jpg', count: 2,
+      photos: [{ ...photo('/p1.jpg'), is_kept: 1, is_rejected: 1 }, photo('/p2.jpg')],
+    }]);
+    fixture.detectChanges();
+    expect(fixture.debugElement.queryAll(By.css('[data-testid="kept-marker"]'))).toHaveLength(0);
+    expect(fixture.debugElement.queryAll(By.css('[data-testid="reject-marker"]'))).toHaveLength(1);
+  });
+
+  it('shows a persisted Keep marker independently of the pending culling selection', () => {
+    store.groups.set([{
+      group_id: 1, type: 'burst', reason: '', best_path: '/p1.jpg', count: 2,
+      photos: [{ ...photo('/p1.jpg'), is_kept: 1 }, photo('/p2.jpg')],
+    }]);
+    fixture.detectChanges();
+    const markers = fixture.debugElement.queryAll(By.css('[data-testid="kept-marker"]'));
+    expect(markers).toHaveLength(1);
+    expect(markers[0].nativeElement.textContent).toContain('review.kept');
   });
 
   it('closes the auto-cull dialog on Escape despite its keydown shield', () => {
@@ -4064,7 +4180,7 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
     fixture.detectChanges();
     expect(srcs().filter(u => u.includes('size=1920'))).toEqual([render('/p1.jpg')]);
 
-    FakeImage.instances = [];
+    // The same neighbor is still wanted at the other end; reuse its request.
     component['lightboxIndex'].set(2);
     fixture.detectChanges();
     component['onSharpLoaded'](render('/p2.jpg'));
@@ -4174,6 +4290,118 @@ describe('BurstCullingComponent progressive darkroom frames (rendered)', () => {
     expect(srcs().filter(u => u.includes('path=%2Fp2.jpg'))).toEqual([]);
   });
 
+  it('keeps a synchronous warm render success after the pending notification on a cached revisit', () => {
+    class WarmImage extends FakeImage {
+      complete = true;
+      naturalWidth = 640;
+    }
+    vi.stubGlobal('Image', WarmImage);
+    component['loadedRenders'].add(render('/p0.jpg'));
+    open(0);
+    expect(component['sharpPath']()).toBe('/p0.jpg');
+    open(1);
+    open(0);
+    expect(component['sharpPath']()).toBe('/p0.jpg');
+    expect(component['failedRenderPaths']().size).toBe(0);
+  });
+
+  it.each(['loaded', 'failed'])('clears %s readiness when returning to a frame whose new render attempt is pending', async state => {
+    const renderPeaking = vi.spyOn(component as any, 'renderPeaking').mockResolvedValue('overlay');
+    open(0);
+    if (state === 'loaded') {
+      pane().sharpLoaded.emit(render('/p0.jpg'));
+      component['loadedRenders'].add(render('/p0.jpg'));
+    } else {
+      pane().sharpFailed.emit(render('/p0.jpg'));
+    }
+    fixture.detectChanges();
+    open(1); // Its render remains pending: no load/failure output.
+    open(0); // A previous URL hint must not restore the previous attempt's readiness.
+    component['peakingActive'].set(true);
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(component['sharpPath']()).toBeNull();
+    expect(component['failedRenderPaths']().size).toBe(0);
+    expect(renderPeaking).not.toHaveBeenCalled();
+    // Positive control: the new attempt's own success does restore readiness and peaking.
+    pane().sharpLoaded.emit(render('/p0.jpg'));
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(component['sharpPath']()).toBe('/p0.jpg');
+    expect(renderPeaking).toHaveBeenCalled();
+  });
+
+  it('uses the visible stored thumbnail for peaking when the current render fails', async () => {
+    const renderPeaking = vi.spyOn(component as any, 'renderPeaking').mockResolvedValue('overlay');
+    open(1);
+    component['peakingActive'].set(true);
+    fixture.detectChanges();
+    const pane = fixture.debugElement.query(By.directive(SyncedZoomComponent)).componentInstance as SyncedZoomComponent;
+    pane.sharpFailed.emit(render('/p1.jpg'));
+    fixture.detectChanges();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(renderPeaking).toHaveBeenCalledWith(thumb('/p1.jpg'), expect.any(Number));
+    expect(component['sharpPath']()).toBeNull();
+    expect(srcs().filter(u => u === render('/p0.jpg') || u === render('/p2.jpg'))).toEqual([]);
+  });
+
+  it('uses each compare pane’s current render attempt after a single-view failure', async () => {
+    const pooled = vi.spyOn(component, 'renderPooledPeaking').mockImplementation(async (...args: unknown[]) =>
+      new Map((args[0] as string[]).map(src => [src, `overlay:${src}`])));
+    open(1);
+    pane().sharpFailed.emit(render('/p1.jpg'));
+    fixture.detectChanges();
+    component['setCompareMode']('2up');
+    component['peakingActive'].set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const panes = fixture.debugElement.queryAll(By.directive(SyncedZoomComponent))
+      .map(debug => debug.componentInstance as SyncedZoomComponent);
+    expect(panes.map(p => p.frameKey())).toEqual(['/p1.jpg', '/p2.jpg']);
+    panes[0].sharpLoaded.emit(render('/p1.jpg'));
+    panes[1].sharpFailed.emit(render('/p2.jpg'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(pooled).toHaveBeenLastCalledWith([render('/p1.jpg'), thumb('/p2.jpg')], expect.any(Number));
+    expect(component['peakingOverlays']().get('/p2.jpg')).toBe(`overlay:${thumb('/p2.jpg')}`);
+
+    // Obsolete/wrong-source events and an unchanged success must leave the pool alone.
+    const calls = pooled.mock.calls.length;
+    component['onSharpFailed'](render('/p0.jpg'), '/p0.jpg');
+    panes[1].sharpLoaded.emit(thumb('/p2.jpg'));
+    panes[0].sharpLoaded.emit(render('/p1.jpg'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(pooled).toHaveBeenCalledTimes(calls);
+    expect([...component['failedRenderPaths']()]).toEqual(['/p2.jpg']);
+
+    component['setCompareMode']('4up');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(pooled).toHaveBeenLastCalledWith([render('/p0.jpg'), render('/p1.jpg'), thumb('/p2.jpg')], expect.any(Number));
+    component['setCompareMode']('2up');
+    fixture.detectChanges();
+
+    // Retry only the second pane. Its old fallback must not survive success.
+    panes[1].sharpPending.emit(render('/p2.jpg'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(pooled).toHaveBeenLastCalledWith([render('/p1.jpg'), render('/p2.jpg')], expect.any(Number));
+    panes[1].sharpLoaded.emit(render('/p2.jpg'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(pooled).toHaveBeenLastCalledWith([render('/p1.jpg'), render('/p2.jpg')], expect.any(Number));
+
+    component['setCompareMode']('single');
+    fixture.detectChanges();
+    pane().sharpFailed.emit(render('/p1.jpg'));
+    fixture.detectChanges();
+    component['setCompareMode']('4up');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(pooled).toHaveBeenLastCalledWith(group.photos.map(p => render(p.path)), expect.any(Number));
+  });
+
   it('waits for the sharp render before building the peaking overlay in single view', async () => {
     const renderPeaking = vi.spyOn(component as any, 'renderPeaking').mockResolvedValue('overlay');
     open(1);
@@ -4257,13 +4485,44 @@ describe('BurstCullingComponent date range', () => {
 
   it('lights the button and names the window dd/MM/yyyy when the URL carries one', () => {
     mount({ from: '2026-07-01', to: '2026-07-31' });
-    expect(dateButton()!.getAttribute('aria-label')).toBe('01/07/2026 - 31/07/2026');
+    expect(dateButton()!.getAttribute('aria-label')).toBe('culling.date_range.label: 01/07/2026 - 31/07/2026');
+    expect(dateButton()!.getAttribute('aria-label')).toContain(dateButton()!.querySelector('span.text-sm')!.textContent!.trim());
     expect(dateButton()!.className).toContain('text-[var(--mat-sys-primary)]');
   });
 
   it('reads the EXIF form of a plan\'s window too', () => {
     mount({ from: '2026:07:01 00:00:00', to: '2026:07:31 23:59:59' });
-    expect(dateButton()!.getAttribute('aria-label')).toBe('01/07/2026 - 31/07/2026');
+    expect(dateButton()!.getAttribute('aria-label')).toBe('culling.date_range.label: 01/07/2026 - 31/07/2026');
+    expect(dateButton()!.getAttribute('aria-label')).toContain(dateButton()!.querySelector('span.text-sm')!.textContent!.trim());
+  });
+
+  it('keeps the visible date label when a dated scope is cleared', async () => {
+    mount({ from: '2026-07-01', to: '2026-07-31' });
+    component['onDateRange'](null, null);
+    await settle();
+    expect(dateButton()!.getAttribute('aria-label')).toBe(dateButton()!.querySelector('span.text-sm')!.textContent!.trim());
+  });
+
+  it('shows the live window as the visible date label, and the plain label once cleared', async () => {
+    mount({ from: '2026-07-01', to: '2026-07-31' });
+    const visible = (): string => dateButton()!.querySelector('span.text-sm')!.textContent!.trim();
+    expect(visible()).toBe('01/07/2026 - 31/07/2026');
+    component['onDateRange'](null, null);
+    await settle();
+    expect(visible()).toBe('culling.date_range.label');
+  });
+
+  it('shows the live grouping as the visible group-by label', async () => {
+    mount();
+    const groupButton = (): HTMLElement => fixture.nativeElement.querySelector('button[data-testid="cull-group-by"]');
+    const visible = (): string => groupButton().querySelector('span.text-sm')!.textContent!.trim();
+    cull.groupBy.set('all');
+    await settle();
+    expect(visible()).toBe('culling.group_by.all');
+    cull.groupBy.set('burst');
+    await settle();
+    expect(visible()).toBe('culling.group_by.bursts');
+    expect(groupButton().getAttribute('aria-label')).toBe('culling.group_by.label: culling.group_by.bursts');
   });
 
   it('a preset reloads the feed over the window and mirrors the whole scope into the URL, keeping group_by', async () => {

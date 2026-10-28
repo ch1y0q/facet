@@ -77,18 +77,26 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --export-manifest --user alice` | 多用户模式：把 Alice 的 `user_preferences` 评分导出到清单，而不是全局列（标签和评分仍为全局） |
 | `python facet.py --import-lightroom 文件` | 导入增效工具导出的 Lightroom 星级／留用／淘汰状态（`facet_lightroom_state.json`，见 docs/INTEROP.md 中的 [Lightroom → Facet](INTEROP.md#lightroom--facet)）—— 文件携带的每个字段都由 Lightroom 说了算。打印 `matched=… unmatched=… changed=…` |
 | `python facet.py --import-lightroom 文件 --user alice` | 多用户模式：写入 Alice 的 `user_preferences` 行，而不是全局列；在多用户安装上**必须**指定 —— 否则会被拒绝，以免导入静默落到错误的范围 |
-| `python facet.py --import-sidecars` | 把 `<image>.xmp` 附属文件中的评分／标记／标签导回数据库（全部照片）；Facet 尚未拥有的关键字会成为[手动标签](INTEROP.md#手动标签与-xmp-关键字) |
+| `python facet.py --import-sidecars` | 把 `<image.ext>.xmp` / `<image.ext>.facet.xmp` 附属文件中的评分、标记、保留／淘汰决定、手动 GPS 和关键字导回数据库（全部照片）；仅含 Facet 决定（保留、淘汰或未决定）、没有标准评分或标记的附属文件，不与扫描时间比较（本地编辑凭据检查仍适用）；Facet 尚未拥有的关键字会成为[手动标签](INTEROP.md#手动标签与-xmp-关键字) |
 | `python facet.py --import-sidecars /path` | 仅导入某个路径子树下照片的附属文件 |
-| `python facet.py --import-sidecars --user alice` | 多用户模式：把评分导入 Alice 的 `user_preferences`，而不是全局列（关键词仍为全局） |
+| `python facet.py --import-sidecars /path --dry-run` | 只读预览所选文件、前后值、来源和跳过原因；不迁移数据库。 |
+| `python facet.py --import-sidecars /path --sidecar-fields keywords,gps` | 仅导入列出的字段组：`review`（星级、收藏、淘汰和保留一并处理）、`gps`、`keywords`；未列出的组保持不变（默认三组全部导入） |
+| `python facet.py --import-sidecars /path --overwrite-sidecar-review` | 即使存在较新的本地编辑（`newer_local_edit`）或扫描时间检查会阻止，也应用审核字段；请先用 `--dry-run` 查看 |
+| `python facet.py --import-sidecars --user alice` | 多用户模式：把评分和保留／淘汰决定导入 Alice 的 `user_preferences`，而不是全局列，且仅限 Alice 可见的照片（关键字和 GPS 仍为全局） |
+| `python facet.py --import-sidecars --sidecar-naming full` | 读取完整名称的主文件或回退文件（默认）；优先较新修改时间，相同时优先主文件 |
+| `python facet.py --import-sidecars --sidecar-naming basename` | 去掉图像扩展名后读取 `<image>.xmp`；拒绝共享基本名 |
+| `python facet.py --import-sidecars --sidecar-naming auto` | 接受单一命名系列；两种系列同时存在时跳过并报告歧义 |
+| `python facet.py --import-sidecars --overwrite-manual-gps` | 用附属文件中的手动位置替换 Facet 中已设置的手动 GPS（包括已清除的位置）；不加此选项时保留已有的手动 GPS |
 | `python facet.py --export-sidecars` | 为全部照片从数据库写入／合并 `<image>.xmp` 附属文件（仅附属文件） |
 | `python facet.py --export-sidecars /path` | 仅导出某个路径子树下照片的附属文件 |
-| `python facet.py --export-sidecars --user alice` | 多用户模式：导出 Alice 的 `user_preferences` 评分，而不是全局列（关键词仍为全局） |
+| `python facet.py --export-sidecars /path --reconcile-keywords` | 仅协调 Facet 拥有的关键字，保留外部词；需要 ExifTool。 |
+| `python facet.py --export-sidecars --user alice` | 多用户模式：导出 Alice 的 `user_preferences` 评分和保留／淘汰决定，而不是全局列，且仅限 Alice 可见的照片（关键字、GPS 和拍摄日期仍为全局） |
 | `python facet.py --export-sidecars --embed-originals` | 同时把元数据**写入文件本身**，适用于 JPEG/HEIC/TIFF/PNG/DNG（会重写原始文件） |
 | `python facet.py --export-sidecars --score-to-stars` | 对你没有手动评分过的照片，由综合评分推导出 `xmp:Rating`（手动评分／收藏／淘汰始终优先） |
 
-> **元数据双向同步。** Facet 会把评分、颜色标记、关键词、照片描述和已命名的人脸区域写入标准的 `<image>.xmp` 附属文件，整个生态都能读取（Lightroom、darktable、digiKam、immich 等）；除非你用 `--export-sidecars --embed-originals` 主动开启，否则原始图像永远不会被修改（仅限 JPEG/HEIC/TIFF/PNG/DNG——RAW 绝不会被改动）。写入文件本身以及安全的关键词并集合并需要 **exiftool**；没有它时，Facet 会退回到零依赖的纯 XML 附属文件。写出的关键字是 AI 标签加上你的[手动标签](VIEWER.md#手动标签)，并且一个关键字一旦写出，之后的导出不会再把它从附属文件中移除（参见[手动标签与 XMP 关键字](INTEROP.md#手动标签与-xmp-关键字)）。
+> **元数据双向同步。** Facet 会把评分、颜色标记、关键词、照片描述和已命名的人脸区域写入标准的 `<image>.xmp` 附属文件，整个生态都能读取（Lightroom、darktable、digiKam、immich 等）；除非你用 `--export-sidecars --embed-originals` 主动开启，否则原始图像永远不会被修改（仅限 JPEG/HEIC/TIFF/PNG/DNG——RAW 绝不会被改动）。写入文件本身以及安全的关键词并集合并需要 **exiftool**；没有它时，Facet 会退回到零依赖的纯 XML 附属文件。写出的关键字是 AI 标签加上你的[手动标签](VIEWER.md#手动标签)，未选择 `--reconcile-keywords` 时，之后的导出仍只添加关键字（参见[手动标签与 XMP 关键字](INTEROP.md#手动标签与-xmp-关键字)）。
 >
-> **注意事项。** `--import-sidecars` 依据照片的 `scanned_at`（最后一次扫描时间）以*较新者优先*的方式处理评分／标记，而不是依据每条评分的编辑时间——因此比最后一次扫描更新的附属文件，可能覆盖你在扫描之后于 Facet 中改过的评分。如果外部编辑器才是权威来源，请在重新评分之前运行 `--import-sidecars`。导入的关键字会进入手动标签表，标签筛选直接读取该表，因此之后不需要运行 `--migrate-tags`。
+> **导入注意事项。** 导入的关键字会进入[手动标签](INTEROP.md#手动标签与-xmp-关键字)表（`photo_manual_tags`），标签筛选直接读取该表，因此之后不需要运行 `--migrate-tags`。附属文件如何与本地编辑比较（扫描时间、按字段的编辑凭据、`newer_local_edit`）见[附属文件导入预览与冲突](INTEROP.md#附属文件导入预览与冲突)。
 >
 > **`--export-manifest` 与 `--export-csv`／`--export-json` 的区别。** 清单的可选参数限定的是*导出哪些照片*（与 `--export-sidecars` 一样），而不是输出文件名——它始终在工作目录中（重新）写入 `facet_manifest.json`，因为它的用途就是就地重新生成，供反复读取固定路径的工具使用。它携带的 `star_rating`／`is_favorite`／`is_rejected` 值与 `--export-sidecars` 相同——默认取全局列，给出 `--user` 时则取指定用户的 `user_preferences` 行，于是多用户安装不会再导出一份全是零的清单——另外还有 `is_burst_lead`（始终为全局），一个顶层的 `pending_corrections` 计数（尚未被检测运行应用的曝光包围／全景手动修正数量——非零计数会在导出后打印一行提到 `--detect-panoramas` 的警告），并以紧凑（非美化缩进）的 JSON 写出：在约 10 万张照片的规模下，`--export-json` 的 `indent=2` 输出会达到几十兆字节，而机器读取方并不会从中获益。
 
@@ -130,7 +138,7 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --recompute-form` | 从已存储的缩略图重新计算五项可解释的形式／色彩指标——左右对称性、视觉平衡、边缘方向熵、盒计数分形复杂度，以及 Matsuda 色相模板色彩和谐度（CPU，无需模型）。它们会出现在点评分析、改进建议和照片提示框中，也可作为类别权重使用（出厂值为 0） |
 | `python facet.py --recompute-skin-tone` | 从已存储的人脸缩略图和关键点重新计算人像肤色自然度（脸颊 CIELAB 色度与 CCT 肤色轨迹的 CIEDE2000 色差；CPU，无需模型）。仅供参考——只呈现为一条点评说明，不参与综合评分 |
 | `python facet.py --recompute-distortions` | 通过在已存储的 CLIP/SigLIP 特征向量上使用 ExIQA 风格的零样本对比式提示，为每张照片标注可能的失真属性（运动模糊、偏色、过度锐化等），随后打印与 `liqe_score` ／ `noise_sigma` 的 Spearman 相关性报告。仅供参考（点评中的警示标签），不参与综合评分 |
-| `python facet.py --upgrade-db` | 迁移表结构并运行完整的回填链：提取 GPS、检测重复、重算 IQA、显著性、CPU 构图、连拍、闭眼、眼睛与表情、人脸信号、平均分。幂等；会跳过生成照片描述之类的重负载步骤。 |
+| `python facet.py --upgrade-db` | 迁移 schema，修复因 pillow-heif 1.6 双重转置而横置的 HEIF 缩略图（原位转正、尺寸换回、已存人脸随之旋转、清空主体分数交给显著性步骤），并运行完整的回填链：extract-gps、detect-duplicates、recompute-iqa、saliency、composition-cpu、burst、blinks、eyes-expression、face-signals、average。幂等；跳过生成字幕等重步骤。|
 | `python facet.py --recompute-blinks` | 从已存储的关键点重新计算闭眼检测（CPU，快速） |
 | `python facet.py --recompute-eyes-expression` | 从已存储的关键点重新计算睁眼与表情评分（CPU，快速） |
 | `python facet.py --recompute-face-signals` | 从已存储的 106 点关键点回填每张人脸的睁眼与微笑评分（CPU，快速；无需模型）。也是 `--upgrade-db` 的一个步骤 |
@@ -154,6 +162,8 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 | `python facet.py --compute-recommendations --verbose` | 显示详细统计信息 |
 | `python facet.py --compute-recommendations --apply-recommendations` | 自动应用评分修正 |
 | `python facet.py --compute-recommendations --simulate` | 预览预计产生的变化 |
+
+`--upgrade-db` 会重试无法读取或修复文件头或照片缩略图的 HEIF 文件。只要有候选文件失败，就保留上次完整完成的进度，因此可读取的横向照片可能会再次检查。已成功修复的纵向照片不会再次旋转。从旧版修复程序升级后，会重新检查剩余候选文件；清空统计缓存也会重新开始检查。原始图像文件始终不会被写入。
 
 ### 补充画质模型
 
@@ -398,6 +408,7 @@ python /opt/facet/viewer.py      # 仍然读取 /opt/facet/scoring_config.json�
 | `python database.py --cleanup-missing-photos` | 从数据库中删除磁盘上已不存在的照片（级联删除会清理标签、检测到的人脸等；同时清除相册归属和向量索引，并使统计缓存失效，但保留其中的图库状态——百分位快照、Immich 同步状态、已训练的保留照片排序头与排序器指标，以及缩略图刷新和修复标记；自动重新训练的比较计数会被清零） |
 | `python database.py --cleanup-missing-photos --dry-run` | 预览缺失的文件但不删除 |
 | `python database.py --cleanup-missing-photos --force` | 即使全部照片看起来都缺失也继续执行（用于防止卷未挂载时把一切删光） |
+| `python database.py --relink-photos` | 更新你自行移动的照片在数据库中的路径（默认仅预览；应用需要已审核的计划）。参见[重新关联已移动的照片](#重新关联已移动的照片) |
 | `python database.py --migrate-storage-fs` | 把缩略图和特征向量从数据库 BLOB 迁移到文件系统 |
 | `python database.py --migrate-storage-db` | 把缩略图和特征向量从文件系统迁回数据库 |
 | `python database.py --add-user alice --role admin` | 添加用户（会提示输入密码） |
@@ -434,9 +445,9 @@ python /opt/facet/viewer.py      # 仍然读取 /opt/facet/scoring_config.json�
 | `--user NAME` | 使用谁的评分和淘汰状态；多用户安装**必须**提供 |
 
 - **默认试运行。** 不带 `--apply` 时不会写入任何内容：没有淘汰、没有比较对、没有缓存行，`--copy-keepers` 的文件夹也不会被创建。命令会打印摘要：`groups`、`kept`、`rejected_by_groups`、`rejected_by_score`、`spanning_skipped`，使用 `--copy-keepers` 时还有 `keepers`、`copied`、`already_present`、`skipped`、`errors`（试运行时为 `would_reject_*` / `would_copy`）。`--apply` 只控制选片本身：先扫描再选片总是先真正扫描，且只有扫描完成后才会选片。`--dry-run` 与 `--auto-cull` 同用会被拒绝。唯一的例外：存在已训练的保留照片模型时，加载它可能会在其权重需要修正时重写 `scoring_config.json`（既有行为，与查看器自动选片共用）。
-- **规则。** 分组遵循与[查看器自动选片](VIEWER.md#自动选片)相同的规则：每组保留最佳照片以及严格度余量之内的照片，下限为 `--cull-min-keep`；曝光包围、全景和 HDR 全景整组保留。`--apply` 记录淘汰和比较对的方式与 `POST /api/culling/auto` 完全一致，不会填充“精选”相册。[`auto_cull`](CONFIGURATION.md#自动选片)、`burst_scoring` 和 `similarity_groups` 设置取自**服务器**配置（`FACET_CONFIG` 或默认路径），而不是 `--config`；若两者在多用户模式上不一致，命令以退出码 1 结束。
+- **规则。** 分组遵循与[查看器自动选片](VIEWER.md#自动选片)相同的规则：每组保留最佳照片以及严格度余量之内的照片，下限为 `--cull-min-keep`；曝光包围、全景和 HDR 全景整组保留。`--apply` 记录淘汰、将每张保留的照片标记为**保留**并记录比较对，其方式与 `POST /api/culling/auto` 完全一致，不会填充“精选”相册。[`auto_cull`](CONFIGURATION.md#自动选片)、`burst_scoring` 和 `similarity_groups` 设置取自**服务器**配置（`FACET_CONFIG` 或默认路径），而不是 `--config`；若两者在多用户模式上不一致，命令以退出码 1 结束。
 - **范围。** 范围按本地真实路径匹配，因此在设置 `path_mapping` 之前存入的行无法按目录限定：请使用 `all` 或重新扫描。成员有部分在范围之外的连拍、曝光包围或全景会整组跳过，并计入 `spanning_skipped`；相似组和场景组只在范围内计算。
-- **`--cull-min-score` 仅限命令行**，且很谨慎：它从不触碰曝光包围或全景帧、没有评分的照片、已收藏或带星级的照片，也不会触碰已被先前选片保留或淘汰的照片（绝不再按评分重新判定），因此再次运行不会淘汰任何新照片。连拍组的成员始终受保护；相似组的成员仅在分组环节找到该组时才受保护（尽力而为：它读取范围内最新的 `similarity_groups.max_photos` 张照片，默认 `10000`，并丢弃大于 `similarity_groups.max_group_size`（默认 `50`）的聚类）；场景组的成员仅在 `--cull-group-by scene` 时受保护——默认的 `all` 下，仅仅处于同一场景时间窗内的照片仍会按评分判定。
+- **`--cull-min-score` 仅限命令行**，且很谨慎：它从不触碰曝光包围或全景帧、没有评分的照片、已收藏、带星级或标记为**保留**的照片，也不会触碰已被先前选片保留或淘汰的照片（绝不再按评分重新判定），因此再次运行不会淘汰任何新照片。连拍组的成员始终受保护；相似组的成员仅在分组环节找到该组时才受保护（尽力而为：它读取范围内最新的 `similarity_groups.max_photos` 张照片，默认 `10000`，并丢弃大于 `similarity_groups.max_group_size`（默认 `50`）的聚类）；场景组的成员仅在 `--cull-group-by scene` 时受保护——默认的 `all` 下，仅仅处于同一场景时间窗内的照片仍会按评分判定。
 - **复制。** `--copy-keepers` 复制范围内每张未被淘汰的照片及其同名 RAW 和 `.xmp` 附属文件，绝不复制被淘汰的照片或其附属文件；来自不同文件夹的同名文件会加上 `_1` 后缀，重新运行到同一文件夹时会跳过相同的文件（大小和时间相同，计入 `already_present`）。`DIR` 不得与范围或图库文件夹相同、位于其内或包含它们（试运行时同样检查，退出码 1），否则下一次扫描会把这些副本收进来。文件通过扫描目录白名单解析（服务器配置中的 `users.*.directories` / `viewer.scan_directories`）：若因此每张照片都被跳过，命令以退出码 3 结束并指出这些键。它还会拒绝与 Facet 已记录的先前扫描根目录重叠的文件夹。
 - **用户。** 多用户安装必须提供 `--user`（缺少或用户未知时退出码为 1）。单用户安装会忽略 `--user` 并给出警告，即使设置了查看器密码，命令也能看到所有照片。`--apply` 会获取图库锁；试运行不获取。
 - **用法错误（退出码 2）。** 没有 `--auto-cull` 却使用 `--apply`、`--copy-keepers` 或任何 `--cull-*`；`--auto-cull` 与 `--dry-run`、`--resume`、`--retry-failed` 或 `--watch` 同用；`--auto-cull PATH` 与位置参数目录同用；严格度超出 0–100 或 `--cull-min-keep` 小于 1。`--apply` 现在是精确匹配的标志，缩写不再选中 `--apply-recommendations`。
@@ -500,3 +511,11 @@ python facet.py --recompute-average        # 应用新权重
 ```
 
 > **`--import-lightroom` 是 `--export-manifest` 的反方向。** 它读取增效工具自己的导出文件（`facet_lightroom_state.json`，一种*不同*的文件格式——`{"format":"facet-lightroom-state","version":1,"photos":[...]}`——在任何数据库写入之前进行验证，若不匹配则拒绝），而绝不是清单本身，并把 Lightroom 的星级／留用值作为记录携带的每个字段的胜出值应用；省略的字段会保持 Facet 自身的值不变。一次改变了内容的操作，也会触发与其他任何评分写入一样的评分推导训练对重建和自动再训练触发。
+
+## 重新关联已移动的照片
+
+自行移动文件后，可运行 `python database.py --relink-photos` 预览精确的新旧路径，并保留数据库关联。默认只预览；应用必须提供已保存计划的 ID 和 `--acknowledge-unverified-identity`，因为数据库没有缺失原文件的密码学证明。请先停止查看器、扫描器并审核计划。两条路径必须位于配置目录内，且所有用户的可见范围保持一致；副本、歧义名称、过期计划和路径映射都会被拒绝。伴随文件必须明确列出，手工人脸框需在编辑器中重新审核，Immich 状态保持不变。完整约定与示例：[重新关联已移动照片](RELINK.md)。
+
+应用操作使用照片库任务锁：退出码 75 表示其他任务正在运行，退出码 1 表示锁无法使用。预览不获取照片库锁。
+
+`sidecar_facet` 明确表示 `photo.ext.facet.xmp`，未列出的回退包也会被拒绝。保存的审核计划为私有文件（POSIX 权限 0600）。目录可读不代表卷已挂载；`source_mount_status` 仍为 `not_verified`，操作员必须独立确认原文件确实已移动，而非仅处于离线状态。

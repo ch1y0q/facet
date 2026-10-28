@@ -1,27 +1,35 @@
 import type { Mock } from 'vitest';
 import { ComponentFixture, DeferBlockState, TestBed } from '@angular/core/testing';
-import { ChangeDetectorRef, computed, DebugElement, DestroyRef, signal, TemplateRef, WritableSignal } from '@angular/core';
-import { ActivatedRoute, Event as RouterEvent, NavigationStart, Router, RouterOutlet } from '@angular/router';
+import { ApplicationRef, ChangeDetectorRef, Component, computed, DebugElement, DestroyRef, inject, signal, TemplateRef, WritableSignal } from '@angular/core';
+import { Location, NgTemplateOutlet } from '@angular/common';
+import { provideLocationMocks } from '@angular/common/testing';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { GalleryReuseStrategy } from '../../core/gallery-reuse.strategy';
+import { ActivatedRoute, Event as RouterEvent, NavigationEnd, NavigationStart, provideRouter, RouteReuseStrategy, Router, RouterOutlet } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { PhotoCardComponent } from '../../shared/components/photo-card/photo-card.component';
 import { GalleryPhotoMenuComponent } from './gallery-photo-menu.component';
 import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Subject, of, throwError } from 'rxjs';
+import { defer, filter, finalize, firstValueFrom, Subject, of, throwError } from 'rxjs';
+import { MatContextMenuTrigger, MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
+import { MatSelect, MatSelectModule } from '@angular/material/select';
 import { MatDialog } from '@angular/material/dialog';
 import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { MatTooltip } from '@angular/material/tooltip';
 import { MATERIAL_ANIMATIONS, provideNativeDateAdapter } from '@angular/material/core';
+import { ScrollDispatcher } from '@angular/cdk/scrolling';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSidenav, MatSidenavContainer, MatSidenavContent } from '@angular/material/sidenav';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { GalleryStore, GalleryFilters, DEFAULT_FILTERS } from './gallery.store';
-import { buildApiParams, DISPLAY_OPTIONS_KEY } from './gallery-filters.util';
+import { buildApiParams, countActiveFilters, DISPLAY_OPTIONS_KEY } from './gallery-filters.util';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { AlbumService } from '../../core/services/album.service';
+import { NOTICE_DISMISSALS_KEY } from './notice-dismiss.util';
 import { GalleryComponent } from './gallery.component';
 import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
 import { SlideshowComponent } from './slideshow.component';
@@ -34,6 +42,9 @@ import { UndoService } from '../../core/services/undo.service';
 import { SequenceKind } from '../../core/services/sequence-override.service';
 import { HeaderSlotService } from '../../core/services/header-slot.service';
 import { PageHelpService } from '../../core/services/page-help.service';
+
+@Component({ template: 'Photo route' })
+class MenuPhotoRoute {}
 
 describe('GalleryComponent', () => {
   let component: GalleryComponent;
@@ -74,6 +85,7 @@ describe('GalleryComponent', () => {
       config: signal(null),
       activeFilterCount: signal(0),
       filterDrawerOpen: signal(false),
+      reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(),
       currentAlbum: signal(null),
       initializing: signal(false),
       galleryMounts: signal(0),
@@ -86,6 +98,8 @@ describe('GalleryComponent', () => {
       loadTypeCounts: vi.fn(() => Promise.resolve()),
       loadPhotos: vi.fn(() => Promise.resolve()),
       reloadPhotos: vi.fn(() => Promise.resolve()),
+      parkListingReads: vi.fn(),
+      resumeListingReads: vi.fn(() => Promise.resolve()),
       updateFilter: vi.fn(() => Promise.resolve()),
       resetFilters: vi.fn(() => Promise.resolve()),
       nextPage: vi.fn(() => Promise.resolve()),
@@ -115,14 +129,26 @@ describe('GalleryComponent', () => {
       countInView: vi.fn(() => Promise.resolve(650)),
       pathsInView: vi.fn(() => Promise.resolve([] as string[])),
       filterPayload: vi.fn(() => ({ page: '1' })),
+      reviewProgress: signal(null),
+      reviewPercent: signal(0),
+      reviewBookmark: signal(null),
+      continueReview: vi.fn(() => Promise.resolve(null)),
       viewSnapshot: signal(null),
       pinnedPaths: signal<string[] | null>(null),
       clearPinned: vi.fn(() => Promise.resolve()),
       filterKey: vi.fn((f?: GalleryFilters) => JSON.stringify(buildApiParams(f ?? mockStore.filters(), false, undefined))),
+      reviewProgressKey: vi.fn(() => {
+        const scope = buildApiParams(mockStore.filters(), false, undefined);
+        for (const key of ['page', 'per_page', 'sort', 'sort_direction']) delete scope[key];
+        return JSON.stringify(scope);
+      }),
       hiddenSummary: signal({ total: 0, blinks: 0, bursts: 0, duplicates: 0 }),
       hiddenFiltersStash: signal(null),
       showAllHidden: vi.fn(),
       restoreHidden: vi.fn(),
+      readGallerySessionQuery: vi.fn(() => null),
+      applySessionQuery: vi.fn(),
+      saveSessionQuery: vi.fn(),
       updateFilters: vi.fn(() => Promise.resolve()),
       setRating: vi.fn(),
       batchFavorite: vi.fn(() => Promise.resolve({ snapshot: new Map(), targeted: 0, count: 0 })),
@@ -137,6 +163,8 @@ describe('GalleryComponent', () => {
       colorTemps: signal([]),
       hueBuckets: signal([]),
       metricRanges: signal({}),
+      metricRangesByColumn: signal({}),
+      ensureMetricRanges: vi.fn(() => Promise.resolve()),
       gpsLocationName: signal(''),
       viewFilterParams: signal({}),
     };
@@ -148,8 +176,10 @@ describe('GalleryComponent', () => {
       getRaw: vi.fn(() => of(new Blob(['x']))),
     };
 
+    const authStatus = signal<{ user_id: string }>({ user_id: "editor" });
     mockAuth = {
-      identity: vi.fn(() => '0|'),
+      status: authStatus,
+      identity: vi.fn(() => authStatus().user_id),
       isEdition: vi.fn(() => false),
       downloadProfiles: vi.fn(() => []),
       hasFeature: vi.fn(() => false),
@@ -748,6 +778,9 @@ describe('GalleryComponent', () => {
     function render(mode: 'grid' | 'mosaic', virtual: boolean): HTMLElement[] {
       mockStore.photos.set(photos);
       mockStore.config.set({ features: { show_rating_controls: true } });
+      // The floating tooltip: the docked rail (the default at this width) would
+      // render a full details panel these path-only stand-in photos cannot fill.
+      mockStore.filters.set({ ...DEFAULT_FILTERS, tooltip_mode: 'hover' });
       mockStore.galleryMode.set(mode);
       mockStore.virtualScroll.set(virtual);
       fixture = TestBed.createComponent(GalleryComponent);
@@ -909,8 +942,62 @@ describe('GalleryComponent', () => {
       await component.ngOnInit();
 
       expect(mockStore.loadConfig).not.toHaveBeenCalled();
+      expect(mockStore.resumeListingReads).toHaveBeenCalledOnce();
       expect(mockStore.loadPhotos).not.toHaveBeenCalled();
       expect(mockStore.loadTypeCounts).toHaveBeenCalled();
+    });
+
+    it('applies the session query on a parameterless `/`, so the nav-icon return keeps filters', async () => {
+      routeMock.snapshot.queryParams = {};
+      mockStore.readGallerySessionQuery.mockReturnValue({ blinks_only: 'true' });
+
+      await component.ngOnInit();
+
+      // Applied AFTER loadConfig's wholesale filter rebuild -- a navigate-based
+      // restore could not work: the ActivatedRoute snapshot never refreshes for
+      // same-component param-only navigations.
+      expect(mockStore.applySessionQuery).toHaveBeenCalledWith({ blinks_only: 'true' });
+      expect(mockStore.loadPhotos).toHaveBeenCalled();
+    });
+
+    it('does not consult the session query when the URL carries its own params', async () => {
+      routeMock.snapshot.queryParams = { sort: 'date_taken' };
+
+      await component.ngOnInit();
+
+      expect(mockStore.readGallerySessionQuery).not.toHaveBeenCalled();
+      expect(mockStore.applySessionQuery).not.toHaveBeenCalled();
+    });
+
+    it('records its own filters in the session query after loadConfig on a plain init', async () => {
+      routeMock.snapshot.queryParams = {};
+      const order: string[] = [];
+      mockStore.loadConfig.mockImplementation(async () => { order.push('loadConfig'); });
+      mockStore.saveSessionQuery.mockImplementation(() => { order.push('saveSessionQuery'); });
+
+      await component.ngOnInit();
+
+      expect(order).toEqual(['loadConfig', 'saveSessionQuery']);
+    });
+
+    it('does not write the session query on an album route', async () => {
+      routeMock.snapshot.paramMap.get = vi.fn((k: string) => (k === 'albumId' ? '7' : null));
+      routeMock.snapshot.queryParams = {};
+
+      await component.ngOnInit();
+
+      expect(mockStore.loadConfig).toHaveBeenCalled();
+      expect(mockStore.saveSessionQuery).not.toHaveBeenCalled();
+    });
+
+    it('does not consult the session query on an album route', async () => {
+      routeMock.snapshot.paramMap.get = vi.fn((k: string) => (k === 'albumId' ? '7' : null));
+      routeMock.snapshot.queryParams = {};
+
+      await component.ngOnInit();
+
+      expect(mockStore.readGallerySessionQuery).not.toHaveBeenCalled();
+      expect(mockStore.applySessionQuery).not.toHaveBeenCalled();
     });
 
     it('should show photos and stop initializing when a filter-option request never resolves', async () => {
@@ -1064,6 +1151,14 @@ describe('GalleryComponent', () => {
       expect(component.canRestoreHidden()).toBe(true);
     });
 
+    it.each(['blinks_only', 'duplicates_only', 'show_rejected'] as const)('withdraws the restore while %s is up: that view is not "showing all photos"', key => {
+        mockStore.hiddenFiltersStash.set({
+          hide_blinks: true, hide_bursts: true, hide_duplicates: true, hide_brackets: true, hide_panoramas: true,
+        });
+        mockStore.filters.set({ ...DEFAULT_FILTERS, [key]: true });
+        expect(component.canRestoreHidden()).toBe(false);
+      });
+
     it('offers no restore before Show all has been used', () => {
       expect(component.canRestoreHidden()).toBe(false);
     });
@@ -1074,6 +1169,49 @@ describe('GalleryComponent', () => {
       });
       mockStore.filters.set({ ...DEFAULT_FILTERS, hide_blinks: true, hide_bursts: false, hide_duplicates: false, hide_brackets: false, hide_panoramas: false });
       expect(component.canRestoreHidden()).toBe(false);
+    });
+  });
+
+  describe('select-all keyboard shortcut', () => {
+    // Document-level host bindings register only when the view renders, so
+    // each case makes its own fixture and dispatches straight at document.
+    let fixture: ComponentFixture<GalleryComponent> | null = null;
+
+    afterEach(() => {
+      fixture?.destroy();
+      fixture = null;
+    });
+
+    function renderWithPhotos(): void {
+      mockStore.photos.set([{ path: '/a.jpg' }, { path: '/b.jpg' }]);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+    }
+
+    it.each([
+      ['control', false], ['meta', true],
+    ])('selects all loaded photos on %s+A', (_label, metaKey) => {
+      renderWithPhotos();
+      const event = new KeyboardEvent('keydown', { key: 'a', metaKey, ctrlKey: !metaKey, cancelable: true });
+      const prevented = !document.dispatchEvent(event);
+      expect(prevented).toBe(true);
+      expect(mockStore.selectAll).toHaveBeenCalled();
+    });
+
+    it('leaves the browser default alone while focus is in an input', () => {
+      renderWithPhotos();
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      input.focus();
+      try {
+        // Bubbling from the input, as a real keypress would: the guard reads
+        // the event's target, so the event must originate there.
+        const event = new KeyboardEvent('keydown', { key: 'a', metaKey: true, bubbles: true, cancelable: true });
+        expect(input.dispatchEvent(event)).toBe(true);
+        expect(mockStore.selectAll).not.toHaveBeenCalled();
+      } finally {
+        input.remove();
+      }
     });
   });
 
@@ -1180,6 +1318,21 @@ describe('GalleryComponent', () => {
       mockStore.filterDrawerOpen.set(false);
     });
 
+    it('ignores a stale drawer animation event that no longer matches the drawer, so a quick close and reopen cannot ping-pong', async () => {
+      mockAuth['hasFeature'] = vi.fn(() => false);
+      mockStore.filterDrawerOpen.set(true);
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const drawer = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as MatSidenav;
+      expect(drawer.opened).toBe(true);
+      mockStore.setFilterDrawerOpen.mockClear();
+      // The close animation of an earlier close() finishes after the reopen.
+      drawer.openedChange.emit(false);
+      await new Promise(resolve => setTimeout(resolve));
+      expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+      mockStore.filterDrawerOpen.set(false);
+    });
+
     it('the load-error Retry button reloads without dropping the pin', () => {
       mockStore.pinnedPaths.set(['/a.jpg']);
       mockStore.loadError.set(true);
@@ -1252,18 +1405,16 @@ describe('GalleryComponent', () => {
   });
 
   describe('thumbnail-migration banner', () => {
-    const RENDER_MIGRATION_KEY = 'facet_render_migration_dismissed';
-
     function rebuild(): GalleryComponent {
       return TestBed.runInInjectionContext(() => new GalleryComponent());
     }
 
     beforeEach(() => {
-      localStorage.removeItem(RENDER_MIGRATION_KEY);
+      sessionStorage.removeItem(NOTICE_DISMISSALS_KEY);
       component = rebuild();
     });
 
-    afterEach(() => localStorage.removeItem(RENDER_MIGRATION_KEY));
+    afterEach(() => sessionStorage.removeItem(NOTICE_DISMISSALS_KEY));
 
     it('stays hidden until the server reports rows awaiting regeneration', () => {
       mockStore.config.set({ render_migration: { pending: 0 } });
@@ -1282,16 +1433,16 @@ describe('GalleryComponent', () => {
       expect(component.showRenderMigrationBanner()).toBe(true);
     });
 
-    it('hides on dismiss and stays hidden for the next visit', () => {
+    it('closes for this tab, stays closed after a reload, and reopens once the pending count changes', () => {
       mockStore.config.set({ render_migration: { pending: 12 } });
-      component.dismissRenderMigration();
+      component['dismissNotice']('render_migration');
 
       expect(component.showRenderMigrationBanner()).toBe(false);
-      expect(localStorage.getItem(RENDER_MIGRATION_KEY)).toBe('true');
+      expect(localStorage.getItem('facet_render_migration_dismissed')).toBeNull();
+      expect(rebuild().showRenderMigrationBanner()).toBe(false);
 
-      // A migration takes hours, so a reload must not raise the notice again.
-      const reloaded = rebuild();
-      expect(reloaded.showRenderMigrationBanner()).toBe(false);
+      mockStore.config.set({ render_migration: { pending: 11 } });
+      expect(component.showRenderMigrationBanner()).toBe(true);
     });
   });
 
@@ -1305,13 +1456,18 @@ describe('GalleryComponent', () => {
     const button = (html: HTMLElement, label: string) =>
       Array.from(html.querySelectorAll('button')).find(b => b.textContent?.includes(label));
 
+    /** The close button of the one card whose text contains `text`, never a positional pick. */
+    const closeFor = (html: HTMLElement, text: string) =>
+      Array.from(stack(html)!.children).find(card => card.textContent?.includes(text))!
+        .querySelector<HTMLButtonElement>(`button[aria-label="${I18N.ui.buttons.dismiss}"]`)!;
+
     beforeEach(() => {
-      localStorage.removeItem('facet_render_migration_dismissed');
+      sessionStorage.removeItem(NOTICE_DISMISSALS_KEY);
       mockStore.hiddenSummary.set({ total: 6, blinks: 0, bursts: 4, duplicates: 0, brackets: 2, panoramas: 0 });
       mockStore.filters.set({ ...DEFAULT_FILTERS, hide_bursts: true });
     });
 
-    afterEach(() => localStorage.removeItem('facet_render_migration_dismissed'));
+    afterEach(() => sessionStorage.removeItem(NOTICE_DISMISSALS_KEY));
 
     it('renders the hidden-photos notice in the stack, outside the scrolling content, and Show all acts', () => {
       const html = render();
@@ -1335,15 +1491,100 @@ describe('GalleryComponent', () => {
       expect(mockStore.restoreHidden).toHaveBeenCalled();
     });
 
-    it('stacks the migration notice below the hidden notice and Dismiss removes only it', () => {
+    it('stacks the migration notice below the hidden notice and its close removes only it', () => {
       mockStore.config.set({ render_migration: { pending: 12 } });
-      const html = render();
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
       const cards = Array.from(stack(html)!.querySelectorAll('[role="status"]'));
       expect(cards).toHaveLength(2);
       expect(cards[0].textContent).toContain(I18N.gallery.hidden_banner.message);
       expect(cards[1].textContent).toContain(I18N.gallery.render_migration.message);
-      button(html, I18N.ui.buttons.dismiss)?.click();
-      expect(localStorage.getItem('facet_render_migration_dismissed')).toBe('true');
+      closeFor(html, I18N.gallery.render_migration.message).click();
+      fixture.detectChanges();
+      const left = Array.from(stack(html)!.querySelectorAll('[role="status"]'));
+      expect(left).toHaveLength(1);
+      expect(left[0].textContent).toContain(I18N.gallery.hidden_banner.message);
+    });
+
+    it('closes the hidden-photos notice without touching the filters, and reopens it when the hidden count changes', () => {
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
+      const before = mockStore.filters();
+      closeFor(html, I18N.gallery.hidden_banner.message).click();
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+      expect(mockStore.filters()).toBe(before);
+      expect(mockStore.showAllHidden).not.toHaveBeenCalled();
+
+      mockStore.hiddenSummary.set({ total: 9, blinks: 0, bursts: 7, duplicates: 0, brackets: 2, panoramas: 0 });
+      fixture.detectChanges();
+      expect(stack(html)?.textContent).toContain(I18N.gallery.hidden_banner.message);
+    });
+
+    it('keeps each scope\'s closed notice closed on return, and ignores re-sorting', () => {
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
+      closeFor(html, I18N.gallery.hidden_banner.message).click();
+      fixture.detectChanges();
+      mockStore.filters.set({ ...mockStore.filters(), sort: 'date_taken', sort_direction: 'ASC' });
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+
+      const scopeA = mockStore.filters();
+      mockStore.filters.set({ ...scopeA, tag: 'beach' });
+      fixture.detectChanges();
+      expect(stack(html)?.textContent).toContain(I18N.gallery.hidden_banner.message);
+      closeFor(html, I18N.gallery.hidden_banner.message).click();
+      fixture.detectChanges();
+
+      mockStore.filters.set(scopeA);
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+    });
+
+    it('closes the resume bookmark without resuming, and reopens it for another remembered queue', () => {
+      mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
+      mockStore.reviewBookmark.set({ path: '/p1.jpg', filters: { tag: 'a' } });
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
+      closeFor(html, I18N.gallery.review_progress.browser).click();
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+      expect(mockStore.continueReview).not.toHaveBeenCalled();
+
+      mockStore.reviewBookmark.set({ path: '/p1.jpg', filters: { tag: 'a' } });
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+      mockStore.reviewBookmark.set({ path: '/p2.jpg', filters: { tag: 'b' } });
+      fixture.detectChanges();
+      expect(stack(html)?.textContent).toContain(I18N.gallery.review_progress.browser);
+    });
+
+    it('closes the restore twin without restoring, and reopens it when the stashed toggles change', () => {
+      mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
+      mockStore.hiddenFiltersStash.set({
+        hide_blinks: true, hide_bursts: true, hide_duplicates: true, hide_brackets: true, hide_panoramas: true,
+      });
+      mockStore.filters.set({ ...DEFAULT_FILTERS, hide_blinks: false, hide_bursts: false, hide_duplicates: false, hide_brackets: false, hide_panoramas: false });
+      const fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      const html = fixture.nativeElement as HTMLElement;
+      const before = mockStore.filters();
+      closeFor(html, I18N.gallery.hidden_banner.showing_all).click();
+      fixture.detectChanges();
+      expect(stack(html)).toBeNull();
+      expect(mockStore.restoreHidden).not.toHaveBeenCalled();
+      expect(mockStore.filters()).toBe(before);
+
+      mockStore.hiddenFiltersStash.set({
+        hide_blinks: false, hide_bursts: true, hide_duplicates: true, hide_brackets: true, hide_panoramas: true,
+      });
+      fixture.detectChanges();
+      expect(stack(html)?.textContent).toContain(I18N.gallery.hidden_banner.showing_all);
     });
 
     it('anchors the stack bottom-right, clear of an open end drawer and the content scrollbar', () => {
@@ -1372,6 +1613,100 @@ describe('GalleryComponent', () => {
     it('renders no stack when nothing is advisory', () => {
       mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
       expect(stack(render())).toBeNull();
+    });
+
+    describe('active-filters notice', () => {
+      const activate = (filters: Partial<GalleryFilters>) => {
+        const next = { ...DEFAULT_FILTERS, ...filters };
+        mockStore.filters.set(next);
+        mockStore.activeFilterCount.set(countActiveFilters(next));
+      };
+      const renderFixture = () => {
+        const fixture = TestBed.createComponent(GalleryComponent);
+        fixture.detectChanges();
+        return fixture;
+      };
+      const reset = (html: HTMLElement) => button(html, I18N.gallery.filters_notice.reset);
+
+      beforeEach(() => {
+        mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
+        mockStore.filters.set({ ...DEFAULT_FILTERS });
+        mockStore.activeFilterCount.set(0);
+        mockStore.currentAlbum.set(null);
+        mockStore.resetFilters.mockClear();
+      });
+
+      afterEach(() => {
+        mockStore.activeFilterCount.set(0);
+        mockStore.currentAlbum.set(null);
+      });
+
+      it('is absent while no filter is active', () => {
+        const html = renderFixture().nativeElement as HTMLElement;
+        expect(stack(html)).toBeNull();
+        expect(reset(html)).toBeUndefined();
+      });
+
+      it('shows the count, singular then plural, when a filter is active', () => {
+        activate({ camera: 'Canon' });
+        const fixture = renderFixture();
+        const html = fixture.nativeElement as HTMLElement;
+        expect(stack(html)!.textContent).toContain(I18N.gallery.filters_notice.message);
+        expect(stack(html)!.textContent).not.toContain(I18N.gallery.filters_notice.message_plural);
+        expect(mockI18n.t).toHaveBeenCalledWith(I18N.gallery.filters_notice.message, { count: 1 });
+        activate({ camera: 'Canon', tag: 'beach' });
+        fixture.detectChanges();
+        expect(stack(html)!.textContent).toContain(I18N.gallery.filters_notice.message_plural);
+        expect(mockI18n.t).toHaveBeenCalledWith(I18N.gallery.filters_notice.message_plural, { count: 2 });
+      });
+
+      it('resets every filter from its action', () => {
+        activate({ camera: 'Canon' });
+        mockStore.resetFilters.mockImplementationOnce(() => {
+          activate({});
+          return Promise.resolve();
+        });
+        const fixture = renderFixture();
+        const html = fixture.nativeElement as HTMLElement;
+        reset(html)!.click();
+        fixture.detectChanges();
+        expect(mockStore.resetFilters).toHaveBeenCalledOnce();
+        expect(stack(html)).toBeNull();
+      });
+
+      it('closes without resetting, and returns when the set of active filters changes', () => {
+        activate({ camera: 'Canon' });
+        const fixture = renderFixture();
+        const html = fixture.nativeElement as HTMLElement;
+        closeFor(html, I18N.gallery.filters_notice.message).click();
+        fixture.detectChanges();
+        expect(stack(html)).toBeNull();
+        expect(mockStore.resetFilters).not.toHaveBeenCalled();
+        activate({ camera: 'Canon', tag: 'beach' });
+        fixture.detectChanges();
+        expect(stack(html)).toBeTruthy();
+      });
+
+      it('stays closed when only a filter value changes', () => {
+        activate({ camera: 'Canon' });
+        const fixture = renderFixture();
+        const html = fixture.nativeElement as HTMLElement;
+        closeFor(html, I18N.gallery.filters_notice.message).click();
+        activate({ camera: 'Nikon' });
+        fixture.detectChanges();
+        expect(stack(html)).toBeNull();
+      });
+
+      it('is not offered inside an album, whose saved filters are always active', () => {
+        activate({ camera: 'Canon' });
+        const fixture = renderFixture();
+        const html = fixture.nativeElement as HTMLElement;
+        expect(stack(html)).toBeTruthy();
+        // ngOnInit clears the album, so it is opened after the first render, as the album route does.
+        mockStore.currentAlbum.set({ id: 3, name: 'Trip', is_smart: true });
+        fixture.detectChanges();
+        expect(stack(html)).toBeNull();
+      });
     });
   });
 
@@ -1734,6 +2069,25 @@ describe('GalleryComponent', () => {
       card.remove();
     });
 
+    it('Escape closes a click-opened tooltip first and leaves the selection for the next Escape', () => {
+      mockStore.filters.set({ ...DEFAULT_FILTERS, tooltip_mode: 'click' });
+      TestBed.flushEffects();
+      mockStore.photos.set([{ path: '/a.jpg' }]);
+      mockStore.selectionCount.set(1);
+      mockStore.clearSelection.mockClear();
+      const card = makeCard();
+      component.showTooltip({ currentTarget: card } as unknown as MouseEvent, photo);
+
+      press('Escape');
+      expect(component['tooltipPhoto']()).toBeNull();
+      expect(mockStore.clearSelection).not.toHaveBeenCalled();
+
+      press('Escape');
+      expect(mockStore.clearSelection).toHaveBeenCalled();
+      mockStore.selectionCount.set(0);
+      card.remove();
+    });
+
     it('a tooltip does not survive a switch to off mode', () => {
       mockStore.filters.set({ ...DEFAULT_FILTERS, tooltip_mode: 'hover' });
       TestBed.flushEffects();
@@ -1819,6 +2173,7 @@ describe('GalleryComponent', () => {
   });
 
   describe('openCullDialog', () => {
+    beforeEach(() => { mockAuth['isEdition'] = vi.fn(() => true); });
     function select(paths: string[]) {
       mockStore.selectedPaths.set(new Set(paths));
       mockStore.selectionCount.set(paths.length);
@@ -1885,6 +2240,43 @@ describe('GalleryComponent', () => {
       expect(order).toEqual(['load', 'clear']);
     });
 
+    it.each(['navigation', 'identity', 'edition', 'filters'])(
+      'does not refresh or clear a newer gallery after cull loses %s', async loss => {
+        mockAuth['isEdition'] = vi.fn(() => true);
+        select(['/a.jpg']);
+        const result = new Subject<boolean>();
+        const dialog = TestBed.inject(MatDialog);
+        (dialog.open as Mock).mockReturnValue({ afterClosed: () => result });
+        const pending = component.openCullDialog();
+        await vi.waitFor(() => expect(dialog.open).toHaveBeenCalled());
+        if (loss === 'navigation')
+          (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, '/other'));
+        if (loss === 'identity') (mockAuth['status'] as ReturnType<typeof signal>).set({ user_id: 'bob' });
+        if (loss === 'edition') mockAuth['isEdition'] = vi.fn(() => false);
+        if (loss === 'filters') mockStore.filterPayload.mockReturnValue({ camera: 'Nikon' });
+        select(['/new.jpg']);
+        result.next(true); result.complete(); await pending;
+        expect(mockStore.reloadPhotos).not.toHaveBeenCalled();
+        expect(mockStore.clearSelection).not.toHaveBeenCalled();
+        expect([...mockStore.selectedPaths()]).toEqual(['/new.jpg']);
+      },
+    );
+
+    it('does not clear a new selection when navigation starts during the post-cull reload', async () => {
+      mockAuth['isEdition'] = vi.fn(() => true);
+      select(['/a.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({ afterClosed: () => of(true) });
+      let finish!: () => void;
+      mockStore.reloadPhotos.mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+      const pending = component.openCullDialog();
+      await vi.waitFor(() => expect(mockStore.reloadPhotos).toHaveBeenCalled());
+      (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, '/other'));
+      select(['/new.jpg']); finish(); await pending;
+      expect(mockStore.clearSelection).not.toHaveBeenCalled();
+      expect([...mockStore.selectedPaths()]).toEqual(['/new.jpg']);
+    });
+
     // The guard reads `if (!viewScoped && !paths.length) return;` -- widened
     // specifically so a whole-view cull (selectedPaths empty by design) is not
     // silently dropped the way `if (!paths.length) return;` would drop it.
@@ -1904,6 +2296,105 @@ describe('GalleryComponent', () => {
       expect(data.filters).toEqual({ page: '1' });
       expect(data.exclude).toEqual(['/skip.jpg']);
       expect(data.count).toBe(650);
+    });
+  });
+
+  describe('capture-date targets', () => {
+    beforeEach(() => { mockAuth['isEdition'] = vi.fn(() => true); });
+    it.each(['identity', 'edition', 'navigation', 'destroy'])('does not open after lazy date launch loses %s', async loss => {
+      mockStore.selectedPaths.set(new Set(['/a'])); mockStore.selectionCount.set(1);
+      const dialog = TestBed.inject(MatDialog);
+      const task = component.openCaptureDateDialog();
+      if (loss === 'identity') (mockAuth['status'] as ReturnType<typeof signal>).set({ user_id: 'bob' });
+      if (loss === 'edition') mockAuth['isEdition'] = vi.fn(() => false);
+      if (loss === 'navigation') {
+        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, '/other'));
+        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(2, '/'));
+      }
+      if (loss === 'destroy') TestBed.resetTestingModule();
+      await task;
+      expect(dialog.open).not.toHaveBeenCalled();
+    });
+    it('captures scope and exclusions before lazy loading the dialog', async () => {
+      mockStore.viewScopeSelected.set(true);
+      mockStore.excludedPaths.set(new Set(['/skip.jpg']));
+      mockStore.selectionCount.set(12);
+      mockStore.filterPayload.mockReturnValue({ camera: 'Canon' });
+      const dialog = TestBed.inject(MatDialog);
+      const pending = component.openCaptureDateDialog();
+      mockStore.filterPayload.mockReturnValue({ camera: 'Nikon' });
+      mockStore.excludedPaths.set(new Set(['/new.jpg']));
+      await pending;
+      expect((dialog.open as Mock).mock.calls[0][1].data).toEqual({ paths: [], filters: { camera: 'Canon' }, exclude: ['/skip.jpg'], count: 12, reference: null });
+    });
+    it('passes the first loaded, dated photo of an explicit selection as the reference', async () => {
+      mockStore.photos.set([
+        { path: '/undated.jpg', date_taken: null }, { path: '/other.jpg', date_taken: '2020:01:01 00:00:00' },
+        { path: '/b.jpg', date_taken: '2024:05:06 07:08:09' },
+      ] as never);
+      mockStore.selectedPaths.set(new Set(['/undated.jpg', '/b.jpg'])); mockStore.selectionCount.set(2);
+      const dialog = TestBed.inject(MatDialog);
+      await component.openCaptureDateDialog();
+      expect((dialog.open as Mock).mock.calls[0][1].data.reference).toEqual({ path: '/b.jpg', date: '2024:05:06 07:08:09' });
+    });
+  });
+
+  describe('openBatchGpsDialog', () => {
+    it.each(['identity', 'edition', 'navigation', 'destroy'])('does not open after lazy GPS launch loses %s', async loss => {
+      mockAuth['isEdition'] = vi.fn(() => true);
+      mockStore.selectedPaths.set(new Set(['/a'])); mockStore.selectionCount.set(1);
+      const dialog = TestBed.inject(MatDialog);
+      const task = component.openBatchGpsDialog();
+      if (loss === 'identity') (mockAuth['status'] as ReturnType<typeof signal>).set({ user_id: 'bob' });
+      if (loss === 'edition') mockAuth['isEdition'] = vi.fn(() => false);
+      if (loss === 'navigation') {
+        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, '/other'));
+        (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(2, '/'));
+      }
+      if (loss === 'destroy') TestBed.resetTestingModule();
+      await task;
+      expect(dialog.open).not.toHaveBeenCalled();
+    });
+
+    it('captures the complete filter and exclusions before lazy loading the dialog', async () => {
+      mockAuth['isEdition'] = vi.fn(() => true);
+      mockStore.viewScopeSelected.set(true);
+      mockStore.selectionCount.set(650);
+      mockStore.excludedPaths.set(new Set(['/skip.jpg']));
+      const filters = { no_gps: '1', camera: 'Canon' };
+      (mockStore.filterPayload as Mock).mockReturnValue(filters);
+      const pending = component.openBatchGpsDialog();
+      filters.camera = 'Nikon';
+      mockStore.excludedPaths.set(new Set(['/later.jpg']));
+      await pending;
+      const data = (TestBed.inject(MatDialog).open as Mock).mock.calls[0][1].data;
+      expect(data.batch).toEqual({ filters: { no_gps: '1', camera: 'Canon' }, exclude: ['/skip.jpg'] });
+    });
+
+    it('clears the completed selection but preserves a newer selection', async () => {
+      mockAuth['isEdition'] = vi.fn(() => true);
+      mockStore.selectionCount.set(2);
+      mockStore.selectedPaths.set(new Set(['/a.jpg', '/b.jpg']));
+      const dialog = TestBed.inject(MatDialog);
+      await component.openBatchGpsDialog();
+      const applied = (dialog.open as Mock).mock.calls[0][1].data.onBatchApplied;
+      applied();
+      expect(mockStore.clearSelection).toHaveBeenCalledTimes(1);
+      (mockStore.clearSelection as Mock).mockClear();
+      mockStore.selectedPaths.set(new Set(['/new.jpg']));
+      applied();
+      expect(mockStore.clearSelection).not.toHaveBeenCalled();
+    });
+
+    it('opens the shared GPS dialog for explicit selection and refuses read-only access', async () => {
+      mockStore.selectionCount.set(2);
+      mockStore.selectedPaths.set(new Set(['/a.jpg', '/b.jpg']));
+      const dialog = TestBed.inject(MatDialog);
+      await component.openBatchGpsDialog();
+      expect(dialog.open).not.toHaveBeenCalled();
+      mockAuth['isEdition'] = vi.fn(() => true);
+      await component.openBatchGpsDialog();
+      expect((dialog.open as Mock).mock.calls[0][1].data.batch).toEqual({ photo_paths: ['/a.jpg', '/b.jpg'] });
     });
   });
 
@@ -2031,7 +2522,7 @@ describe('GalleryComponent', () => {
 
     function deleteResponse(overrides: Partial<{
       deleted: string[]; refused_bracket_lead: string[]; not_found: string[];
-      not_visible: string[]; sequence_siblings: string[]; skipped: string[];
+      not_visible: string[]; sequence_siblings: string[]; skipped: string[]; removed_missing: string[];
       errors: Record<string, string>; trashed: number;
     }> = {}) {
       return of({
@@ -2042,6 +2533,7 @@ describe('GalleryComponent', () => {
         refused_bracket_lead: [],
         sequence_siblings: [],
         skipped: [],
+        removed_missing: [],
         trashed: 0,
         errors: {},
         ...overrides,
@@ -2137,6 +2629,7 @@ describe('GalleryComponent', () => {
         paths: ['/a.jpg', '/b.jpg'],
         include_companions: false,
         include_sequence_siblings: false,
+        remove_missing: false,
         dry_run: false,
       });
       // Restricted to what the response actually reports deleted -- a refused
@@ -2210,6 +2703,21 @@ describe('GalleryComponent', () => {
       // four buckets or from `refused_bracket_lead` alone -- asserting on
       // that resolved string would pass under either implementation.
       expect(mockI18n.t).toHaveBeenCalledWith(I18N.cull.delete_partial_result, { deleted: 1, failed: 3 });
+    });
+
+    it('removes reconciled missing rows from the grid and counts them as deleted', async () => {
+      select(['/a.jpg', '/b.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({
+        afterClosed: () => of({ includeCompanions: false, includeSequenceSiblings: false, removeMissing: true }),
+      });
+      mockApi.post.mockReturnValueOnce(deleteResponse({ removed_missing: ['/a.jpg', '/b.jpg'] }));
+
+      await component.deleteSelected();
+
+      expect(mockApi.post).toHaveBeenCalledWith('/photo/delete', expect.objectContaining({ remove_missing: true }));
+      expect(mockStore.removePhotos).toHaveBeenCalledWith(['/a.jpg', '/b.jpg']);
+      expect(mockI18n.t).toHaveBeenCalledWith(I18N.cull.delete_partial_result, { deleted: 2, failed: 0 });
     });
 
     it('a failed request does not touch the store', async () => {
@@ -2788,6 +3296,18 @@ describe('GalleryComponent', () => {
 
     const reject = () => (component as unknown as { batchReject: () => Promise<void> }).batchReject();
 
+    it.each(['kept', 'undecided'] as const)('offers Undo for a single %s decision without changing selection', async decision => {
+      const snapshot = new Map([['/a.jpg', { ...snap, is_kept: false }]]);
+      mockStore.batchReview = vi.fn().mockResolvedValue({ snapshot, targeted: 1, count: 1 });
+      mockStore.restoreSnapshot.mockResolvedValue(undefined);
+      await (component as unknown as { reviewSingle: (path: string, decision: 'kept' | 'undecided') => Promise<unknown> }).reviewSingle('/a.jpg', decision);
+      expect(mockStore.batchReview).toHaveBeenCalledWith(['/a.jpg'], decision, false);
+      expect(undoRegister).toHaveBeenCalledWith(expect.objectContaining({ labelKey: 'review.updated', labelParams: { count: 1 } }));
+      await undoRegister.mock.calls[0][0].undo();
+      expect(mockStore.restoreSnapshot).toHaveBeenCalledWith(snapshot);
+      expect(mockStore.restoreSelection).not.toHaveBeenCalled();
+    });
+
     it('offers undo when the snapshot covers every photo the action touched', async () => {
       mockStore.selectedPaths.set(new Set(['/a.jpg', '/b.jpg']));
       mockStore.selectionCount.set(2);
@@ -3347,6 +3867,7 @@ describe('GalleryComponent', () => {
     });
 
     describe('openCullDialog', () => {
+    beforeEach(() => { mockAuth['isEdition'] = vi.fn(() => true); });
       // The real store's loadPhotos() ends a whole-view selection, and its
       // selection methods move the signals. An inert mock hides both.
       beforeEach(() => {
@@ -3433,7 +3954,7 @@ describe('GalleryComponent', () => {
       const confirmed = { includeCompanions: false, includeSequenceSiblings: false };
       const deleted = (paths: string[]) => of({
         dry_run: false, deleted: paths, not_found: [], not_visible: [], refused_bracket_lead: [],
-        sequence_siblings: [], skipped: [], trashed: paths.length, errors: {},
+        sequence_siblings: [], skipped: [], removed_missing: [], trashed: paths.length, errors: {},
       });
 
       it('opens the single-photo dialog under view scope, where the no-arg form refuses', async () => {
@@ -3539,6 +4060,8 @@ describe('GalleryComponent', () => {
         ['mark-panorama', { kind: 'mark-panorama', sequenceKind: 'bracket' }, 'markAsPanorama', ['bracket']],
         ['download', { kind: 'download', type: 'darktable', profile: 'P' }, 'downloadSelected', ['darktable', 'P']],
         ['tags', { kind: 'tags' }, 'openManualTagsDialog', []],
+        ['capture-date', { kind: 'capture-date' }, 'openCaptureDateDialog', []],
+        ['gps', { kind: 'gps' }, 'openBatchGpsDialog', []],
       ];
       for (const [name, action, method, args] of cases) {
         it(`${name} -> ${method}`, async () => {
@@ -4111,7 +4634,7 @@ describe('GalleryComponent', () => {
 
     afterEach(() => mockStore.pinnedPaths.set(null));
 
-    it.each(['k', 'K', 'r', 'R'])('%s does nothing on a pinned list: no default prevented, no advance, no write', key => {
+    it.each(['r', 'R'])('%s does nothing on a pinned list: no default prevented, no advance, no write', key => {
       const ev = fire(key);
       expect(ev.defaultPrevented).toBe(false);
       expect(activeIndex()).toBe(0);
@@ -4119,9 +4642,170 @@ describe('GalleryComponent', () => {
       expect(mockStore.setRating).not.toHaveBeenCalled();
     });
 
+    it.each(['k', 'K'])('%s keeps the focused photo on a pinned list', async key => {
+      mockStore.batchReview = vi.fn().mockResolvedValue({ snapshot: new Map(), targeted: 1, count: 1 });
+      const ev = fire(key);
+      expect(ev.defaultPrevented).toBe(true);
+      expect(mockStore.batchReview).toHaveBeenCalledWith(['/a.jpg'], 'kept', false);
+      await Promise.resolve();
+    });
+
     it('X still rejects for real', () => {
       fire('x');
       expect(mockStore.toggleRejected).toHaveBeenCalledWith('/a.jpg');
+    });
+  });
+
+  describe('card menus across real router parking', () => {
+    let harness: RouterTestingHarness;
+    let gallery: GalleryComponent;
+    let allowPhoto: boolean;
+    const photos = Array.from({ length: 3 }, (_, i) => ({
+      path: `/p${i}.jpg`, filename: `p${i}.jpg`, image_width: 4000, image_height: 3000,
+    }));
+
+    beforeEach(async () => {
+      // Keep the rendered gallery and Material directives; replace only the
+      // ordinary unit suite's route/outlet stubs with the real router boundary.
+      TestBed.resetTestingModule();
+      allowPhoto = true;
+      mockAuth['isEdition'] = vi.fn(() => true);
+      mockStore.photos.set(photos);
+      mockStore.total.set(photos.length);
+      mockStore.config.set({ features: { show_rating_controls: true } });
+      TestBed.configureTestingModule({
+        imports: [GalleryComponent, MenuPhotoRoute],
+        providers: [
+          provideRouter([
+            { path: '', component: GalleryComponent },
+            { path: 'photo', component: MenuPhotoRoute, canActivate: [() => allowPhoto] },
+          ]),
+          provideLocationMocks(),
+          provideNativeDateAdapter(),
+          { provide: RouteReuseStrategy, useClass: GalleryReuseStrategy },
+          { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
+          { provide: GalleryStore, useValue: mockStore },
+          { provide: ApiService, useValue: mockApi },
+          { provide: AuthService, useValue: mockAuth },
+          { provide: I18nService, useValue: mockI18n },
+          { provide: AlbumService, useValue: { list: () => of({ albums: [] }) } },
+          { provide: ScanService, useValue: { canLaunch: signal(false) } },
+          { provide: LiveAnnouncer, useValue: { announce: () => Promise.resolve() } },
+        ],
+      });
+      harness = await RouterTestingHarness.create();
+      TestBed.inject(Router).initialNavigation();
+      gallery = await harness.navigateByUrl('/', GalleryComponent);
+      const content = harness.routeDebugElement!.query(By.directive(MatSidenavContent)).componentInstance as MatSidenavContent;
+      vi.spyOn(content, 'scrollTo').mockImplementation(() => {});
+      for (const host of harness.routeNativeElement!.querySelectorAll<HTMLElement>('[data-pidx]')) {
+        host.scrollIntoView = () => {};
+      }
+    });
+
+    const overlay = () => TestBed.inject(OverlayContainer).getContainerElement();
+    async function expectMenuRemoved(): Promise<void> {
+      const container = overlay();
+      if (container.querySelector('[role="menu"]')) {
+        // Material completes overlay teardown asynchronously even with
+        // animations disabled. Observe the real effect instead of sleeping.
+        await new Promise<void>(resolve => {
+          const observer = new MutationObserver(() => {
+            if (!container.querySelector('[role="menu"]')) {
+              observer.disconnect();
+              resolve();
+            }
+          });
+          observer.observe(container, { childList: true, subtree: true });
+        });
+      }
+      expect(container.querySelector('[role="menu"]')).toBeNull();
+    }
+    const contextTrigger = (index: number) => harness.routeDebugElement!
+      .queryAll(By.directive(MatContextMenuTrigger))[index].injector.get(MatContextMenuTrigger);
+    async function rightClick(index: number): Promise<MatContextMenuTrigger> {
+      const card = harness.routeNativeElement!.querySelector(`app-photo-card[data-pidx="${index}"]`)!;
+      card.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: 40, clientY: 50 }));
+      harness.detectChanges();
+      await harness.fixture.whenStable();
+      const trigger = contextTrigger(index);
+      expect(trigger.menuOpen).toBe(true);
+      expect(overlay().querySelector('[role="menu"]')).not.toBeNull();
+      return trigger;
+    }
+    async function back(): Promise<void> {
+      const done = firstValueFrom(TestBed.inject(Router).events.pipe(filter(e => e instanceof NavigationEnd)));
+      TestBed.inject(Location).back();
+      await done;
+      harness.detectChanges();
+      await harness.fixture.whenStable();
+      expect(harness.routeDebugElement!.componentInstance).toBe(gallery);
+    }
+
+    it('removes the right-click overlay on photo navigation and reopens once after arrow navigation and Back', async () => {
+      const dispatcher = TestBed.inject(ScrollDispatcher);
+      const scrolled = dispatcher.scrolled.bind(dispatcher);
+      let scrollSubscriptions = 0;
+      vi.spyOn(dispatcher, 'scrolled').mockImplementation(ms => defer(() => {
+        scrollSubscriptions++;
+        return scrolled(ms).pipe(finalize(() => scrollSubscriptions--));
+      }));
+      const trigger = await rightClick(1);
+      expect(scrollSubscriptions).toBeGreaterThan(0);
+      const closed = vi.fn();
+      trigger.menuClosed.subscribe(closed);
+      await harness.navigateByUrl('/photo?path=%2Fp1.jpg', MenuPhotoRoute);
+      await harness.fixture.whenStable();
+      expect(mockStore.parkListingReads).toHaveBeenCalledOnce();
+      expect(trigger.menuOpen).toBe(false);
+      await expectMenuRemoved();
+      expect(closed).toHaveBeenCalledOnce();
+      expect(scrollSubscriptions).toBe(0);
+      // Photo arrows replace the current entry; Back must retain that viewed
+      // photo as the gallery cursor, without resurrecting the old menu.
+      await TestBed.inject(Router).navigateByUrl('/photo?path=%2Fp2.jpg', { replaceUrl: true });
+      await back();
+      expect(document.activeElement?.closest('[data-pidx]')?.getAttribute('data-pidx')).toBe('2');
+      await expectMenuRemoved();
+      await rightClick(1);
+      expect(scrollSubscriptions).toBeGreaterThan(0);
+      expect(overlay().querySelectorAll('[role="menu"]')).toHaveLength(1);
+      await harness.navigateByUrl('/photo?path=%2Fp1.jpg');
+      await harness.fixture.whenStable();
+      expect(closed).toHaveBeenCalledTimes(2);
+      await expectMenuRemoved();
+      expect(scrollSubscriptions).toBe(0);
+    });
+
+    it('keeps a context menu usable when photo navigation is cancelled, then closes on a successful retry', async () => {
+      const trigger = await rightClick(0);
+      allowPhoto = false;
+      expect(await TestBed.inject(Router).navigateByUrl('/photo?path=%2Fp0.jpg')).toBe(false);
+      expect(mockStore.parkListingReads).not.toHaveBeenCalled();
+      expect(trigger.menuOpen).toBe(true);
+      expect(overlay().querySelector('[role="menu"]')).not.toBeNull();
+      allowPhoto = true;
+      await harness.navigateByUrl('/photo?path=%2Fp0.jpg');
+      await harness.fixture.whenStable();
+      expect(trigger.menuOpen).toBe(false);
+      await expectMenuRemoved();
+      await back();
+      await rightClick(0);
+    });
+
+    it('still closes an ordinary gallery menu across the real outlet detach', async () => {
+      mockStore.selectionCount.set(1);
+      harness.detectChanges();
+      const trigger = harness.routeDebugElement!.query(By.directive(MatMenuTrigger)).injector.get(MatMenuTrigger);
+      trigger.openMenu();
+      harness.detectChanges();
+      await harness.fixture.whenStable();
+      expect(trigger.menuOpen).toBe(true);
+      expect(overlay().querySelector('[role="menu"]')).not.toBeNull();
+      await harness.navigateByUrl('/photo?path=%2Fp0.jpg');
+      await harness.fixture.whenStable();
+      expect(trigger.menuOpen).toBe(false);
+      await expectMenuRemoved();
     });
   });
 
@@ -4179,6 +4863,83 @@ describe('GalleryComponent', () => {
     });
   });
 
+  describe('review-progress banner (rendered)', () => {
+    let fixture: ComponentFixture<GalleryComponent>;
+
+    function render(): HTMLElement {
+      mockI18n.t.mockImplementation((key: string, vars?: Record<string, unknown>) => (vars ? `${key} ${JSON.stringify(vars)}` : key));
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    function buttonLabelled(host: HTMLElement, key: string): HTMLButtonElement | undefined {
+      return Array.from(host.querySelectorAll('button')).find(b => b.textContent?.trim() === key);
+    }
+
+    afterEach(() => {
+      fixture.destroy();
+      sessionStorage.removeItem(NOTICE_DISMISSALS_KEY);
+    });
+
+    it('closes for this tab without hiding it for good, and reopens for another scope', () => {
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      const host = render();
+      host.querySelector<HTMLButtonElement>(`[data-review-progress] button[aria-label="${I18N.ui.buttons.dismiss}"]`)!.click();
+      fixture.detectChanges();
+      expect(host.querySelector('[data-review-progress]')).toBeNull();
+      expect(mockStore.setReviewProgressVisible).not.toHaveBeenCalled();
+
+      // New counts in the same scope are still the same notice.
+      mockStore.reviewProgress.set({ total: 10, undecided: 5, kept: 4, rejected: 1 });
+      fixture.detectChanges();
+      expect(host.querySelector('[data-review-progress]')).toBeNull();
+
+      mockStore.filters.set({ ...DEFAULT_FILTERS, tag: 'beach' });
+      fixture.detectChanges();
+      expect(host.querySelector('[data-review-progress]')).not.toBeNull();
+    });
+
+    it('renders nothing while there is no progress snapshot', () => {
+      const host = render();
+      expect(host.querySelector('section progress')).toBeNull();
+    });
+
+    it('renders the decision counts and completion for the scope', () => {
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      mockStore.reviewPercent.set(40);
+      const status = render().querySelector('[role="status"]') as HTMLElement;
+      expect(status.textContent).toContain(`${I18N.gallery.review_progress.counts} ${JSON.stringify({ undecided: 6, kept: 3, rejected: 1 })}`);
+      expect(status.textContent).toContain(`${I18N.gallery.review_progress.complete} ${JSON.stringify({ percent: 40, total: 10 })}`);
+    });
+
+    it('Start calls startReviewQueue', () => {
+      mockStore.startReviewQueue = vi.fn();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      const start = buttonLabelled(render(), I18N.gallery.review_progress.start);
+      expect(start).toBeDefined();
+      start!.click();
+      expect(mockStore.startReviewQueue).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers no Start when nothing is undecided or the undecided tab is already active', () => {
+      mockStore.reviewProgress.set({ total: 10, undecided: 0, kept: 9, rejected: 1 });
+      expect(buttonLabelled(render(), I18N.gallery.review_progress.start)).toBeUndefined();
+      fixture.destroy();
+      mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
+      mockStore.filters.set({ ...DEFAULT_FILTERS, review_status: 'undecided' });
+      expect(buttonLabelled(render(), I18N.gallery.review_progress.start)).toBeUndefined();
+    });
+
+    it('Continue calls continueReview on the store', () => {
+      mockStore.reviewBookmark.set({ path: '/p1.jpg' });
+      const resume = buttonLabelled(render(), I18N.gallery.review_progress.resume);
+      expect(resume).toBeDefined();
+      resume!.click();
+      expect(mockStore.continueReview).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('kept alive behind an open photo (rendered)', () => {
     const photos = Array.from({ length: 3 }, (_, n) => ({
       path: `/p${n}.jpg`, filename: `p${n}.jpg`, image_width: 4000, image_height: 3000,
@@ -4217,6 +4978,30 @@ describe('GalleryComponent', () => {
       tile.blur();
       return tile;
     }
+
+    it('does not open a resumed photo after the owning gallery is parked', async () => {
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      let resolveResume!: (path: string) => void;
+      mockStore.continueReview.mockImplementation(() => new Promise<string>(resolve => { resolveResume = resolve; }));
+      const pending = (gallery as unknown as { continueReview(): Promise<void> }).continueReview();
+      openPhoto(0);
+      mockStore.photos.set([{ ...photos[1] }]);
+      navigate.mockClear();
+      resolveResume(photos[1].path);
+      await pending;
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('does not open a resumed photo after navigation away even before detach', async () => {
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      let resolveResume!: (path: string) => void;
+      mockStore.continueReview.mockImplementation(() => new Promise<string>(resolve => { resolveResume = resolve; }));
+      const pending = (gallery as unknown as { continueReview(): Promise<void> }).continueReview();
+      (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(2, '/stats'));
+      resolveResume(photos[1].path);
+      await pending;
+      expect(navigate).not.toHaveBeenCalled();
+    });
 
     it('defers the filter sidebar until its block is rendered', async () => {
       expect(fixture.debugElement.query(By.directive(GalleryFilterSidebarComponent))).toBeNull();
@@ -4276,10 +5061,13 @@ describe('GalleryComponent', () => {
       expect(TestBed.inject(HeaderSlotService).template()).toBeNull();
       expect(mockStore.loadTypeCounts).not.toHaveBeenCalled();
       expect(mockStore.loadFilterOptions).not.toHaveBeenCalled();
+      expect(mockStore.resumeListingReads).not.toHaveBeenCalled();
       outletMock.attachEvents.next(gallery);
       expect(TestBed.inject(HeaderSlotService).template()).not.toBeNull();
       expect(mockStore.loadTypeCounts).toHaveBeenCalledOnce();
       expect(mockStore.loadFilterOptions).toHaveBeenCalledOnce();
+      expect(mockStore.resumeListingReads).toHaveBeenCalledOnce();
+      expect(mockStore.parkListingReads).toHaveBeenCalledOnce();
     });
 
     it('destroys an active slideshow when the gallery is parked', () => {
@@ -4312,6 +5100,159 @@ describe('GalleryComponent', () => {
       expect(scrollTo).toHaveBeenCalledWith({ top: 640 });
       expect(document.activeElement).toBe(tile);
       expect((gallery as unknown as { activeIndex(): number }).activeIndex()).toBe(1);
+    });
+
+    it.each([false, true])('reanchors the opened card after layout drift or a parked resize (resize=%s)', resized => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      let width = 1000;
+      let height = 800;
+      let scroll = 640;
+      let absoluteTop = 740;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockImplementation(() => ({ top: 0, width, height } as DOMRect));
+      vi.spyOn(host, 'getBoundingClientRect').mockImplementation(() => ({ top: absoluteTop - scroll, height: 200 } as DOMRect));
+      vi.spyOn(content, 'measureScrollOffset').mockImplementation(() => scroll);
+      scrollTo.mockImplementation(({ top }: ScrollToOptions) => { scroll = top!; });
+      for (let cycle = 0; cycle < 2; cycle++) {
+        openPhoto(1);
+        if (resized) { width = 600; height = 400; }
+        absoluteTop += 80;
+        outletMock.attachEvents.next(gallery);
+        for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+        expect(host.getBoundingClientRect().top).toBe(100);
+        expect(document.activeElement?.closest('[data-pidx]')).toBe(host);
+      }
+    });
+
+    it('focuses the replacement card after the responsive grid recreates its DOM', () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 0, width: 1000, height: 800 } as DOMRect);
+      vi.spyOn(host, 'getBoundingClientRect').mockReturnValue({ top: 100, height: 200 } as DOMRect);
+      openPhoto(1);
+      outletMock.attachEvents.next(gallery);
+      const replacement = host.cloneNode(true) as HTMLElement;
+      host.replaceWith(replacement);
+      (gallery as any).setCursor(-1);
+      vi.spyOn(replacement, 'getBoundingClientRect').mockReturnValue({ top: 100, height: 200 } as DOMRect);
+      for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+      expect(document.activeElement?.closest('[data-pidx]')).toBe(replacement);
+    });
+
+    it.each(['cursor', 'input', 'escape'] as const)('does not override newer same-gallery %s interaction before the anchor frame', interaction => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 0, width: 1000, height: 800 } as DOMRect);
+      vi.spyOn(host, 'getBoundingClientRect').mockReturnValue({ top: 100, height: 200 } as DOMRect);
+      openPhoto(1);
+      outletMock.attachEvents.next(gallery);
+      let focused: HTMLElement;
+      if (interaction === 'cursor') {
+        (gallery as any).setCursor(2);
+        focused = fixture.nativeElement.querySelector('[data-pidx="2"] [tabindex]');
+      } else if (interaction === 'escape') {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        (gallery as any).setCursor(-1);
+        focused = document.body;
+      } else {
+        focused = document.createElement('input');
+        fixture.nativeElement.append(focused);
+      }
+      if (interaction === 'escape') (document.activeElement as HTMLElement)?.blur();
+      else focused.focus({ preventScroll: true });
+      scrollTo.mockClear();
+      for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+      expect(document.activeElement).toBe(focused);
+      expect(scrollTo).not.toHaveBeenCalled();
+    });
+
+    it('does not apply a deferred anchor after another navigation starts', () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 0, width: 1000, height: 800 } as DOMRect);
+      vi.spyOn(host, 'getBoundingClientRect').mockReturnValue({ top: 100, height: 200 } as DOMRect);
+      openPhoto(1);
+      outletMock.attachEvents.next(gallery);
+      scrollTo.mockClear();
+      (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(3, '/stats'));
+      for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+      expect(scrollTo).not.toHaveBeenCalled();
+    });
+
+    it('closes a gallery menu when the gallery parks', () => {
+      mockStore.selectionCount.set(1);
+      fixture.detectChanges();
+      const trigger = fixture.debugElement.query(By.directive(MatMenuTrigger)).injector.get(MatMenuTrigger);
+      trigger.openMenu();
+      fixture.detectChanges();
+      expect(trigger.menuOpen).toBe(true);
+      openPhoto(1);
+      expect(trigger.menuOpen).toBe(false);
+    });
+
+    it('closes the toolbar type select when the gallery parks', () => {
+      const view = TestBed.inject(HeaderSlotService).template()!.createEmbeddedView({});
+      TestBed.inject(ApplicationRef).attachView(view);
+      try {
+        view.detectChanges();
+        fixture.detectChanges();
+        const type = (gallery as unknown as { selects(): MatSelect[] }).selects().at(0)!;
+        expect(type).toBeTruthy();
+        type.open();
+        fixture.detectChanges();
+        expect(type.panelOpen).toBe(true);
+        openPhoto(1);
+        expect(type.panelOpen).toBe(false);
+      } finally {
+        TestBed.inject(ApplicationRef).detachView(view);
+        view.destroy();
+      }
+    });
+
+    it('does not override a pointer press made before the anchor frame', () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({ top: 0, width: 1000, height: 800 } as DOMRect);
+      let top = 100;
+      vi.spyOn(host, 'getBoundingClientRect').mockImplementation(() => ({ top, height: 200 } as DOMRect));
+      openPhoto(1);
+      top = 180;
+      outletMock.attachEvents.next(gallery);
+      // Focus stays on the opened card; only the pointer veto can stop the re-anchor.
+      document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      scrollTo.mockClear();
+      for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+      expect(scrollTo).not.toHaveBeenCalled();
+    });
+
+    it('clamps a parked-resize anchor so the card stays inside a shorter viewport', () => {
+      const frames: FrameRequestCallback[] = [];
+      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(callback => { frames.push(callback); return frames.length; });
+      const host = fixture.nativeElement.querySelector('[data-pidx="1"]') as HTMLElement;
+      const viewport = (content as any).getElementRef().nativeElement as HTMLElement;
+      let height = 800;
+      let scroll = 640;
+      const absoluteTop = 740;
+      vi.spyOn(viewport, 'getBoundingClientRect').mockImplementation(() => ({ top: 0, width: 1000, height } as DOMRect));
+      vi.spyOn(host, 'getBoundingClientRect').mockImplementation(() => ({ top: absoluteTop - scroll, height: 200 } as DOMRect));
+      vi.spyOn(content, 'measureScrollOffset').mockImplementation(() => scroll);
+      scrollTo.mockImplementation(({ top }: ScrollToOptions) => { scroll = top!; });
+      openPhoto(1);
+      height = 250;
+      outletMock.attachEvents.next(gallery);
+      for (let frame = 0; frame < 3; frame++) for (const callback of frames.splice(0)) callback(0);
+      // Anchor offset 100 would push the 200px card past a 250px viewport: clamped to 250 - 200.
+      expect(host.getBoundingClientRect().top).toBe(50);
     });
 
     it('returns to the photo last viewed when the arrows moved off the one opened', () => {
@@ -4492,6 +5433,278 @@ describe('GalleryComponent', () => {
       const header = TestBed.inject(HeaderSlotService);
       outletMock.detachEvents.next({});
       expect(header.template()).not.toBeNull();
+    });
+  });
+
+  describe('toolbar search and view shortcuts (rendered)', () => {
+    // Stands in for the shell, which renders the gallery's header-slot template
+    // through a template outlet in the global toolbar.
+    @Component({
+      selector: 'app-toolbar-host',
+      imports: [NgTemplateOutlet, MatMenuModule, MatSelectModule],
+      template: `
+        <ng-container [ngTemplateOutlet]="template()" />
+        <button data-testid="keyboard-test-menu" [matMenuTriggerFor]="menu">Menu</button>
+        <mat-menu #menu="matMenu">
+          <button mat-menu-item>Berries</button>
+          <button mat-menu-item>Violet</button>
+          <button mat-menu-item>/ Slash</button>
+        </mat-menu>
+        <mat-select aria-label="Test selector">
+          <mat-option value="b">Berries</mat-option>
+          <mat-option value="v">Violet</mat-option>
+          <mat-option value="s">/ Slash</mat-option>
+        </mat-select>
+      `,
+    })
+    class ToolbarHostComponent {
+      readonly template = inject(HeaderSlotService).template;
+    }
+
+    let fixture: ComponentFixture<GalleryComponent>;
+    let host: ComponentFixture<ToolbarHostComponent>;
+    let gallery: GalleryComponent;
+    let search: HTMLInputElement;
+
+    beforeEach(() => {
+      mockStore.setGalleryMode = vi.fn();
+      fixture = TestBed.createComponent(GalleryComponent);
+      fixture.detectChanges();
+      gallery = fixture.componentInstance;
+      host = TestBed.createComponent(ToolbarHostComponent);
+      host.detectChanges();
+      document.body.appendChild(host.nativeElement);
+      search = host.nativeElement.querySelector(`input[placeholder="${I18N.gallery.search_placeholder}"]`) as HTMLInputElement;
+      mockStore.updateFilter.mockClear();
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      host.destroy();
+      (host.nativeElement as HTMLElement).remove();
+      if (!fixture.componentRef.hostView.destroyed) fixture.destroy();
+    });
+
+    function type(value: string): void {
+      search.value = value;
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function key(init: KeyboardEventInit, target: EventTarget = document): KeyboardEvent {
+      const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+      target.dispatchEvent(event);
+      return event;
+    }
+
+    describe('search delay', () => {
+      it('filters 400 ms after the last keystroke, not before', () => {
+        type('cat');
+        vi.advanceTimersByTime(399);
+        expect(mockStore.updateFilter).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(1);
+        expect(mockStore.updateFilter).toHaveBeenCalledExactlyOnceWith('search', 'cat');
+      });
+
+      it('restarts the delay on every keystroke', () => {
+        type('ca');
+        vi.advanceTimersByTime(300);
+        type('cat');
+        vi.advanceTimersByTime(300);
+        expect(mockStore.updateFilter).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(100);
+        expect(mockStore.updateFilter).toHaveBeenCalledExactlyOnceWith('search', 'cat');
+      });
+
+      it('Enter commits at once and cancels the pending timer', () => {
+        type('cat');
+        search.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+        expect(mockStore.updateFilter).toHaveBeenCalledExactlyOnceWith('search', 'cat');
+        vi.advanceTimersByTime(400);
+        expect(mockStore.updateFilter).toHaveBeenCalledOnce();
+      });
+
+      it('leaving the box commits the pending text at once, so a click away does not lose it', () => {
+        type('cat');
+        search.dispatchEvent(new FocusEvent('blur'));
+        expect(mockStore.updateFilter).toHaveBeenCalledExactlyOnceWith('search', 'cat');
+        vi.advanceTimersByTime(400);
+        expect(mockStore.updateFilter).toHaveBeenCalledOnce();
+      });
+
+      it('never fires once the gallery is parked behind a photo page', () => {
+        type('cat');
+        outletMock.detachEvents.next(gallery);
+        vi.advanceTimersByTime(400);
+        expect(mockStore.updateFilter).not.toHaveBeenCalled();
+      });
+
+      it('never fires once the gallery is destroyed', () => {
+        type('cat');
+        fixture.destroy();
+        vi.advanceTimersByTime(400);
+        expect(mockStore.updateFilter).not.toHaveBeenCalled();
+      });
+
+      it('clearing the box cancels a pending search, so the typed text does not come back', () => {
+        mockStore.filters.set({ ...DEFAULT_FILTERS, search: 'dog' });
+        type('dogs');
+        (gallery as unknown as { clearSearch(): void }).clearSearch();
+        vi.advanceTimersByTime(400);
+        expect(mockStore.updateFilter).toHaveBeenCalledExactlyOnceWith('search', '');
+      });
+    });
+
+    describe('/, B and V', () => {
+      const stubWide = (matches: boolean) => vi.stubGlobal('matchMedia', (media: string) => ({ matches, media, addEventListener() {}, removeEventListener() {} }));
+      afterEach(() => vi.unstubAllGlobals());
+
+      it('/ focuses and selects the toolbar search', () => {
+        stubWide(true);
+        search.value = 'cat';
+        const event = key({ key: '/' });
+        expect(event.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(search);
+        expect(search.selectionStart).toBe(0);
+        expect(search.selectionEnd).toBe(3);
+      });
+
+      it('/ opens the sidebar and focuses its search below 1360 px, where the toolbar search is hidden', async () => {
+        stubWide(false);
+        const [sidebarBlock] = await fixture.getDeferBlocks();
+        await sidebarBlock.render(DeferBlockState.Complete);
+        const focusSearch = vi.spyOn(GalleryFilterSidebarComponent.prototype, 'focusSearch').mockImplementation(() => undefined);
+        expect(key({ key: '/' }).defaultPrevented).toBe(true);
+        expect(document.activeElement).not.toBe(search);
+        expect(mockStore.setFilterDrawerOpen).toHaveBeenCalledWith(true);
+        expect(gallery['filterSidebar']()).toBeTruthy();
+        fixture.detectChanges();
+        await fixture.whenStable();
+        expect(focusSearch).toHaveBeenCalledOnce();
+      });
+
+      it.each(['b', 'B'])('%s toggles the filter sidebar', k => {
+        mockStore.filterDrawerOpen.set(false);
+        expect(key({ key: k }).defaultPrevented).toBe(true);
+        expect(mockStore.setFilterDrawerOpen).toHaveBeenCalledWith(true);
+        mockStore.filterDrawerOpen.set(true);
+        key({ key: k });
+        expect(mockStore.setFilterDrawerOpen).toHaveBeenLastCalledWith(false);
+      });
+
+      it.each(['v', 'V'])('%s flips grid and mosaic', k => {
+        (gallery as unknown as { containerWidth: WritableSignal<number> }).containerWidth.set(800);
+        mockStore.galleryMode.set('mosaic');
+        expect(key({ key: k }).defaultPrevented).toBe(true);
+        expect(mockStore.setGalleryMode).toHaveBeenCalledWith('grid');
+        mockStore.galleryMode.set('grid');
+        key({ key: k });
+        expect(mockStore.setGalleryMode).toHaveBeenLastCalledWith('mosaic');
+      });
+
+      it('leaves other keys alone', () => {
+        expect(key({ key: 'q' }).defaultPrevented).toBe(false);
+      });
+
+      it('does nothing while the gallery is parked behind a photo page', () => {
+        outletMock.detachEvents.next(gallery);
+        for (const k of ['/', 'b', 'v']) expect(key({ key: k }).defaultPrevented).toBe(false);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+      });
+
+      it('does nothing while typing in a field', () => {
+        const input = document.createElement('input');
+        document.body.appendChild(input);
+        try {
+          for (const k of ['/', 'b', 'v']) expect(key({ key: k }, input).defaultPrevented).toBe(false);
+          expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+          expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+        } finally {
+          input.remove();
+        }
+      });
+
+      it.each([['ctrlKey'], ['metaKey'], ['altKey']])('does nothing with %s held', mod => {
+        expect(key({ key: 'b', [mod]: true }).defaultPrevented).toBe(false);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+      });
+
+      it('does nothing while the slideshow is open', () => {
+        mockStore.slideshowActive.set(true);
+        for (const k of ['/', 'b', 'v']) expect(key({ key: k }).defaultPrevented).toBe(false);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+        expect(document.activeElement).not.toBe(search);
+      });
+
+      it.each(['b', 'v', '/'])('leaves %s to an open Material menu', async letter => {
+        vi.useRealTimers();
+        const trigger = host.debugElement.query(By.css('[data-testid="keyboard-test-menu"]')).injector.get(MatMenuTrigger);
+        trigger.openMenu();
+        host.detectChanges();
+        await host.whenStable();
+        const menu = TestBed.inject(OverlayContainer).getContainerElement().querySelector('[role="menu"]')!;
+        const item = menu.querySelector('button')!;
+        item.focus();
+        vi.useFakeTimers();
+        key({ key: letter, keyCode: letter === '/' ? 191 : letter.toUpperCase().charCodeAt(0) }, item);
+        vi.runOnlyPendingTimers();
+        host.detectChanges();
+        expect(trigger.menuOpen).toBe(true);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+        expect(document.activeElement?.textContent?.trim()).toBe(letter === 'b' ? 'Berries' : letter === 'v' ? 'Violet' : '/ Slash');
+        trigger.closeMenu();
+      });
+
+      it.each(['b', 'v', '/'])('leaves %s to an open Material select', async letter => {
+        vi.useRealTimers();
+        const select = host.debugElement.query(By.css('mat-select[aria-label="Test selector"]')).componentInstance as MatSelect;
+        select.open();
+        host.detectChanges();
+        await host.whenStable();
+        expect(select.panelOpen).toBe(true);
+        const panel = select.panel.nativeElement as HTMLElement;
+        panel.focus();
+        vi.useFakeTimers();
+        key({ key: letter, keyCode: letter === '/' ? 191 : letter.toUpperCase().charCodeAt(0) }, panel);
+        vi.runOnlyPendingTimers();
+        host.detectChanges();
+        expect(select.panelOpen).toBe(true);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+        expect(document.activeElement).not.toBe(search);
+        const active = document.getElementById((host.debugElement.query(By.css('mat-select[aria-label="Test selector"]')).nativeElement as HTMLElement).getAttribute('aria-activedescendant') ?? '');
+        expect(active?.textContent?.trim()).toBe(letter === 'b' ? 'Berries' : letter === 'v' ? 'Violet' : '/ Slash');
+        select.close();
+      });
+
+      it.each(['b', 'v', '/'])('leaves %s to a focused closed Material select', letter => {
+        const debug = host.debugElement.query(By.css('mat-select[aria-label="Test selector"]'));
+        const select = debug.componentInstance as MatSelect;
+        const element = debug.nativeElement as HTMLElement;
+        element.focus();
+        key({ key: letter, keyCode: letter === '/' ? 191 : letter.toUpperCase().charCodeAt(0) }, element);
+        vi.runOnlyPendingTimers();
+        host.detectChanges();
+        expect(select.panelOpen).toBe(false);
+        expect(select.value).toBe(letter === '/' ? 's' : letter);
+        expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        expect(mockStore.setGalleryMode).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(element);
+      });
+
+      it('does nothing while a dialog is open', () => {
+        const dialog = document.createElement('mat-dialog-container');
+        document.body.appendChild(dialog);
+        try {
+          expect(key({ key: 'b' }).defaultPrevented).toBe(false);
+          expect(mockStore.setFilterDrawerOpen).not.toHaveBeenCalled();
+        } finally {
+          dialog.remove();
+        }
+      });
     });
   });
 });

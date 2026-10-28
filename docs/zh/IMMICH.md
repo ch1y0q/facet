@@ -94,7 +94,7 @@ Immich ≥ 3.0 允许你限定密钥的权限范围，而不必把一切都授�
 
 ## 第 3 步 —— 映射路径
 
-你共享的每个根目录添加一对。第一个 `facet_prefix` 与照片匹配的配对胜出：
+你共享的每个根目录添加一对。第一个字面字符串前缀匹配胜出；不会推断目录边界。目录前缀请以 `/` 结尾，并将较窄的映射放在较宽的映射之前：
 
 ```json
 "immich": {
@@ -130,7 +130,7 @@ python facet.py --immich-sync --dry-run
 python facet.py --immich-sync
 ```
 
-同步会报告 `matched` / `unmatched` / `updated` / `skipped (unrated)` 以及创建的相册数。首次运行时 `unmatched` 数量很大，几乎总是意味着路径映射有误——见[故障排查](#故障排查)。
+同步会报告 `matched` / `unmatched` / `updated` / `skipped (unrated)` / `identity_conflicts` 以及创建的相册数。首次运行时 `unmatched` 数量很大，几乎总是意味着路径映射有误——见[故障排查](#故障排查)。试运行中，`updated` 表示已验证的计划更新数；不会写入远程数据或本地同步状态。
 
 会被推送的内容：
 
@@ -221,7 +221,7 @@ python facet.py --immich-sync
 | `403` | 令牌不正确。 |
 | `404` | 功能已禁用（未配置令牌）。 |
 
-Facet 从载荷中读取 `originalPath`，并且有意对它出现的位置保持宽容——一个裸的资产对象、`{"asset": {…}}`、一个列表，或者以上任意一种嵌套在 `data` / `items` / `assets` 之下，都能正常工作。如果载荷携带了资产 `id`，Facet 会使用它，省下一次查询往返。
+Facet 从对象、列表以及 `asset` / `data` / `items` / `assets` 包装中读取 `originalPath`。如果提供了 `id`，Facet 会从配置的服务器重新读取该资产，写入前核对精确路径及所选所有者/图库；不一致计为 `failed`。
 
 待处理的路径会由下一次同步报告：
 
@@ -246,6 +246,8 @@ WARNING  Immich webhook saw an asset Facet has not scored: /mnt/photos/2026/08/I
 "immich": {
   "url": "",
   "api_key": "",
+  "owner_id": "",
+  "library_id": "",
   "path_map": [
     { "facet_prefix": "", "immich_prefix": "" }
   ],
@@ -269,6 +271,8 @@ WARNING  Immich webhook saw an asset Facet has not scored: /mnt/photos/2026/08/I
 |-----|---------|---------|
 | `url` | `""` | Immich 的基础 URL，`http` 或 `https`。末尾的斜杠会被去掉。 |
 | `api_key` | `""` | API 密钥，以 `x-api-key` 发送。为空时任何同步都会带着明确的错误中止。 |
+| `owner_id` | `""` | 精确的 Immich 所有者 ID；空字符串禁用筛选。响应缺少该字段时不能满足明确指定的范围。 |
+| `library_id` | `""` | 精确的 Immich 图库 ID；空字符串禁用筛选，不代表选择 null 图库。 |
 | `path_map` | 一对空配置 | Facet 路径与 Immich `originalPath` 值之间的前缀改写。第一个匹配的胜出；双向都会用到。 |
 | `push.ratings` | `true` | 推送 1–5 星的星级（以及它们的清除）。 |
 | `push.favorites` | `true` | 推送 `isFavorite`（以及它的清除）。 |
@@ -331,7 +335,11 @@ Facet 只会为它确实推送过的照片发送清除；这份记忆保存在 F
 
 ### 星级出现在错误的照片上
 
-Immich 内部不可能出现两个 `originalPath` 相同的文件，但两个 *Facet* 根目录映射到同一个 Immich 前缀是可能冲突的。检查你的 `path_map` 各对配置没有重叠：第一个匹配的配对胜出，所以一个宽泛的配对排在一个狭窄的配对前面，就会把后者吞掉。
+同一路径对应多个远程资产 ID，或多个 Facet 路径映射到同一远程路径时，Facet 会拒绝写入并计入 `identity_conflicts`。这些路径不会更新评分、收藏、相册成员或已确认的同步状态；无歧义的照片仍可同步。请修正目录映射或明确设置 `owner_id` 和 `library_id` 后重试。
+
+身份检查使用配置的服务器 URL 和 API 密钥。响应必须包含 `id` 和 `originalPath`，且返回的所有者和图库字段必须符合已选范围。Webhook 提供的 ID 会通过读取该资产，并搜索该精确路径的所有结果页来验证；重复路径、ID 不符或分页无效都会阻止更新。成功响应只确认 HTTP 请求已接受，元数据任务可能仍在等待处理。
+
+Webhook 批次中，若不同 Facet 路径指向同一映射目标或远程 ID，相关条目都会被拒绝。所有身份均在首次写入前解析；矛盾的别名计为 `failed`，不更新已确认的推送状态。
 
 ### `rating: 0 is not valid`
 

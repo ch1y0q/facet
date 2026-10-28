@@ -8,7 +8,7 @@ import {
 } from '@angular/router';
 
 const ALBUM_PATH = 'album/:albumId';
-export const GALLERY_PATHS = ['', ALBUM_PATH];
+export const GALLERY_PATHS: readonly string[] = ['', ALBUM_PATH];
 export const PHOTO_PATH = 'photo';
 
 const isGallery = (route: ActivatedRouteSnapshot) => GALLERY_PATHS.includes(route.routeConfig?.path ?? '-');

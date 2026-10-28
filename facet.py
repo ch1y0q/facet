@@ -7,10 +7,11 @@ CLI entry point. The scoring engine is in processing/scorer.py.
 from typing import Any
 import importlib
 import atexit
+import ctypes
 import fnmatch
+import functools
 import math
 import os
-import random
 import signal
 import sys
 import threading
@@ -80,6 +81,8 @@ if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
 
 import json
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 from datetime import datetime
 from db import DEFAULT_DB_PATH, init_database, get_connection, check_disk_space, write_photo_tags
@@ -1174,7 +1177,6 @@ class _FlockBackend:
     """
 
     peek_open_flags = os.O_RDONLY
-    has_shared_mode = True
 
     @staticmethod
     def take_exclusive(fd):
@@ -1189,39 +1191,67 @@ class _FlockBackend:
         fcntl.flock(fd, fcntl.LOCK_UN)
 
 
-class _MsvcrtBackend:
-    """Windows byte-range locks (``msvcrt.locking``), which have no shared mode.
+class _Overlapped(ctypes.Structure):
+    """Win32 OVERLAPPED, defined once: ctypes caches every POINTER() type forever."""
+    _fields_ = [('Internal', ctypes.c_size_t), ('InternalHigh', ctypes.c_size_t),
+                ('Offset', ctypes.c_uint32), ('OffsetHigh', ctypes.c_uint32),
+                ('hEvent', ctypes.c_void_p)]
 
-    A peek therefore probes with the same exclusive lock and drops it again,
-    so two peeks collide with each other; ``_read_holder`` retries the probe to
-    tell a peer's microsecond-long peek from a real job. The locked byte sits
-    past the payload so a Windows range lock -- mandatory, unlike POSIX
-    advisory locks -- never blocks reading the holder's JSON.
+
+LOCKFILE_FAIL_IMMEDIATELY = 0x1
+LOCKFILE_EXCLUSIVE_LOCK = 0x2
+
+
+@functools.cache
+def _windows_kernel():
+    """kernel32 with LockFileEx/UnlockFileEx prototypes configured, bound once."""
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.LockFileEx.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
+                                  ctypes.c_uint32, ctypes.c_uint32, ctypes.POINTER(_Overlapped)]
+    kernel.LockFileEx.restype = ctypes.c_int
+    kernel.UnlockFileEx.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
+                                    ctypes.c_uint32, ctypes.POINTER(_Overlapped)]
+    kernel.UnlockFileEx.restype = ctypes.c_int
+    return kernel
+
+
+class _WindowsLockBackend:
+    """Native shared/exclusive Windows locks on one byte past the JSON payload.
+
+    Shared LockFileEx probes coexist even while a polling thread is paused;
+    exclusive jobs still conflict with every probe and other job. Windows
+    mandatory range locks stay outside the payload so its JSON remains readable.
     """
 
     peek_open_flags = os.O_RDWR
-    has_shared_mode = False
 
     @staticmethod
-    def _lock_reserved_byte(fd, mode):
-        position = os.lseek(fd, 0, os.SEEK_CUR)
-        os.lseek(fd, LIBRARY_LOCK_WINDOWS_OFFSET, os.SEEK_SET)
-        try:
-            msvcrt.locking(fd, mode, LIBRARY_LOCK_WINDOWS_BYTES)
-        finally:
-            os.lseek(fd, position, os.SEEK_SET)
+    def _lock_reserved_byte(fd, exclusive):
+        overlap = _Overlapped(Offset=LIBRARY_LOCK_WINDOWS_OFFSET)
+        # EXCLUSIVE_LOCK is absent for a shared status probe.
+        flags = LOCKFILE_FAIL_IMMEDIATELY | (LOCKFILE_EXCLUSIVE_LOCK if exclusive else 0)
+        if not _windows_kernel().LockFileEx(msvcrt.get_osfhandle(fd), flags, 0,
+                                            LIBRARY_LOCK_WINDOWS_BYTES, 0, ctypes.byref(overlap)):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    @staticmethod
+    def _unlock_reserved_byte(fd):
+        overlap = _Overlapped(Offset=LIBRARY_LOCK_WINDOWS_OFFSET)
+        if not _windows_kernel().UnlockFileEx(msvcrt.get_osfhandle(fd), 0,
+                                              LIBRARY_LOCK_WINDOWS_BYTES, 0, ctypes.byref(overlap)):
+            raise ctypes.WinError(ctypes.get_last_error())
 
     @staticmethod
     def take_exclusive(fd):
-        _MsvcrtBackend._lock_reserved_byte(fd, msvcrt.LK_NBLCK)
+        _WindowsLockBackend._lock_reserved_byte(fd, exclusive=True)
 
     @staticmethod
     def take_shared(fd):
-        _MsvcrtBackend._lock_reserved_byte(fd, msvcrt.LK_NBLCK)
+        _WindowsLockBackend._lock_reserved_byte(fd, exclusive=False)
 
     @staticmethod
     def unlock(fd):
-        _MsvcrtBackend._lock_reserved_byte(fd, msvcrt.LK_UNLCK)
+        _WindowsLockBackend._unlock_reserved_byte(fd)
 
 
 def _select_os_lock_backend():
@@ -1229,7 +1259,7 @@ def _select_os_lock_backend():
     if fcntl is not None:
         return _FlockBackend
     if msvcrt is not None:
-        return _MsvcrtBackend
+        return _WindowsLockBackend
     return None
 
 
@@ -1329,23 +1359,8 @@ def _take_os_lock(fd, attempts=1):
     return False
 
 
-def _lock_is_free(fd, attempts=1):
-    """True when no job holds the lock, probed without taking it away.
-
-    ``attempts`` above 1 is for backends whose "shared" probe is really an
-    exclusive one: there a peer peek holds the byte for microseconds while a
-    real job holds it for minutes, so retrying tells the two apart. The backoff
-    is jittered because peeks arrive in phase -- a viewer polls every client at
-    once -- and a fixed sleep would just re-collide the same herd each round.
-    """
-    for _ in range(attempts - 1):
-        try:
-            _OS_LOCK.take_shared(fd)
-        except OSError:
-            time.sleep(LIBRARY_LOCK_RETRY_SECONDS * random.uniform(0.5, 1.5))
-            continue
-        _OS_LOCK.unlock(fd)
-        return True
+def _lock_is_free(fd):
+    """Probe with a shared lock, which conflicts only with an exclusive job."""
     try:
         _OS_LOCK.take_shared(fd)
     except OSError:
@@ -1364,16 +1379,14 @@ def _decode_holder(raw):
 def _read_holder(lock_path):
     """Payload of the process holding *lock_path*, or None when it is free.
 
-    The probe is read-only and, where the platform has a shared mode, taken
-    in it: two overlapping peeks that excluded each other would make one of
-    them read a finished job's leftover payload as a live holder.
+    The probe never writes and is taken in shared mode on both backends (POSIX
+    flock on a read-only descriptor, Windows LockFileEx on an O_RDWR one): two
+    overlapping peeks that excluded each other would make one of them read a
+    finished job's leftover payload as a live holder.
 
-    Where it has none -- Windows byte-range locks -- the probe is itself
-    exclusive, so overlapping peeks exclude *each other* and the loser is
-    retried rather than believed, exactly as ``_take_os_lock`` already does on
-    the acquire side. An empty payload stays "held" on purpose: a holder whose
-    ``_write_payload`` hit ENOSPC owns the lock with an empty file, and calling
-    that free would be the worse error of the two.
+    An empty payload stays "held" on purpose: a holder whose _write_payload
+    hit ENOSPC owns the lock with an empty file, and calling that free would
+    be the worse error of the two.
     """
     if _OS_LOCK is None:
         return None
@@ -1382,8 +1395,7 @@ def _read_holder(lock_path):
     except OSError:
         return None
     try:
-        attempts = 1 if _OS_LOCK.has_shared_mode else LIBRARY_LOCK_RETRY_ATTEMPTS
-        if _lock_is_free(fd, attempts=attempts):
+        if _lock_is_free(fd):
             return None
         return _decode_holder(os.read(fd, LIBRARY_LOCK_READ_BYTES))
     finally:
@@ -1443,7 +1455,7 @@ class LibraryLock:
     module holds this lock -- the scan for its whole run, post-processing tail
     included -- so on one machine the two can never overlap.
 
-    The mutex is the OS file lock (``fcntl.flock``, ``msvcrt.locking`` on
+    The mutex is the OS file lock (``fcntl.flock``, ``LockFileEx`` on
     Windows -- see ``_select_os_lock_backend``) on
     ``<db_dir>/.facet_cache/library.lock`` (the cache-dir convention from
     ``api/routers/cull_preview.py``), NOT the file's existence: the OS drops
@@ -2410,6 +2422,18 @@ def main():
 
     parser = cli_args.build_parser()
     args = parser.parse_args()
+    if (args.sidecar_fields is not None or args.overwrite_sidecar_review) and not args.import_sidecars:
+        parser.error("--sidecar-fields and --overwrite-sidecar-review require --import-sidecars")
+    if args.sidecar_fields is not None:
+        from processing.xmp_import import SIDECAR_FIELDS
+        if not set(args.sidecar_fields.split(',')) <= set(SIDECAR_FIELDS):
+            parser.error(f"--sidecar-fields must select {','.join(SIDECAR_FIELDS)}")
+    if args.sidecar_naming is not None and not args.import_sidecars:
+        parser.error("--sidecar-naming requires --import-sidecars")
+    if args.reconcile_keywords and not args.export_sidecars:
+        parser.error("--reconcile-keywords requires --export-sidecars")
+    if args.overwrite_manual_gps and not args.import_sidecars:
+        parser.error("--overwrite-manual-gps requires --import-sidecars")
 
     policy = _apply_licensing_policy(args)
     if policy.mode == licensing.MODE_COMMERCIAL:
@@ -2908,6 +2932,18 @@ def main():
         if iqa_step is None:
             logger.info("--- IQA metrics: skipped (no IQA model is permitted under the active "
                         "licensing policy) ---")
+
+        # HEIF orientation repair, inline like the schema step rather than as a
+        # subprocess flag: no model and no GPU, and idempotent through a
+        # completed-pass scanned_at watermark; failed candidates remain eligible
+        # for retry. Sideways rows leave with their subject columns NULLed,
+        # which is exactly what the --recompute-saliency step below selects on.
+        from processing.scorer import fix_double_transposed_heif_thumbnails
+        logger.info("--- HEIF orientation rebuild (thumbnails + dimensions) ---")
+        repaired = fix_double_transposed_heif_thumbnails(db_path)
+        if repaired:
+            logger.info("  %d sideways HEIF thumbnail(s) re-uprighted; "
+                        "--recompute-saliency will rescore them", repaired)
         steps = [step for step in (
             ("--extract-gps", "GPS coordinates from EXIF"),
             ("--detect-duplicates", "Duplicate detection (pHash)"),
@@ -3906,12 +3942,39 @@ def main():
     if args.import_sidecars:
         from processing.xmp_import import import_sidecars
         root = None if args.import_sidecars == 'all' else args.import_sidecars
-        init_database(args.db)  # photo_manual_tags may not exist yet; lock is held
-        with get_connection(args.db) as conn:
-            stats = import_sidecars(conn, root, user_id=args.user)
+        sidecar_naming = args.sidecar_naming or "full"
+        try:
+            if args.dry_run:
+                # A preview must not migrate the DB, stamp edit clocks, or commit the caller's writes.
+                connection = closing(sqlite3.connect(Path(args.db).resolve().as_uri() + '?mode=ro', uri=True))
+            else:
+                init_database(args.db)
+                connection = get_connection(args.db)
+            with connection as conn:
+                if args.dry_run:
+                    conn.row_factory = sqlite3.Row
+                stats = import_sidecars(conn, root, user_id=args.user,
+                                        overwrite_manual_gps=args.overwrite_manual_gps,
+                                        dry_run=args.dry_run,
+                                        fields=args.sidecar_fields.split(',') if args.sidecar_fields else None,
+                                        overwrite_review=args.overwrite_sidecar_review,
+                                        sidecar_naming=sidecar_naming)
+        except (sqlite3.Error, OSError) as exc:
+            if not args.dry_run:
+                raise
+            logger.error(
+                "Sidecar import preview failed: %s. Check --db points to an existing, "
+                "readable Facet database; preview does not create or upgrade it.", exc,
+            )
+            sys.exit(1)
+        if args.dry_run:
+            print(json.dumps(stats, ensure_ascii=False, indent=2))
         logger.info(
-            "Sidecar import: %d updated, %d unchanged, %d without sidecar, %d skipped",
-            stats['updated'], stats['unchanged'], stats['missing'], stats['skipped'],
+            "Sidecar import%s (%s): %d updated, %d unchanged, %d without sidecar, %d skipped "
+            "(%d ambiguous, %d naming mismatches, %d full-name sidecars ignored, %d basename sidecars ignored), %d review conflicts, %d untracked legacy review edits",
+            " preview" if args.dry_run else "", sidecar_naming, stats['updated'], stats['unchanged'],
+            stats['missing'], stats['skipped'], stats['ambiguous'], stats['naming_mismatch'], stats['full_ignored'],
+            stats['basename_ignored'], stats['conflicts'], stats['legacy_review_warnings'],
         )
         exit()
 
@@ -3925,6 +3988,7 @@ def main():
                 conn, root, embed_original=args.embed_originals, user_id=args.user,
                 xmp_export_cfg=_export_cfg.get('xmp_export', {}),
                 derive_stars=args.score_to_stars,
+                reconcile_keywords=args.reconcile_keywords,
             )
         logger.info(
             "Sidecar export: %d written, %d embedded, %d missing, %d errors",
@@ -3975,10 +4039,10 @@ def main():
             sys.exit(1)
         logger.info(
             "Immich sync%s: %d matched, %d unmatched, %d updated, "
-            "%d skipped (unrated), %d album(s) created",
+            "%d skipped (unrated), %d identity conflict(s), %d album(s) created",
             " (dry-run)" if args.dry_run else "",
             stats['matched'], stats['unmatched'], stats['updated'],
-            stats['skipped_unrated'], stats['albums_created'],
+            stats['skipped_unrated'], stats['identity_conflicts'], stats['albums_created'],
         )
         exit()
 

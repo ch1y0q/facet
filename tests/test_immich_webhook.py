@@ -53,8 +53,12 @@ class FakeTransport:
         self.requests.append((method, path, payload))
         if method == "POST" and path == "/api/search/metadata":
             asset_id = self.assets_by_path.get(payload.get("originalPath"))
-            items = [{"id": asset_id}] if asset_id else []
+            items = [{"id": asset_id, "originalPath": payload["originalPath"]}] if asset_id else []
             return {"assets": {"items": items, "nextPage": None}}
+        if method == "GET" and path.startswith("/api/assets/"):
+            asset_id = path.rsplit("/", 1)[-1]
+            return next(({"id": aid, "originalPath": p}
+                         for p, aid in self.assets_by_path.items() if aid == asset_id), {})
         if method == "PUT" and path == "/api/assets":
             return None
         raise AssertionError(f"Unexpected request: {method} {path}")
@@ -242,13 +246,17 @@ class TestKnownScoredAsset:
             {"ids": ["asset-scored"], "rating": 4, "isFavorite": True}
         ]
 
-    def test_payload_asset_id_skips_the_search_round_trip(self, client, immich_cfg, transport):
-        _post(client, _asset(SCORED, asset_id="asset-scored"))
-        assert transport.searches() == []
+    def test_payload_asset_id_is_verified_and_unique_before_update(self, client, immich_cfg, transport):
+        response = _post(client, _asset(SCORED, asset_id="asset-scored"))
+        assert response.status_code == 202
+        assert response.json()['pushed'] == 1
+        assert ('GET', '/api/assets/asset-scored', None) in transport.requests
+        assert transport.searches() == [{"originalPath": _immich_path(SCORED), "page": 1, "withStacked": True}]
+        assert transport.asset_updates() == [{"ids": ["asset-scored"], "rating": 4, "isFavorite": True}]
 
     def test_missing_asset_id_falls_back_to_a_path_search(self, client, immich_cfg, transport):
         _post(client, _asset(SCORED))
-        assert transport.searches() == [{"originalPath": _immich_path(SCORED), "page": 1}]
+        assert transport.searches() == [{"originalPath": _immich_path(SCORED), "page": 1, "withStacked": True}]
         assert transport.asset_updates()[0]["ids"] == ["asset-scored"]
 
     def test_push_records_synced_state_so_a_later_clear_is_detected(self, client, immich_cfg, transport):
@@ -472,3 +480,100 @@ class TestDeliveryBatching:
         assert calls["save_pending"] == 1
         assert calls["save_state"] == 0
         assert load_pending_paths(DB_PATH) == unknown
+
+
+@pytest.fixture()
+def hinted_transport(monkeypatch):
+    """Install a FakeTransport whose search and/or asset GET responses a test overrides.
+
+    ``search(payload)`` answers POST /api/search/metadata and ``get()`` answers any GET;
+    both calls are recorded on the returned fake like the default routes. Everything
+    else falls through to the fake itself.
+    """
+    fake = FakeTransport()
+
+    def install(search=None, get=None):
+        def request(_self, method, path, payload=None):
+            if search and method == 'POST' and path == '/api/search/metadata':
+                fake.requests.append((method, path, payload))
+                return search(payload)
+            if get and method == 'GET':
+                fake.requests.append((method, path, payload))
+                return get()
+            return fake(method, path, payload)
+        monkeypatch.setattr(ImmichClient, '_request', request)
+        return fake
+
+    return install
+
+
+def assert_no_synced_paths():
+    with sqlite3.connect(DB_PATH) as conn:
+        assert conn.execute("SELECT value FROM stats_cache WHERE key LIKE 'immich_synced_paths:%'").fetchone() is None
+
+
+def test_hint_does_not_bypass_path_identity_validation(client, immich_cfg, hinted_transport):
+    def search(payload):
+        page = payload['page']
+        return {'assets': {'items': [{'id': 'asset-scored' if page == 1 else 'duplicate',
+                                     'originalPath': _immich_path(SCORED)}],
+                           'nextPage': '2' if page == 1 else None}}
+    fake = hinted_transport(search=search)
+    response = _post(client, _asset(SCORED, asset_id='asset-scored'))
+    assert response.status_code == 202, response.text
+    assert response.json()['failed'] == 1
+    assert response.json()['pushed'] == response.json()['pending'] == 0
+    assert fake.asset_updates() == []
+    assert [item['page'] for item in fake.searches()] == [1, 2]
+    assert_no_synced_paths()
+
+
+def test_hint_library_mismatch_refuses_before_mutation(client, immich_cfg, hinted_transport):
+    immich_cfg['library_id'] = 'intended-library'
+    fake = hinted_transport(get=lambda: {'id': 'asset-scored', 'originalPath': _immich_path(SCORED),
+                                         'libraryId': 'different-library'})
+    response = _post(client, _asset(SCORED, asset_id='asset-scored'))
+    assert response.status_code == 202
+    assert response.json()['failed'] == 1
+    assert response.json()['pushed'] == 0
+    assert fake.requests == [('GET', '/api/assets/asset-scored', None)]
+    assert_no_synced_paths()
+
+
+@pytest.mark.parametrize('next_page', [2.9, 2.0, True, False, {}, [], '', '2.9', '+2', ' 2', '²', '２', 'not-a-page'])
+def test_hinted_webhook_rejects_non_page_cursors(client, immich_cfg, hinted_transport, next_page):
+    fake = hinted_transport(search=lambda payload: {
+        'assets': {'items': [{'id': 'asset-scored', 'originalPath': _immich_path(SCORED)}],
+                   'nextPage': next_page if payload['page'] == 1 else None}})
+    response = _post(client, _asset(SCORED, asset_id='asset-scored'))
+    assert response.status_code == 202
+    assert response.json()['failed'] == 1
+    assert response.json()['pushed'] == 0
+    assert fake.asset_updates() == []
+    assert [item['page'] for item in fake.searches()] == [1]
+    assert_no_synced_paths()
+
+
+@pytest.mark.parametrize('search_id', [None, 'different-id'])
+def test_hint_requires_same_id_in_exact_path_search(client, immich_cfg, hinted_transport, search_id):
+    items = [{'id': search_id, 'originalPath': _immich_path(SCORED)}] if search_id else []
+    fake = hinted_transport(search=lambda payload: {'assets': {'items': items, 'nextPage': None}})
+    response = _post(client, _asset(SCORED, asset_id='asset-scored'))
+    assert response.status_code == 202
+    assert response.json()['failed'] == 1
+    assert response.json()['pushed'] == 0
+    assert fake.asset_updates() == []
+    assert_no_synced_paths()
+
+
+@pytest.mark.parametrize('next_page', [2, '2'])
+def test_hint_search_accepts_legacy_integer_and_string_pages(client, immich_cfg, hinted_transport, next_page):
+    fake = hinted_transport(search=lambda payload: {
+        'assets': {'items': [{'id': 'asset-scored', 'originalPath': _immich_path(SCORED)}],
+                   'nextPage': next_page if payload['page'] == 1 else None}})
+    response = _post(client, _asset(SCORED, asset_id='asset-scored'))
+    assert response.status_code == 202
+    assert response.json()['pushed'] == 1
+    assert response.json()['failed'] == 0
+    assert [item['page'] for item in fake.searches()] == [1, 2]
+    assert fake.asset_updates() == [{'ids': ['asset-scored'], 'rating': 4, 'isFavorite': True}]

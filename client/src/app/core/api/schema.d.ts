@@ -1562,6 +1562,90 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/export/sidecar_jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Api Recent Sidecar Jobs
+         * @description List this principal's recent export receipts, including interrupted jobs.
+         */
+        get: operations["api_recent_sidecar_jobs_api_export_sidecar_jobs_get"];
+        put?: never;
+        /**
+         * Api Start Sidecar Job
+         * @description Start a bounded sidecar export; poll its private receipt for progress.
+         */
+        post: operations["api_start_sidecar_job_api_export_sidecar_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/sidecar_jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Api Sidecar Job Status
+         * @description Read progress for one of this principal's sidecar exports.
+         */
+        get: operations["api_sidecar_job_status_api_export_sidecar_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/sidecar_jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Api Cancel Sidecar Job
+         * @description Stop an export between complete files; completed writes are retained.
+         */
+        post: operations["api_cancel_sidecar_job_api_export_sidecar_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/export/sidecar_jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Api Retry Sidecar Job
+         * @description Explicitly retry unfinished export files using current visibility and metadata.
+         */
+        post: operations["api_retry_sidecar_job_api_export_sidecar_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/export/sidecars": {
         parameters: {
             query?: never;
@@ -2254,6 +2338,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organization_history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List History */
+        get: operations["list_history_api_organization_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organization_history/{entry_id}/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revert History */
+        post: operations["revert_history_api_organization_history__entry_id__revert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/person/{person_id}/avatar": {
         parameters: {
             query?: never;
@@ -2327,6 +2445,12 @@ export interface paths {
          *
          *     Hidden persons (``is_hidden = 1``) are excluded by default; pass
          *     ``include_hidden=true`` to surface them.
+         *
+         *     ``sort=assignment`` orders named candidates by the supplied recent IDs (at
+         *     most 12), then by face count in visible photos, then name and ID. Recent IDs
+         *     confer no visibility: hidden (even with include_hidden), deleted and
+         *     inaccessible candidates stay out. In assignment order, ``face_count`` is
+         *     computed from visible photos; other orders return the stored library count.
          */
         get: operations["list_persons_api_persons_get"];
         put?: never;
@@ -2634,6 +2758,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photo/capture_date": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Reset Date */
+        delete: operations["reset_date_api_photo_capture_date_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photo/clear_junk": {
         parameters: {
             query?: never;
@@ -2750,7 +2891,15 @@ export interface paths {
          *     not resolve on disk (already missing) -- neither trashed nor
          *     row-deleted, so it is reported rather than silently dropped from every
          *     bucket. Reconciling it is ``--cleanup-missing-photos``'s job, same as any
-         *     other missing-on-disk row.
+         *     other missing-on-disk row -- or, with ``remove_missing``, THIS call's:
+         *     the flag moves such paths out of ``skipped`` into ``removed_missing``
+         *     (never ``deleted``, which keeps meaning "row gone via a successful
+         *     trash") and deletes their rows in the same transaction as the trashed
+         *     paths', lead re-pick included. It stays an opt-in because a request
+         *     where EVERY file reads as missing is exactly what a disconnected
+         *     library volume looks like, and even opted in, ``_reconcilable_missing``
+         *     keeps a path ``skipped`` when the allowlist refused it or the folder
+         *     that held it is gone or empty -- the shape of an offline volume.
          */
         post: operations["api_photo_delete_api_photo_delete_post"];
         delete?: never;
@@ -3204,6 +3353,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/batch_gps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Api Batch Gps
+         * @description Preview or assign one location to a visible selection, without file writes.
+         *
+         *     The preview snapshot, visibility, missing coordinates and saved-place
+         *     ownership are checked again under the apply transaction's write lock.
+         *     Equal coordinates are skipped rather than pinning an unchanged file location.
+         *     The deterministic token guards against stale inputs; it is not authorization
+         *     or proof that a preview was requested. Edition access remains required.
+         */
+        post: operations["api_batch_gps_api_photos_batch_gps_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/batch_manual_tags": {
         parameters: {
             query?: never;
@@ -3269,6 +3444,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/batch_review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Api Batch Review
+         * @description Keep/reset preserves ratings and favorites; rejection clears them.
+         */
+        post: operations["api_batch_review_api_photos_batch_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/by_paths": {
         parameters: {
             query?: never;
@@ -3289,6 +3484,40 @@ export interface paths {
          *     unless it asks otherwise -- so ``type`` is set to ``''`` only when the caller gave none.
          */
         post: operations["api_photos_by_paths_api_photos_by_paths_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/capture_date/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Dates */
+        post: operations["apply_dates_api_photos_capture_date_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/photos/capture_date/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Dates */
+        post: operations["preview_dates_api_photos_capture_date_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3450,6 +3679,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/review_progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Api Review Progress
+         * @description Decision counts for the whole content scope, ignoring its active decision tab.
+         *
+         *     ``scope_review_status`` retains a smart album's own decision criterion when
+         *     the gallery's temporary review-status filter is cleared for the denominator.
+         */
+        get: operations["api_review_progress_api_photos_review_progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/select_bottom_percent": {
         parameters: {
             query?: never;
@@ -3488,6 +3740,23 @@ export interface paths {
         put?: never;
         /** Api Create Place */
         post: operations["api_create_place_api_places_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/places/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Api Search Places */
+        get: operations["api_search_places_api_places_search_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4994,6 +5263,47 @@ export interface components {
             /** Face Id */
             face_id: number;
         };
+        /** BatchGpsRequest */
+        BatchGpsRequest: {
+            /**
+             * Exclude
+             * @description Paths to drop from whichever target is sent: subtracted from `photo_paths`, or bound out of the `filters` scope. Only ever narrows.
+             */
+            exclude?: string[] | null;
+            /** Filters */
+            filters?: {
+                [key: string]: unknown;
+            } | null;
+            /** Gps Latitude */
+            gps_latitude: number;
+            /** Gps Longitude */
+            gps_longitude: number;
+            /**
+             * Only Missing
+             * @default true
+             */
+            only_missing?: boolean;
+            /** Photo Paths */
+            photo_paths?: string[] | null;
+            /**
+             * Preview
+             * @default false
+             */
+            preview?: boolean;
+            /** Preview Token */
+            preview_token?: string | null;
+            /** Saved Place Id */
+            saved_place_id?: number | null;
+        };
+        /** BatchGpsResponse */
+        BatchGpsResponse: {
+            /** Changed */
+            changed: number;
+            /** Preview Token */
+            preview_token: string;
+            /** Skipped */
+            skipped: number;
+        };
         /**
          * BatchManualTagRequest
          * @description Add or remove one tag across a path list or a whole gallery view.
@@ -5066,6 +5376,32 @@ export interface components {
             photo_paths?: string[] | null;
             /** Rating */
             rating: number;
+        };
+        /** BatchReviewRequest */
+        BatchReviewRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "kept" | "undecided" | "rejected";
+            /**
+             * Exclude
+             * @description Paths to drop from whichever target is sent: subtracted from `photo_paths`, or bound out of the `filters` scope. Only ever narrows.
+             */
+            exclude?: string[] | null;
+            /** Filters */
+            filters?: {
+                [key: string]: unknown;
+            } | null;
+            /** Photo Paths */
+            photo_paths?: string[] | null;
+        };
+        /** BatchUpdateResponse */
+        BatchUpdateResponse: {
+            /** Count */
+            count: number;
+            /** Success */
+            success: boolean;
         };
         /** BurstGroup */
         BurstGroup: {
@@ -5210,6 +5546,70 @@ export interface components {
         CaptionUpdate: {
             /** Caption */
             caption: string;
+            /** Path */
+            path: string;
+        };
+        /** CaptureDateApplyRequest */
+        CaptureDateApplyRequest: {
+            /**
+             * Exclude
+             * @description Paths to drop from whichever target is sent: subtracted from `photo_paths`, or bound out of the `filters` scope. Only ever narrows.
+             */
+            exclude?: string[] | null;
+            /** Filters */
+            filters?: {
+                [key: string]: unknown;
+            } | null;
+            /** Offset Seconds */
+            offset_seconds: number;
+            /** Photo Paths */
+            photo_paths?: string[] | null;
+            /** Preview Token */
+            preview_token: string;
+        };
+        /** CaptureDatePreview */
+        CaptureDatePreview: {
+            /** Changed */
+            changed: number;
+            /** Preview Token */
+            preview_token: string;
+            /** Samples */
+            samples: components["schemas"]["CaptureDateSample"][];
+            /** Skipped */
+            skipped: number;
+        };
+        /** CaptureDateRequest */
+        CaptureDateRequest: {
+            /**
+             * Exclude
+             * @description Paths to drop from whichever target is sent: subtracted from `photo_paths`, or bound out of the `filters` scope. Only ever narrows.
+             */
+            exclude?: string[] | null;
+            /** Filters */
+            filters?: {
+                [key: string]: unknown;
+            } | null;
+            /** Offset Seconds */
+            offset_seconds: number;
+            /** Photo Paths */
+            photo_paths?: string[] | null;
+        };
+        /** CaptureDateReset */
+        CaptureDateReset: {
+            /**
+             * Date Manually Set
+             * @default 0
+             */
+            date_manually_set?: number;
+            /** Date Taken */
+            date_taken: string | null;
+        };
+        /** CaptureDateSample */
+        CaptureDateSample: {
+            /** New Date */
+            new_date: string;
+            /** Old Date */
+            old_date: string;
             /** Path */
             path: string;
         };
@@ -5449,6 +5849,8 @@ export interface components {
             include_sequence_siblings?: boolean;
             /** Paths */
             paths?: string[] | null;
+            /** Preview Digest */
+            preview_digest?: string | null;
             /** Target Dir */
             target_dir?: string | null;
         };
@@ -5479,6 +5881,8 @@ export interface components {
             moved?: number | null;
             /** Not Visible */
             not_visible: number;
+            /** Preview Digest */
+            preview_digest?: string | null;
             /** Sequence Siblings */
             sequence_siblings: number;
             /** Skipped */
@@ -5597,8 +6001,8 @@ export interface components {
          *     just to keep it in sync -- exactly the "tidy the handler to fit the model"
          *     the phase rules out. The outer pagination envelope is still fully typed.
          *
-         *     Every photo in a page also carries the caller's ``is_rejected`` and ``is_favorite`` (0/1 ints, SQLite
-         *     has no boolean) and ``star_rating`` (0-5), from ``user_preferences`` in multi-user mode and the
+         *     Every photo in a page also carries the caller's ``is_rejected``, ``is_favorite`` and ``is_kept`` (0/1
+         *     ints, SQLite has no boolean) and ``star_rating`` (0-5), from ``user_preferences`` in multi-user mode and the
          *     ``photos`` columns otherwise (``attach_user_marks``); ``tests/test_burst_culling.py`` pins the wire types.
          */
         CullingGroupsResponse: {
@@ -6663,6 +7067,47 @@ export interface components {
             /** Score B */
             score_b?: number | null;
         };
+        /** OrganizationChange */
+        OrganizationChange: {
+            /** After */
+            after: (string | number | null)[];
+            /** Before */
+            before: (string | number | null)[];
+            /** Path */
+            path: string;
+            /** Revision */
+            revision: number;
+        };
+        /** OrganizationEntry */
+        OrganizationEntry: {
+            /** Changes */
+            changes: components["schemas"]["OrganizationChange"][];
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "gps" | "date" | "review";
+            /** Part */
+            part: number;
+            /** Parts */
+            parts: number;
+            /** Reverted */
+            reverted: boolean;
+        };
+        /** OrganizationHistory */
+        OrganizationHistory: {
+            /** Entries */
+            entries: components["schemas"]["OrganizationEntry"][];
+        };
+        /** OrganizationRevert */
+        OrganizationRevert: {
+            /** Changed */
+            changed: number;
+        };
         /** OverrideCategoryBody */
         OverrideCategoryBody: {
             /** Category */
@@ -6889,6 +7334,8 @@ export interface components {
             contrast_score?: number | null;
             /** Date Formatted */
             date_formatted?: string | null;
+            /** Date Manually Set */
+            date_manually_set?: number | null;
             /** Date Taken */
             date_taken?: string | null;
             /** Deqa Score */
@@ -6957,6 +7404,8 @@ export interface components {
             is_favorite?: number | null;
             /** Is Group Portrait */
             is_group_portrait?: number | null;
+            /** Is Kept */
+            is_kept?: number | null;
             /** Is Monochrome */
             is_monochrome?: number | null;
             /** Is Rejected */
@@ -7079,6 +7528,11 @@ export interface components {
             include_sequence_siblings?: boolean;
             /** Paths */
             paths: string[];
+            /**
+             * Remove Missing
+             * @default false
+             */
+            remove_missing?: boolean;
         };
         /**
          * PhotoDeleteResponse
@@ -7104,6 +7558,8 @@ export interface components {
          *     ``CullApplyResponse``'s field of the same name: a path that was visible,
          *     in ``photos``, and not a refused bracket lead, but whose file could not
          *     be resolved on disk (already missing) -- landing in no other bucket.
+         *     With ``remove_missing`` those same paths have their rows removed instead,
+         *     and are reported in ``removed_missing`` rather than ``skipped``.
          */
         PhotoDeleteResponse: {
             /** Deleted */
@@ -7120,6 +7576,8 @@ export interface components {
             not_visible: string[];
             /** Refused Bracket Lead */
             refused_bracket_lead: string[];
+            /** Removed Missing */
+            removed_missing: string[];
             /** Sequence Siblings */
             sequence_siblings: string[];
             /** Skipped */
@@ -7355,6 +7813,25 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** PlaceSearchErrorResponse */
+        PlaceSearchErrorResponse: {
+            /** Detail */
+            detail: string;
+        };
+        /** PlaceSearchResponse */
+        PlaceSearchResponse: {
+            /** Results */
+            results: components["schemas"]["PlaceSearchResult"][];
+        };
+        /** PlaceSearchResult */
+        PlaceSearchResult: {
+            /** Label */
+            label: string;
+            /** Latitude */
+            latitude: number;
+            /** Longitude */
+            longitude: number;
+        };
         /** PlacesResponse */
         PlacesResponse: {
             /** Places */
@@ -7535,6 +8012,20 @@ export interface components {
             };
             /** Success */
             success: boolean;
+        };
+        /**
+         * ReviewProgressResponse
+         * @description Mutually exclusive decisions across the complete visible review scope.
+         */
+        ReviewProgressResponse: {
+            /** Kept */
+            kept: number;
+            /** Rejected */
+            rejected: number;
+            /** Total */
+            total: number;
+            /** Undecided */
+            undecided: number;
         };
         /** SaveSnapshotBody */
         SaveSnapshotBody: {
@@ -7851,6 +8342,37 @@ export interface components {
             wildlife?: number;
         } & {
             [key: string]: unknown;
+        };
+        /** SidecarJobStatus */
+        SidecarJobStatus: {
+            /**
+             * Cancel Requested
+             * @default false
+             */
+            cancel_requested?: boolean;
+            /** Errors */
+            errors: number;
+            /** First Error */
+            first_error?: string | null;
+            /** First Error Code */
+            first_error_code?: ("metadata_repair" | "write_failed" | "exiftool_upgrade" | "stopped") | null;
+            /** Id */
+            id: string;
+            /** Processed */
+            processed: number;
+            /** Skipped */
+            skipped: number;
+            /** Started At */
+            started_at: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "running" | "completed" | "cancelled" | "failed" | "interrupted";
+            /** Total */
+            total: number;
+            /** Written */
+            written: number;
         };
         /**
          * SimilarPhotosResponse
@@ -8289,6 +8811,8 @@ export interface components {
         ToggleRejectedResponse: {
             /** Is Favorite */
             is_favorite?: boolean | null;
+            /** Is Kept */
+            is_kept?: boolean | null;
             /** Is Rejected */
             is_rejected: boolean;
             /** Star Rating */
@@ -8387,6 +8911,8 @@ export interface components {
             badges: {
                 [key: string]: unknown;
             };
+            /** Build */
+            build?: string | null;
             /** Clipping */
             clipping: {
                 [key: string]: unknown;
@@ -8425,6 +8951,8 @@ export interface components {
             pagination: {
                 [key: string]: unknown;
             };
+            /** Place Search Enabled */
+            place_search_enabled: boolean;
             /**
              * Populated Scores
              * @default []
@@ -8463,6 +8991,8 @@ export interface components {
              * @default []
              */
             unavailable_metrics?: string[];
+            /** Version */
+            version?: string | null;
         };
         /** WeightSnapshotItem */
         WeightSnapshotItem: {
@@ -10774,6 +11304,152 @@ export interface operations {
             };
         };
     };
+    api_recent_sidecar_jobs_api_export_sidecar_jobs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidecarJobStatus"][];
+                };
+            };
+        };
+    };
+    api_start_sidecar_job_api_export_sidecar_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportSidecarsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidecarJobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_sidecar_job_status_api_export_sidecar_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidecarJobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_cancel_sidecar_job_api_export_sidecar_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidecarJobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_retry_sidecar_job_api_export_sidecar_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidecarJobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     api_export_sidecars_api_export_sidecars_post: {
         parameters: {
             query?: never;
@@ -11785,6 +12461,57 @@ export interface operations {
             };
         };
     };
+    list_history_api_organization_history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationHistory"];
+                };
+            };
+        };
+    };
+    revert_history_api_organization_history__entry_id__revert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationRevert"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     api_set_person_avatar_api_person__person_id__avatar_post: {
         parameters: {
             query?: never;
@@ -11911,6 +12638,7 @@ export interface operations {
                 search?: string;
                 sort?: string;
                 include_hidden?: boolean;
+                recent_ids?: string;
             };
             header?: never;
             path?: never;
@@ -12417,6 +13145,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_date_api_photo_capture_date_delete: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureDateReset"];
                 };
             };
             /** @description Validation Error */
@@ -13292,6 +14051,39 @@ export interface operations {
             };
         };
     };
+    api_batch_gps_api_photos_batch_gps_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchGpsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchGpsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     api_batch_manual_tags_api_photos_batch_manual_tags_post: {
         parameters: {
             query?: never;
@@ -13391,6 +14183,39 @@ export interface operations {
             };
         };
     };
+    api_batch_review_api_photos_batch_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchUpdateResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     api_photos_by_paths_api_photos_by_paths_post: {
         parameters: {
             query?: never;
@@ -13411,6 +14236,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PhotosByPathsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_dates_api_photos_capture_date_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptureDateApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureDatePreview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_dates_api_photos_capture_date_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptureDateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureDatePreview"];
                 };
             };
             /** @description Validation Error */
@@ -13590,6 +14481,26 @@ export interface operations {
             };
         };
     };
+    api_review_progress_api_photos_review_progress_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewProgressResponse"];
+                };
+            };
+        };
+    };
     api_select_bottom_percent_api_photos_select_bottom_percent_get: {
         parameters: {
             query?: never;
@@ -13659,6 +14570,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_search_places_api_places_search_get: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Wait before another explicit search. */
+            429: {
+                headers: {
+                    /** @description Seconds before retrying. */
+                    "Retry-After"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceSearchErrorResponse"];
+                };
+            };
+            /** @description Online provider unavailable. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceSearchErrorResponse"];
+                };
+            };
+            /** @description Online place search disabled. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceSearchErrorResponse"];
                 };
             };
         };

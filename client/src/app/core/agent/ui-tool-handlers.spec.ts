@@ -609,16 +609,62 @@ describe('UI tool registry and handlers', () => {
       expect(store.filters()).toMatchObject({ hide_bursts: false, favorites_only: true });
     });
 
+    it('dispatches rejected-only filters and preserves an explicit review decision', async () => {
+      await store.updateFilters({ favorites_only: true, camera: 'Canon' });
+      expect(await run('ui_set_gallery_filters', { patch: { show_rejected: true } })).toMatchObject({ ok: true });
+      expect(store.filters()).toMatchObject({ show_rejected: true, hide_rejected: false, favorites_only: false, camera: 'Canon' });
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ show_rejected: '1', camera: 'Canon' }));
+      expect(await run('ui_set_gallery_filters', { patch: { show_rejected: true, review_status: 'kept' } })).toMatchObject({ ok: true });
+      // The review decision wins: a review queue never carries "Only rejected", which would release every hide toggle.
+      expect(store.filters()).toMatchObject({ show_rejected: false, review_status: 'kept' });
+      expect(apiGet).toHaveBeenLastCalledWith('/photos', expect.objectContaining({ review_status: 'kept' }));
+      expect(apiGet.mock.lastCall?.[1]).not.toHaveProperty('show_rejected');
+    });
+
+    it('refuses conflicting rejected-only and favorite-only patches without changing the tab', async () => {
+      await store.updateFilters({ camera: 'Canon' });
+      const previous = store.filters();
+      apiGet.mockClear();
+      const patch = { show_rejected: true, favorites_only: true };
+      expect(await run('ui_set_gallery_filters', { patch })).toMatchObject({ ok: false, error: 'invalid_input' });
+      await expect(direct()['ui_set_gallery_filters']({ patch })).rejects.toMatchObject({ code: 'invalid_input' });
+      expect(store.filters()).toBe(previous);
+      expect(apiGet).not.toHaveBeenCalled();
+    });
+
     it('replace starts from no filters', async () => {
       await run('ui_set_gallery_filters', { patch: { camera: 'Canon', min_iso: 100 } });
       await run('ui_set_gallery_filters', { patch: { lens: '50mm' }, replace: true });
       expect(store.filters()).toMatchObject({ camera: '', min_iso: '', lens: '50mm' });
     });
 
+    it('accepts and reports the review queue, then clears it on replace', async () => {
+      const result = await run('ui_set_gallery_filters', { patch: { review_status: 'undecided' } });
+      expect(result.ok).toBe(true);
+      expect(store.filters()).toMatchObject({ review_status: 'undecided', sort: 'date_taken', sort_direction: 'ASC' });
+      const view = await run('ui_get_gallery_view', {});
+      expect(view).toMatchObject({ data: { filters: { review_status: 'undecided' } } });
+      await run('ui_set_gallery_filters', { patch: { lens: '50mm' }, replace: true });
+      expect(store.filters()).toMatchObject({ review_status: '', lens: '50mm' });
+    });
+
     it('replace also lifts a set scope the user opened', async () => {
       await store.updateFilters({ sequence_group_id: '4', sequence_kind: 'burst', burst_group_id: '4', duplicate_group_id: '2' });
       await run('ui_set_gallery_filters', { patch: { lens: '50mm' }, replace: true });
       expect(store.filters()).toMatchObject({ sequence_group_id: '', sequence_kind: '', burst_group_id: '', duplicate_group_id: '' });
+    });
+
+    it('replace also lifts an only filter the user turned on', async () => {
+      await store.updateFilters({ show_rejected: true, blinks_only: true, duplicates_only: true });
+      await run('ui_set_gallery_filters', { patch: { lens: '50mm' }, replace: true });
+      expect(store.filters()).toMatchObject({ show_rejected: false, blinks_only: false, duplicates_only: false, lens: '50mm' });
+    });
+
+    it('replace also clears the manual-face review queue the user turned on', async () => {
+      await store.updateFilters({ manual_faces_need_review: true });
+      expect(store.filters().manual_faces_need_review).toBe(true);
+      await run('ui_set_gallery_filters', { patch: { lens: '50mm' }, replace: true });
+      expect(store.filters()).toMatchObject({ manual_faces_need_review: false, lens: '50mm' });
     });
 
     it('refuses a filter the tab cannot show, without applying the rest', async () => {
@@ -1006,6 +1052,17 @@ describe('UI tool registry and handlers', () => {
           fetchAlbum,
         })['ui_get_context'](since === undefined ? {} : { activity_since: since }) as
           { user_activity: { items: { kind: string; seq: number }[]; until: number; truncated: boolean } }).user_activity;
+
+      it('preserves manual Keep and Reset review values through ui_get_context', async () => {
+        await store.loadPhotos();
+        await store.batchReview(['/a.jpg'], 'kept', false);
+        await store.batchReview(['/a.jpg'], 'undecided', false);
+        const report = await run('ui_get_context') as { data: { user_activity: { items: unknown[] } } };
+        expect(report.data.user_activity.items).toEqual([
+          expect.objectContaining({ kind: 'review', paths: ['/a.jpg'], value: 'kept' }),
+          expect.objectContaining({ kind: 'review', paths: ['/a.jpg'], value: 'undecided' }),
+        ]);
+      });
 
       it('reads activity_since through the registry: the contract accepts it, and culling is null outside plan mode', async () => {
         await store.loadPhotos();

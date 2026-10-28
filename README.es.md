@@ -16,7 +16,7 @@ Facet es un motor local de análisis y selección de fotos. Puntúa cada imagen 
 
 ## Cómo funciona
 
-1. **Escanear** — Apunta Facet a una carpeta de fotos. Cada imagen se analiza en cuanto a calidad, composición y rostros. Admite JPG, HEIF/HEIC/HIF (las imágenes `.HIF` Canon HDR PQ se decodifican con la función de transferencia SMPTE ST 2084 PQ y se convierten automáticamente a sRGB SDR), 10 formatos RAW (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF) e imágenes PNG, GIF, WebP, BMP, TIFF y AVIF (AVIF necesita un Pillow compilado con soporte AVIF, nativo a partir de 11.3). Un RAW que LibRaw no puede decodificar — como un DNG de Lightroom "Fusionar a HDR/Panorámica" (`-HDR.dng`, `-Pano.dng`) o una cámara más reciente que la versión de LibRaw instalada — recurre a su vista previa incrustada más grande mediante `exiftool` (necesita una vista previa de al menos 1024 px en el lado largo; las puntuaciones proceden entonces de esa vista previa, no de una decodificación RAW completa). Las fusiones de Lightroom Classic 13+ (y Enhance) almacenan esa vista previa como JPEG XL; Facet la decodifica directamente.
+1. **Escanear** — Apunta Facet a una carpeta de fotos. Cada imagen se analiza en cuanto a calidad, composición y rostros. Admite JPG, HEIF/HEIC/HIF (las imágenes `.HIF` Canon HDR PQ se decodifican con la función de transferencia SMPTE ST 2084 PQ y se convierten automáticamente a sRGB SDR), 10 formatos RAW (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF) e imágenes PNG, GIF, WebP, BMP, TIFF y AVIF (AVIF necesita un Pillow compilado con soporte AVIF, nativo a partir de 11.3), además de JPEG XL (`.jxl`) mediante la dependencia existente `imagecodecs`, incluida en las instalaciones estándar y Docker. Un RAW que LibRaw no puede decodificar — como un DNG de Lightroom "Fusionar a HDR/Panorámica" (`-HDR.dng`, `-Pano.dng`) o una cámara más reciente que la versión de LibRaw instalada — recurre a su vista previa incrustada más grande mediante `exiftool` (necesita una vista previa de al menos 1024 px en el lado largo; las puntuaciones proceden entonces de esa vista previa, no de una decodificación RAW completa). Las fusiones de Lightroom Classic 13+ (y Enhance) almacenan esa vista previa como JPEG XL; Facet la decodifica directamente.
 2. **Explorar** — Abre la galería web para recorrer tu biblioteca con filtros, búsqueda y varios modos de visualización.
 3. **Seleccionar** — Facet detecta ráfagas, marca parpadeos, agrupa fotos similares y destaca la mejor selección. Los horquillados de exposición y las series panorámicas/HDR se reconocen y se mantienen íntegros en lugar de descartarse por separado.
 
@@ -28,7 +28,7 @@ La GPU se detecta automáticamente y es opcional. Facet funciona solo con CPU o 
 
 Cada foto se puntúa en 9 dimensiones: calidad estética, composición, calidad facial, nitidez ocular, nitidez técnica, color, exposición, saliencia del sujeto y rango dinámico. Las fotos se clasifican por contenido (retrato, paisaje, macro, callejera, etc. —más de 30 categorías) y se puntúan con pesos específicos por categoría. Un filtro de **Selección destacada** clasifica la biblioteca según una puntuación combinada.
 
-Pasa el cursor sobre cualquier foto para ver un tooltip con el desglose de la puntuación y los datos EXIF.
+Pasa el cursor sobre cualquier foto para ver el desglose de la puntuación y los datos EXIF en el panel lateral de la galería, o cambia a una burbuja al pasar el cursor que resume de un vistazo las puntuaciones clave.
 
 <img src="docs/screenshots/hover-tooltip.jpg" alt="Tooltip al pasar el cursor con el desglose de la puntuación" width="100%">
 
@@ -100,7 +100,7 @@ Pasa el cursor sobre cualquier foto para ver un tooltip con el desglose de la pu
 - **Orden "Mi gusto"** — ordena la galería según la puntuación aprendida del clasificador personal, con una insignia de confianza que muestra la cobertura aprendida y la precisión en datos de validación
 - **Aprendizaje a partir de etiquetas** — las decisiones de selección, las valoraciones por estrellas, los favoritos y los rechazos alimentan el optimizador de pesos (`--sync-label-comparisons`, `--mine-insights`)
 - **Instantáneas** — guarda, restaura y compara configuraciones de pesos
-- **Histograma** — histograma RGB/luminancia con indicadores de recorte, en el tooltip de la foto y en la vista de detalle
+- **Histograma** — histograma RGB/luminancia con indicadores de recorte, en el panel lateral de la galería y en la vista de detalle
 - **Leyendas con IA** `[GPU]` `[16gb/24gb]` — descripciones de texto, editables `[Edition]` y traducibles a 5 idiomas (la visualización está abierta; la generación y la edición requieren edición)
 
 <table><tr>
@@ -225,6 +225,7 @@ Ejecuta `python facet.py --doctor` para diagnosticar problemas con la GPU.
 | [Visor](docs/es/VIEWER.md) | Funciones y uso de la galería web |
 | [Interoperabilidad](docs/es/INTEROP.md) | Intercambiar valoraciones/tags con Lightroom, Capture One, digiKam, darktable |
 | [Immich](docs/es/IMMICH.md) | Sincronizar valoraciones y favoritos con Immich, más el webhook entrante |
+| [Volver a vincular](docs/es/RELINK.md) | Volver a vincular fotos movidas |
 | [Agentes de IA](docs/es/AGENTS.md) | Dejar que un asistente compatible con MCP busque en la biblioteca con un token personal |
 | [Despliegue](docs/es/DEPLOYMENT.md) | Despliegue en producción (NAS Synology, Linux, Docker) |
 | [Contribuir](CONTRIBUTING.md) | Configuración de desarrollo, arquitectura, estilo de código |

@@ -118,11 +118,16 @@ export interface Photo {
   star_rating?: number | null;
   is_favorite?: boolean | null;
   is_rejected?: boolean | null;
+  is_kept?: boolean | null;
   keeper_hint?: KeeperHint | null;
   /** 'bracket' | 'panorama' | 'hdr_panorama' when this frame belongs to a
    *  deliberate multi-frame set. With the matching hide toggle on, the tile
    *  showing it stands for the whole set. */
   sequence_kind?: string | null;
+  /** Which deliberate multi-frame set this frame belongs to. Ephemeral —
+   *  renumbered from 1 on every detection pass, so it is only good for
+   *  scoping the current view, never for a bookmark. */
+  sequence_group_id?: number | null;
   /** This frame's stops from the set's base exposure. Only a bracket has one
    *  — NULL for every other kind, which has no base frame to measure against. */
   sequence_ev_offset?: number | null;
@@ -140,6 +145,8 @@ export interface Photo {
   caption_translated?: string | null;
   gps_latitude?: number | null;
   gps_longitude?: number | null;
+  /** 1 when the capture date was corrected in the viewer; rescans then keep it. */
+  date_manually_set?: number | null;
   /** 1 when the location was set in the viewer; rescans then keep it. */
   gps_manually_set?: number | null;
 }
@@ -175,6 +182,7 @@ const PHOTO_FLAG_FIELDS = [
   'is_duplicate_lead',
   'is_favorite',
   'is_rejected',
+  'is_kept',
 ] as const;
 
 type PhotoFlagField = typeof PHOTO_FLAG_FIELDS[number];
@@ -196,6 +204,12 @@ type AssertNever<T extends never> = T;
  * genuinely non-wire boolean belongs on a nested type, not on `Photo`.
  */
 export type PhotoFlagCoverage = AssertNever<Exclude<PhotoBooleanField, PhotoFlagField>>;
+
+/** Whether the photo carries any EXIF field a viewer shows. */
+export function hasExifFields(p: Photo): boolean {
+  return !!(p.camera_model || p.lens_model || p.focal_length || p.f_stop || p.shutter_speed || p.iso);
+}
+
 
 /**
  * Coerce the 0/1 flag columns to real booleans as a photo enters the client.

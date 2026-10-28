@@ -3,6 +3,7 @@
 import argparse
 
 from db import DEFAULT_DB_PATH
+from processing.xmp_import import SIDECAR_FIELDS
 
 # Refreshing thumbnails is bound by storage round-trips, not by CPU: each file
 # is a small read at the far end of whatever mount the library lives on. The
@@ -90,12 +91,12 @@ Configuration:
                         help='Run specific pass only: quality, tags, composition, faces, embeddings, '
                              'quality-iaa, quality-face, quality-liqe, saliency')
     scan_group.add_argument('--dry-run', action='store_true',
-                        help='Score sample photos without saving to database (preview mode). '
+                        help='Preview without database writes: score sample photos, or with --import-sidecars show the import plan. '
                              'Outside commercial mode, on 16gb/24gb the aesthetic column shows n/a '
                              '(TOPIQ runs only in a real scan; commercial mode shows the Q-ReAlign score)')
     scan_group.add_argument('--dry-run-count', type=int, default=DEFAULT_DRY_RUN_COUNT,
-                        help=f'Number of photos to process in dry-run mode (default: '
-                             f'{DEFAULT_DRY_RUN_COUNT}, requires --dry-run)')
+                        help=f'Number of sample photos to score in scan dry-run mode (default: '
+                             f'{DEFAULT_DRY_RUN_COUNT}, requires --dry-run; does not limit sidecar-import preview)')
     scan_group.add_argument('--resume', action='store_true',
                         help='Resume the last interrupted/failed scan run (reuses its directories; '
                              'with --force, skips files already re-scored since that run started)')
@@ -367,8 +368,21 @@ Configuration:
                              'in the current directory, overwriting any previous manifest there. Defaults '
                              'to the global rating columns; pass --user for per-user ratings in multi-user mode')
     export_group.add_argument('--import-sidecars', type=str, nargs='?', const='all', metavar='PATH',
-                        help='Import ratings/labels/tags from <image>.xmp sidecars back into the DB '
-                             '(optional: limit to a path subtree; default: all photos)')
+                        help='Import ratings/labels/tags, Facet decisions and manual GPS from XMP sidecars back into the DB '
+                             '(optional: limit to a path subtree; default: all photos). Add --dry-run for a read-only '
+                             'JSON preview using an existing database')
+    export_group.add_argument('--sidecar-naming', choices=('full', 'basename', 'auto'), default=None,
+                        help='With --import-sidecars (apply or preview): full (default) reads <image.ext>.xmp or '
+                             '<image.ext>.facet.xmp; basename reads <image>.xmp; auto refuses '
+                             'both-present naming families. Shared or other-image sidecars are refused')
+
+    export_group.add_argument('--sidecar-fields', type=str, metavar='FIELDS',
+                        help='With --import-sidecars (apply or preview): comma-separated '
+                             + ','.join(SIDECAR_FIELDS) + ' (default: all)')
+    export_group.add_argument('--overwrite-sidecar-review', action='store_true',
+                        help='With --import-sidecars (apply or preview): explicitly allow an older packet to replace newer review edits')
+    export_group.add_argument('--overwrite-manual-gps', action='store_true',
+                        help='With --import-sidecars (apply or preview): replace existing manual GPS, including cleared locations')
     export_group.add_argument('--import-lightroom', type=str, default=None, metavar='FILE',
                         help='Import Lightroom\'s own rating/pick/reject state from a file '
                              'exported by the facet.lrplugin plug-in (Lightroom wins). Requires '
@@ -377,6 +391,8 @@ Configuration:
                         help='Write/merge <image>.xmp sidecars from the DB ratings/labels/tags/caption '
                              '(optional: limit to a path subtree; default: all photos). Defaults to the '
                              'global rating columns; pass --user for per-user ratings in multi-user mode')
+    export_group.add_argument('--reconcile-keywords', action='store_true',
+                        help='With --export-sidecars: remove only previously Facet-owned keywords no longer present; requires ExifTool')
     export_group.add_argument('--embed-originals', action='store_true',
                         help='With --export-sidecars: also embed metadata into the original image files '
                              '(JPEG/HEIC/TIFF/PNG/DNG via exiftool); RAW originals are never modified')

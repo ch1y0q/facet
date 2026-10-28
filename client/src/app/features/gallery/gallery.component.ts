@@ -17,7 +17,7 @@ import {
   ElementRef,
   ChangeDetectionStrategy
 } from '@angular/core';
-import { DOCUMENT } from '@angular/common';
+import { DOCUMENT, NgTemplateOutlet } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { MatSidenav, MatSidenavContainer, MatSidenavModule, MatSidenavContent } from '@angular/material/sidenav';
@@ -25,19 +25,21 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatSelectModule } from '@angular/material/select';
+import { MatSelectModule, MatSelect } from '@angular/material/select';
 import { MatInputModule } from '@angular/material/input';
 import { MatSliderModule } from '@angular/material/slider';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatBottomSheet, MatBottomSheetModule } from '@angular/material/bottom-sheet';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
-import { MatMenuModule } from '@angular/material/menu';
+import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, NavigationStart, Router, RouterOutlet } from '@angular/router';
 import { filter, firstValueFrom } from 'rxjs';
-import { GalleryStore, BatchResult } from './gallery.store';
+import { GalleryStore, BatchResult, REVIEW_RESUME_NAVIGATION } from './gallery.store';
+import { NoticeDismissals, NoticeKind, readNoticeDismissals, saveNoticeDismissals, withDismissal } from './notice-dismiss.util';
 import { Photo } from '../../shared/models/photo.model';
-import { isTypingContext } from '../../shared/utils/keyboard';
+import { isPageShortcutBlocked, isTypingContext } from '../../shared/utils/keyboard';
+import { closeOverlayDirectives } from '../../shared/utils/overlays';
 import { PHOTO_PATH } from '../../core/gallery-reuse.strategy';
 import { UndoService } from '../../core/services/undo.service';
 import { SequenceOverrideService, SequenceKind } from '../../core/services/sequence-override.service';
@@ -48,6 +50,7 @@ import { isBracketLadderRejection } from '../../shared/utils/sequence-ladder';
 import { IsSelectedPipe } from '../../shared/pipes/selection.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindLabelPipe } from '../../shared/pipes/photo-set-kind.pipe';
 import { AuthService } from '../../core/services/auth.service';
+import { StalenessGuardFactory } from '../../core/services/staleness-guard.service';
 import { ScanService } from '../../core/services/scan.service';
 import { useDesktopSignal, DETAILS_RAIL_MIN_WIDTH_PX } from '../../shared/utils/media-query';
 import { downloadAll } from '../../shared/utils/download';
@@ -59,6 +62,7 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { PhotoActionsService } from '../../core/services/photo-actions.service';
+import { CardActionsService } from './card-actions.service';
 import { SlideshowComponent } from './slideshow.component';
 import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
 import { GalleryPhotoMenuComponent, PhotoMenuAction, PhotoMenuActionEvent, isSheetAction } from './gallery-photo-menu.component';
@@ -70,7 +74,7 @@ import {
   gridColumnCount, totalRowsHeight, windowRange,
 } from './gallery-rows.util';
 import { noticeLiftPx } from './selection-bar-layout.util';
-import { GalleryFilters, applyQueryParams, applySavedAlbumFilters, loadDisplayOptionsFromStorage } from './gallery-filters.util';
+import { GalleryFilters, activeFilterKeys, applyQueryParams, applySavedAlbumFilters, loadDisplayOptionsFromStorage } from './gallery-filters.util';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { CreateAlbumDialogComponent } from '../albums/create-album-dialog.component';
@@ -86,11 +90,21 @@ function assertNever(action: never): never {
   throw new Error(`Unhandled photo menu action: ${JSON.stringify(action)}`);
 }
 
-const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
+/** Width from which the toolbar search is shown (its `min-[1360px]:` class). */
+const TOOLBAR_SEARCH_QUERY = '(min-width: 1360px)';
+
+/** Where the focused card sat in the viewport when the gallery parked. */
+interface ReturnAnchor { offset: number; width: number; height: number }
+
+/** What the gallery restores on return; an anchor implies a photo path to re-anchor to. */
+type ReturnTarget = { scroll: number; focus: Element | null } & (
+  | { path: string | null; anchor: null }
+  | { path: string; anchor: ReturnAnchor });
 
 @Component({
   selector: 'app-gallery',
   imports: [
+    NgTemplateOutlet,
     MatSidenavModule,
     MatProgressSpinnerModule,
     MatIconModule,
@@ -123,7 +137,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
          Type filter + semantic search, rebound to the gallery store. -->
     <ng-template #galleryToolbar>
       @if (!pinned()) {
-        <mat-form-field class="!hidden lg:!inline-flex w-52 ml-2 2xl:shrink-0" subscriptSizing="dynamic">
+        <mat-form-field class="!hidden lg:!inline-flex w-44 ml-2 2xl:shrink-0" subscriptSizing="dynamic">
           <mat-label>{{ I18N.ui.filters.type | translate }}</mat-label>
           <mat-select panelWidth="auto" panelClass="nowrap-panel !max-h-[70vh]" [value]="store.filters().type" (selectionChange)="onTypeChange($event.value)">
             <mat-option value="">{{ I18N.gallery.all_photos | translate }}</mat-option>
@@ -133,12 +147,18 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
           </mat-select>
         </mat-form-field>
 
-        <!-- Search -->
-        <mat-form-field class="!hidden 2xl:!inline-flex w-64 min-w-0 shrink" subscriptSizing="dynamic">
+        <!-- Search. Visible from 1360 px up — the same threshold as the count
+             label, below which the toolbar has no room for it — and filters as
+             you type (400 ms debounce; Enter and leaving the box commit, so
+             clicking a photo never drops typed text). flex-1 fills whatever
+             the type dropdown and the buttons leave. -->
+        <mat-form-field class="!hidden min-[1360px]:!inline-flex min-w-0 flex-1 mr-2" subscriptSizing="dynamic">
           <input
+            #toolbarSearch
             matInput
             [placeholder]="I18N.gallery.search_placeholder | translate"
             [value]="store.filters().search"
+            (input)="onSearchInput($event)"
             (keyup.enter)="onSearchChange($event)"
             (blur)="onSearchChange($event)"
           />
@@ -196,13 +216,16 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
       <mat-sidenav #filterDrawer [disableClose]="detailsRailVisible()" [mode]="isDesktop() ? 'side' : 'over'" position="end" class="w-[min(320px,100vw)] p-0"
         (openedChange)="onFilterDrawerChange($event)">
         @if (detailsRailVisible()) {
-          <div class="p-2" data-details-rail tabindex="-1" (keydown.escape)="onRailEscape($event)"
+          <!-- Deselect stays put above the scrolling details; the tooltip
+               background covers the whole rail instead of a rounded card. -->
+          <div class="flex flex-col h-full bg-[var(--facet-tooltip-bg)]" data-details-rail tabindex="-1" (keydown.escape)="onRailEscape($event)"
                (focusout)="onGridFocusOut($event)">
             @if (hasActivePhoto()) {
-              <button mat-button class="!min-w-0 mb-2" (click)="releasePanel()">
+              <button mat-button class="!min-w-0 shrink-0 self-start mx-2 mt-2" (click)="releasePanel()">
                 <mat-icon>arrow_back</mat-icon> {{ I18N.gallery.tooltip_mode.panel_deselect | translate }}
               </button>
             }
+            <div class="min-h-0 flex-1 overflow-y-auto">
             @if (panelPhoto(); as p) {
               <app-photo-tooltip [photo]="p" [docked]="true" [pinned]="true"
                                  [histogramDefaultMode]="tooltipHistogramDefaultMode()"
@@ -210,11 +233,11 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                                  [personLinks]="!pinned()"
         (personSelected)="store.updateFilter('person_id', $event)" />
             } @else {
-              <div class="rounded-xl p-4 text-sm opacity-60 text-center"
-                   style="background: var(--facet-tooltip-bg); border: 1px solid var(--facet-tooltip-border)">
+              <div class="p-4 text-sm opacity-60 text-center">
                 {{ I18N.gallery.tooltip_mode.panel_empty | translate }}
               </div>
             }
+            </div>
           </div>
         } @else {
           <!-- Usually closed, and heavy enough that building it eagerly holds up the grid's first paint. -->
@@ -311,6 +334,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                     [isActive]="row.startIndex + i === activeIndex()"
                     [gridHasActiveCard]="hasActivePhoto()"
                     [currentSort]="store.filters().sort"
+                    [metricRanges]="store.metricRangesByColumn()"
                     [thumbSize]="thumbSize()"
                     [isEditionMode]="auth.isEdition()"
                     [personFilterId]="store.filters().person_id"
@@ -327,6 +351,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                     (openCritiqueClicked)="openCritique($event)"
                     (embedMetadataClicked)="embedMetadata($event)"
                     (openAddPersonClicked)="openAddPerson($event)"
+                    [cardActions]="cardActions()"
+                    (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                    (openDetailClicked)="downloadPhoto($event)"
                     (favoriteToggled)="store.toggleFavorite($event)"
                     (rejectedToggled)="store.toggleRejected($event)"
                     (starClicked)="store.setRating($event.photo.path, $event.star)"
@@ -364,6 +391,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   [gridHasActiveCard]="hasActivePhoto()"
                   [hideDetails]="effectiveHideDetails()"
                   [currentSort]="store.filters().sort"
+                  [metricRanges]="store.metricRangesByColumn()"
                   [thumbSize]="thumbSize()"
                   [isEditionMode]="auth.isEdition()"
                   [personFilterId]="store.filters().person_id"
@@ -382,6 +410,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                   (openCritiqueClicked)="openCritique($event)"
                   (embedMetadataClicked)="embedMetadata($event)"
                   (openAddPersonClicked)="openAddPerson($event)"
+                  [cardActions]="cardActions()"
+                  (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                  (openDetailClicked)="downloadPhoto($event)"
                   (favoriteToggled)="store.toggleFavorite($event)"
                   (rejectedToggled)="store.toggleRejected($event)"
                   (starClicked)="store.setRating($event.photo.path, $event.star)"
@@ -426,6 +457,7 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                       [isActive]="row.startIndex + i === activeIndex()"
                       [gridHasActiveCard]="hasActivePhoto()"
                       [currentSort]="store.filters().sort"
+                      [metricRanges]="store.metricRangesByColumn()"
                       [thumbSize]="thumbSize()"
                       [isEditionMode]="auth.isEdition()"
                       [personFilterId]="store.filters().person_id"
@@ -442,6 +474,9 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
                       (openCritiqueClicked)="openCritique($event)"
                       (embedMetadataClicked)="embedMetadata($event)"
                       (openAddPersonClicked)="openAddPerson($event)"
+                      [cardActions]="cardActions()"
+                      (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                      (openDetailClicked)="downloadPhoto($event)"
                       (favoriteToggled)="store.toggleFavorite($event)"
                       (rejectedToggled)="store.toggleRejected($event)"
                       (starClicked)="store.setRating($event.photo.path, $event.star)"
@@ -530,44 +565,85 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
            and the content's own scrollbar.
            The container is its own stacking context, so a notice outside it cannot sit under the
            mobile 'over' drawer; it steps aside while that drawer is open instead.
-           Lifted above the floating selection card, only when the two overlap horizontally. Order: hidden-photos
-           notice first, thumbnail-migration notice below it. The migration notice is the
-           only place the command that regenerates RAW thumbnails is surfaced: the grid
-           reads photos.thumbnail, so browsing never regenerates it. -->
-      @if (!overDrawerOpen() && (showHiddenBanner() || canRestoreHidden() || showRenderMigrationBanner())) {
+           Lifted above the floating selection card, only when the two overlap horizontally. Order: review
+           progress, the remembered review queue, the hidden-photos notice, the active-filters notice, then the
+           thumbnail-migration notice. The migration notice is the only place the command that regenerates RAW thumbnails is
+           surfaced: the grid reads photos.thumbnail, so browsing never regenerates it. -->
+      @if (noticeStackVisible()) {
         <div data-gallery-notices class="pointer-events-none absolute z-10 flex flex-col gap-2 w-[min(26rem,calc(100%-1rem))]"
              [style.bottom.px]="noticeBottomPx()" [style.right.px]="noticeRightPx()" [style.maxWidth]="noticeMaxWidth()">
-          @if (showHiddenBanner()) {
+          @if (scrollTopShown()) {
+            <ng-container *ngTemplateOutlet="scrollTopFab; context: { $implicit: 'pointer-events-auto self-end' }" />
+          }
+          @if (reviewProgressShown()) {
+            @if (store.reviewProgress(); as progress) {
+              <section data-review-progress [class]="NOTICE_CARD_CLASS" [attr.aria-label]="I18N.gallery.review_progress.title | translate">
+                <mat-icon class="opacity-70 !text-base !w-5 !h-5 self-start">fact_check</mat-icon>
+                <div class="flex-1 min-w-0 flex flex-col gap-1">
+                  <span id="notice-text-review_progress" class="flex flex-wrap gap-x-3 gap-y-0.5" role="status" aria-live="polite" aria-atomic="true">
+                    <span>{{ I18N.gallery.review_progress.counts | translate:{ undecided: progress.undecided, kept: progress.kept, rejected: progress.rejected } }}</span>
+                    <span class="opacity-70">{{ I18N.gallery.review_progress.complete | translate:{ percent: store.reviewPercent(), total: progress.total } }}</span>
+                  </span>
+                  <progress class="w-full h-1" max="100" [value]="store.reviewPercent()" [attr.aria-label]="I18N.gallery.review_progress.title | translate"></progress>
+                  @if (progress.undecided > 0 && store.filters().review_status !== 'undecided') {
+                    <button mat-button class="!min-w-0 self-start -ml-3" (click)="store.startReviewQueue()">{{ I18N.gallery.review_progress.start | translate }}</button>
+                  }
+                </div>
+                <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'review_progress', alignTop: true }" />
+              </section>
+            }
+          }
+          @if (reviewBookmarkShown()) {
+            <div [class]="NOTICE_CARD_CLASS">
+              <mat-icon class="opacity-70 !text-base !w-5 !h-5">bookmark</mat-icon>
+              <span id="notice-text-review_bookmark" class="flex-1 opacity-80">{{ I18N.gallery.review_progress.browser | translate }}</span>
+              <button mat-button class="!min-w-0" [disabled]="store.loading()" (click)="continueReview()">{{ I18N.gallery.review_progress.resume | translate }}</button>
+              <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'review_bookmark' }" />
+            </div>
+          }
+          @if (hiddenNoticeShown()) {
             <div role="status" [class]="NOTICE_CARD_CLASS">
               <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility_off</mat-icon>
-              <span class="flex-1">
+              <span id="notice-text-hidden" class="flex-1">
                 {{ I18N.gallery.hidden_banner.message | translate:{ n: store.hiddenSummary().total } }}
               </span>
               <button mat-button class="!min-w-0" (click)="store.showAllHidden()">
                 {{ I18N.gallery.hidden_banner.show_all | translate }}
               </button>
+              <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'hidden' }" />
             </div>
-          } @else if (canRestoreHidden()) {
+          } @else if (restoreNoticeShown()) {
             <div role="status" [class]="NOTICE_CARD_CLASS">
               <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility</mat-icon>
-              <span class="flex-1">
+              <span id="notice-text-restore_hidden" class="flex-1">
                 {{ I18N.gallery.hidden_banner.showing_all | translate }}
               </span>
               <button mat-button class="!min-w-0" (click)="store.restoreHidden()">
                 {{ I18N.gallery.hidden_banner.restore | translate }}
               </button>
+              <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'restore_hidden' }" />
+            </div>
+          }
+          @if (activeFiltersNoticeShown()) {
+            <div role="status" [class]="NOTICE_CARD_CLASS">
+              <mat-icon class="opacity-70 !text-base !w-5 !h-5">filter_alt</mat-icon>
+              <span id="notice-text-active_filters" class="flex-1">
+                {{ store.activeFilterCount() | pluralKey:I18N.gallery.filters_notice.message:I18N.gallery.filters_notice.message_plural | translate:{ count: store.activeFilterCount() } }}
+              </span>
+              <button mat-button class="!min-w-0" (click)="store.resetFilters()">
+                {{ I18N.gallery.filters_notice.reset | translate }}
+              </button>
+              <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'active_filters' }" />
             </div>
           }
           @if (showRenderMigrationBanner()) {
             <div role="status" [class]="NOTICE_CARD_CLASS">
               <mat-icon class="opacity-70 !text-base !w-5 !h-5">auto_fix_high</mat-icon>
-              <span class="flex-1">
+              <span id="notice-text-render_migration" class="flex-1">
                 {{ I18N.gallery.render_migration.message | translate:{ n: renderMigrationPending() } }}
                 {{ I18N.gallery.render_migration.command_hint | translate:{ command: REFRESH_THUMBNAILS_COMMAND } }}
               </span>
-              <button mat-button class="!min-w-0" (click)="dismissRenderMigration()">
-                {{ I18N.ui.buttons.dismiss | translate }}
-              </button>
+              <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'render_migration' }" />
             </div>
           }
         </div>
@@ -608,6 +684,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             @if (auth.isEdition()) {
               <span aria-hidden="true" class="w-px h-6 mx-1 bg-[var(--mat-sys-outline-variant)]"></span>
               <button mat-icon-button disabledInteractive (click)="batchFavorite()" [matTooltip]="I18N.gallery.selection.favorite | translate" [attr.aria-label]="I18N.gallery.selection.favorite | translate"><mat-icon>favorite</mat-icon></button>
+              <button mat-icon-button disabledInteractive (click)="batchReview('kept')" [matTooltip]="I18N.review.keep | translate" [attr.aria-label]="I18N.review.keep | translate"><mat-icon>check_circle</mat-icon></button>
+              <button mat-icon-button disabledInteractive (click)="batchReview('undecided')" [matTooltip]="I18N.review.reset | translate" [attr.aria-label]="I18N.review.reset | translate"><mat-icon>restart_alt</mat-icon></button>
               <button mat-icon-button disabledInteractive (click)="batchReject()" [matTooltip]="I18N.gallery.selection.reject | translate" [attr.aria-label]="I18N.gallery.selection.reject | translate"><mat-icon>thumb_down</mat-icon></button>
               <button mat-icon-button disabledInteractive [matMenuTriggerFor]="rateMenu" [matTooltip]="I18N.gallery.selection.rate | translate" [attr.aria-label]="I18N.gallery.selection.rate | translate"><mat-icon>star</mat-icon></button>
               <mat-menu #rateMenu="matMenu">
@@ -656,6 +734,8 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
             <span aria-hidden="true" class="w-px h-6 mx-1 bg-[var(--mat-sys-outline-variant)]"></span>
             <button mat-icon-button disabledInteractive (click)="copyPaths()" [matTooltip]="I18N.gallery.selection.copy_filenames | translate" [attr.aria-label]="I18N.gallery.selection.copy_filenames | translate"><mat-icon>content_copy</mat-icon></button>
             @if (auth.isEdition()) {
+              <button mat-icon-button (click)="openCaptureDateDialog()" [matTooltip]="I18N.capture_date.title | translate" [attr.aria-label]="I18N.capture_date.title | translate"><mat-icon>edit_calendar</mat-icon></button>
+              <button mat-icon-button disabledInteractive (click)="openBatchGpsDialog()" [matTooltip]="I18N.photo_detail.gps.batch_title | translate" [attr.aria-label]="I18N.photo_detail.gps.batch_title | translate"><mat-icon>location_on</mat-icon></button>
               <button mat-icon-button disabledInteractive (click)="openManualTagsDialog()" [matTooltip]="I18N.gallery.selection.edit_tags | translate" [attr.aria-label]="I18N.gallery.selection.edit_tags | translate"><mat-icon>sell</mat-icon></button>
               <button mat-icon-button disabledInteractive (click)="openExportDialog()" [matTooltip]="I18N.export.action | translate" [attr.aria-label]="I18N.export.action | translate"><mat-icon>drive_file_move</mat-icon></button>
               <button mat-icon-button disabledInteractive (click)="openCullDialog()" [matTooltip]="I18N.cull.action | translate" [attr.aria-label]="I18N.cull.action | translate"><mat-icon>folder_move</mat-icon></button>
@@ -685,17 +765,28 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
       }
     </div>
 
-    <!-- Scroll-to-top button -->
-    @if (showScrollTop() && !selectionCount()) {
+    <!-- Scroll-to-top button: rides on top of the notice stack while one is up, so the two never share the corner -->
+    <ng-template #scrollTopFab let-fabClass>
       <button
         mat-mini-fab
-        class="!fixed right-4 lg:right-6 bottom-[60px] lg:bottom-6 z-40"
+        [class]="fabClass"
         [matTooltip]="I18N.gallery.scroll_to_top | translate"
         [attr.aria-label]="I18N.gallery.scroll_to_top | translate"
         (click)="scrollToTop()"
       >
         <mat-icon>arrow_upward</mat-icon>
       </button>
+    </ng-template>
+    <ng-template #noticeClose let-kind let-alignTop="alignTop">
+      <button mat-icon-button data-notice-close class="!w-7 !h-7 !min-w-0 !p-0 !inline-flex !items-center !justify-center -mr-1 shrink-0" [class.self-start]="alignTop" (click)="dismissNotice(kind)"
+              [attr.aria-describedby]="'notice-text-' + kind"
+              [matTooltip]="I18N.ui.buttons.dismiss | translate"
+              [attr.aria-label]="I18N.ui.buttons.dismiss | translate">
+        <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
+      </button>
+    </ng-template>
+    @if (scrollTopShown() && !noticeStackVisible()) {
+      <ng-container *ngTemplateOutlet="scrollTopFab; context: { $implicit: '!fixed right-4 lg:right-6 bottom-[60px] lg:bottom-6 z-40' }" />
     }
 
     <!-- Slideshow overlay -->
@@ -743,13 +834,20 @@ const RENDER_MIGRATION_DISMISSED_KEY = 'facet_render_migration_dismissed';
   changeDetection: ChangeDetectionStrategy.Eager,
   host: {
     class: 'block h-full',
+    // meta.a is Cmd+A: macOS's select-all, the key a Mac user actually presses.
+    // control.a keeps working on Windows/Linux (and on macOS for Ctrl+A).
     '(document:keydown.control.a)': 'onSelectAllShortcut($event)',
+    '(document:keydown.meta.a)': 'onSelectAllShortcut($event)',
+    '(document:keydown)': 'onGalleryShortcut($event)',
   },
 })
 export class GalleryComponent implements OnInit, OnDestroy {
   protected readonly I18N = i18nKeys();
   protected readonly store = inject(GalleryStore);
   protected readonly auth = inject(AuthService);
+  private readonly cardActionsService = inject(CardActionsService);
+  /** The user's hover-button layout for every card, from localStorage. */
+  protected readonly cardActions = this.cardActionsService.config;
   protected readonly scan = inject(ScanService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly bottomSheet = inject(MatBottomSheet);
@@ -765,13 +863,15 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly outlet = inject(RouterOutlet, { optional: true });
   private readonly changeDetector = inject(ChangeDetectorRef);
   private parked = false;
+  private resumeNavigation = 0;
   // Detaching loses the DOM scroll position and focus.
-  private returnTo: { scroll: number; focus: Element | null; path: string | null } | null = null;
+  private returnTo: ReturnTarget | null = null;
   private readonly api = inject(ApiService);
   private readonly pageHelp = inject(PageHelpService);
   private readonly headerSlot = inject(HeaderSlotService);
   private readonly liveAnnouncer = inject(LiveAnnouncer);
   private readonly galleryToolbar = viewChild<TemplateRef<unknown>>('galleryToolbar');
+  private readonly toolbarSearch = viewChild<ElementRef<HTMLInputElement>>('toolbarSearch');
 
   // Album options for "Add to album" menu
   protected readonly albumOptions = signal<Album[]>([]);
@@ -790,15 +890,21 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly selectionBar = viewChild<ElementRef<HTMLElement>>('selectionBar');
   private readonly noticeHost = viewChild<ElementRef<HTMLElement>>('noticeHost');
   private readonly destroyRef = inject(DestroyRef);
+  private readonly staleness = inject(StalenessGuardFactory);
   private readonly injector = inject(Injector);
   private readonly document = inject(DOCUMENT);
   private readonly scrollContent = viewChild(MatSidenavContent);
   private readonly sidenavContainer = viewChild(MatSidenavContainer);
   private readonly ownTooltips = viewChildren(MatTooltip);
+  private readonly menus = viewChildren(MatMenuTrigger);
+  private readonly photoMenu = viewChild(GalleryPhotoMenuComponent);
+  private readonly selects = viewChildren(MatSelect);
   private readonly cards = viewChildren(PhotoCardComponent);
 
   /** True once the gallery content is scrolled far enough to show the scroll-to-top button. */
   protected readonly showScrollTop = signal(false);
+  /** The scroll-to-top FAB applies: scrolled down with no selection card in its corner. */
+  protected readonly scrollTopShown = computed(() => this.showScrollTop() && !this.selectionCount());
 
   // Sidebar scroll preservation
   private savedFilterScroll = 0;
@@ -979,7 +1085,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // Re-measure when the drawer opens/closes (changes the card's right cap and wrap).
     this.noticeRightPx();
     // The notice stack renders after this effect runs; re-measure once it is in the DOM.
-    const noticesShown = this.showHiddenBanner() || this.canRestoreHidden() || this.showRenderMigrationBanner();
+    const noticesShown = this.noticesShown();
     if (!bar || !host || typeof ResizeObserver === 'undefined') {
       this.selectionBarOverlap.set(0);
       return;
@@ -1048,14 +1154,72 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   /** Offer the restore only while all five are still off, so it never fights a manual change.
    *  The stash itself (and showAllHidden()/restoreHidden()) lives on GalleryStore — the
-   *  timeline's reachability banner offers the same affordance and needs the same state. */
+   *  timeline's reachability banner offers the same affordance and needs the same state.
+   *  Suppressed under an "only X" filter too: that view shows a subset by design, so the
+   *  banner's "showing all photos" sentence would be false while one is up. The stash
+   *  survives, so turning the only-filter off brings the offer back. */
   readonly canRestoreHidden = computed(() => {
     const stash = this.store.hiddenFiltersStash();
     if (!stash) return false;
     const f = this.store.filters();
     return !f.hide_blinks && !f.hide_bursts && !f.hide_duplicates && !f.hide_brackets
-      && !f.hide_panoramas;
+      && !f.hide_panoramas
+      && !f.blinks_only && !f.duplicates_only && !f.show_rejected;
   });
+
+  /** Notices closed in this tab, with the signatures each had when closed. */
+  private readonly noticeDismissals = signal<NoticeDismissals>(readNoticeDismissals());
+
+  /** What makes each notice "the same one": its scope (never its sort) or its count, never the live review counts. */
+  private readonly noticeSignatures = computed<Record<NoticeKind, string>>(() => ({
+    review_progress: this.store.reviewProgressKey(),
+    review_bookmark: JSON.stringify(this.store.reviewBookmark()?.filters ?? null),
+    hidden: JSON.stringify([this.store.reviewProgressKey(), this.store.hiddenSummary().total]),
+    restore_hidden: JSON.stringify(this.store.hiddenFiltersStash()),
+    active_filters: JSON.stringify(activeFilterKeys(this.store.filters())),
+    render_migration: String(this.renderMigrationPending()),
+  }));
+
+  private noticeClosed(kind: NoticeKind): boolean {
+    return this.noticeDismissals()[kind]?.includes(this.noticeSignatures()[kind]) ?? false;
+  }
+
+  /** Close one notice for this tab, for as long as it stays the same notice. Nothing else changes. */
+  protected dismissNotice(kind: NoticeKind): void {
+    const host = this.noticeHost()?.nativeElement;
+    const hadFocus = !!host?.contains(document.activeElement);
+    const next = withDismissal(this.noticeDismissals(), kind, this.noticeSignatures()[kind]);
+    this.noticeDismissals.set(next);
+    saveNoticeDismissals(next);
+    // The focused × leaves the DOM with its card: hand focus to the next card's ×, else the grid.
+    if (hadFocus) afterNextRender(() => {
+      const target = host?.querySelector<HTMLElement>('[data-notice-close]') ?? this.scrollContent()?.getElementRef().nativeElement;
+      if (!target) return;
+      if (!target.hasAttribute('tabindex') && !target.matches('button')) target.setAttribute('tabindex', '-1');
+      target.focus({ preventScroll: true });
+    }, { injector: this.injector });
+  }
+
+  /** The review-progress card: on in the user menu, counts loaded, and not closed in this tab. */
+  protected readonly reviewProgressShown = computed(() =>
+    this.store.reviewProgressVisible() && !!this.store.reviewProgress() && !this.noticeClosed('review_progress'));
+  protected readonly reviewBookmarkShown = computed(() => !!this.store.reviewBookmark() && !this.noticeClosed('review_bookmark'));
+  protected readonly hiddenNoticeShown = computed(() => this.showHiddenBanner() && !this.noticeClosed('hidden'));
+  protected readonly restoreNoticeShown = computed(() => this.canRestoreHidden() && !this.noticeClosed('restore_hidden'));
+
+  /** The active-filters card: any filter on, outside an album. An album view is skipped because a
+   *  smart album's saved filters are always "active" there (a permanent card), and the reset would
+   *  also leave the album -- the sidebar's reset stays the way out. The album id itself is never counted. */
+  protected readonly activeFiltersNoticeShown = computed(() =>
+    this.store.activeFilterCount() > 0 && !this.store.currentAlbum() && !this.noticeClosed('active_filters'));
+
+  /** Whether the floating notice stack has at least one card to show. */
+  protected readonly noticesShown = computed(() => this.reviewProgressShown() || this.reviewBookmarkShown()
+    || this.hiddenNoticeShown() || this.restoreNoticeShown() || this.activeFiltersNoticeShown()
+    || this.showRenderMigrationBanner());
+
+  /** The stack steps aside while the mobile 'over' drawer is open (see the template comment). */
+  protected readonly noticeStackVisible = computed(() => !this.overDrawerOpen() && this.noticesShown());
 
   /** The active set-scope kind (from photo-detail's "open this set"), or null. */
   readonly setScopeKind = computed(() => {
@@ -1076,23 +1240,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
     () => this.store.config()?.render_migration?.pending ?? 0,
   );
 
-  /**
-   * Dismissal is remembered, like the culling swipe hint: the notice is advisory
-   * and the migration can take hours, so re-raising it on every visit would be
-   * nagging rather than informing.
-   */
-  private readonly renderMigrationDismissed = signal(
-    localStorage.getItem(RENDER_MIGRATION_DISMISSED_KEY) === 'true',
-  );
-
   readonly showRenderMigrationBanner = computed(
-    () => this.renderMigrationPending() > 0 && !this.renderMigrationDismissed(),
+    () => this.renderMigrationPending() > 0 && !this.noticeClosed('render_migration'),
   );
-
-  dismissRenderMigration(): void {
-    localStorage.setItem(RENDER_MIGRATION_DISMISSED_KEY, 'true');
-    this.renderMigrationDismissed.set(true);
-  }
 
   clearSetScope(): void {
     const kind = this.setScopeKind();
@@ -1218,37 +1368,44 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
     // Capture before the outlet detaches the DOM and loses scroll and focus.
     this.router.events.pipe(filter(e => e instanceof NavigationStart), takeUntilDestroyed()).subscribe(() => {
+      if (!this.router.currentNavigation?.()?.extras?.state?.[REVIEW_RESUME_NAVIGATION]) this.resumeNavigation++;
       if (this.parked) return;
       const focus = document.activeElement;
       const index = Number((focus?.closest('[data-pidx]') as HTMLElement | null)?.dataset['pidx']);
       // The photo the focused card belongs to, or the cursor's when focus is elsewhere.
       const path = Number.isInteger(index) ? this.store.photos()[index]?.path ?? null : this.activePath();
-      this.returnTo = { scroll: this.scrollContent()?.measureScrollOffset('top') ?? 0, focus, path };
+      const viewport = this.scrollContent()?.getElementRef().nativeElement.getBoundingClientRect();
+      const card = path === null ? null : this.cardRect(this.indexOfPath(path));
+      const scroll = this.scrollContent()?.measureScrollOffset('top') ?? 0;
+      this.returnTo = path !== null && viewport && card && viewport.width > 0 && viewport.height > 0
+        ? { scroll, focus, path, anchor: { offset: card.top - viewport.top, width: viewport.width, height: viewport.height } }
+        : { scroll, focus, path, anchor: null };
     });
     this.outlet?.detachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
       if (component !== this) return;
       this.parked = true;
+      this.store.parkListingReads();
       // Pending filter edits would otherwise replace the photo URL.
       this.filterSidebar()?.cancelPendingSearch();
+      this.cancelToolbarSearch();
       if (this.store.slideshowActive()) {
         this.store.slideshowActive.set(false);
         // Detached views need an explicit render to release slideshow timers and listeners.
         this.changeDetector.detectChanges();
       }
       // A tooltip left showing would sit over the photo page and swallow its first Escape.
-      for (const tooltip of this.ownTooltips()) tooltip.hide(0);
-      for (const card of this.cards()) card.hideTooltips();
-      this.filterSidebar()?.hideTooltips();
-      this.pageHelp.setDescription(null);
-      const t = this.galleryToolbar();
-      if (t) this.headerSlot.clear(t);
+      closeOverlayDirectives(this.ownTooltips(), this.menus(), this.selects());
+      // Context-menu triggers are separate from MatMenuTrigger; all cards share this panel.
+      this.photoMenu()?.menu().closed.emit();
+      for (const card of this.cards()) card.closeOverlays();
+      this.filterSidebar()?.closeOverlays();
+      this.setGalleryChrome(false);
     });
     this.outlet?.attachEvents.pipe(takeUntilDestroyed()).subscribe(component => {
       if (component !== this) return;
       this.parked = false;
-      this.pageHelp.setDescription(I18N.gallery.help);
-      const t = this.galleryToolbar();
-      if (t) this.headerSlot.set(t);
+      void this.store.resumeListingReads();
+      this.setGalleryChrome(true);
       this.tooltipPhoto.set(null);
       // A resize while parked measured the detached drawer as 0 and zeroed the content margin.
       this.sidenavContainer()?.updateContentMargins();
@@ -1259,13 +1416,13 @@ export class GalleryComponent implements OnInit, OnDestroy {
         // The photo page's arrows replace its URL, so the page being left names the photo viewed last.
         const left = this.router.currentNavigation()?.previousNavigation?.finalUrl;
         const viewed = left?.root.children['primary']?.segments[0]?.path === PHOTO_PATH ? left.queryParamMap.get('path') : null;
-        const viewedAt = viewed && viewed !== back.path ? this.store.photos().findIndex(p => p.path === viewed) : -1;
+        const viewedAt = viewed && viewed !== back.path ? this.indexOfPath(viewed) : -1;
         if (viewedAt >= 0) {
           this.setCursor(viewedAt);
           this.focusCard(viewedAt);
         } else {
           // The detach blurred the focused card and `onGridFocusOut` cleared the cursor, so put it back first.
-          const at = back.path === null ? -1 : this.store.photos().findIndex(p => p.path === back.path);
+          const at = back.path === null ? -1 : this.indexOfPath(back.path);
           this.setCursor(at);
           const onCard = !!back.focus?.closest('[data-pidx]');
           // A card whose photo is gone is about to be destroyed: do not focus it.
@@ -1273,10 +1430,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
             back.focus.focus({ preventScroll: true });
           }
           if (at >= 0 && !onCard) this.restoreCursorFocus();
+          if (at >= 0 && back.anchor) this.restoreReturnAnchor(back.path, back.anchor);
         }
       }
-      void this.store.loadTypeCounts();
-      void this.store.loadFilterOptions();
+      this.refreshSideData();
     });
 
     // Sync store.filterDrawerOpen signal → mat-sidenav. The details rail shares
@@ -1319,15 +1476,37 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   async ngOnInit(): Promise<void> {
     this.store.galleryMounts.update(n => n + 1);
-    this.pageHelp.setDescription(I18N.gallery.help);
+    this.setGalleryChrome(true);
     // Read (and clear) BEFORE tryRestoreView: a scoped "open this set" request
     // means the user wants that new scoped view, never a resumed previous one.
     const setScope = this.consumeSetScopeState();
+    // A parameterless landing on `/` is the nav icon's return from another
+    // page (a reload carries its own query params, an album route its
+    // albumId). The session's last gallery query is merged into the filters
+    // AFTER loadConfig rebuilds them -- directly, not through a navigation:
+    // the ActivatedRoute snapshot does not refresh for same-component
+    // param-only navigations, so a navigate-then-read silently lost the
+    // restored filters (the album-route return hit exactly that).
+    const savedQuery = (!setScope && !this.route.snapshot.paramMap.get('albumId')
+      && !Object.keys(this.route.snapshot.queryParams).length)
+      ? this.store.readGallerySessionQuery()
+      : null;
+    const routeAlbumId = this.route.snapshot.paramMap.get('albumId');
     if (!setScope && this.tryRestoreView()) return;
     // Reset album state to avoid stale singleton data; loadConfig() resets filters from scratch
     this.store.currentAlbum.set(null);
     this.store.initializing.set(true);
     await this.store.loadConfig();
+    // Record what THIS init resolved to: a plain URL entry must write its own
+    // filters (syncUrl never runs for one), and the albums page shares
+    // loadConfig but must never touch this memory. An album route skips the
+    // write -- its filters belong to the album view, not the plain gallery.
+    if (!routeAlbumId) {
+      this.store.saveSessionQuery();
+    }
+    if (savedQuery) {
+      this.store.applySessionQuery(savedQuery);
+    }
     // Apply the ephemeral set scope AFTER loadConfig, which replaces `filters`
     // wholesale -- applying it before would just be discarded. Never in the
     // URL: sequence_group_id is renumbered on every detection pass, so a
@@ -1336,14 +1515,15 @@ export class GalleryComponent implements OnInit, OnDestroy {
       this.store.filters.update(current => ({ ...current, ...setScope }));
     }
     // Set album_id from route path param (for /album/:albumId route)
-    const albumId = this.route.snapshot.paramMap.get('albumId');
+    const albumId = this.store.filters().album_id === '0' ? null
+      : this.store.filters().album_id || this.route.snapshot.paramMap.get('albumId');
     if (albumId) {
       try {
         const album = await firstValueFrom(this.albumService.get(+albumId));
         if (album.smart_filter_json) {
           // Apply saved filters BEFORE setting currentAlbum (avoids effect saving defaults)
           const savedJson = album.smart_filter_json;
-          this.store.filters.update(current => applySavedAlbumFilters(current, savedJson, albumId));
+          this.store.filters.update(current => applyQueryParams(applySavedAlbumFilters(current, savedJson, albumId), this.route.snapshot.queryParams));
         } else {
           this.store.filters.update(current => ({ ...current, album_id: albumId }));
         }
@@ -1355,7 +1535,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // Photos first — a slow filter-option endpoint must never hold back the grid
     await this.store.loadPhotos();
     this.store.initializing.set(false);
-    void Promise.all([this.store.loadFilterOptions(), this.store.loadTypeCounts()]);
+    this.refreshSideData();
     // IntersectionObserver fires too early before DOM paint — defer recheck
     requestAnimationFrame(() => setTimeout(() => this.scrollDirective()?.recheck()));
     if (this.store.config()?.features?.show_albums) {
@@ -1365,10 +1545,68 @@ export class GalleryComponent implements OnInit, OnDestroy {
     }
   }
 
+  private indexOfPath(path: string): number {
+    return this.store.photos().findIndex(photo => photo.path === path);
+  }
+
+  /** The rendered card's rect for a photo index, or null when it is not in the DOM. */
+  private cardRect(index: number): DOMRect | null {
+    return index >= 0 ? document.querySelector(`[data-pidx="${index}"]`)?.getBoundingClientRect() ?? null : null;
+  }
+
+  /** Re-anchor after drawer margins and card heights settle, including parked resizes. */
+  private restoreReturnAnchor(path: string, anchor: ReturnAnchor): void {
+    const navigation = this.resumeNavigation;
+    let interacted = false;
+    const veto = () => { interacted = true; };
+    const cleanup = () => {
+      document.removeEventListener('pointerdown', veto, true);
+      document.removeEventListener('keydown', veto, true);
+    };
+    document.addEventListener('pointerdown', veto, true);
+    document.addEventListener('keydown', veto, true);
+    const unregister = this.destroyRef.onDestroy(cleanup);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      try {
+        if (interacted || this.parked || this.destroyRef.destroyed || navigation !== this.resumeNavigation) return;
+        // Responsive DOM removal can passively clear the cursor; explicit new input vetoes restoration.
+        if (this.activePath() !== null && this.activePath() !== path) return;
+        const index = this.indexOfPath(path);
+        if (index < 0) return;
+        const focus = document.activeElement;
+        if (focus && focus !== document.body && focus !== document.documentElement
+          && !focus.closest(`[data-pidx="${index}"]`)) return;
+        const content = this.scrollContent();
+        const viewport = content?.getElementRef().nativeElement.getBoundingClientRect();
+        const card = this.cardRect(index);
+        if (!content || !viewport || !card || viewport.height <= 0) return;
+        const resized = viewport.width !== anchor.width || viewport.height !== anchor.height;
+        const offset = resized ? Math.max(0, Math.min(anchor.offset, viewport.height - card.height)) : anchor.offset;
+        const delta = card.top - viewport.top - offset;
+        if (Math.abs(delta) >= 1) content.scrollTo({ top: Math.max(0, content.measureScrollOffset('top') + delta) });
+        this.setCursor(index);
+        this.focusCard(index, false, false);
+      } finally { cleanup(); unregister(); }
+    }));
+  }
+
+  private setGalleryChrome(active: boolean): void {
+    this.pageHelp.setDescription(active ? I18N.gallery.help : null);
+    const toolbar = this.galleryToolbar();
+    if (toolbar) {
+      if (active) this.headerSlot.set(toolbar);
+      else this.headerSlot.clear(toolbar);
+    }
+  }
+
+  private refreshSideData(): void {
+    void this.store.loadTypeCounts();
+    void this.store.loadFilterOptions();
+  }
+
   ngOnDestroy(): void {
-    this.pageHelp.setDescription(null);
-    const t = this.galleryToolbar();
-    if (t) this.headerSlot.clear(t);
+    this.cancelToolbarSearch();
+    this.setGalleryChrome(false);
     this.saveViewSnapshot();
     this.resizeObserver?.disconnect();
     this.desktop.cleanup();
@@ -1421,13 +1659,18 @@ export class GalleryComponent implements OnInit, OnDestroy {
       this.scrollContent()?.scrollTo({ top: snap.scrollTop });
       requestAnimationFrame(() => setTimeout(() => this.scrollDirective()?.recheck()));
     }, { injector: this.injector });
-    void this.store.loadTypeCounts();
-    void this.store.loadFilterOptions();
+    void this.store.resumeListingReads();
+    this.refreshSideData();
     return true;
   }
 
   /** Save/restore sidebar scroll position on drawer open/close */
   onFilterDrawerChange(open: boolean): void {
+    // openedChange fires when an animation ends, so a close() followed quickly by
+    // open() reports the stale close after the drawer is open again. Recording it
+    // would make the sync effect close the drawer, whose pending open would then
+    // reopen it -- an endless open/close loop.
+    if (open !== this.filterDrawer()?.opened) return;
     // The details rail holds this drawer open by itself, so an `open` it caused
     // must not be recorded as "the user asked for filters" — otherwise closing
     // the filters would immediately re-open them and the toggle would be stuck.
@@ -1683,6 +1926,23 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (result === null) return; // store reverted and notified
     this.clearSelection();
     const params = { count: result.count, ...extraParams };
+    this.offerMutationUndo(result, i18nKey, params);
+    // The view can move between the count and the write (another session, a
+    // scan). Say so rather than absorbing it: the user approved a number.
+    if (announced !== null && announced !== result.count) {
+      this.snackBar.open(
+        this.i18n.t(I18N.gallery.selection.view_scope_mismatch, { count: result.count, announced }),
+        '', { duration: 5000 },
+      );
+    }
+  }
+
+  private offerMutationUndo(
+    result: BatchResult,
+    i18nKey: string,
+    params: Record<string, string | number>,
+    restoreSelection = true,
+  ): void {
     // Undo replays inverse calls from a snapshot, and the snapshot can only
     // cover LOADED photos -- so offering it for an action that reached further
     // would promise to restore 64 of 5,000. Gate on coverage, not just size.
@@ -1696,20 +1956,22 @@ export class GalleryComponent implements OnInit, OnDestroy {
           // The snapshot's keys, not `paths`: they are the same set whenever
           // undo is offered at all (that is what `covered` asserts), and they
           // are the only ones a view-scoped action ever named.
-          this.store.restoreSelection(result.snapshot.keys());
+          if (restoreSelection) this.store.restoreSelection(result.snapshot.keys());
         },
       });
     } else {
       this.snackBar.open(this.i18n.t(i18nKey, params), '', { duration: 2000 });
     }
-    // The view can move between the count and the write (another session, a
-    // scan). Say so rather than absorbing it: the user approved a number.
-    if (announced !== null && announced !== result.count) {
-      this.snackBar.open(
-        this.i18n.t(I18N.gallery.selection.view_scope_mismatch, { count: result.count, announced }),
-        '', { duration: 5000 },
-      );
-    }
+  }
+
+  private async reviewSingle(path: string, decision: 'kept' | 'undecided'): Promise<BatchResult | null> {
+    const result = await this.store.batchReview([path], decision, false);
+    if (result) this.offerMutationUndo(result, this.I18N.review.updated, { count: result.count }, false);
+    return result;
+  }
+
+  protected async batchReview(decision: 'kept' | 'undecided'): Promise<void> {
+    await this.executeBatchAction(p => this.store.batchReview(p, decision), this.I18N.review.updated);
   }
 
   protected async batchFavorite(): Promise<void> {
@@ -1824,6 +2086,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private async runSinglePhotoAction(action: PhotoMenuAction, photo: Photo): Promise<void> {
     const paths = [photo.path];
     switch (action.kind) {
+      case 'review': await this.reviewSingle(photo.path, action.decision); break;
       case 'toggle-favorite': this.store.toggleFavorite(photo.path); break;
       case 'toggle-reject': this.store.toggleRejected(photo.path); break;
       case 'rate': this.store.setRating(photo.path, action.rating); break;
@@ -1845,10 +2108,21 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'invert':
       case 'compare':
       case 'mark-panorama':
+      case 'capture-date':
       case 'tags':
+      case 'gps':
         break;
       default: return assertNever(action);
     }
+  }
+
+  protected async continueReview(): Promise<void> {
+    const navigation = this.resumeNavigation;
+    const ownsView = () => !this.destroyRef.destroyed && !this.parked && navigation === this.resumeNavigation;
+    const path = await this.store.continueReview(ownsView);
+    if (!ownsView()) return;
+    const photo = path ? this.store.photos().find(p => p.path === path) : null;
+    if (photo) this.downloadPhoto(photo);
   }
 
   protected downloadPhoto(photo: Photo): void {
@@ -1881,6 +2155,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
    *  sheet and the right-click menu's bulk mode so the two cannot drift. */
   private async runSelectionAction(action: SheetAction): Promise<void> {
     switch (action.kind) {
+      case 'review': await this.batchReview(action.decision); break;
       case 'favorite': await this.batchFavorite(); break;
       case 'reject': await this.batchReject(); break;
       case 'rate': await this.batchRate(action.rating); break;
@@ -1890,7 +2165,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'compare': await this.compareSelection(); break;
       case 'export': this.openExportDialog(); break;
       case 'cull': await this.openCullDialog(); break;
+      case 'capture-date': await this.openCaptureDateDialog(); break;
       case 'tags': await this.openManualTagsDialog(); break;
+      case 'gps': await this.openBatchGpsDialog(); break;
       case 'delete': await this.deleteSelected(); break;
       case 'copy': await this.copyPaths(); break;
       case 'mark-panorama': await this.markAsPanorama(action.sequenceKind); break;
@@ -1988,6 +2265,51 @@ export class GalleryComponent implements OnInit, OnDestroy {
     });
   }
 
+  async openCaptureDateDialog(): Promise<void> {
+    if (!this.auth.isEdition()) return;
+    const viewScoped = this.viewScoped();
+    const selected = this.selectedPaths();
+    const first = viewScoped ? undefined : this.store.photos().find(photo => selected.has(photo.path) && photo.date_taken);
+    const data = {
+      paths: [...selected],
+      filters: viewScoped ? structuredClone(this.store.filterPayload()) : null,
+      exclude: viewScoped ? [...this.excludedPaths()] : [],
+      count: this.selectionCount(),
+      reference: first?.date_taken ? { path: first.path, date: first.date_taken } : null,
+    };
+    if (!viewScoped && !data.paths.length) return;
+    const liveness = this.staleness.create(this.destroyRef, { track: 'status' });
+    try {
+      const { CaptureDateDialogComponent } = await import('../photo-detail/capture-date-dialog.component');
+      if (!liveness.current()) return;
+      this.dialog.open(CaptureDateDialogComponent, { width: '95vw', maxWidth: '760px', data });
+    } finally { liveness.dispose(); }
+  }
+
+  async openBatchGpsDialog(): Promise<void> {
+    if (!this.auth.isEdition() || !this.selectionCount()) return;
+    const selectionIdentity = () => JSON.stringify({
+      view: this.viewScoped(), paths: [...this.selectedPaths()].sort(),
+      exclude: [...this.excludedPaths()].sort(), filters: this.store.filterPayload(),
+    });
+    const originalSelection = selectionIdentity();
+    const batch = this.viewScoped()
+      ? { filters: structuredClone(this.store.filterPayload()), exclude: [...this.excludedPaths()] }
+      : { photo_paths: [...this.selectedPaths()] };
+    const { current, dispose } = this.staleness.create(this.destroyRef);
+    const onBatchApplied = () => {
+      if (current() && selectionIdentity() === originalSelection) this.store.clearSelection();
+    };
+    try {
+      const { GpsEditDialogComponent } = await import('../photo-detail/gps-edit-dialog.component');
+      if (!current()) return;
+      this.dialog.open(GpsEditDialogComponent, {
+        width: '95vw', maxWidth: '640px',
+        data: { path: '', filename: this.i18n.t(I18N.photo_detail.gps.batch_title), lat: null, lng: null, batch, onBatchApplied },
+      });
+    } finally { dispose(); }
+  }
+
   /** Bulk add/remove of one manual tag. The dialog owns the request; the list is
    *  refetched afterwards because a photo opened in the detail view carries the
    *  grid row's `manual_tags`, which a bulk write has just made stale. */
@@ -2019,40 +2341,48 @@ export class GalleryComponent implements OnInit, OnDestroy {
     const viewScoped = !explicit && this.viewScoped();
     const paths = explicit ? [...explicitPaths] : [...this.selectedPaths()];
     if (!viewScoped && !paths.length) return;
-    // Taken before the dialog: the reload after a cull may drop these rows.
-    const culled = explicit ? this.store.photos().filter(p => paths.includes(p.path)) : [];
-    const { CullDialogComponent } = await import('./cull-dialog.component');
-    const ref = this.dialog.open(CullDialogComponent, {
-      width: '32rem',
-      data: {
-        paths,
-        // Same trade as the export: the filter travels instead of the paths,
-        // and the server's 10,000 ceiling (412) applies to it just the same.
-        filters: viewScoped ? this.store.filterPayload() : null,
-        exclude: viewScoped ? [...this.excludedPaths()] : [],
-        count: explicit ? paths.length : this.selectionCount(),
-        trashAvailable: this.store.config()?.cull?.trash_available ?? false,
-        allowTrash: this.store.config()?.cull?.allow_trash ?? false,
-      },
+    const filterScope = JSON.stringify(this.store.filterPayload());
+    const { current, dispose } = this.staleness.create(this.destroyRef, {
+      track: 'status', valid: () => JSON.stringify(this.store.filterPayload()) === filterScope,
     });
-    const applied = await firstValueFrom(ref.afterClosed());
-    if (applied) {
-      // Reload first: clearing the selection hands focus back to the marked
-      // card, and the rows the cull has just moved away are still standing in
-      // the list until this returns.
-      if (!explicit) {
+    try {
+      // Taken before the dialog: the reload after a cull may drop these rows.
+      const culled = explicit ? this.store.photos().filter(p => paths.includes(p.path)) : [];
+      const { CullDialogComponent } = await import('./cull-dialog.component');
+      if (!current()) return;
+      const ref = this.dialog.open(CullDialogComponent, {
+        closeOnNavigation: false,
+        width: '32rem',
+        data: {
+          paths,
+          // Same trade as the export: the filter travels instead of the paths,
+          // and the server's 10,000 ceiling (412) applies to it just the same.
+          filters: viewScoped ? this.store.filterPayload() : null,
+          exclude: viewScoped ? [...this.excludedPaths()] : [],
+          count: explicit ? paths.length : this.selectionCount(),
+          trashAvailable: this.store.config()?.cull?.trash_available ?? false,
+          allowTrash: this.store.config()?.cull?.allow_trash ?? false,
+        },
+      });
+      const applied = await firstValueFrom(ref.afterClosed());
+      if (applied && current()) {
+        // Reload first: clearing the selection hands focus back to the marked
+        // card, and the rows the cull has just moved away are still standing in
+        // the list until this returns.
+        if (!explicit) {
+          await this.store.reloadPhotos();
+          if (current()) this.clearSelection();
+          return;
+        }
+        // loadPhotos() drops a whole-view selection (a view selection names the
+        // view, and the reload is what the store reads as "the view changed"),
+        // so what the user built is captured first and put back after it.
+        const wasViewScoped = this.viewScoped();
+        const kept = wasViewScoped ? new Set(this.excludedPaths()) : new Set(this.selectedPaths());
         await this.store.reloadPhotos();
-        this.clearSelection();
-        return;
+        if (current()) this.restoreSelectionWithout(wasViewScoped, kept, culled);
       }
-      // loadPhotos() drops a whole-view selection (a view selection names the
-      // view, and the reload is what the store reads as "the view changed"),
-      // so what the user built is captured first and put back after it.
-      const wasViewScoped = this.viewScoped();
-      const kept = wasViewScoped ? new Set(this.excludedPaths()) : new Set(this.selectedPaths());
-      await this.store.reloadPhotos();
-      this.restoreSelectionWithout(wasViewScoped, kept, culled);
-    }
+    } finally { dispose(); }
   }
 
   /** After a cull of explicit paths only those photos leave the selection; the
@@ -2114,7 +2444,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (!result) return;
     const res = await this.photoActions.deletePhotos(paths, result);
     if (!res) return;
-    this.store.removePhotos(res.deleted);
+    // `removed_missing` rows are as gone as trashed ones -- the grid must not
+    // keep a tile for a row the server just reconciled away.
+    const removed = [...res.deleted, ...res.removed_missing];
+    this.store.removePhotos(removed);
     // `removePhotos` already prunes the deleted paths out of the selection.
     if (!explicit) this.clearSelection();
     // Every failure bucket counts as "failed" here, not just
@@ -2126,11 +2459,11 @@ export class GalleryComponent implements OnInit, OnDestroy {
     // the old two-field toast rendered.
     const failed = res.refused_bracket_lead.length + res.not_found.length + res.not_visible.length
       + res.skipped.length + Object.keys(res.errors).length;
-    if (res.deleted.length === 0 && failed > 0) {
+    if (removed.length === 0 && failed > 0) {
       this.snackBar.open(this.i18n.t(I18N.cull.delete_failed), '', { duration: 4000 });
     } else {
       this.snackBar.open(
-        this.i18n.t(I18N.cull.delete_partial_result, { deleted: res.deleted.length, failed }),
+        this.i18n.t(I18N.cull.delete_partial_result, { deleted: removed.length, failed }),
         '', { duration: 4000 },
       );
     }
@@ -2266,13 +2599,78 @@ export class GalleryComponent implements OnInit, OnDestroy {
     this.store.updateFilter('type', type);
   }
 
+  private searchTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  /** Debounced live filtering for the toolbar search box: waiting for
+   *  Enter/blur made typing feel dead (the grid froze with no hint that a
+   *  commit was pending). Enter and blur still commit immediately via the
+   *  same updateFilter path. */
+  protected onSearchInput(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    if (this.searchTimeout) clearTimeout(this.searchTimeout);
+    this.searchTimeout = setTimeout(() => {
+      this.searchTimeout = null;
+      if (value !== this.store.filters().search) this.store.updateFilter('search', value);
+    }, 400);
+  }
+
   protected onSearchChange(event: Event): void {
+    if (this.searchTimeout) clearTimeout(this.searchTimeout);
+    this.searchTimeout = null;
     const value = (event.target as HTMLInputElement).value;
     if (value !== this.store.filters().search) this.store.updateFilter('search', value);
   }
 
+  /** `/` focuses the search (the toolbar's, else the sidebar's), `B` toggles the filter sidebar, `V`
+   *  switches grid/mosaic — the three view-level toggles that had no
+   *  keyboard path. Typing contexts and open dialogs bow out, matching the
+   *  select-all shortcut's guards, and so does the slideshow: it is an inline
+   *  overlay, not a MatDialog, so the dialog query below cannot see it. */
+  protected onGalleryShortcut(event: KeyboardEvent): void {
+    if (this.parked || this.store.slideshowActive()) return;
+    if (isPageShortcutBlocked(event)) return;
+
+    switch (event.key) {
+      case '/': {
+        const search = this.toolbarSearch()?.nativeElement;
+        if (!search) return;
+        event.preventDefault();
+        if (window.matchMedia(TOOLBAR_SEARCH_QUERY).matches) {
+          search.focus();
+          search.select();
+          break;
+        }
+        // Below 1360 px the toolbar search is hidden; the sidebar carries its own.
+        this.store.setFilterDrawerOpen(true);
+        afterNextRender(() => this.filterSidebar()?.focusSearch(), { injector: this.injector });
+        break;
+      }
+      case 'b': case 'B':
+        event.preventDefault();
+        this.store.setFilterDrawerOpen(!this.store.filterDrawerOpen());
+        break;
+      case 'v': case 'V':
+        event.preventDefault();
+        this.store.setGalleryMode(this.effectiveGalleryMode() === 'grid' ? 'mosaic' : 'grid');
+        break;
+      default:
+        return;
+    }
+  }
+
   protected clearSearch(): void {
+    this.cancelToolbarSearch();
     this.store.updateFilter('search', '');
+  }
+
+  /** Drop a pending toolbar search and show the committed one again. A timer
+   *  that fired on a parked or destroyed gallery would rewrite whatever URL is
+   *  showing by then (the photo page's) with gallery query params. */
+  private cancelToolbarSearch(): void {
+    if (this.searchTimeout) clearTimeout(this.searchTimeout);
+    this.searchTimeout = null;
+    const input = this.toolbarSearch()?.nativeElement;
+    if (input) input.value = this.store.filters().search;
   }
 
   private setupResizeObserver(): void {
@@ -2486,6 +2884,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'Home': next = 0; break;
       case 'End': next = photos.length - 1; break;
       case 'Escape':
+        // A click-opened tooltip is the innermost layer: close it before touching the selection.
+        if (this.tooltipMode() === 'click' && this.tooltipPhoto()) {
+          event.preventDefault();
+          this.hideTooltip();
+          return;
+        }
         if (this.selectionCount() || (this.panelMode() && this.hasActivePhoto())) {
           event.preventDefault();
           this.escapeSelection();
@@ -2516,9 +2920,19 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (event.key >= '1' && event.key <= '5') {
       this.store.setRating(photo.path, Number(event.key));
       advance = true;
+    } else if (event.key.toLowerCase() === 'k') {
+      event.preventDefault();
+      void this.reviewSingle(photo.path, 'kept').then(result => {
+        if (result) this.focusAfterDecision(photos, index);
+      });
+      return;
     } else if (event.key === '0' || event.key === 'x' || event.key === 'X') {
-      this.store.toggleRejected(photo.path);
-      advance = true;
+      if (this.store.filters().review_status) {
+        void this.store.toggleRejected(photo.path).then(() => this.focusAfterDecision(photos, index));
+      } else {
+        this.store.toggleRejected(photo.path);
+        advance = true;
+      }
     } else if (event.key === 'f' || event.key === 'F') {
       this.store.toggleFavorite(photo.path);
     } else {
@@ -2531,6 +2945,12 @@ export class GalleryComponent implements OnInit, OnDestroy {
       this.setCursor(next);
       this.focusCard(next);
     }
+  }
+
+  private focusAfterDecision(photos: Photo[], index: number): void {
+    const nextIndex = this.store.photos().findIndex(p => p.path === photos[index + 1]?.path);
+    const target = nextIndex >= 0 ? nextIndex : Math.min(index, this.store.photos().length - 1);
+    if (target >= 0) { this.setCursor(target); this.focusCard(target); }
   }
 
   /** Focus a card by photo index; if windowed out of the DOM, scroll its row

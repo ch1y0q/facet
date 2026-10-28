@@ -4,8 +4,10 @@ import { By } from '@angular/platform-browser';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { MATERIAL_ANIMATIONS } from '@angular/material/core';
 import { MatTooltip } from '@angular/material/tooltip';
+import { MatMenuTrigger } from '@angular/material/menu';
 import { I18nService } from '../../../core/services/i18n.service';
 import { PhotoCardComponent } from './photo-card.component';
+import { CardActionsConfig } from './card-actions';
 import type { Photo } from '../../models/photo.model';
 import { makePhoto } from '../../../../testing/photo.fixture';
 
@@ -19,6 +21,8 @@ import { makePhoto } from '../../../../testing/photo.fixture';
                              [burstFramesVisible]="burstFramesVisible()"
                              [collapsedSetKinds]="collapsedSetKinds()"
                              [isEditionMode]="isEditionMode()"
+                             [metricRanges]="metricRanges()"
+                             [currentSort]="currentSort()"
                              (selectionChange)="selected.push($event.photo.path)"
                              (doubleClicked)="opened.push($event.path)" />`,
 })
@@ -28,6 +32,8 @@ class TestHostComponent {
   burstFramesVisible = signal(false);
   collapsedSetKinds = signal<readonly string[]>([]);
   isEditionMode = signal(false);
+  metricRanges = signal<Record<string, { min: number; max: number; buckets: number[] }>>({});
+  currentSort = signal('aggregate');
   selected: string[] = [];
   opened: string[] = [];
 }
@@ -48,6 +54,60 @@ describe('PhotoCardComponent', () => {
   function getCard(): PhotoCardComponent {
     return fixture.debugElement.children[0].componentInstance as PhotoCardComponent;
   }
+
+  describe('score badge library placement', () => {
+    const badgeTooltips = () => fixture.debugElement.queryAll(By.directive(MatTooltip))
+      .map(el => el.injector.get(MatTooltip).message)
+      .filter(message => message.startsWith('gallery.aggregate_score'));
+
+    it('keeps the plain tooltip when no distribution was loaded', () => {
+      fixture.componentInstance.photo.set(makePhoto({ aggregate: 7.5 }));
+      fixture.detectChanges();
+      expect(badgeTooltips()).toEqual(['gallery.aggregate_score']);
+    });
+
+    it('says where the score sits in the library when its distribution is known', () => {
+      fixture.componentInstance.photo.set(makePhoto({ aggregate: 7.5 }));
+      fixture.componentInstance.metricRanges.set({ aggregate: { min: 0, max: 10, buckets: [1, 1] } });
+      fixture.detectChanges();
+      expect(badgeTooltips()).toEqual(['gallery.aggregate_score · photo_detail.distribution.top']);
+      expect(mockI18n.t).toHaveBeenCalledWith('photo_detail.distribution.top', { pct: 25 });
+    });
+
+    describe('under another sort', () => {
+      const sortTooltips = () => fixture.debugElement.queryAll(By.directive(MatTooltip))
+        .map(el => el.injector.get(MatTooltip).message)
+        .filter(message => message.startsWith('gallery.sort_score'));
+      const even = { min: 0, max: 10, buckets: [1, 1] };
+
+      beforeEach(() => mockI18n.t.mockClear());
+
+      it('ranks the sorted column, not the aggregate', () => {
+        fixture.componentInstance.photo.set(makePhoto({ aggregate: 7.5, aesthetic: 2.5 }));
+        fixture.componentInstance.metricRanges.set({ aggregate: even, aesthetic: even });
+        fixture.componentInstance.currentSort.set('aesthetic');
+        fixture.detectChanges();
+        expect(sortTooltips()).toEqual(['gallery.sort_score (aesthetic) · photo_detail.distribution.top']);
+        expect(mockI18n.t).toHaveBeenCalledWith('photo_detail.distribution.top', { pct: 75 });
+      });
+
+      it('ranks the aggregate the badge falls back to for a non-numeric sort', () => {
+        fixture.componentInstance.photo.set(makePhoto({ aggregate: 7.5 }));
+        fixture.componentInstance.metricRanges.set({ aggregate: even });
+        fixture.componentInstance.currentSort.set('date_taken');
+        fixture.detectChanges();
+        expect(mockI18n.t).toHaveBeenCalledWith('photo_detail.distribution.top', { pct: 25 });
+      });
+
+      it('keeps the plain tooltip for a sorted column without a distribution', () => {
+        fixture.componentInstance.photo.set(makePhoto({ aggregate: 7.5, star_rating: 4 }));
+        fixture.componentInstance.metricRanges.set({ aggregate: even });
+        fixture.componentInstance.currentSort.set('star_rating');
+        fixture.detectChanges();
+        expect(sortTooltips()).toEqual(['gallery.sort_score (star_rating)']);
+      });
+    });
+  });
 
   it('should create with required photo input', () => {
     const card = getCard();
@@ -160,6 +220,33 @@ describe('PhotoCardComponent', () => {
       card.starClicked.subscribe(spy);
       card.cycleStarRating();
       expect(spy).toHaveBeenCalledWith(expect.objectContaining({ star: 1 }));
+    });
+  });
+
+  describe('persistent kept badge', () => {
+    it.each([
+      [false, false, false, false],
+      [false, true, false, false],
+      [true, false, false, false],
+      [true, true, false, true],
+      [true, true, true, false],
+    ])('edition=%s kept=%s rejected=%s renders badge=%s', (edition, kept, rejected, shown) => {
+      fixture.componentInstance.isEditionMode.set(edition);
+      fixture.componentInstance.photo.set(makePhoto({ is_kept: kept, is_rejected: rejected }));
+      fixture.detectChanges();
+      const badge = (fixture.nativeElement as HTMLElement).querySelector('[aria-label="review.kept"]');
+      expect(badge !== null).toBe(shown);
+      if (badge) expect(badge.querySelector('mat-icon')?.textContent?.trim()).toBe('check');
+    });
+
+    it('removes an existing badge when edition access ends', () => {
+      fixture.componentInstance.isEditionMode.set(true);
+      fixture.componentInstance.photo.set(makePhoto({ is_kept: true }));
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('[aria-label="review.kept"]')).not.toBeNull();
+      fixture.componentInstance.isEditionMode.set(false);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('[aria-label="review.kept"]')).toBeNull();
     });
   });
 
@@ -805,6 +892,38 @@ describe('PhotoCardComponent current-photo marker', () => {
 
   afterEach(() => TestBed.resetTestingModule());
 
+  it('shows the focused-card shortcut hint only while rating controls are enabled', () => {
+    const fixture = createCard({ isActive: true, gridHasActiveCard: true });
+    fixture.componentRef.setInput('isEditionMode', true);
+    fixture.componentRef.setInput('config', { features: { show_rating_controls: true } });
+    fixture.detectChanges();
+    const hint = () => [...host(fixture).querySelectorAll('div[aria-hidden="true"]')]
+      .find(node => node.textContent?.trim() === 'photoCard.key_hint');
+    expect(hint()).toBeDefined();
+    fixture.componentRef.setInput('config', { features: { show_rating_controls: false } });
+    fixture.detectChanges();
+    expect(hint()).toBeUndefined();
+    fixture.componentRef.setInput('config', { features: { show_rating_controls: true } });
+    fixture.detectChanges();
+    expect(hint()).toBeDefined();
+    fixture.componentRef.setInput('isEditionMode', false);
+    fixture.detectChanges();
+    expect(hint()).toBeUndefined();
+  });
+
+  it.each([
+    ['not the active card', { isActive: false, gridHasActiveCard: true, mosaicMode: false }],
+    ['no card active in the grid', { isActive: true, gridHasActiveCard: false, mosaicMode: false }],
+    ['mosaic layout', { isActive: true, gridHasActiveCard: true, mosaicMode: true }],
+  ])('hides the focused-card shortcut hint for %s even with edition and rating controls on', (_name, inputs) => {
+    const fixture = createCard(inputs);
+    fixture.componentRef.setInput('isEditionMode', true);
+    fixture.componentRef.setInput('config', { features: { show_rating_controls: true } });
+    fixture.detectChanges();
+    expect([...host(fixture).querySelectorAll('div[aria-hidden="true"]')]
+      .find(node => node.textContent?.trim() === 'photoCard.key_hint')).toBeUndefined();
+  });
+
   it('is neither current nor dimmed by default', () => {
     const fixture = createCard();
     expect(fixture.componentInstance.isActive()).toBe(false);
@@ -937,6 +1056,26 @@ describe('PhotoCardComponent filter links', () => {
     expect(similar(el)).toBeNull();
   });
 
+  it('closes an open Find similar menu when closeOverlays is called', () => {
+    TestBed.configureTestingModule({
+      imports: [PhotoCardComponent],
+      providers: [
+        { provide: I18nService, useValue: mockI18n },
+        { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
+      ],
+    });
+    const fixture = TestBed.createComponent(PhotoCardComponent);
+    fixture.componentRef.setInput('photo', makePhoto({ tags_list: ['sunset'] }));
+    fixture.componentRef.setInput('config', { features: { show_similar_button: true } });
+    fixture.detectChanges();
+    const trigger = fixture.debugElement.query(By.directive(MatMenuTrigger)).injector.get(MatMenuTrigger);
+    trigger.openMenu();
+    fixture.detectChanges();
+    expect(trigger.menuOpen).toBe(true);
+    fixture.componentInstance.closeOverlays();
+    expect(trigger.menuOpen).toBe(false);
+  });
+
   it('does not emit tagClicked from a plain chip', () => {
     TestBed.configureTestingModule({
       imports: [PhotoCardComponent],
@@ -994,5 +1133,156 @@ describe('PhotoCardComponent hideTooltips', () => {
       document.removeEventListener('keydown', seen);
     }
     expect(seen).toHaveBeenCalledOnce();
+  });
+});
+
+describe('PhotoCardComponent configured hover actions', () => {
+  const mockI18n = { t: vi.fn((key: string) => key), currentLang: vi.fn(() => 'en'), locale: vi.fn(() => 'en'), translations: vi.fn(() => ({})) };
+
+  function makeCard(photoOverrides: Partial<Photo> = {}, cardActions: CardActionsConfig | null = null) {
+    const f = TestBed.createComponent(PhotoCardComponent);
+    f.componentRef.setInput('photo', makePhoto(photoOverrides));
+    if (cardActions) f.componentRef.setInput('cardActions', cardActions);
+    f.detectChanges();
+    return f;
+  }
+
+  function topRowIcons(f: ComponentFixture<PhotoCardComponent>): string[] {
+    const row = f.nativeElement.querySelector('.absolute.inset-x-0.top-0 > div');
+    return [...row.querySelectorAll('button mat-icon')].map(i => i.textContent!.trim());
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [PhotoCardComponent],
+      providers: [{ provide: I18nService, useValue: mockI18n }],
+    }).compileComponents();
+  });
+
+  it('shows the duplicate-group button by default only on photos that belong to one', () => {
+    expect(topRowIcons(makeCard({ duplicate_group_id: 7 }))).toContain('photo_library');
+    expect(topRowIcons(makeCard({ duplicate_group_id: null }))).not.toContain('photo_library');
+  });
+
+  it('keeps a null config on the historical default row, gating untouched', () => {
+    // unassigned_faces>0 alone must not surface assign_face outside edition mode
+    const icons = topRowIcons(makeCard({ unassigned_faces: 2, duplicate_group_id: null }));
+    expect(icons).not.toContain('person_add');
+    expect(icons).not.toContain('photo_library');
+  });
+
+  it('honours hidden and order from the config', () => {
+    const cfg: CardActionsConfig = {
+      order: ['duplicate_set', 'critique'],
+      hidden: ['critique'],
+    };
+    const icons = topRowIcons(makeCard({ duplicate_group_id: 7 }, cfg));
+    expect(icons).toEqual(['photo_library']);
+  });
+
+  it('shows burst and sequence buttons only when the photo belongs to such a set', () => {
+    const cfg: CardActionsConfig = {
+      order: ['burst_set', 'sequence_set'],
+      hidden: [],
+    };
+    expect(topRowIcons(makeCard({ burst_group_id: 3 }, cfg))).toEqual(['burst_mode']);
+    expect(topRowIcons(makeCard({ sequence_kind: 'bracket', sequence_group_id: 5 }, cfg)))
+      .toEqual(['auto_awesome_motion']);
+    expect(topRowIcons(makeCard({ sequence_kind: 'bracket' }, cfg))).toEqual([]);
+  });
+
+  it('emits openSetClicked with the photo and kind', () => {
+    const cfg: CardActionsConfig = { order: ['duplicate_set'], hidden: [] };
+    const f = makeCard({ duplicate_group_id: 7 }, cfg);
+    const card = f.debugElement.children[0].componentInstance as PhotoCardComponent;
+    const emitted: { photo: Photo; kind: string }[] = [];
+    card.openSetClicked.subscribe(e => emitted.push(e));
+    (f.nativeElement.querySelector('button mat-icon')!.closest('button') as HTMLButtonElement).click();
+    expect(emitted).toEqual([{ photo: makePhoto({ duplicate_group_id: 7 }), kind: 'duplicate' }]);
+  });
+});
+
+describe('PhotoCardComponent action button dispatch', () => {
+  const mockI18n = { t: vi.fn((key: string) => key), currentLang: vi.fn(() => 'en'), locale: vi.fn(() => 'en'), translations: vi.fn(() => ({})) };
+
+  function makeCard(photoOverrides: Partial<Photo>, cardActions: CardActionsConfig, edition = false, features: Record<string, boolean> = {}) {
+    const f = TestBed.createComponent(PhotoCardComponent);
+    f.componentRef.setInput('photo', makePhoto(photoOverrides));
+    f.componentRef.setInput('cardActions', cardActions);
+    f.componentRef.setInput('isEditionMode', edition);
+    f.componentRef.setInput('config', { features } as never);
+    f.detectChanges();
+    return f;
+  }
+
+  function topRowIcons(f: ComponentFixture<PhotoCardComponent>): string[] {
+    const row = f.nativeElement.querySelector('.absolute.inset-x-0.top-0 > div');
+    return [...row.querySelectorAll('button mat-icon')].map(i => i.textContent!.trim());
+  }
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [PhotoCardComponent],
+      providers: [{ provide: I18nService, useValue: mockI18n }],
+    }).compileComponents();
+  });
+
+  it('emits openDetailClicked with the photo from the open_detail button', () => {
+    const f = makeCard({}, { order: ['open_detail'], hidden: [] });
+    const card = f.debugElement.children[0].componentInstance as PhotoCardComponent;
+    const emitted: Photo[] = [];
+    card.openDetailClicked.subscribe(p => emitted.push(p));
+    (f.nativeElement.querySelector('.absolute.inset-x-0.top-0 > div:first-child button') as HTMLButtonElement).click();
+    expect(emitted).toEqual([makePhoto({})]);
+  });
+
+  it('shows the embed button only in edition mode with the feature on', () => {
+    const cfg: CardActionsConfig = { order: ['embed'], hidden: [] };
+    expect(topRowIcons(makeCard({}, cfg, true, { show_embed_metadata: true }))).toEqual(['save']);
+    expect(topRowIcons(makeCard({}, cfg, false, { show_embed_metadata: true }))).toEqual([]);
+    expect(topRowIcons(makeCard({}, cfg, true, {}))).toEqual([]);
+  });
+
+  it('emits embedMetadataClicked and openAddPersonClicked from their buttons', () => {
+    const cfg: CardActionsConfig = { order: ['embed', 'assign_face'], hidden: [] };
+    const f = makeCard({ unassigned_faces: 2 }, cfg, true, { show_embed_metadata: true });
+    const card = f.debugElement.children[0].componentInstance as PhotoCardComponent;
+    const embed: Photo[] = [];
+    const assign: Photo[] = [];
+    card.embedMetadataClicked.subscribe(p => embed.push(p));
+    card.openAddPersonClicked.subscribe(p => assign.push(p));
+    const buttons = f.nativeElement.querySelectorAll('.absolute.inset-x-0.top-0 > div:first-child button') as NodeListOf<HTMLButtonElement>;
+    expect(buttons).toHaveLength(2);
+    buttons[0].click();
+    expect(embed).toEqual([card.photo()]);
+    expect(assign).toEqual([]);
+    buttons[1].click();
+    expect(embed).toHaveLength(1);
+    expect(assign).toEqual([card.photo()]);
+  });
+
+  it('shows assign_face in edition mode on a photo with unassigned faces, never outside it', () => {
+    const cfg: CardActionsConfig = { order: ['assign_face'], hidden: [] };
+    expect(topRowIcons(makeCard({ unassigned_faces: 1 }, cfg, true))).toEqual(['person_add']);
+    expect(topRowIcons(makeCard({ unassigned_faces: 1 }, cfg, false))).toEqual([]);
+    expect(topRowIcons(makeCard({ unassigned_faces: 0 }, cfg, true))).toEqual([]);
+  });
+
+  it('emits critique and the burst and sequence set kinds', () => {
+    const cfg: CardActionsConfig = { order: ['critique', 'burst_set', 'sequence_set'], hidden: [] };
+    const f = makeCard({ burst_group_id: 3, sequence_kind: 'bracket', sequence_group_id: 5 }, cfg, false, { show_critique: true });
+    const card = f.debugElement.children[0].componentInstance as PhotoCardComponent;
+    const critique: Photo[] = [];
+    const sets: string[] = [];
+    card.openCritiqueClicked.subscribe(p => critique.push(p));
+    card.openSetClicked.subscribe(e => sets.push(e.kind));
+    const buttons = f.nativeElement.querySelectorAll('.absolute.inset-x-0.top-0 > div:first-child button') as NodeListOf<HTMLButtonElement>;
+    buttons[0].click();
+    expect(critique).toEqual([card.photo()]);
+    expect(sets).toEqual([]);
+    buttons[1].click();
+    buttons[2].click();
+    expect(critique).toHaveLength(1);
+    expect(sets).toEqual(['burst', 'sequence']);
   });
 });

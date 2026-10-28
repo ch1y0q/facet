@@ -980,6 +980,8 @@ sRGB, tone-mapped in linear light, and encoded with the sRGB OETF — narrowing
 to 8 bits only at that last step. This block controls that tone map. It applies
 **only** to images whose NCLX colour profile declares the PQ transfer
 (characteristic 16); SDR HEIF, HLG and JPEG pass through untouched regardless
+
+Frames the camera wrote rotated (an EXIF Orientation other than 1) come out upright: the decoder applies the orientation itself — including through the native-depth path, where pillow-heif 1.6 and newer turn the plane before the tone map and the raw EXIF value is neutralised rather than re-applied.
 of `enabled`.
 
 ```json
@@ -1076,6 +1078,8 @@ Groups similar photos taken in quick succession.
 Tells whoever administers the install when a newer Facet has been released. Not the same
 thing as the browser's "a new version is available — Reload", which swaps the page onto a
 bundle it has already downloaded; this one is about a release nobody has installed yet.
+
+The running version is always shown at the bottom of the user menu, for everyone who can open the viewer. An image built with `--build-arg FACET_BUILD=<branch>@<commit>` also shows that line, so two installs of the same release built from different branches can be told apart (`/api/config` carries both as `version` and `build`, but only to a caller who can read the library: on a password-protected install a visitor who has not signed in gets neither).
 
 Deliberately narrow. The check runs on the server and its result is cached, so an install
 asks GitHub at most once per `interval_days` however many people are looking at the viewer.
@@ -1677,7 +1681,7 @@ Web gallery display and behavior.
       "hide_brackets": true,
       "hide_panoramas": true,
       "hide_details": true,
-      "tooltip_mode": "hover",
+      "tooltip_mode": "panel",
       "hide_rejected": true,
       "sort": "aggregate",
       "sort_direction": "DESC",
@@ -1699,6 +1703,7 @@ Web gallery display and behavior.
 | `default_category` | `""` | Default category filter |
 | `edition_password` | `""` | Password to unlock edition mode (empty = every edit is refused; the install is read-only, except to a direct local browser or a local Full-editing assistant under `trusted_local_editing`) |
 | `trusted_local_editing` | `false` | Grant edition rights, without an edition password, to a browser on the same computer reaching the viewer directly over loopback. Applies only while BOTH `password` and `edition_password` are empty on a single-user install; covers every edition-gated route, the scan trigger included, and lets the Connect dialog mint a Full-editing assistant token for same-machine `/mcp` requests. **Never enable behind a reverse proxy on the same host.** See [Trusted Local Editing](#trusted-local-editing) |
+| `place_search_url` | `"https://photon.komoot.io/api"` | Photon endpoint behind the gallery's explicit **Search online** lookup; `""` disables it. See [Online place search](#online-place-search). |
 | **comparison_mode** | | |
 | `min_comparisons_for_optimization` | `50` | Minimum number of decisive comparisons (one photo won; ties do not count) in the category before weights are suggested |
 | `pair_selection_strategy` | `"learning"` | Pair strategy: `learning` (embedding-diversity cold-start + rank-disagreement once trained), `uncertainty`, `boundary`, `active`, `random` |
@@ -1754,7 +1759,7 @@ Web gallery display and behavior.
 | `low_light_max_luminance` | `0.2` | Low light threshold |
 | **defaults** | | |
 | `type` | `""` | Default photo type filter (e.g., `"portraits"`, `"landscapes"`, or `""` for All) |
-| `sort` | `"aggregate"` | Default sort column |
+| `sort` | `"aggregate"` | Default sort column. The gallery opens on the sort last picked in the sort control instead, when this browser remembers one (see [Sorting](VIEWER.md#sorting)) |
 | `sort_direction` | `"DESC"` | Default sort direction (`"ASC"` or `"DESC"`) |
 | `hide_blinks` | `true` | Hide blink photos by default |
 | `hide_bursts` | `true` | Show only best of burst by default |
@@ -1762,7 +1767,7 @@ Web gallery display and behavior.
 | `hide_brackets` | `true` | Show only a bracket's base exposure by default |
 | `hide_panoramas` | `true` | Show only one representative frame per panorama by default |
 | `hide_details` | `true` | Hide photo details on cards by default |
-| `tooltip_mode` | `"hover"` | Tooltip trigger: `"hover"`, `"click"`, `"off"`, or `"panel"` (docked rail instead of a floating tooltip — see `panel_activation` below). Replaces the prior `hide_tooltip` boolean. |
+| `tooltip_mode` | `"panel"` | Tooltip trigger: `"hover"`, `"click"`, `"off"`, or `"panel"` (docked rail instead of a floating tooltip — see `panel_activation` below). Replaces the prior `hide_tooltip` boolean. |
 | `panel_activation` | `"both"` | Which gesture retargets the docked rail's selected photo when `tooltip_mode` is `"panel"`: `"hover"`, `"click"`, or `"both"`. No effect on the other tooltip modes. Default `"both"` preserves the original panel behaviour |
 | `hide_rejected` | `true` | Hide rejected photos by default |
 | `gallery_mode` | `"mosaic"` | Default gallery layout (`"grid"` or `"mosaic"`) |
@@ -1827,7 +1832,7 @@ disagree.
 | `badge_percent` | `5` | Percent of pixels, in the worst of R/G/B, above which the gallery card is badged. Measured over a 28-photo sample: worst-channel highlight clipping had a median of 0.31% and a p90 of 2.35%, so 5% fires on roughly 1 photo in 25 |
 | `indicator_percent` | `1` | Threshold for the histogram's own R/G/B end markers. Finer than the badge because you are already looking at a single photo |
 | `histogram_mode` | `"rgb"` | House default for the **detail panel's** histogram: `"luma"`, `"rgb"`, or a single channel (`"r"` / `"g"` / `"b"`). A user's own choice for this surface is stored in `localStorage` under `facet_histogram_mode` and wins over this |
-| `tooltip_histogram_mode` | `"luma"` | House default for the **hover/pinned tooltip's** histogram, same five values. Deliberately independent of `histogram_mode` and persisted under its own `localStorage` key (`facet_histogram_mode_tooltip`): the panel is for studying one photo, where per-channel detail earns its space; the tooltip is for scanning many quickly, where a plain luminance curve usually reads faster. Setting one never retunes the other, and the toggle to change it only renders while the tooltip is pinned (docked rail, or `tooltip_mode: "click"`) — in plain hover mode it shows its resolved mode read-only |
+| `tooltip_histogram_mode` | `"luma"` | House default for the histogram in the **side panel's** Histogram tab (`tooltip_mode: "panel"`), same five values. Deliberately independent of `histogram_mode` and persisted under its own `localStorage` key (`facet_histogram_mode_tooltip`): photo detail is for studying one photo, where per-channel detail earns its space; the side panel is for scanning many quickly, where a plain luminance curve usually reads faster. Setting one never retunes the other. The **Hover** and **Click** bubbles show no histogram |
 
 **Clipping is measured per channel, at exactly bin 0 and bin 255.** It is stored
 in `photos.channel_clip_shadow_pct` / `channel_clip_highlight_pct` as the worst
@@ -1982,6 +1987,12 @@ A trusted request holds full edition rights: every route that otherwise needs an
 **Assistants.** The same opt-in lets the Connect dialog mint a **Full editing** token on an open install (`viewer.mcp.enabled` and a token are still required). The token is `edition` only for `/mcp` requests passing the boundary above, so it works from `http://localhost:<port>` or `127.0.0.1` on `:5000` and on the `ng serve` dev proxy `:4200`, and resolves to `readonly` from a LAN client, a hostname or `0.0.0.0` URL, or a Docker deployment. Any password lowers it to `readonly`; clearing the password revives it. Delete tools still need `viewer.mcp.allow_destructive`. `ng serve --host 0.0.0.0` or any unmarked same-host proxy lets a LAN client sending `Host: localhost` pass, leaving only the token protecting `/mcp`. See [AI Agents (MCP)](AGENTS.md). The same boundary, whatever `trusted_local_editing` says, gates assistant token management on an open install: minting, listing and revoking tokens works only from a request that passes it (or in an edition session when `viewer.edition_password` is set). A reverse proxy must send `X-Forwarded-For` or `Forwarded`, otherwise it is treated as the local machine.
 
 > **Warning:** the loopback peer is the only real boundary. `Host`, `Origin`, `Referer` and `Sec-Fetch-Site` are set by the client and can only refuse a request, and a reverse proxy, tunnel or port forward on the same host that adds none of the headers above is indistinguishable from your browser. Never enable this option behind any reverse proxy on the same host. Every local process and every account on the computer can edit while it is on.
+
+### Online place search
+
+`viewer.place_search_url` defaults to `https://photon.komoot.io/api`. Set an empty string to disable address/business lookup, or use a self-hosted Photon HTTP(S) endpoint without credentials, query parameters or fragments. The browser receives only `place_search_enabled`, never the configured URL. Searches require edition access and an explicit **Search online** click. See [Online place search](VIEWER.md#online-place-search) for privacy, caching and worker limits. The [Photon demo policy](https://github.com/komoot/photon#demo-server) allows reasonable project use with no availability guarantee; [Photon API documentation](https://github.com/komoot/photon/blob/master/docs/api-v1.md) defines its GeoJSON format. There are no retries or redirects.
+
+The five-second transport watchdog shuts down the active socket, including TCP/TLS setup and blocked HTTP header/body/chunk framing reads. Native synchronous DNS resolution still follows the operating system resolver timing and can exceed five seconds before a socket exists. The lookup remains single-flight while DNS is pending; if DNS returns after the deadline, no connection is opened. There are no detached request/DNS workers.
 
 ### Viewer Performance
 
@@ -2867,6 +2878,8 @@ One-way sync of Facet star ratings and favorites to an [Immich](https://immich.a
 |---------|---------|-------------|
 | `url` | `""` | Base URL of the Immich server (e.g. `http://nas:2283`) |
 | `api_key` | `""` | Immich API key, sent as the `x-api-key` header |
+| `owner_id` | `""` | Optional exact remote owner ID; returned assets missing this field or belonging to another owner are excluded |
+| `library_id` | `""` | Optional exact remote library ID; empty means no library filter, not a null library |
 | `path_map` | `[{facet_prefix, immich_prefix}]` | Prefix rewrites from Facet paths to Immich `originalPath` values; the first matching `facet_prefix` is swapped for its `immich_prefix` when resolving an asset |
 | `push.ratings` | `true` | Push star ratings. Immich's version-safe policy is honored — only 1–5 is written, never 0/−1 |
 | `push.favorites` | `true` | Push the favorite flag |

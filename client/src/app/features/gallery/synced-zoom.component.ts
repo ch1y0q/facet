@@ -20,7 +20,7 @@ export const SHARP_PRELOAD_DEBOUNCE_MS = 150;
 
 /** Sources already fetched into the browser cache, bounded so a long session
  *  does not grow it without limit. A pane consults it to skip the debounce for
- *  a render it can show instantly. */
+ *  a render that may still be cached. The preloader verifies it before promotion. */
 export class LoadedSources {
   static readonly MAX = 64;
   private readonly urls = new Set<string>();
@@ -110,6 +110,10 @@ export class SyncedZoomComponent {
   readonly loadedSources = input<LoadedSources | null>(null);
   /** Emits `src` once the preloader has fetched it and the pane swapped to it. */
   readonly sharpLoaded = output<string>();
+  /** Starts each progressive attempt, including revisits of the same URL. */
+  readonly sharpPending = output<string>();
+  /** The render failed; the pane keeps its stored thumbnail. */
+  readonly sharpFailed = output<string>();
 
   /** Hover loupe over this pane. `loupeSrc` defaults to the pane's own
    *  effective source (so a caller need not track full-res separately);
@@ -154,30 +158,40 @@ export class SyncedZoomComponent {
   constructor() {
     effect(onCleanup => {
       const src = this.src();
+      // Read for its dependency only: re-run the preload on a frame change even when src is unchanged.
+      this.frameKey();
       if (!this.placeholderSrc()) return;
       untracked(() => {
         const loaded = this.loadedSources();
-        if (loaded?.has(src)) {
-          this.readySrc.set(src);
-          this.sharpLoaded.emit(src);
-          return;
-        }
+        this.sharpPending.emit(src);
+        this.readySrc.set(null);
+        let active = true;
         let img: HTMLImageElement | null = null;
-        const timer = setTimeout(() => {
+        const preload = () => {
           const preloader = new Image();
           img = preloader;
-          // Handlers first: a cached image may fire `load` as soon as `src` is set.
+          let settled = false;
+          // A cache hint skips the debounce, never the browser's load check.
           preloader.onload = () => {
-            if (this.src() !== src) return;
+            if (!active || settled || this.src() !== src) return;
+            settled = true;
             loaded?.add(src);
             this.readySrc.set(src);
             this.sharpLoaded.emit(src);
           };
-          preloader.onerror = () => {};
+          preloader.onerror = () => {
+            if (!active || settled || this.src() !== src) return;
+            settled = true;
+            this.sharpFailed.emit(src);
+          };
           preloader.src = src;
-        }, SHARP_PRELOAD_DEBOUNCE_MS);
+          if (preloader.complete && preloader.naturalWidth > 0) preloader.onload(new Event('load'));
+        };
+        const timer = loaded?.has(src) ? null : setTimeout(preload, SHARP_PRELOAD_DEBOUNCE_MS);
+        if (timer === null) preload();
         onCleanup(() => {
-          clearTimeout(timer);
+          active = false;
+          if (timer !== null) clearTimeout(timer);
           if (img) {
             img.onload = null;
             img.onerror = null;

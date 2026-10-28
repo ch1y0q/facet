@@ -1,4 +1,4 @@
-import { Component, inject, computed, signal, effect, untracked, OnInit, ChangeDetectionStrategy } from '@angular/core';
+import { Component, inject, computed, signal, effect, untracked, OnInit, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterOutlet, RouterLink, RouterLinkActive, NavigationEnd } from '@angular/router';
@@ -21,6 +21,7 @@ import { MatBadgeModule } from '@angular/material/badge';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { ApiService } from './core/services/api.service';
+import { StalenessGuardFactory } from './core/services/staleness-guard.service';
 import { AuthService } from './core/services/auth.service';
 import { ScanService } from './core/services/scan.service';
 import { I18nService } from './core/services/i18n.service';
@@ -36,8 +37,13 @@ import { CompareFiltersService } from './features/comparison/compare-filters.ser
 import { MapFiltersService } from './features/map/map-filters.service';
 import { CapsuleFiltersService } from './features/capsules/capsule-filters.service';
 import { TranslatePipe } from './shared/pipes/translate.pipe';
+import { CardActionsDialogComponent } from './features/gallery/card-actions-dialog.component';
+import { HelpDialogComponent } from './shared/components/help-dialog/help-dialog.component';
+import { CULLING_SHORTCUT_SECTIONS } from './features/gallery/culling-shortcuts';
+import { GALLERY_SHORTCUT_SECTION } from './features/gallery/gallery-shortcuts';
 import { AssistantActivityChipComponent } from './features/agent/assistant-activity-chip.component';
 import { CONNECT_ASSISTANT_DIALOG_ID } from './core/agent/page-context.service';
+import { SortOptionIconPipe } from './shared/pipes/sort-option-icon.pipe';
 import { SortGroupKeyPipe } from './shared/pipes/sort-group-key.pipe';
 import { PersonThumbnailUrlPipe, ThumbnailUrlPipe } from './shared/pipes/thumbnail-url.pipe';
 import { SlideshowComponent } from './features/gallery/slideshow.component';
@@ -51,6 +57,9 @@ import { isUnavailableKey, unavailableSet } from './shared/utils/unavailable-met
 /** When the "a newer Facet is out" notice was last shown, so it stays weekly. */
 const RELEASE_NOTICE_KEY = 'facet_release_notice_shown';
 const RELEASE_NOTICE_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Translation key of a configured sort column's label. */
+const sortOptionLabelKey = (column: string): string => `sort_options.${column}`;
 
 /** Response of GET /api/updates/check. */
 interface ReleaseCheck {
@@ -136,6 +145,7 @@ export class EditionDialogComponent {
     MatDividerModule,
     TranslatePipe,
     SortGroupKeyPipe,
+    SortOptionIconPipe,
     PersonThumbnailUrlPipe,
     ThumbnailUrlPipe,
     MatSliderModule,
@@ -154,12 +164,35 @@ export class App implements OnInit {
   protected readonly I18N = i18nKeys();
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly staleness = inject(StalenessGuardFactory);
   protected readonly scan = inject(ScanService);
   private readonly api = inject(ApiService);
   protected readonly auth = inject(AuthService);
   protected readonly i18n = inject(I18nService);
   protected readonly themeService = inject(ThemeService);
   protected readonly pageHelp = inject(PageHelpService);
+
+  /** Open the photo-card hover-button customiser from the user menu — the
+   *  same dialog the filter sidebar offers, reachable from every route. */
+  protected openCardActionsDialog(): void {
+    this.dialog.open(CardActionsDialogComponent, { width: '26rem', autoFocus: false });
+  }
+
+  /** The menu's Help entry opens a modal with the current page's help text
+   *  and, on the gallery and culling routes, that page's keyboard reference.
+   *  The sections resolve from the router URL at click time; the dialog must
+   *  not read router state itself, because its construction timing is not
+   *  guaranteed to see the active route. */
+  protected openHelpDialog(): void {
+    const shortcuts = this.url().split('?')[0].startsWith('/culling')
+      ? CULLING_SHORTCUT_SECTIONS
+      : this.isGalleryRoute() ? [GALLERY_SHORTCUT_SECTION] : [];
+    this.dialog.open(HelpDialogComponent, {
+      width: '32rem', autoFocus: false,
+      data: { key: this.pageHelp.descriptionKey(), note: this.pageHelp.note(), shortcutSections: shortcuts },
+    });
+  }
   protected readonly headerSlot = inject(HeaderSlotService);
   protected readonly store = inject(GalleryStore);
   protected readonly statsFilters = inject(StatsFiltersService);
@@ -251,6 +284,48 @@ export class App implements OnInit {
     return Object.entries(grouped);
   });
 
+  /** The sort menu's entries in display order: the conditional sorts, then each configured group
+   *  (header is the raw group name, keyed by `sortGroupKey` in the template) or the three fallbacks. */
+  protected readonly sortMenuSections = computed(() => {
+    const filters = this.store.filters();
+    const sections: { header: string | null; options: { column: string; labelKey: string }[] }[] = [];
+    if (filters.semanticQuery) sections.push({ header: null, options: [{ column: 'relevance', labelKey: I18N.gallery.sort_relevance }] });
+    if (this.store.config()?.features?.show_my_taste) sections.push({ header: null, options: [{ column: 'learned_score', labelKey: I18N.gallery.sort_my_taste }] });
+    const groups = this.sortGroups();
+    if (groups) {
+      for (const [name, options] of groups) {
+        sections.push({
+          header: name,
+          options: options.map(opt => ({ column: opt.column, labelKey: sortOptionLabelKey(opt.column) })),
+        });
+      }
+    } else {
+      sections.push({ header: null, options: [
+        { column: 'aggregate', labelKey: I18N.gallery.sort_aggregate },
+        { column: 'aesthetic', labelKey: I18N.gallery.sort_aesthetic },
+        { column: 'date_taken', labelKey: I18N.gallery.sort_date },
+      ] });
+    }
+    return sections;
+  });
+
+  /** Labels of sorts the menu may not list: a restored or assistant-set sort the current
+   *  config hides, and top picks, which has no menu entry. */
+  private static readonly SORT_LABELS_OUTSIDE_MENU: Record<string, string> = {
+    relevance: I18N.gallery.sort_relevance,
+    learned_score: I18N.gallery.sort_my_taste,
+    top_picks_score: I18N.photo_types.top_picks,
+  };
+
+  /** Translation key of the active sort's label, for the sort button's tooltip and aria-label. */
+  protected readonly currentSortLabelKey = computed(() => {
+    const sort = this.store.filters().sort;
+    const match = this.sortMenuSections().flatMap(section => section.options).find(opt => opt.column === sort);
+    const outsideLabel = Object.hasOwn(App.SORT_LABELS_OUTSIDE_MENU, sort)
+      ? App.SORT_LABELS_OUTSIDE_MENU[sort] : undefined;
+    return match?.labelKey ?? outsideLabel ?? sortOptionLabelKey(sort);
+  });
+
   private static readonly RANGE_CHIPS: { minKey: string; maxKey: string; labelKey: string }[] = [
     { minKey: 'min_score', maxKey: 'max_score', labelKey: 'gallery.score_range' },
     { minKey: 'min_aesthetic', maxKey: 'max_aesthetic', labelKey: 'gallery.aesthetic_range' },
@@ -340,6 +415,7 @@ export class App implements OnInit {
     // Boolean filters
     if (f.favorites_only) chips.push({ id: 'favorites_only', labelKey: 'gallery.favorites_only', value: '', clearKeys: ['favorites_only'] });
     if (f.is_monochrome) chips.push({ id: 'is_monochrome', labelKey: 'gallery.monochrome_only', value: '', clearKeys: ['is_monochrome'] });
+    if (f.manual_faces_need_review) chips.push({ id: 'manual_faces_need_review', labelKey: I18N.gallery.manual_faces_need_review, value: '', clearKeys: ['manual_faces_need_review'] });
 
     // Range/date filter pairs (metrics hidden by the licensing policy get no chip)
     const hiddenMetrics = unavailableSet(this.store.config()?.unavailable_metrics);
@@ -391,8 +467,8 @@ export class App implements OnInit {
         this.store.updateFilter('person_id', ids.join(','));
         continue;
       }
-      if (key === 'favorites_only' || key === 'is_monochrome') {
-        this.store.updateFilter(key as 'favorites_only' | 'is_monochrome', false);
+      if (key === 'favorites_only' || key === 'is_monochrome' || key === 'manual_faces_need_review') {
+        this.store.updateFilter(key as 'favorites_only' | 'is_monochrome' | 'manual_faces_need_review', false);
       } else {
         this.store.updateFilter(key as keyof GalleryFilters, '' as never);
       }
@@ -550,7 +626,8 @@ export class App implements OnInit {
 
 
   protected onSortChange(sort: string): void {
-    this.store.updateFilter('sort', sort);
+    if (sort === this.store.filters().sort) return;
+    void this.store.setUserSort(sort);
   }
 
   protected toggleSortDirection(): void {
@@ -608,6 +685,24 @@ export class App implements OnInit {
     if (onEditionRoute) {
       this.router.navigate(['/']);
     }
+  }
+
+  protected loadOrganizationHistoryDialog() { return import('./features/photo-detail/organization-history-dialog.component'); }
+
+  /** The account's latest organization changes across the library, from any page. */
+  async openOrganizationHistory(): Promise<void> {
+    if (!this.auth.isEdition()) return;
+    const liveness = this.staleness.create(this.destroyRef);
+    try {
+      const { OrganizationHistoryDialogComponent } = await this.loadOrganizationHistoryDialog();
+      if (!liveness.current()) return;
+      const ref = this.dialog.open(OrganizationHistoryDialogComponent, { width: '95vw', maxWidth: '820px' });
+      const history = ref.componentInstance;
+      // A restore may rewrite the photo an open detail page holds its own copy of.
+      void firstValueFrom(ref.afterClosed()).then(() => history.whenSettled()).then(() => {
+        if (history.wasRestored()) this.store.notifyOrganizationRestored();
+      });
+    } finally { liveness.dispose(); }
   }
 
   /** "On This Day" diaporama: fetch this date's photos from past years, shuffle

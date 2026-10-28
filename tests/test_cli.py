@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sqlite3
 import stat
 import subprocess
@@ -93,6 +94,38 @@ def seeded_db(tmp_path):
 # --help smoke for every CLI flag
 # ---------------------------------------------------------------------------
 
+def test_reconcile_keywords_requires_export_sidecars_before_database_creation(tmp_path):
+    db = tmp_path / 'must-not-exist.db'
+    result = _run(FACET, '--db', str(db), '--reconcile-keywords')
+    assert result.returncode == 2
+    assert '--reconcile-keywords requires --export-sidecars' in result.stderr
+    assert not db.exists()
+
+
+@pytest.mark.skipif(shutil.which('exiftool') is None, reason='requires ExifTool')
+@pytest.mark.parametrize('embed', [False, True])
+def test_cli_export_preserves_numeric_keyword(tmp_path, embed, seed_keywords):
+    from PIL import Image
+    from db.schema import init_database
+    from processing.xmp_export import XmpRating, build_xmp, _read_existing_metadata, _resolve_exiftool
+    image = tmp_path / 'numeric.jpg'
+    Image.new('RGB', (16, 16)).save(image)
+    sidecar = Path(str(image) + '.xmp')
+    sidecar.write_text(build_xmp(XmpRating()), encoding='utf-8')
+    names = seed_keywords((image, sidecar))
+    db = tmp_path / 'numeric.db'
+    init_database(str(db))
+    with sqlite3.connect(db) as conn:
+        conn.execute('INSERT INTO photos(path,tags) VALUES (?,?)', (str(image), 'facet-tag'))
+    flags = ['--embed-originals'] if embed else []
+    result = _run(FACET, '--db', str(db), '--export-sidecars', 'all', *flags)
+    assert result.returncode == 0, result.stderr
+    assert '1 written' in result.stdout + result.stderr
+    for target in (image, sidecar) if embed else (sidecar,):
+        flat, _, _ = _read_existing_metadata(str(target), _resolve_exiftool(), timeout=30, strict=True)
+        assert set(flat) == {*names, 'facet-tag'}
+
+
 class TestHelpSmoke:
     def test_facet_help(self):
         result = _run(FACET, '--help')
@@ -105,7 +138,7 @@ class TestHelpSmoke:
             '--extract-faces-gpu-incremental', '--cluster-faces-force',
             '--export-csv', '--export-json', '--list-models',
             '--doctor', '--optimize-weights', '--comparison-stats',
-            '--validate-categories',
+            '--validate-categories', '--sidecar-naming',
         ):
             assert flag in result.stdout, f"flag missing from facet.py --help: {flag}"
 
@@ -842,3 +875,76 @@ def test_gps_exif_cli_preserves_manual_points_and_clears(tmp_path, flag):
     with sqlite3.connect(db) as conn:
         assert conn.execute('SELECT path,gps_latitude,gps_longitude,gps_manually_set FROM photos ORDER BY path').fetchall() == [
             ('/cleared', None, None, 1), ('/exif', 1, 2, 0), ('/manual', 8, 9, 1)]
+
+
+def test_overwrite_manual_gps_requires_explicit_import(tmp_path):
+    result = _run(FACET, '--overwrite-manual-gps', '--db', str(tmp_path / 'unused.db'))
+    assert result.returncode == 2
+    assert '--overwrite-manual-gps requires --import-sidecars' in result.stderr
+    assert not (tmp_path / 'unused.db').exists()
+
+
+@pytest.mark.parametrize('policy', ['full', 'basename', 'auto'])
+def test_sidecar_naming_requires_explicit_import(tmp_path, policy):
+    result = _run(FACET, '--sidecar-naming', policy, '--db', str(tmp_path / 'unused.db'))
+    assert result.returncode == 2
+    assert '--sidecar-naming requires --import-sidecars' in result.stderr
+    assert not (tmp_path / 'unused.db').exists()
+
+
+def test_sidecar_naming_rejects_unknown_policy(tmp_path):
+    result = _run(FACET, '--import-sidecars', '--sidecar-naming', 'newest',
+                  '--db', str(tmp_path / 'unused.db'))
+    assert result.returncode == 2
+    assert 'invalid choice' in result.stderr
+    assert not (tmp_path / 'unused.db').exists()
+
+
+@pytest.mark.parametrize('policy,expected,ambiguous', [
+    ('full', 2, 0), ('basename', 5, 0), ('auto', 1, 1),
+])
+def test_sidecar_naming_cli_imports_or_reports_conflict(tmp_path, policy, expected, ambiguous):
+    from db.schema import init_database
+    from processing.xmp_export import XmpRating, build_xmp
+
+    db = tmp_path / 'sidecars.db'
+    init_database(str(db))
+    image = tmp_path / 'p.CR3'
+    image.write_bytes(b'disposable original')
+    primary = tmp_path / 'p.CR3.xmp'
+    basename = tmp_path / 'p.xmp'
+    primary.write_text(build_xmp(XmpRating(star_rating=2)), encoding='utf-8')
+    basename.write_text(build_xmp(XmpRating(star_rating=5)), encoding='utf-8')
+    with sqlite3.connect(db) as conn:
+        conn.execute('INSERT INTO photos(path,filename,star_rating) VALUES (?,?,1)', (str(image), image.name))
+    before = [p.read_bytes() for p in (image, primary, basename)]
+    result = _run(FACET, '--import-sidecars', str(image), '--sidecar-naming', policy,
+                  '--db', str(db), cwd=str(tmp_path))
+    assert result.returncode == 0, result.stderr
+    assert f'Sidecar import ({policy})' in result.stderr
+    assert f'{ambiguous} ambiguous' in result.stderr
+    assert primary.name in result.stderr and basename.name in result.stderr
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT star_rating FROM photos').fetchone()[0] == expected
+    assert [p.read_bytes() for p in (image, primary, basename)] == before
+
+
+
+def test_sidecar_naming_cli_reports_mismatch_count_without_unsafe_advice(tmp_path):
+    from db.schema import init_database
+    from processing.xmp_export import XmpRating, build_xmp
+
+    db = tmp_path / 'sidecars.db'
+    init_database(str(db))
+    with sqlite3.connect(db) as conn:
+        for name in ('same.CR3', 'same.jpg'):
+            conn.execute('INSERT INTO photos(path,filename,star_rating) VALUES (?,?,2)',
+                         (str(tmp_path / name), name))
+    (tmp_path / 'same.xmp').write_text(build_xmp(XmpRating(star_rating=5)), encoding='utf-8')
+    result = _run(FACET, '--import-sidecars', '--db', str(db), cwd=str(tmp_path))
+    assert result.returncode == 0, result.stderr
+    assert '2 naming mismatches' in result.stderr
+    assert result.stderr.count('Full-name sidecar policy') == 1
+    assert '--sidecar-naming basename' not in result.stderr
+    with sqlite3.connect(db) as conn:
+        assert conn.execute('SELECT star_rating FROM photos ORDER BY path').fetchall() == [(2,), (2,)]

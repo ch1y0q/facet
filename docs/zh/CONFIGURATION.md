@@ -976,6 +976,8 @@ LibRaw 不会失败，而是零填充成一张有效的全尺寸黑图，而无�
 做 BT.2020 到 sRGB 的原色转换、在线性光下做色调映射，最后套用 sRGB OETF——
 只有在最后这一步才收窄到 8 bit。本段控制这一色调映射。它**仅**作用于 NCLX 色彩配置声明为 PQ 传递函数（特征值 16）的
 图像；无论 `enabled` 为何，SDR HEIF、HLG 与 JPEG 都原样透传。
+相机以旋转状态写入的帧（EXIF 方向不为 1）会以正立方向输出：解码器自行应用方向——包括原生位深路径在内，pillow-heif 1.6 及以上版本会在色调映射前转正像素平面，原始 EXIF 方向值会被中和而不是再次应用。
+
 
 ```json
 "hdr_pq_tonemap": {
@@ -1067,6 +1069,8 @@ IEC 61966-2-1。NCLX 传递特征值 16：ISO/IEC 23001-8 / ITU-T H.273。
 在有更新的 Facet 版本发布时告知安装的管理者。它与浏览器里那句“有新版本可用 —
 重新加载”不是一回事：后者只是把页面切换到已经下载好的
 资源包；这里说的是还没有人安装过的新版本。
+
+运行中的版本始终显示在用户菜单底部，所有查看者可见。使用 `--build-arg FACET_BUILD=<分支>@<提交>` 构建的镜像还会显示这一行，以便区分同一版本、不同分支构建的两个安装（`/api/config` 以 `version` 和 `build` 提供，但只提供给能读取图库的调用方：在设置了密码的安装中，未登录的访客两者都拿不到）。
 
 刻意做得很克制。检查在服务端运行，结果会被缓存，因此无论有多少人在看查看器，
 一个安装每 `interval_days` 至多向 GitHub 询问一次。请求除了它本身之外不携带任何内容 —
@@ -1664,7 +1668,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
       "hide_brackets": true,
       "hide_panoramas": true,
       "hide_details": true,
-      "tooltip_mode": "hover",
+      "tooltip_mode": "panel",
       "hide_rejected": true,
       "sort": "aggregate",
       "sort_direction": "DESC",
@@ -1686,6 +1690,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 | `default_category` | `""` | 默认的类别筛选 |
 | `edition_password` | `""` | 解锁编辑模式的密码（留空 = 所有编辑均被拒绝；安装为只读，启用 `trusted_local_editing` 时直接访问的本地浏览器或本地完全编辑助手除外） |
 | `trusted_local_editing` | `false` | 无需编辑密码，即授予同一台计算机上经 loopback 直接访问查看器的浏览器编辑权限。仅当单用户安装的 `password` 与 `edition_password` 均为空时生效；涵盖所有需要编辑权限的路由（包括扫描触发），并允许“连接助手”对话框为来自同一台机器的 `/mcp` 请求创建完全编辑的助手令牌。**切勿在同一主机的反向代理之后启用。** 参见[受信任的本地编辑](#受信任的本地编辑) |
+| `place_search_url` | `"https://photon.komoot.io/api"` | 画廊中明确发起的 **在线搜索** 所用的 Photon 端点；`""` 表示关闭。参见 [在线地点搜索](#在线地点搜索)。 |
 | **comparison_mode** | | |
 | `min_comparisons_for_optimization` | `50` | 建议权重之前，该类别所需的最少决定性比较次数（一方获胜；平局不计） |
 | `pair_selection_strategy` | `"learning"` | 配对策略：`learning`（冷启动阶段按嵌入多样性，训练完成后按排序分歧）、`uncertainty`、`boundary`、`active`、`random` |
@@ -1741,7 +1746,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 | `low_light_max_luminance` | `0.2` | 弱光阈值 |
 | **defaults** | | |
 | `type` | `""` | 默认的照片类型筛选（例如 `"portraits"`、`"landscapes"`，或 `""` 表示全部） |
-| `sort` | `"aggregate"` | 默认排序列 |
+| `sort` | `"aggregate"` | 默认排序列。若此浏览器记住了上次在排序控件中选择的排序，照片库会改以该排序打开（参见[排序](VIEWER.md#排序)） |
 | `sort_direction` | `"DESC"` | 默认排序方向（`"ASC"` 或 `"DESC"`） |
 | `hide_blinks` | `true` | 默认隐藏闭眼照片 |
 | `hide_bursts` | `true` | 默认只显示连拍最佳照片 |
@@ -1749,7 +1754,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 | `hide_brackets` | `true` | 默认只显示包围曝光组的基准曝光 |
 | `hide_panoramas` | `true` | 默认每组全景只显示一张代表帧 |
 | `hide_details` | `true` | 默认在卡片上隐藏照片详情 |
-| `tooltip_mode` | `"hover"` | 提示浮层的触发方式：`"hover"`、`"click"`、`"off"` 或 `"panel"`（停靠侧栏，而非浮动提示 — 见下文的 `panel_activation`）。取代了此前的 `hide_tooltip` 布尔值。 |
+| `tooltip_mode` | `"panel"` | 提示浮层的触发方式：`"hover"`、`"click"`、`"off"` 或 `"panel"`（停靠侧栏，而非浮动提示 — 见下文的 `panel_activation`）。取代了此前的 `hide_tooltip` 布尔值。 |
 | `panel_activation` | `"both"` | 当 `tooltip_mode` 为 `"panel"` 时，哪种手势会重新指定停靠侧栏所选的照片：`"hover"`、`"click"` 或 `"both"`。对其他提示模式无效。默认的 `"both"` 保持原有的面板行为 |
 | `hide_rejected` | `true` | 默认隐藏已淘汰照片 |
 | `gallery_mode` | `"mosaic"` | 默认的照片库布局（`"grid"` 或 `"mosaic"`） |
@@ -1814,7 +1819,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 | `badge_percent` | `5` | R/G/B 中最差通道的像素占比，超过此值的照片会在照片库卡片上加角标。在 28 张照片的样本上实测：最差通道的高光溢出中位数为 0.31%、p90 为 2.35%，因此 5% 大约每 25 张触发 1 张 |
 | `indicator_percent` | `1` | 直方图自身 R/G/B 端点标记的阈值。比角标更精细，因为此时你已经在看单张照片 |
 | `histogram_mode` | `"rgb"` | **详情面板**直方图的官方默认值：`"luma"`、`"rgb"`，或单个通道（`"r"` / `"g"` / `"b"`）。用户为该界面自己做的选择会存在 `localStorage` 的 `facet_histogram_mode` 下，并优先于此项 |
-| `tooltip_histogram_mode` | `"luma"` | **悬停/固定提示浮层**直方图的官方默认值，取值同样是那五种。它刻意独立于 `histogram_mode`，并持久化在自己的 `localStorage` 键（`facet_histogram_mode_tooltip`）下：面板是用来细看一张照片的，逐通道细节值得占用空间；提示浮层是用来快速扫过许多照片的，一条朴素的亮度曲线通常读起来更快。设置其中一个绝不会改动另一个，而且只有在提示浮层被固定时（停靠侧栏，或 `tooltip_mode: "click"`）才会渲染切换控件 — 在普通悬停模式下它只以只读方式显示解析出的模式 |
+| `tooltip_histogram_mode` | `"luma"` | **侧边面板**直方图标签页（`tooltip_mode: "panel"`）中直方图的官方默认值，取值同样是那五种。它刻意独立于 `histogram_mode`，并持久化在自己的 `localStorage` 键（`facet_histogram_mode_tooltip`）下：照片详情是用来细看一张照片的，逐通道细节值得占用空间；侧边面板是用来快速扫过许多照片的，一条朴素的亮度曲线通常读起来更快。设置其中一个绝不会改动另一个。**悬停**和**点击**气泡不显示直方图 |
 
 **溢出是按通道、恰好在第 0 格和第 255 格上测量的。** 它以最差通道的
 像素百分比存储在 `photos.channel_clip_shadow_pct` / `channel_clip_highlight_pct`
@@ -1968,6 +1973,12 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 **助手。** 同一选项让“连接助手”对话框可在开放安装上创建**完全编辑**令牌（仍需 `viewer.mcp.enabled` 和令牌）。该令牌仅对通过上述边界的 `/mcp` 请求为 `edition`，因此可从 `:5000` 上的 `http://localhost:<port>` 或 `127.0.0.1` 以及 `ng serve` 开发代理 `:4200` 使用；来自局域网客户端、主机名或 `0.0.0.0` 的 URL 或 Docker 部署时则降为 `readonly`。任何密码都会把它降为 `readonly`，清除密码后恢复。删除类工具仍需要 `viewer.mcp.allow_destructive`。`ng serve --host 0.0.0.0` 或同一主机上任何未加标记的代理，会让发送 `Host: localhost` 的局域网客户端通过，此时只剩令牌保护 `/mcp`。参见 [AI 智能体（MCP）](AGENTS.md)。无论 `trusted_local_editing` 取何值，同一道边界都管控开放安装上的助手令牌管理：创建、列出和吊销令牌只对通过该边界的请求有效（设置了 `viewer.edition_password` 时，也可在编辑会话中进行）。反向代理必须发送 `X-Forwarded-For` 或 `Forwarded`，否则会被当作本机。
 
 > **警告：** loopback 对端是唯一真正的边界。`Host`、`Origin`、`Referer` 和 `Sec-Fetch-Site` 由客户端设置，只能用来拒绝请求；同一主机上不添加上述任何头的反向代理、隧道或端口转发与你的浏览器无法区分。切勿在同一主机的任何反向代理之后启用此选项。启用期间，本机的任何本地进程和任何账户都可以编辑。
+
+### 在线地点搜索
+
+`viewer.place_search_url` 默认为 `https://photon.komoot.io/api`。设为空字符串可关闭地址／商家查询，也可使用不含凭据、查询参数或片段的自托管 Photon HTTP(S) 端点。浏览器只会收到 `place_search_enabled`，绝不会收到所配置的 URL。搜索需要编辑权限和一次明确的 **在线搜索** 点击。隐私、缓存与 worker 限制参见 [在线地点搜索](VIEWER.md#在线地点搜索)。[Photon 演示服务政策](https://github.com/komoot/photon#demo-server) 允许合理使用该项目，但不保证可用性；[Photon API 文档](https://github.com/komoot/photon/blob/master/docs/api-v1.md) 定义了其 GeoJSON 格式。不会重试，也不会跟随重定向。
+
+五秒传输看门狗会关闭活动套接字，包括 TCP/TLS 建立阶段，以及被阻塞的 HTTP 头、正文和分块帧读取。原生同步 DNS 解析仍遵循操作系统解析器的耗时，在套接字存在之前可能超过五秒。DNS 挂起期间，查询仍限制为同一时间一个请求；若 DNS 在截止时间之后才返回，则不会再打开连接。不存在分离的请求或 DNS 工作线程。
 
 ### 查看器性能
 
@@ -2853,6 +2864,8 @@ python facet.py --recompute-text   # 重新读取整个图库
 |---------|---------|-------------|
 | `url` | `""` | Immich 服务器的基础 URL（例如 `http://nas:2283`） |
 | `api_key` | `""` | Immich API 密钥，以 `x-api-key` 头发送 |
+| `owner_id` | `""` | 精确的 Immich 所有者 ID；空字符串禁用筛选。响应缺少该字段时不能满足明确指定的范围。 |
+| `library_id` | `""` | 精确的 Immich 图库 ID；空字符串禁用筛选，不代表选择 null 图库。 |
 | `path_map` | `[{facet_prefix, immich_prefix}]` | 从 Facet 路径到 Immich `originalPath` 取值的前缀改写；解析资源时，第一个匹配的 `facet_prefix` 会被换成它对应的 `immich_prefix` |
 | `push.ratings` | `true` | 推送星级。会遵循 Immich 的版本安全策略 — 只写入 1–5，绝不写 0/−1 |
 | `push.favorites` | `true` | 推送收藏标记 |

@@ -2,10 +2,12 @@
 
 import os
 import threading
+import time
 from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
 from unittest import mock
+from concurrent.futures import Future
 
 import numpy as np
 import pytest
@@ -313,6 +315,278 @@ class TestThumbnailRenderedFromOriginal:
         load.assert_not_called()
         assert _image_size(result["resp"].content) == self.STORED
         assert result["resp"].headers["cache-control"] == "public, max-age=60"
+
+    def _two_identical_requests(self, client, path, decode, first_decode):
+        """Hold one decode, join a second request to it, release, return both responses.
+
+        `decode` is the patched `load_viewer_image`, which the caller keeps
+        patched for any follow-up request. `first_decode` is None to succeed, or a callable run in place of the first
+        decode. The join is observed on the flight's own future, which the leader
+        publishes in `_render_inflight`.
+        """
+        from api.routers import thumbnails
+        started, waiting, release = threading.Event(), threading.Event(), threading.Event()
+        results, errors = [], []
+        def load(*args, **kwargs):
+            started.set()
+            assert release.wait(3), 'test did not release held decode'
+            if first_decode is not None and decode.call_count == 1:
+                return first_decode()
+            return _noise((32, 24))
+        def request():
+            try:
+                results.append(self._get(client, path, 1920))
+            except BaseException as ex:
+                errors.append(ex)
+        threads = [threading.Thread(target=request, daemon=True) for _ in range(2)]
+        decode.side_effect = load
+        try:
+            threads[0].start()
+            assert started.wait(2)
+            assert len(thumbnails._render_inflight) == 1
+            flight = next(iter(thumbnails._render_inflight.values()))
+            real_result = flight.result
+            def observed_result(timeout=None):
+                waiting.set()
+                return real_result(timeout)
+            with mock.patch.object(flight, 'result', side_effect=observed_result):
+                threads[1].start()
+                assert waiting.wait(2), 'second request did not join the held render'
+                assert decode.call_count == 1
+                release.set()
+        finally:
+            release.set()
+            for thread in threads:
+                if thread.ident is not None:
+                    thread.join(4)
+        assert not errors and len(results) == 2
+        assert all(not thread.is_alive() for thread in threads)
+        assert not thumbnails._render_inflight
+        assert results[0].content == results[1].content
+        return results
+
+    def test_identical_inflight_requests_share_one_decode(self, client, photo):
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+        with mock.patch('api.raw_processing.load_viewer_image') as decode:
+            results = self._two_identical_requests(client, path, decode, None)
+            assert _image_size(results[0].content) == (32, 24)
+            assert self._get(client, path, 1920).content == results[0].content
+            assert decode.call_count == 1
+
+    def test_a_failed_shared_decode_stands_in_for_both_then_retries(self, client, photo):
+        from api.routers import thumbnails
+        def fail():
+            raise OSError('original temporarily unavailable')
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+        with mock.patch('api.raw_processing.load_viewer_image') as decode:
+            results = self._two_identical_requests(client, path, decode, fail)
+            for response in results:
+                self._assert_stand_in(response)
+            retry = self._get(client, path, 1920)
+            assert _image_size(retry.content) == (32, 24)
+            assert decode.call_count == 2
+            assert self._get(client, path, 1920).content == retry.content
+            assert decode.call_count == 2
+            assert not thumbnails._render_inflight
+
+    def test_a_no_signal_shared_decode_is_not_retried_until_the_file_changes(self, client, photo):
+        from api.routers import thumbnails
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+        with mock.patch('api.raw_processing.load_viewer_image') as decode:
+            results = self._two_identical_requests(client, path, decode, self._black_render)
+            for response in results:
+                self._assert_stand_in(response)
+            self._assert_stand_in(self._get(client, path, 1920))
+            assert decode.call_count == 1
+            current = path.stat()
+            os.utime(path, ns=(current.st_atime_ns, current.st_mtime_ns + 1_000_000_000))
+            retry = self._get(client, path, 1920)
+            assert _image_size(retry.content) == (32, 24)
+            assert decode.call_count == 2
+            assert self._get(client, path, 1920).content == retry.content
+            assert decode.call_count == 2
+            assert not thumbnails._render_inflight
+
+    def test_a_waiting_render_timeout_does_not_cancel_or_duplicate_its_owner(self, client, photo):
+        from api.routers import thumbnails
+        started, release = threading.Event(), threading.Event()
+        path = photo(original=_make_jpeg_bytes((3000, 2000)))
+        result = {}
+        def load(*args, **kwargs):
+            started.set()
+            assert release.wait(3)
+            return _noise((32, 24))
+        worker = threading.Thread(target=lambda: result.update(response=self._get(client, path, 1920)), daemon=True)
+        with mock.patch.object(thumbnails, '_RENDER_WAIT_SECONDS', 0.01), \
+                mock.patch('api.raw_processing.load_viewer_image', side_effect=load) as decode:
+            try:
+                worker.start()
+                assert started.wait(2)
+                self._assert_stand_in(self._get(client, path, 1920))
+                assert decode.call_count == 1
+                assert len(thumbnails._render_inflight) == 1
+            finally:
+                release.set()
+                worker.join(4)
+            assert not worker.is_alive() and not thumbnails._render_inflight
+            assert _image_size(result['response'].content) == (32, 24)
+            assert self._get(client, path, 1920).content == result['response'].content
+            assert decode.call_count == 1
+
+    def test_jpeg_can_render_while_three_slow_renders_hold_their_budget(self, client, tmp_path, seed_photos_prefix):
+        from api.routers import thumbnails
+        release, fourth_attempt = threading.Event(), threading.Event()
+        guard = threading.Lock()
+        attempts = 0
+        class ObservedBudget(threading.BoundedSemaphore):
+            def acquire(self, *args, **kwargs):
+                nonlocal attempts
+                with guard:
+                    attempts += 1
+                    if attempts == 4:
+                        fourth_attempt.set()
+                return super().acquire(*args, **kwargs)
+        raws = [tmp_path / f'{index}.rw2' for index in range(4)]
+        jpeg = tmp_path / 'ready.jpg'
+        for path in [*raws, jpeg]:
+            path.write_bytes(_make_jpeg_bytes((8, 8)))
+        seed_photos_prefix(str(tmp_path) + '/', [
+            {'path': str(path), 'filename': path.name, 'thumbnail': _make_jpeg_bytes(self.STORED)}
+            for path in [*raws, jpeg]])
+        slots = threading.BoundedSemaphore(thumbnails._RENDER_SLOTS)
+        free_slots_during_jpeg = []
+        def load(path, *args, **kwargs):
+            if Path(path).suffix == '.rw2':
+                assert release.wait(3), 'test did not release slow render'
+            else:
+                free_slots_during_jpeg.append(slots._value)
+            return _noise((32, 24))
+        errors = []
+        def request(path):
+            try:
+                response = self._get(client, path, 1920)
+                assert _image_size(response.content) == (32, 24)
+            except BaseException as ex:
+                errors.append(ex)
+        threads = [threading.Thread(target=request, args=(path,), daemon=True) for path in raws]
+        with mock.patch.object(thumbnails, '_nonjpeg_render_slots', ObservedBudget(3)), \
+                mock.patch.object(thumbnails, '_render_slots', slots), \
+                mock.patch('api.raw_processing.load_viewer_image', side_effect=load):
+            try:
+                for thread in threads:
+                    thread.start()
+                assert fourth_attempt.wait(2), 'fourth slow render did not reach its reserved budget'
+                deadline = time.monotonic() + 2
+                while slots._value != 1 and time.monotonic() < deadline:
+                    time.sleep(0.005)
+                assert slots._value == 1, 'the slow RAWs did not take their render slots'
+                response = self._get(client, jpeg, 1920)
+                assert _image_size(response.content) == (32, 24)
+                # Three slow RAWs hold three of the four slots; the JPEG took the last.
+                assert free_slots_during_jpeg == [0]
+            finally:
+                release.set()
+                for thread in threads:
+                    thread.join(4)
+        assert not errors and all(not thread.is_alive() for thread in threads)
+        assert not thumbnails._render_inflight
+
+    def _get_in_thread(self, client, path):
+        """GET size=1920 in a thread, so a wait that never times out fails instead of hanging."""
+        result = {}
+        worker = threading.Thread(
+            target=lambda: result.update(resp=self._get(client, path, 1920)), daemon=True)
+        worker.start()
+        worker.join(3)
+        assert not worker.is_alive(), "the render waited past its budget instead of standing in"
+        return result["resp"]
+
+    def test_a_busy_non_jpeg_gate_serves_the_stand_in_and_keeps_its_permits(self, client, photo):
+        from api.routers import thumbnails
+        path = photo(name="photo.cr3", original=_make_jpeg_bytes((3000, 2000)))
+        gate = threading.BoundedSemaphore(1)
+        assert gate.acquire(timeout=0)
+        with mock.patch.object(thumbnails, "_RENDER_WAIT_SECONDS", 0.05), \
+                mock.patch.object(thumbnails, "_nonjpeg_render_slots", gate), \
+                mock.patch.object(thumbnails, "_render_slots", threading.BoundedSemaphore(4)) as slots, \
+                mock.patch("api.raw_processing.load_viewer_image") as load:
+            resp = self._get_in_thread(client, path)
+            assert slots._value == 4
+        load.assert_not_called()
+        self._assert_stand_in(resp)
+        gate.release()
+        assert gate._value == 1
+
+    def test_a_render_slot_timeout_shares_the_gate_deadline_and_releases_the_gate(self, client, photo):
+        from api.routers import thumbnails
+        path = photo(name="photo.png", original=_make_jpeg_bytes((3000, 2000)))
+        budget = 0.5
+        slot_timeouts = []
+        class SlowGate(threading.BoundedSemaphore):
+            def acquire(self, *args, **kwargs):
+                time.sleep(budget * 0.6)
+                return super().acquire(*args, **kwargs)
+        class ObservedSlots(threading.BoundedSemaphore):
+            def acquire(self, blocking=True, timeout=None):
+                slot_timeouts.append(timeout)
+                return super().acquire(blocking, timeout)
+        gate = SlowGate(3)
+        with mock.patch.object(thumbnails, "_RENDER_WAIT_SECONDS", budget), \
+                mock.patch.object(thumbnails, "_nonjpeg_render_slots", gate), \
+                mock.patch.object(thumbnails, "_render_slots", ObservedSlots(0)), \
+                mock.patch("api.raw_processing.load_viewer_image") as load:
+            resp = self._get_in_thread(client, path)
+        load.assert_not_called()
+        self._assert_stand_in(resp)
+        # The slot wait gets what the gate left of one budget, not a fresh one.
+        assert len(slot_timeouts) == 1 and slot_timeouts[0] <= budget * 0.5
+        assert gate._value == 3
+
+    def test_a_decode_error_releases_both_permits(self, client, photo):
+        from api.routers import thumbnails
+        path = photo(name="photo.png", original=_make_jpeg_bytes((3000, 2000)))
+        gate, slots = threading.BoundedSemaphore(3), threading.BoundedSemaphore(4)
+        with mock.patch.object(thumbnails, "_nonjpeg_render_slots", gate), \
+                mock.patch.object(thumbnails, "_render_slots", slots), \
+                mock.patch("api.raw_processing.load_viewer_image",
+                           side_effect=OSError("corrupt original")) as load:
+            resp = self._get_in_thread(client, path)
+        assert load.call_count == 1
+        self._assert_stand_in(resp)
+        assert gate._value == 3 and slots._value == 4
+        assert not thumbnails._render_inflight
+
+    def test_a_joined_render_timing_out_serves_the_stand_in(self, client, photo, caplog):
+        """On Python 3.10 a future's timeout is not an OSError; emulate that on 3.11+."""
+        from api.routers import thumbnails
+        path = photo(name="photo.png", original=_make_jpeg_bytes((3000, 2000)))
+        class Py310FuturesTimeout(Exception):
+            pass
+        class TimingOutFlight(Future):
+            def result(self, timeout=None):
+                raise Py310FuturesTimeout()
+        key = (thumbnails.resolve_photo_disk_path(str(path)), os.path.getmtime(path), None)
+        with mock.patch.object(thumbnails, "FuturesTimeoutError", Py310FuturesTimeout), \
+                mock.patch.dict(thumbnails._render_inflight, {key: TimingOutFlight()}), \
+                mock.patch("api.raw_processing.load_viewer_image") as load:
+            resp = self._get(client, path, 1920)
+        load.assert_not_called()
+        self._assert_stand_in(resp)
+        assert not thumbnails._render_inflight
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1 and "()" not in warnings[0]
+        assert "Py310FuturesTimeout" in warnings[0]
+
+    def test_a_leader_rechecks_the_no_signal_cache_before_decoding(self, client, photo):
+        """_render_from_original checks first, so only a direct call reaches the leader's recheck."""
+        from api.routers import thumbnails
+        path = photo(name="photo.png", original=_make_jpeg_bytes((3000, 2000)))
+        key = (thumbnails.resolve_photo_disk_path(str(path)), os.path.getmtime(path), None)
+        thumbnails._no_signal_renders[key] = True
+        with mock.patch("api.raw_processing.load_viewer_image") as load:
+            assert thumbnails._coalesced_render(key) is None
+        load.assert_not_called()
+        assert not thumbnails._render_inflight
 
     @staticmethod
     def _black_render(*_a, **_k):

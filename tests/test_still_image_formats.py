@@ -21,6 +21,7 @@ end-to-end SDR-AVIF test beside them, which only proves the negative
 """
 
 import struct
+import mimetypes
 import sys
 
 import numpy as np
@@ -592,10 +593,90 @@ class TestImageEndpointConversion:
 
         assert resp.status_code == 200
         assert resp.headers["content-type"] == content_type
+        assert resp.content == real_disk.read_bytes()
 
-    def test_avif_passes_through_unconverted(self, tmp_path, client, monkeypatch):
+    @pytest.mark.parametrize("registry_kind", ["missing", "incorrect"])
+    @pytest.mark.parametrize("fmt,ext,content_type", [
+        ("JPEG", ".jpg", "image/jpeg"),
+        ("JPEG", ".JPEG", "image/jpeg"),
+        ("PNG", ".png", "image/png"),
+        ("GIF", ".gif", "image/gif"),
+        ("WEBP", ".WEBP", "image/webp"),
+        ("BMP", ".bmp", "image/bmp"),
+    ])
+    def test_native_headers_bytes_and_ranges_ignore_system_registry(
+        self, tmp_path, client, monkeypatch, registry_kind, fmt, ext, content_type,
+    ):
+        # Minimal images have no /etc/mime.types; a local registry may also
+        # mislabel a supported image as HTML. Exercise the real FileResponse.
+        registry = mimetypes.MimeTypes()
+        for types in registry.types_map:
+            types.clear()
+        if registry_kind == "incorrect":
+            registry.add_type("text/html", ext.lower())
+        monkeypatch.setattr(mimetypes, "_db", registry)
+        monkeypatch.setattr(mimetypes, "inited", True)
+        real_disk = tmp_path / f"photo{ext}"
+        Image.new('RGB', (8, 8), (10, 20, 30)).save(real_disk, fmt)
+        original = real_disk.read_bytes()
+        self._mock_photo_row(monkeypatch, real_disk)
+
+        response = client.get("/image", params={"path": "/library/photo"})
+        assert response.status_code == 200
+        assert response.headers["content-type"] == content_type
+        assert response.content == original
+        assert response.headers["content-length"] == str(len(original))
+        assert response.headers["accept-ranges"] == "bytes"
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert "content-disposition" not in response.headers
+        assert "etag" in response.headers and "last-modified" in response.headers
+
+        partial = client.get("/image", params={"path": "/library/photo"}, headers={"Range": "bytes=0-15"})
+        assert partial.status_code == 206
+        assert partial.headers["content-type"] == content_type
+        assert partial.headers["content-range"] == f"bytes 0-15/{len(original)}"
+        assert partial.content == original[:16]
+        assert partial.headers["etag"] == response.headers["etag"]
+
+    def test_unknown_extension_is_not_promoted_to_image_by_sniffing(self, tmp_path, client, monkeypatch):
+        registry = mimetypes.MimeTypes()
+        for types in registry.types_map:
+            types.clear()
+        monkeypatch.setattr(mimetypes, "_db", registry)
+        monkeypatch.setattr(mimetypes, "inited", True)
+        real_disk = tmp_path / "photo.unknown"
+        payload = b'<html><script>not an image</script></html>'
+        real_disk.write_bytes(payload)
+        self._mock_photo_row(monkeypatch, real_disk)
+        response = client.get("/image", params={"path": "/library/photo"})
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/octet-stream"
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.content == payload
+
+    def test_original_webp_download_remains_an_attachment(self, tmp_path, client, monkeypatch):
+        from api.routers import comparison
+        real_disk = tmp_path / "photo.webp"
+        Image.new('RGB', (8, 8), (10, 20, 30)).save(real_disk, "WEBP")
+        monkeypatch.setattr(comparison, "_validate_and_resolve", lambda path, user: (path, str(real_disk), None))
+        response = client.get("/api/download", params={"path": "/library/photo", "type": "original"})
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/octet-stream"
+        assert response.headers["content-disposition"] == 'attachment; filename="photo.webp"'
+        assert response.content == real_disk.read_bytes()
+
+    @pytest.mark.parametrize("registry_kind", ["default", "missing", "incorrect"])
+    def test_avif_passes_through_unconverted(self, tmp_path, client, monkeypatch, registry_kind):
         if not image_loading._avif_available:
             pytest.skip("AVIF codec not available in this Pillow build")
+        if registry_kind != "default":
+            registry = mimetypes.MimeTypes()
+            for types in registry.types_map:
+                types.pop(".avif", None)
+            if registry_kind == "incorrect":
+                registry.add_type("text/html", ".avif")
+            monkeypatch.setattr(mimetypes, "_db", registry)
+            monkeypatch.setattr(mimetypes, "inited", True)
         real_disk = tmp_path / "photo.avif"
         Image.new('RGB', (8, 8), (10, 20, 30)).save(real_disk, "AVIF")
         self._mock_photo_row(monkeypatch, real_disk)
@@ -604,6 +685,7 @@ class TestImageEndpointConversion:
 
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "image/avif"
+        assert resp.content == real_disk.read_bytes()
 
 
 # ---------------------------------------------------------------------------
@@ -624,7 +706,7 @@ class TestSafeEmbedExtsDispatch:
         monkeypatch.setattr(xmp_export, "exiftool_available", lambda: True)
         monkeypatch.setattr(
             xmp_export, "_run_exiftool",
-            lambda target, rating, timeout: calls.append(target),
+            lambda target, rating, timeout, reconcile=False: calls.append(target),
         )
         return calls
 

@@ -16,7 +16,7 @@ Facet 是一款本地的照片分析与选片引擎。它从美观度到人脸�
 
 ## 工作原理
 
-1. **扫描**——把 Facet 指向一个照片文件夹。每张照片都会针对画质、构图和人脸进行分析。支持 JPG、HEIF/HEIC/HIF（佳能 HDR PQ `.HIF` 照片会以 SMPTE ST 2084 PQ 传递函数解码，并自动 tone map 到 SDR sRGB）、10 种 RAW 格式（CR2、CR3、NEF、ARW、RAF、RW2、DNG、ORF、SRW、PEF），以及 PNG、GIF、WebP、BMP、TIFF 和 AVIF 静态图像（AVIF 需要编译了 AVIF 支持的 Pillow，11.3 起原生支持）。对于 LibRaw 无法解码的 RAW 文件——例如 Lightroom“合并为 HDR/全景图”生成的 DNG（`-HDR.dng`、`-Pano.dng`）或比已安装 LibRaw 版本更新的相机型号——Facet 会通过 `exiftool` 回退到其内嵌的最大预览图（需要长边至少 1024 px 的预览图；此时的评分来自该预览图，而非完整的 RAW 解码）。Lightroom Classic 13+ 的合并（以及 Enhance）会将该预览图存储为 JPEG XL，Facet 会直接解码。
+1. **扫描**——把 Facet 指向一个照片文件夹。每张照片都会针对画质、构图和人脸进行分析。支持 JPG、HEIF/HEIC/HIF（佳能 HDR PQ `.HIF` 照片会以 SMPTE ST 2084 PQ 传递函数解码，并自动 tone map 到 SDR sRGB）、10 种 RAW 格式（CR2、CR3、NEF、ARW、RAF、RW2、DNG、ORF、SRW、PEF），以及 PNG、GIF、WebP、BMP、TIFF 和 AVIF 静态图像（AVIF 需要编译了 AVIF 支持的 Pillow，11.3 起原生支持），以及通过已有依赖 `imagecodecs` 支持的 JPEG XL（`.jxl`），标准安装和 Docker 镜像均已包含。对于 LibRaw 无法解码的 RAW 文件——例如 Lightroom“合并为 HDR/全景图”生成的 DNG（`-HDR.dng`、`-Pano.dng`）或比已安装 LibRaw 版本更新的相机型号——Facet 会通过 `exiftool` 回退到其内嵌的最大预览图（需要长边至少 1024 px 的预览图；此时的评分来自该预览图，而非完整的 RAW 解码）。Lightroom Classic 13+ 的合并（以及 Enhance）会将该预览图存储为 JPEG XL，Facet 会直接解码。
 2. **浏览**——打开网页照片库，用筛选、搜索和多种视图模式探索你的照片库。
 3. **选片**——Facet 会检测连拍、标记闭眼照片、把相似照片分组，并把精选照片推到前面。包围曝光和全景／HDR 组会被识别出来并整组保留，而不会在选片时被拆散。
 
@@ -28,7 +28,7 @@ GPU 会被自动检测，并非必需。Facet 既能纯 CPU 运行，也能使�
 
 每张照片都会在 9 个维度上评分：美观度、构图、人脸画质、眼睛清晰度、技术清晰度、色彩、曝光、主体显著性和动态范围。照片会按内容分类（人像、风光、微距、街拍等，共 30 多个类别），并用各类别专属的权重来评分。**精选照片**筛选器会按综合得分为整个照片库排序。
 
-把鼠标悬停在任意照片上，即可看到带评分明细和 EXIF 数据的提示框。
+把鼠标悬停在任意照片上，即可在图库的侧边面板中看到评分明细和 EXIF 数据；也可以切换为悬停气泡，一眼看清关键评分。
 
 <img src="docs/screenshots/hover-tooltip.jpg" alt="带评分明细的悬停提示框" width="100%">
 
@@ -105,7 +105,7 @@ GPU 会被自动检测，并非必需。Facet 既能纯 CPU 运行，也能使�
 - **“我的偏好”排序**——按个人排序模型学到的评分为照片库排序，并显示一个标明学习覆盖率和留出集准确率的置信度徽章
 - **从标注中学习**——选片决策、星级评分、收藏和淘汰都会反馈给权重优化器（`--sync-label-comparisons`、`--mine-insights`）
 - **配置快照**——保存、恢复和比较权重配置
-- **直方图**——带溢出指示的 RGB／亮度直方图，出现在照片提示框和详情视图中
+- **直方图**——带溢出指示的 RGB／亮度直方图，出现在图库侧边面板和详情视图中
 - **AI 照片描述** `[GPU]` `[16gb/24gb]`——文字描述，可编辑 `[Edition]`，并可翻译成 5 种语言（查看无需授权；生成和编辑需要编辑模式）
 
 <table><tr>
@@ -234,6 +234,7 @@ python viewer.py                       # 照片库 → http://localhost:5000
 | [查看器](docs/zh/VIEWER.md) | 网页照片库的功能与用法 |
 | [互操作](docs/zh/INTEROP.md) | 与 Lightroom、Capture One、digiKam、darktable 往返同步星级／标签 |
 | [Immich](docs/zh/IMMICH.md) | 与 Immich 同步星级和收藏，以及入站 webhook |
+| [重新关联](docs/zh/RELINK.md) | 重新关联已移动照片 |
 | [AI 智能体](docs/zh/AGENTS.md) | 让支持 MCP 的助手使用个人令牌搜索照片库 |
 | [部署](docs/zh/DEPLOYMENT.md) | 生产环境部署（Synology NAS、Linux、Docker） |
 | [贡献指南](CONTRIBUTING.md) | 开发环境搭建、架构、代码风格 |

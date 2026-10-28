@@ -94,7 +94,7 @@ A chave é enviada como um cabeçalho `x-api-key` em cada requisição. Coloque-
 
 ## Passo 3 — mapear os caminhos
 
-Adicione um par para cada raiz que você compartilha. O primeiro par cujo `facet_prefix` corresponder a uma foto vence:
+Adicione um par para cada raiz que você compartilha. Vence a primeira correspondência literal de prefixo de string; os limites de diretório não são inferidos. Termine os prefixos de diretório com `/` e coloque os mapeamentos mais específicos antes dos mais amplos:
 
 ```json
 "immich": {
@@ -130,7 +130,7 @@ python facet.py --immich-sync --dry-run
 python facet.py --immich-sync
 ```
 
-A sincronização informa `matched` / `unmatched` / `updated` / `skipped (unrated)` / álbuns criados. Uma primeira execução com uma contagem alta de `unmatched` quase sempre significa que o mapeamento de caminhos está errado — veja [Solução de Problemas](#solução-de-problemas).
+A sincronização informa `matched` / `unmatched` / `updated` / `skipped (unrated)` / `identity_conflicts` / álbuns criados. Uma primeira execução com uma contagem alta de `unmatched` quase sempre significa que o mapeamento de caminhos está errado — veja [Solução de Problemas](#solução-de-problemas). Na simulação, `updated` conta alterações verificadas previstas; não há gravações remotas nem do estado de sincronização local.
 
 O que é enviado:
 
@@ -221,7 +221,7 @@ No Immich ≥ 3.0: **Administration → Workflows → Create Workflow**.
 | `403` | Token incorreto. |
 | `404` | O recurso está desativado (nenhum token configurado). |
 
-O Facet lê `originalPath` de dentro do payload e é deliberadamente flexível quanto a onde ele está — um objeto de ativo isolado, `{"asset": {…}}`, uma lista, ou qualquer um desses aninhado sob `data` / `items` / `assets` funciona. Se o payload trouxer o `id` do ativo, o Facet o utiliza e pula uma consulta extra de busca.
+O Facet lê `originalPath` de objetos, listas e contêineres `asset` / `data` / `items` / `assets`. Um `id` recebido é consultado novamente no servidor configurado e comparado com o caminho exato e o proprietário/a biblioteca selecionados antes da escrita. Divergências contam como `failed`.
 
 Os caminhos pendentes são informados pela próxima sincronização:
 
@@ -246,6 +246,8 @@ O bloco `immich` completo, com os padrões de fábrica:
 "immich": {
   "url": "",
   "api_key": "",
+  "owner_id": "",
+  "library_id": "",
   "path_map": [
     { "facet_prefix": "", "immich_prefix": "" }
   ],
@@ -269,6 +271,8 @@ O bloco `immich` completo, com os padrões de fábrica:
 |-----|---------|---------|
 | `url` | `""` | URL base do Immich, `http` ou `https`. Uma barra final é removida. |
 | `api_key` | `""` | Chave de API, enviada como `x-api-key`. Vazio interrompe qualquer sincronização com um erro claro. |
+| `owner_id` | `""` | ID exato do proprietário Immich; vazio desativa o filtro. Um campo ausente não satisfaz uma seleção explícita. |
+| `library_id` | `""` | ID exato da biblioteca Immich; vazio desativa o filtro, sem selecionar uma biblioteca null. |
 | `path_map` | um par vazio | Reescritas de prefixo entre os caminhos do Facet e os valores de `originalPath` do Immich. O primeiro que corresponder vence; usado nas duas direções. |
 | `push.ratings` | `true` | Envia as avaliações por estrelas de 1 a 5 (e suas limpezas). |
 | `push.favorites` | `true` | Envia `isFavorite` (e suas limpezas). |
@@ -331,7 +335,11 @@ O Facet só envia uma limpeza para uma foto que ele realmente enviou antes; essa
 
 ### As avaliações aparecem nas fotos erradas
 
-Dois arquivos com o mesmo `originalPath` não podem acontecer dentro do Immich, mas duas raízes *Facet* mapeando para o mesmo prefixo do Immich podem colidir. Verifique se os seus pares de `path_map` não se sobrepõem: o primeiro par que corresponder vence, então um par amplo listado antes de um mais específico o engole.
+Caminhos com vários IDs remotos e vários caminhos Facet apontando para o mesmo caminho remoto são recusados como `identity_conflicts`. Não há alterações nem confirmação do estado de sincronização para esses caminhos; fotos sem ambiguidade podem continuar. Corrija as raízes ou selecione `owner_id` e `library_id` e tente novamente.
+
+As verificações de identidade usam o URL e a chave API configurados. As respostas devem incluir `id` e `originalPath`; proprietário e biblioteca selecionados devem corresponder aos campos recebidos. Um ID de webhook é verificado consultando o ativo e todas as páginas de busca do caminho exato: caminhos duplicados, IDs diferentes ou paginação inválida impedem a atualização. Uma resposta bem-sucedida confirma a aceitação HTTP; o trabalho de metadados pode continuar pendente.
+
+Os lotes webhook recusam as entradas afetadas quando caminhos Facet diferentes indicam o mesmo destino ou ID remoto. Todas as identidades são resolvidas antes de escrever; aliases inconsistentes contam como `failed` e não confirmam o estado de envio.
 
 ### `rating: 0 is not valid`
 

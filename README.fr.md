@@ -16,7 +16,7 @@ Facet est un moteur local d'analyse et de tri de photos. Il évalue chaque image
 
 ## Fonctionnement
 
-1. **Analyse** — Pointez Facet vers un dossier de photos. Chaque image est analysée pour sa qualité, sa composition et ses visages. Prend en charge le JPG, le HEIF/HEIC/HIF (les images `.HIF` Canon HDR PQ sont décodées avec la fonction de transfert SMPTE ST 2084 PQ et tonemappées automatiquement en sRGB SDR), 10 formats RAW (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF), ainsi que les images PNG, GIF, WebP, BMP, TIFF et AVIF (AVIF nécessite un Pillow compilé avec la prise en charge AVIF, native à partir de 11.3). Un RAW que LibRaw ne peut pas décoder — comme un DNG « Fusionner en HDR/Panorama » de Lightroom (`-HDR.dng`, `-Pano.dng`) ou un appareil plus récent que la version de LibRaw installée — bascule sur son plus grand aperçu intégré via `exiftool` (nécessite un aperçu d'au moins 1024 px sur le grand côté ; les scores viennent alors de cet aperçu, pas d'un décodage RAW complet). Les fusions Lightroom Classic 13+ (et Enhance) stockent cet aperçu en JPEG XL ; Facet le décode directement.
+1. **Analyse** — Pointez Facet vers un dossier de photos. Chaque image est analysée pour sa qualité, sa composition et ses visages. Prend en charge le JPG, le HEIF/HEIC/HIF (les images `.HIF` Canon HDR PQ sont décodées avec la fonction de transfert SMPTE ST 2084 PQ et tonemappées automatiquement en sRGB SDR), 10 formats RAW (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF), ainsi que les images PNG, GIF, WebP, BMP, TIFF et AVIF (AVIF nécessite un Pillow compilé avec la prise en charge AVIF, native à partir de 11.3), ainsi que JPEG XL (`.jxl`) via la dépendance existante `imagecodecs`, incluse dans les installations standard et Docker. Un RAW que LibRaw ne peut pas décoder — comme un DNG « Fusionner en HDR/Panorama » de Lightroom (`-HDR.dng`, `-Pano.dng`) ou un appareil plus récent que la version de LibRaw installée — bascule sur son plus grand aperçu intégré via `exiftool` (nécessite un aperçu d'au moins 1024 px sur le grand côté ; les scores viennent alors de cet aperçu, pas d'un décodage RAW complet). Les fusions Lightroom Classic 13+ (et Enhance) stockent cet aperçu en JPEG XL ; Facet le décode directement.
 2. **Parcours** — Ouvrez la galerie web pour explorer votre bibliothèque avec des filtres, une recherche et plusieurs modes d'affichage.
 3. **Tri** — Facet détecte les rafales, signale les clignements, regroupe les photos similaires et fait remonter les meilleurs choix. Les bracketings d'exposition et les séries panorama/HDR sont reconnus et conservés intacts plutôt que dispersés par le tri.
 
@@ -28,7 +28,7 @@ Le GPU est détecté automatiquement et reste optionnel. Facet fonctionne en mod
 
 Chaque photo est évaluée selon 9 dimensions : qualité esthétique, composition, qualité des visages, netteté des yeux, netteté technique, couleur, exposition, saillance du sujet et plage dynamique. Les photos sont classées par contenu (portrait, paysage, macro, rue, etc. — plus de 30 catégories) et évaluées avec des poids propres à chaque catégorie. Un filtre **Meilleurs choix** classe la bibliothèque selon un score combiné.
 
-Survolez n'importe quelle photo pour afficher une infobulle avec le détail du score et les données EXIF.
+Survolez n'importe quelle photo pour afficher le détail du score et les données EXIF dans le panneau latéral de la galerie, ou passez à une bulle au survol qui résume les notes clés d'un coup d'œil.
 
 <img src="docs/screenshots/hover-tooltip.jpg" alt="Infobulle au survol avec le détail du score" width="100%">
 
@@ -100,7 +100,7 @@ Survolez n'importe quelle photo pour afficher une infobulle avec le détail du s
 - **Tri « Mon goût »** — triez la galerie selon le score appris du classeur personnel, avec un badge de confiance indiquant la couverture apprise et la précision sur données de validation
 - **Apprentissage à partir des étiquettes** — les décisions de tri, les notes (étoiles), les favoris et les rejets alimentent l'optimiseur de poids (`--sync-label-comparisons`, `--mine-insights`)
 - **Instantanés** — enregistrez, restaurez et comparez des configurations de poids
-- **Histogramme** — histogramme RVB/luminance avec indicateurs d'écrêtage, dans l'infobulle de la photo et la vue détaillée
+- **Histogramme** — histogramme RVB/luminance avec indicateurs d'écrêtage, dans le panneau latéral de la galerie et la vue détaillée
 - **Légendes IA** `[GPU]` `[16gb/24gb]` — descriptions textuelles, modifiables `[Edition]` et traduisibles en 5 langues (la consultation est ouverte ; la génération et la modification requièrent l'édition)
 
 <table><tr>
@@ -224,6 +224,7 @@ Première fois ? Suivez le parcours **[Prise en main](docs/fr/GETTING_STARTED.md
 | [Visualiseur](docs/fr/VIEWER.md) | Fonctionnalités et utilisation de la galerie web |
 | [Interopérabilité](docs/fr/INTEROP.md) | Faire circuler notes/tags avec Lightroom, Capture One, digiKam, darktable |
 | [Immich](docs/fr/IMMICH.md) | Synchroniser notes et favoris avec Immich, plus le webhook entrant |
+| [Relier](docs/fr/RELINK.md) | Relier une photo déplacée |
 | [Agents IA](docs/fr/AGENTS.md) | Laisser un assistant compatible MCP interroger la bibliothèque avec un jeton personnel |
 | [Déploiement](docs/fr/DEPLOYMENT.md) | Déploiement en production (NAS Synology, Linux, Docker) |
 | [Contribuer](CONTRIBUTING.md) | Configuration de développement, architecture, style de code |

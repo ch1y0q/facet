@@ -280,8 +280,9 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
 
   const clearedFilters = (): Partial<GalleryFilters> => {
     const keys: (keyof GalleryFilters)[] = [
-      ...RANGE_AND_SELECT_KEYS, 'album_id', 'favorites_only', 'is_monochrome', 'similar_to', 'semanticQuery',
+      ...RANGE_AND_SELECT_KEYS, 'album_id', 'favorites_only', 'is_monochrome', 'manual_faces_need_review', 'faces_need_names', 'similar_to', 'semanticQuery',
       'hide_blinks', 'hide_bursts', 'hide_duplicates', 'hide_brackets', 'hide_panoramas', 'hide_rejected',
+      'show_rejected', 'blinks_only', 'duplicates_only',
       'sequence_group_id', 'sequence_kind', 'burst_group_id', 'duplicate_group_id',
     ];
     const cleared: Record<string, unknown> = {};
@@ -319,6 +320,9 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
       } else {
         updates[clientKey] = String(value);
       }
+    }
+    if (updates['show_rejected'] && updates['favorites_only']) {
+      throw new UiToolError('invalid_input', 'show_rejected and favorites_only cannot be combined in the tab.');
     }
     if (updates['similar_to'] && updates['semanticQuery']) {
       throw new UiToolError('invalid_input', 'similar_to and semantic_query cannot be combined (the tab ranks by one of them).');

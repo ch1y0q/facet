@@ -37,11 +37,13 @@ _FILTER_FIELDS: dict[str, Any] = {
         default=None, description=f"Gallery filter `{key}` (same meaning as in the viewer)."))
     for key in MCP_FILTER_KEYS
 }
-# The route reads only show_rejected == "1" (rejected photos ONLY); anything else is
-# silently the normal listing, so the key is a boolean rather than a free value.
+# Rejected-only is a boolean flag; reject unrelated values rather than silently
+# treating them as the normal listing. An explicit review status takes precedence.
 _FILTER_FIELDS["show_rejected"] = (Optional[bool], Field(
     default=None, description="true lists ONLY the rejected photos; false or omitted is the "
     "normal listing. Other values are refused."))
+_FILTER_FIELDS["review_status"] = (Optional[Literal["", "undecided", "kept", "rejected"]], Field(
+    default=None, description="Review decision: undecided, kept, or rejected; empty clears the filter."))
 SearchFilters = create_model("SearchFilters", __config__=ConfigDict(extra="forbid"), **_FILTER_FIELDS)
 
 # Every column the gallery routes serve is requestable, except the BLOBs (a guard: none is
@@ -603,9 +605,12 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
         "default hide toggles (bursts, duplicates, brackets, panoramas, blinks) unless the filter "
         "sets them, and reports `hidden_summary` so you can say how many more are hidden. " + SHOW_RULE +
         " Filters the gallery sidebar has no field for (exclude_tags, require_tags, is_silhouette, "
-        "junk_kind, narrative_moment, min_rating, min_aggregate, show_rejected) make the show report "
+        "junk_kind, narrative_moment, min_rating, min_aggregate) make the show report "
         "`unsupported_filters`: drop those keys to show the search, or tell the user. `fields` adds "
-        "any photo column to the rows.")
+        "any photo column to the rows. `show_rejected` can be shown in the tab; an explicit "
+        "`review_status` determines the review decision. Combining `show_rejected` with `favorites_only` "
+        "still returns their intersection, but `shown_in_tab` reports `invalid_combination` and leaves "
+        "the tab unchanged because its controls cannot represent both.")
     add(semantic_search, "semantic_search",
         "Find photos by meaning (text-to-image) or, with scope='text', by words in captions/OCR. "
         "Rows carry their `similarity`. `filters` (the `search_photos` filters, no hide defaults) narrows "

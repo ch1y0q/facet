@@ -1,17 +1,21 @@
+import { i18nKeys } from '../../../core/i18n/keys';
 import { Component, computed, effect, input, output, signal, untracked, viewChildren, ChangeDetectionStrategy } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
-import { MatMenuModule } from '@angular/material/menu';
+import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { Photo } from '../../models/photo.model';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { ThumbnailUrlPipe, PersonThumbnailUrlPipe, STORED_THUMBNAIL_EDGE } from '../../pipes/thumbnail-url.pipe';
 import { SequenceOverrideBadgeKeyPipe } from '../../pipes/sequence-kind.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindBestLabelPipe } from '../../pipes/photo-set-kind.pipe';
+import { CARD_ACTION_META, CardActionId, CardActionsConfig, CardSetKind, DEFAULT_CARD_ACTIONS } from './card-actions';
 import { FixedPipe } from '../../pipes/fixed.pipe';
 import { ShutterSpeedPipe } from '../../pipes/shutter-speed.pipe';
-import { ScoreClassPipe, SortScorePipe } from '../../pipes/score.pipes';
+import { ScoreClassPipe, SortScorePipe, sortScoreColumn } from '../../pipes/score.pipes';
 import { SortPersonsPipe } from '../../pipes/sort-persons.pipe';
+import { closeOverlayDirectives } from '../../utils/overlays';
+import { MetricDistribution, topPercentOf } from '../../utils/metric-distribution';
 
 interface AppConfig {
   quality_thresholds?: { excellent: number; great: number; good: number };
@@ -223,6 +227,13 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
           </div>
         }
 
+        @if (isEditionMode() && photo().is_kept && !photo().is_rejected) {
+          <span class="absolute top-2 left-2 flex items-center justify-center rounded-full bg-green-700 text-white w-6 h-6 z-10"
+                [attr.aria-label]="I18N.review.kept | translate" [matTooltip]="I18N.review.kept | translate">
+            <mat-icon class="!text-base !w-4 !h-4 !leading-4">check</mat-icon>
+          </span>
+        }
+
         <!-- Persistent rejected badge (shape + desaturation, not color alone).
              Sits where the hover bar's own reject button sits, right of the
              heart. It does NOT yield to a star rating: the two occupy opposite
@@ -260,58 +271,44 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
 
         <!-- Hover overlay (image area only, md+ only, disabled when tooltip hidden) -->
         <div class="absolute inset-x-0 top-0 bottom-0 opacity-0 transition-opacity flex flex-col justify-between pointer-events-none z-10 md:group-hover/img:opacity-100 md:group-hover/img:pointer-events-auto">
-          <!-- Top row: similar + person_add -->
+          <!-- Top row: the configured hover actions, in the user's order -->
           <div class="flex justify-end items-center gap-1 p-1.5">
-            @if (filterLinks() && config()?.features?.show_similar_button) {
-              <button
-                class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                [matMenuTriggerFor]="similarMenu"
-                [matTooltip]="'similar.find_similar' | translate"
-                [attr.aria-label]="'similar.find_similar' | translate"
-                (click)="$event.stopPropagation()">
-                <mat-icon class="!text-base !w-4 !h-4 !leading-4">image_search</mat-icon>
-              </button>
-              <mat-menu #similarMenu="matMenu">
-                <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'visual'})">
-                  <mat-icon>image_search</mat-icon>
-                  {{ 'similar.mode_visual' | translate }}
-                </button>
-                <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'color'})">
-                  <mat-icon>palette</mat-icon>
-                  {{ 'similar.mode_color' | translate }}
-                </button>
-                <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'person'})">
-                  <mat-icon>person_search</mat-icon>
-                  {{ 'similar.mode_person' | translate }}
-                </button>
-              </mat-menu>
-            }
-            @if (config()?.features?.show_critique) {
-              <button
-                class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                [matTooltip]="'critique.title' | translate"
-                [attr.aria-label]="'critique.title' | translate"
-                (click)="openCritiqueClicked.emit(photo()); $event.stopPropagation()">
-                <mat-icon class="!text-base !w-4 !h-4 !leading-4">analytics</mat-icon>
-              </button>
-            }
-            @if (isEditionMode() && config()?.features?.show_embed_metadata) {
-              <button
-                class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                [matTooltip]="'photoCard.embed_to_file' | translate"
-                [attr.aria-label]="'photoCard.embed_to_file' | translate"
-                (click)="embedMetadataClicked.emit(photo()); $event.stopPropagation()">
-                <mat-icon class="!text-base !w-4 !h-4 !leading-4">save</mat-icon>
-              </button>
-            }
-            @if (isEditionMode() && photo().unassigned_faces > 0) {
-              <button
-                class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
-                [matTooltip]="'manage_persons.assign_face' | translate"
-                [attr.aria-label]="'manage_persons.assign_face' | translate"
-                (click)="openAddPersonClicked.emit(photo()); $event.stopPropagation()">
-                <mat-icon class="!text-base !w-4 !h-4 !leading-4">person_add</mat-icon>
-              </button>
+            @for (id of visibleActions(); track id) {
+              @switch (id) {
+                @case ('similar') {
+                  <button
+                    class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
+                    [matMenuTriggerFor]="similarMenu"
+                    [matTooltip]="'similar.find_similar' | translate"
+                    [attr.aria-label]="'similar.find_similar' | translate"
+                    (click)="$event.stopPropagation()">
+                    <mat-icon class="!text-base !w-4 !h-4 !leading-4">image_search</mat-icon>
+                  </button>
+                  <mat-menu #similarMenu="matMenu">
+                    <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'visual'})">
+                      <mat-icon>image_search</mat-icon>
+                      {{ 'similar.mode_visual' | translate }}
+                    </button>
+                    <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'color'})">
+                      <mat-icon>palette</mat-icon>
+                      {{ 'similar.mode_color' | translate }}
+                    </button>
+                    <button mat-menu-item (click)="openSimilarClicked.emit({photo: photo(), mode: 'person'})">
+                      <mat-icon>person_search</mat-icon>
+                      {{ 'similar.mode_person' | translate }}
+                    </button>
+                  </mat-menu>
+                }
+                @default {
+                  <button
+                    class="w-7 h-7 rounded-full bg-black/50 inline-flex items-center justify-center hover:bg-black/80 transition-colors text-white cursor-pointer"
+                    [matTooltip]="CARD_ACTION_META[id].labelKey | translate"
+                    [attr.aria-label]="CARD_ACTION_META[id].labelKey | translate"
+                    (click)="dispatchAction(id); $event.stopPropagation()">
+                    <mat-icon class="!text-base !w-4 !h-4 !leading-4">{{ CARD_ACTION_META[id].icon }}</mat-icon>
+                  </button>
+                }
+              }
             }
           </div>
 
@@ -369,6 +366,18 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
             <mat-icon class="!text-base !w-4 !h-4 !leading-4 text-white">check</mat-icon>
           </div>
         }
+
+        <!-- Keyboard hint on the ONE focused card: the rating and view keys
+             only help a user who knows they exist, and the ? reference is
+             easy to never open. Rendered for keyboard-adjacent discovery on
+             the single non-dimmed card, never per-hover across the grid. -->
+        @if (isActive() && isEditionMode() && config()?.features?.show_rating_controls && gridHasActiveCard() && !mosaicMode()) {
+          <div class="absolute bottom-1.5 left-1.5 z-20 px-1.5 py-0.5 rounded-md
+                      bg-black/60 text-white/90 text-[10px] leading-4 pointer-events-none
+                      hidden md:block whitespace-nowrap" aria-hidden="true">
+            {{ 'photoCard.key_hint' | translate }}
+          </div>
+        }
       </div>
 
       <!-- Details below photo -->
@@ -386,7 +395,8 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
               <span
                 class="px-1 py-0.5 rounded text-xs font-bold"
                 [class]="(photo() | sortScore:currentSort()) | scoreClass:config()"
-                [matTooltip]="(currentSort() === 'aggregate' ? ('gallery.aggregate_score' | translate) : ('gallery.sort_score' | translate) + ' (' + currentSort() + ')')"
+                [matTooltip]="(currentSort() === 'aggregate' ? ('gallery.aggregate_score' | translate) : ('gallery.sort_score' | translate) + ' (' + currentSort() + ')')
+                  + (badgeTopPercent() === null ? '' : ' · ' + ('photo_detail.distribution.top' | translate:{ pct: badgeTopPercent()! }))"
               >{{ (photo() | sortScore:currentSort()) | fixed:1 }}</span>
             </span>
           </div>
@@ -451,6 +461,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
   `,
 })
 export class PhotoCardComponent {
+  protected readonly I18N = i18nKeys();
   // Data
   readonly photo = input.required<Photo>();
   readonly config = input<AppConfig | null>(null);
@@ -594,8 +605,18 @@ export class PhotoCardComponent {
   readonly hideDetails = input(false);
   readonly mosaicMode = input(false);
   readonly currentSort = input('aggregate');
+  /** Library distributions keyed by photo column; empty where none were loaded (a shared view). */
+  readonly metricRanges = input<Record<string, MetricDistribution>>({});
   /** Capped at the stored edge: larger sizes make the server decode the original. */
   readonly thumbSize = input(240, { transform: (size: number) => Math.min(size, STORED_THUMBNAIL_EDGE) });
+
+  /** Where the badge's score sits in the library, for the column the badge shows. */
+  protected readonly badgeTopPercent = computed(() => {
+    const photo = this.photo();
+    const column = sortScoreColumn(photo, this.currentSort());
+    const range = this.metricRanges()[column];
+    return range ? topPercentOf(range, (photo as unknown as Record<string, number | null>)[column]) : null;
+  });
 
   /** Every card except the current one, and only once there is a current one.
    *
@@ -706,16 +727,71 @@ export class PhotoCardComponent {
   readonly openCritiqueClicked = output<Photo>();
   readonly embedMetadataClicked = output<Photo>();
   readonly openAddPersonClicked = output<Photo>();
+  readonly openSetClicked = output<{ photo: Photo; kind: CardSetKind }>();
+  readonly openDetailClicked = output<Photo>();
   readonly favoriteToggled = output<string>();
   readonly rejectedToggled = output<string>();
   readonly starClicked = output<{ photo: Photo; star: number }>();
   readonly doubleClicked = output<Photo>();
 
+  /** The configured hover actions, laid over the per-photo/per-install gates.
+   *
+   *  The config decides membership and order; the gates decide availability —
+   *  the config may list an action the feature flags or this photo's own state
+   *  cannot back (a duplicate-set button on a photo with no duplicate group),
+   *  and the gates drop it. A `null` config, which older callers and tests pass,
+   *  means the historical default row. */
+  readonly cardActions = input<CardActionsConfig | null>(null);
+
+  protected readonly visibleActions = computed<CardActionId[]>(() => {
+    const cfg = this.cardActions() ?? DEFAULT_CARD_ACTIONS;
+    const photo = this.photo();
+    const config = this.config();
+    const available: Record<CardActionId, boolean> = {
+      similar: this.filterLinks() && !!config?.features?.show_similar_button,
+      critique: !!config?.features?.show_critique,
+      embed: this.isEditionMode() && !!config?.features?.show_embed_metadata,
+      assign_face: this.isEditionMode() && photo.unassigned_faces > 0,
+      duplicate_set: photo.duplicate_group_id != null,
+      burst_set: photo.burst_group_id != null,
+      sequence_set: !!photo.sequence_kind && photo.sequence_group_id != null,
+      open_detail: true,
+    };
+    return cfg.order.filter(id => !cfg.hidden.includes(id) && available[id]);
+  });
+
+  protected readonly CARD_ACTION_META = CARD_ACTION_META;
+
+  /** Emit the output behind a generic (non-menu) action button. */
+  protected dispatchAction(id: CardActionId): void {
+    const photo = this.photo();
+    switch (id) {
+      case 'critique': this.openCritiqueClicked.emit(photo); break;
+      case 'embed': this.embedMetadataClicked.emit(photo); break;
+      case 'assign_face': this.openAddPersonClicked.emit(photo); break;
+      case 'duplicate_set': this.openSetClicked.emit({ photo, kind: 'duplicate' }); break;
+      case 'burst_set': this.openSetClicked.emit({ photo, kind: 'burst' }); break;
+      case 'sequence_set': this.openSetClicked.emit({ photo, kind: 'sequence' }); break;
+      case 'open_detail': this.openDetailClicked.emit(photo); break;
+      case 'similar': break;
+      default: {
+        const unhandled: never = id;
+        throw new Error(`Unhandled card action: ${String(unhandled)}`);
+      }
+    }
+  }
+
   private readonly tooltips = viewChildren(MatTooltip);
+  private readonly menus = viewChildren(MatMenuTrigger);
 
   /** Hide every tooltip this card owns, for a gallery parking behind a photo page. */
   hideTooltips(): void {
-    for (const tooltip of this.tooltips()) tooltip.hide(0);
+    closeOverlayDirectives(this.tooltips());
+  }
+
+  /** Close overlays before the gallery parks behind a photo. */
+  closeOverlays(): void {
+    closeOverlayDirectives(this.tooltips(), this.menus());
   }
 
   cycleStarRating(): void {
