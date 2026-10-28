@@ -378,6 +378,79 @@ class TestCullApplyFilterScope:
         assert sorted(body["would_move"]) == sorted([rejected, burst_reject])
         assert body["excluded_by_state"] == 0
 
+    def test_all_rejects_trash_apply_uses_callers_state_and_preserves_library_rows(
+        self, client, tmp_path, monkeypatch,
+    ):
+        """A culling reject remains actionable even when it is rated/favourited.
+
+        Files are shared, while reject state belongs to the authenticated caller:
+        another user's reject alone must not qualify, and another user's Keep
+        does not veto a caller's reject under the existing cull policy.
+        """
+        from api import config as api_config
+
+        plain = _make_file(tmp_path, 'plain-reject.jpg', b'plain')
+        rated = _make_file(tmp_path, 'rated-reject.jpg', b'rated')
+        shared = _make_file(tmp_path, 'shared-reject.jpg', b'shared')
+        other_only = _make_file(tmp_path, 'other-user-reject.jpg', b'other')
+        kept = _make_file(tmp_path, 'kept.jpg', b'kept')
+        paths = [plain, rated, shared, other_only, kept]
+        db = _db(tmp_path, [(path, 1) for path in paths])
+        monkeypatch.setitem(api_config._FULL_CONFIG, 'users', {
+            'test': {'role': 'admin', 'directories': [str(tmp_path)]},
+            'other': {'role': 'user', 'directories': [str(tmp_path)]},
+        })
+        with sqlite3.connect(db) as conn:
+            conn.executemany(
+                'INSERT INTO user_preferences '
+                '(user_id, photo_path, is_rejected, is_kept, is_favorite, star_rating) '
+                'VALUES (?, ?, ?, ?, ?, ?)',
+                [('test', plain, 1, 0, 0, 0), ('test', rated, 1, 0, 1, 5),
+                 ('test', shared, 1, 0, 0, 0), ('test', other_only, 0, 1, 0, 0),
+                 ('test', kept, 0, 1, 1, 4), ('other', other_only, 1, 0, 0, 0),
+                 ('other', shared, 0, 1, 1, 5)],
+            )
+            original_preferences = conn.execute(
+                'SELECT * FROM user_preferences ORDER BY user_id, photo_path',
+            ).fetchall()
+        trash_dir = tmp_path / 'fake-os-trash'
+        trash_dir.mkdir()
+        send = mock.Mock(side_effect=lambda path: Path(path).replace(trash_dir / Path(path).name))
+        request = {
+            'filters': {'show_rejected': '1', 'type': '', 'hide_blinks': 'false',
+                        'hide_bursts': 'false', 'hide_duplicates': 'false',
+                        'hide_brackets': 'false', 'hide_panoramas': 'false'},
+            'action': 'trash_rejects', 'include_companions': False,
+        }
+        with (
+            mock.patch(f'{_EXPORT_MODULE}.get_db', _db_cm(db)),
+            mock.patch(f'{_EXPORT_MODULE}.VIEWER_CONFIG', {'cull': {'allow_trash': True}}),
+            mock.patch.dict('sys.modules', {'send2trash': mock.Mock(send2trash=send)}),
+        ):
+            preview = client.post('/api/cull/apply', json=request)
+            assert preview.status_code == 200, preview.text
+            assert set(preview.json()['would_trash']) == {plain, rated, shared}
+            send.assert_not_called()
+            assert all(Path(path).is_file() for path in paths)
+            result = client.post('/api/cull/apply', json={
+                **request, 'dry_run': False, 'preview_digest': preview.json()['preview_digest'],
+            })
+        assert result.status_code == 200, result.text
+        assert result.json()['trashed'] == 3
+        assert result.json()['errors'] == 0
+        assert [call.args[0] for call in send.call_args_list].count(rated) == 1
+        assert set(call.args[0] for call in send.call_args_list) == {plain, rated, shared}
+        for path, content in ((plain, b'plain'), (rated, b'rated'), (shared, b'shared')):
+            assert not Path(path).exists()
+            assert (trash_dir / Path(path).name).read_bytes() == content
+        assert Path(other_only).read_bytes() == b'other'
+        assert Path(kept).read_bytes() == b'kept'
+        assert _remaining_paths(db) == set(paths)
+        with sqlite3.connect(db) as conn:
+            assert conn.execute(
+                'SELECT * FROM user_preferences ORDER BY user_id, photo_path',
+            ).fetchall() == original_preferences
+
     def test_exclude_narrows_the_filter_set(self, client, tmp_path):
         keep = _make_file(tmp_path, "keep.jpg")
         drop = _make_file(tmp_path, "drop.jpg")
@@ -2023,6 +2096,71 @@ class TestCullPreviewPrecondition:
         assert set(call.args[0] for call in send.call_args_list) == {rejected, other}
         assert not os.path.exists(rejected) and not os.path.exists(other)
         assert _remaining_paths(db) == {rejected, other}
+
+    def test_partial_trash_failure_requires_fresh_preview_before_retry(self, client, tmp_path):
+        first = _make_file(tmp_path, 'first.jpg', b'first')
+        failed = _make_file(tmp_path, 'failed.jpg', b'retry me')
+        last = _make_file(tmp_path, 'last.jpg', b'last')
+        paths = [first, failed, last]
+        db = _db(tmp_path, [(path, 1) for path in paths])
+        trash_dir = tmp_path / 'fake-os-trash'
+        trash_dir.mkdir()
+        fail_once = True
+
+        def trash_file(path):
+            nonlocal fail_once
+            if path == failed and fail_once:
+                fail_once = False
+                raise OSError('temporary trash failure')
+            Path(path).replace(trash_dir / Path(path).name)
+
+        send = mock.Mock(side_effect=trash_file)
+        request = {'paths': paths, 'action': 'trash_rejects', 'include_companions': False}
+        with (
+            mock.patch(f'{_EXPORT_MODULE}.get_db', _db_cm(db)),
+            mock.patch(f'{_EXPORT_MODULE}.VIEWER_CONFIG', {'cull': {'allow_trash': True}}),
+            mock.patch.dict('sys.modules', {'send2trash': mock.Mock(send2trash=send)}),
+        ):
+            preview = client.post('/api/cull/apply', json=request)
+            assert preview.status_code == 200, preview.text
+            digest = preview.json()['preview_digest']
+            assert preview.json()['would_trash'] == paths
+            send.assert_not_called()
+            partial = client.post('/api/cull/apply', json={
+                **request, 'dry_run': False, 'preview_digest': digest,
+            })
+            assert partial.status_code == 200, partial.text
+            assert partial.json()['trashed'] == 2
+            assert partial.json()['errors'] == 1
+            assert send.call_args_list == [mock.call(path) for path in paths]
+            assert Path(failed).read_bytes() == b'retry me'
+            assert not Path(first).exists() and not Path(last).exists()
+            assert (trash_dir / 'first.jpg').read_bytes() == b'first'
+            assert (trash_dir / 'last.jpg').read_bytes() == b'last'
+            assert _remaining_paths(db) == set(paths)
+
+            stale_retry = client.post('/api/cull/apply', json={
+                **request, 'dry_run': False, 'preview_digest': digest,
+            })
+            assert stale_retry.status_code == 409, stale_retry.text
+            assert send.call_count == 3
+            assert Path(failed).read_bytes() == b'retry me'
+            fresh = client.post('/api/cull/apply', json=request)
+            assert fresh.status_code == 200, fresh.text
+            assert fresh.json()['would_trash'] == [failed]
+            assert set(fresh.json()['skipped']) == {first, last}
+            assert fresh.json()['preview_digest'] != digest
+            assert send.call_count == 3
+            retry = client.post('/api/cull/apply', json={
+                **request, 'dry_run': False, 'preview_digest': fresh.json()['preview_digest'],
+            })
+        assert retry.status_code == 200, retry.text
+        assert retry.json()['trashed'] == 1
+        assert retry.json()['errors'] == 0
+        assert send.call_args_list == [mock.call(path) for path in paths] + [mock.call(failed)]
+        assert not any(Path(path).exists() for path in paths)
+        assert (trash_dir / 'failed.jpg').read_bytes() == b'retry me'
+        assert _remaining_paths(db) == set(paths)
 
     def test_changed_move_destination_does_not_write_either_folder(self, client, tmp_path):
         source = _make_file(tmp_path, 'rejected.jpg')

@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
@@ -155,6 +156,7 @@ export class CullDialogComponent {
   private readonly owner = this.auth.identity();
   private readonly originUrl = this.router.url;
   private closed = false;
+  private readonly navigatedDuringApply = signal(false);
   private readonly snackBar = inject(MatSnackBar);
   private readonly i18n = inject(I18nService);
   private readonly dialogRef = inject(MatDialogRef<CullDialogComponent>);
@@ -198,7 +200,12 @@ export class CullDialogComponent {
     });
     this.dialogRef.beforeClosed().pipe(takeUntilDestroyed()).subscribe(() => { this.closed = true; });
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
-      if (event instanceof NavigationStart) this.dialogRef.close();
+      if (event instanceof NavigationStart) {
+        // The request can already have moved files. Keep its result visible;
+        // account/access changes still close the dialog through current().
+        if (this.applying()) this.navigatedDuringApply.set(true);
+        else this.dialogRef.close();
+      }
     });
     if (this.data.action) void this.runPreview();
   }
@@ -242,7 +249,7 @@ export class CullDialogComponent {
 
   private current(): boolean {
     return !this.closed && !this.destroyRef.destroyed && this.owner === this.auth.identity()
-      && this.auth.isEdition() && this.originUrl === this.router.url;
+      && this.auth.isEdition() && (this.navigatedDuringApply() || this.originUrl === this.router.url);
   }
 
   async runPreview(): Promise<void> {
@@ -265,7 +272,9 @@ export class CullDialogComponent {
     } catch (error) {
       if (!this.current() || !this.matchesCurrentForm(requested)) return;
       this.preview.set(null);
-      this.errorDetail.set(extractErrorDetail(error) ?? null);
+      this.errorDetail.set(this.data.allRejects && error instanceof HttpErrorResponse && error.status === 412
+        ? this.i18n.t(I18N.cull.all_rejects_limit)
+        : extractErrorDetail(error) ?? null);
       this.snackBar.open(this.i18n.t(I18N.cull.error), '', { duration: 3000 });
     } finally {
       this.busy.set(false);

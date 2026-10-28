@@ -1,8 +1,10 @@
+import { Location } from '@angular/common';
+import { provideLocationMocks, SpyLocation } from '@angular/common/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
-import { provideRouter, Router } from '@angular/router';
+import { NavigationStart, provideRouter, Router } from '@angular/router';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Subject } from 'rxjs';
@@ -119,6 +121,43 @@ describe('all rejected photos preview and apply through HTTP', () => {
     http.expectNone('/api/cull/apply');
   });
 
+  it('explains how to split an oversized global scope without suggesting ignored filters', async () => {
+    http.expectOne('/api/cull/apply').flush({ detail: 'Narrow the filters and try again' },
+      { status: 412, statusText: 'Precondition Failed' });
+    await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('cull.all_rejects_limit');
+    expect(fixture.nativeElement.textContent).not.toContain('Narrow the filters and try again');
+    expect(applyButton().disabled).toBe(true);
+    await fixture.componentInstance.apply();
+    http.expectNone('/api/cull/apply');
+  });
+
+  it.each(['success', 'partial', 'error'])(
+    'retains the %s outcome when navigation completes during Apply', async outcome => {
+      await preview();
+      const pending = fixture.componentInstance.apply();
+      const request = http.expectOne('/api/cull/apply');
+      await TestBed.inject(Router).navigateByUrl('/?other=1');
+      fixture.detectChanges();
+      expect(close).not.toHaveBeenCalled();
+      if (outcome === 'error') request.flush({ detail: 'retry required' },
+        { status: 503, statusText: 'Unavailable' });
+      else request.flush({ trashed: 1, errors: outcome === 'partial' ? 1 : 0 });
+      await pending; fixture.detectChanges();
+      if (outcome === 'success') {
+        expect(close).toHaveBeenCalledWith(true);
+        expect(toast).toHaveBeenCalledWith('cull.done', '', expect.anything());
+      } else {
+        expect(close).not.toHaveBeenCalled();
+        expect(fixture.nativeElement.textContent).toContain(outcome === 'partial' ? 'cull.partial_error' : 'retry required');
+        expect(applyButton().disabled).toBe(true);
+        const retry = fixture.componentInstance.runPreview();
+        await preview('b'.repeat(64)); await retry;
+        expect(applyButton().disabled).toBe(false);
+      }
+    },
+  );
+
   it('keeps partial failures open and requires a fresh preview before a successful retry', async () => {
     await preview();
     const first = fixture.componentInstance.apply();
@@ -168,11 +207,11 @@ describe('all rejected photos preview and apply through HTTP', () => {
 });
 
 describe('trash Apply with a real Material dialog', () => {
-  it('blocks Escape and Cancel only during Apply, then permits dismissal after partial failure', async () => {
+  it('keeps a real dialog open across Apply navigation and Escape, then permits dismissal after partial failure', async () => {
     const { MatDialog, MatDialogState } = await import('@angular/material/dialog');
     TestBed.configureTestingModule({
       imports: [CullDialogComponent],
-      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting(),
+      providers: [provideRouter([]), provideLocationMocks(), provideHttpClient(), provideHttpClientTesting(),
         { provide: AuthService, useValue: { identity: () => 'alice', isEdition: () => true } },
         { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
         { provide: MatSnackBar, useValue: { open: vi.fn() } },
@@ -180,6 +219,7 @@ describe('trash Apply with a real Material dialog', () => {
     });
     const http = TestBed.inject(HttpTestingController);
     const ref = TestBed.inject(MatDialog).open(CullDialogComponent, {
+      closeOnNavigation: false,
       data: { paths: [], filters: FILTERS, trashAvailable: true, action: 'trash_rejects', allRejects: true },
     });
     const initial = http.expectOne('/api/cull/apply');
@@ -193,6 +233,18 @@ describe('trash Apply with a real Material dialog', () => {
     button('cull.apply').click();
     const apply = http.expectOne('/api/cull/apply');
     expect(ref.disableClose).toBe(true);
+    await TestBed.inject(Router).navigateByUrl('/?duringApply=1');
+    expect(ref.getState()).toBe(MatDialogState.OPEN);
+    TestBed.inject(Router).setUpLocationChangeListener();
+    const starts: NavigationStart[] = [];
+    const navigation = TestBed.inject(Router).events.subscribe(event => {
+      if (event instanceof NavigationStart) starts.push(event);
+    });
+    (TestBed.inject(Location) as SpyLocation).simulateUrlPop('/');
+    await vi.waitFor(() => expect(TestBed.inject(Router).url).toBe('/'));
+    expect(starts.at(-1)?.navigationTrigger).toBe('popstate');
+    navigation.unsubscribe();
+    expect(ref.getState()).toBe(MatDialogState.OPEN);
     await vi.waitFor(() => expect(button('cull.cancel').disabled).toBe(true));
     heading.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
     expect(ref.getState()).toBe(MatDialogState.OPEN);

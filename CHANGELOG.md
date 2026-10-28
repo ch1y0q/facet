@@ -6,7 +6,7 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
-- **Trash rejected photos from Culling.** Preview all rejected files, including hidden frames, and confirm moving them to the system trash without selecting photos individually. Apply rechecks the previewed file set and settings; changed previews are refused before writes, and partial failures require another preview.
+- **Trash rejected photos from Culling.** Preview all rejected files, including hidden frames, and confirm moving them to the system trash without selecting photos individually. Apply rechecks the previewed file set and settings; changed previews are refused before writes, and partial failures require another preview. Oversized scopes explain the 10,000-photo limit and how to process smaller gallery batches. Navigation during Apply keeps its outcome visible; the dialog warns that shared files can be kept by other users.
 - **Scores placed in the library.** Photo detail, the gallery side panel and the card score badge show where each score sits in the whole library: a sparkline of its distribution with this photo's bar lit, and "Top X% of the library" with the library range on hover or focus. Scores with no better end (ISO, aperture, face count…) show the range only.
 
 ### Changed

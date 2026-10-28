@@ -184,6 +184,16 @@ describe('CullDialogComponent', () => {
     expect(read<string | null>('errorDetail')).toBe('no allowed roots configured');
   });
 
+  it('preserves the server cap detail for ordinary filtered previews', async () => {
+    build();
+    set('targetDir', '/dest');
+    post.mockReturnValueOnce(throwError(() => ({ status: 412,
+      error: { detail: 'This view holds 10001 photos. Narrow the filters and try again.' } })));
+    await component.runPreview();
+    expect(read<string | null>('errorDetail')).toBe(
+      'This view holds 10001 photos. Narrow the filters and try again.');
+  });
+
   it('falls back to null errorDetail when the error has no detail', async () => {
     build();
     set('targetDir', '/dest');

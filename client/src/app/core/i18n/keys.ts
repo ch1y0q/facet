@@ -2633,6 +2633,7 @@ export const I18N = {
     move_rejects: "cull.move_rejects",
     trash_all_rejects: "cull.trash_all_rejects",
     all_rejects_scope: "cull.all_rejects_scope",
+    all_rejects_limit: "cull.all_rejects_limit",
     trash_rejects: "cull.trash_rejects",
     trash_disabled: "cull.trash_disabled",
     trash_missing_pkg: "cull.trash_missing_pkg",

@@ -2483,6 +2483,7 @@ export class BurstCullingComponent implements OnDestroy {
         || url !== this.router.url || navigation !== this.trashNavigation
         || !this.store.config()?.cull?.trash_available || this.dialog.openDialogs.length) return;
       this.dialog.open(CullDialogComponent, {
+        closeOnNavigation: false,
         width: '32rem',
         data: { paths: [], filters: ALL_REJECTS_SCOPE, trashAvailable: true, action: 'trash_rejects', allRejects: true },
       });
@@ -2764,9 +2765,13 @@ export class BurstCullingComponent implements OnDestroy {
     this.zoom.set(FIT_ZOOM);
   }
 
+  private shortcutsBlocked(event: Event): boolean {
+    return event.defaultPrevented || this.dialog.openDialogs.length > 0;
+  }
+
   @HostListener('document:keydown.arrowleft', ['$event'])
   protected onArrowLeft(event: Event): void {
-    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
+    if (this.shortcutsBlocked(event)) return;
     const group = this.lightboxGroup();
     if (group) {
       event.preventDefault();
@@ -2778,7 +2783,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.arrowright', ['$event'])
   protected onArrowRight(event: Event): void {
-    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
+    if (this.shortcutsBlocked(event)) return;
     const group = this.lightboxGroup();
     if (group) {
       event.preventDefault();
@@ -2802,7 +2807,7 @@ export class BurstCullingComponent implements OnDestroy {
    *  loupe; the compare grid has no single frame to aim at and stays centred. */
   @HostListener('document:keydown.z', ['$event'])
   protected onZoomToggle(event: Event): void {
-    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
+    if (this.shortcutsBlocked(event)) return;
     if (isTypingContext(event)) return;
     if (!this.lightboxGroup()) {
       this.loupeActive.set(!this.loupeActive());
@@ -2822,7 +2827,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** P toggles focus peaking over the open darkroom's frames. */
   @HostListener('document:keydown.p', ['$event'])
   protected onPeakingKey(event: Event): void {
-    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
+    if (this.shortcutsBlocked(event)) return;
     if (!this.lightboxGroup()) return;
     if (isTypingContext(event)) return;
     event.preventDefault();
@@ -2832,7 +2837,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** G cycles the open darkroom's composition grid. */
   @HostListener('document:keydown.g', ['$event'])
   protected onGridKey(event: Event): void {
-    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
+    if (this.shortcutsBlocked(event)) return;
     if (!this.lightboxGroup()) return;
     if (isTypingContext(event)) return;
     event.preventDefault();
@@ -2842,7 +2847,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** F toggles true fullscreen on the open darkroom (mirrors the slideshow's F key). */
   @HostListener('document:keydown.f', ['$event'])
   protected onFullscreenToggle(event: Event): void {
-    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
+    if (this.shortcutsBlocked(event)) return;
     if (!this.lightboxGroup()) return;
     if (isTypingContext(event)) return;
     event.preventDefault();
@@ -2891,7 +2896,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** True when the event originates from a text/slider control we must not hijack. */
   @HostListener('document:keydown.arrowup', ['$event'])
   protected onArrowUp(event: Event): void {
-    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
+    if (this.shortcutsBlocked(event)) return;
     const group = this.lightboxGroup();
     if (group) {
       event.preventDefault();
@@ -2905,7 +2910,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.arrowdown', ['$event'])
   protected onArrowDown(event: Event): void {
-    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
+    if (this.shortcutsBlocked(event)) return;
     const group = this.lightboxGroup();
     if (group) {
       event.preventDefault();
@@ -2919,7 +2924,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.enter', ['$event'])
   protected onEnter(event: Event): void {
-    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
+    if (this.shortcutsBlocked(event)) return;
     if (this.lightboxGroup()) return;
     if (isTypingContext(event) || isControlActivation(event)) return;
     const group = this.visibleGroups()[this.selectedGroupIndex()];
@@ -2941,7 +2946,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.space', ['$event'])
   protected onSpace(event: Event): void {
-    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
+    if (this.shortcutsBlocked(event)) return;
     const group = this.lightboxGroup();
     if (group) {
       // Darkroom: confirm the open group and jump into the next one.
@@ -2969,7 +2974,7 @@ export class BurstCullingComponent implements OnDestroy {
   /** List: confirm the selected group and move the selection to the next one. */
   @HostListener('document:keydown.shift.space', ['$event'])
   protected onShiftSpace(event: Event): void {
-    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
+    if (this.shortcutsBlocked(event)) return;
     if (this.lightboxGroup()) return;
     if (isTypingContext(event) || isControlActivation(event)) return;
     const selected = this.visibleGroups()[this.selectedGroupIndex()];
@@ -2987,7 +2992,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.escape', ['$event'])
   protected onEscape(event: Event): void {
-    if (event.defaultPrevented || this.dialog.openDialogs.length) return;
+    if (this.shortcutsBlocked(event)) return;
     if (this.cull.autoCullPreview()) {
       event.preventDefault();
       this.cull.cancelAutoCull();
