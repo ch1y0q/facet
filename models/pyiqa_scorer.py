@@ -12,9 +12,25 @@ from PIL import Image
 from typing import Any, Optional, TypedDict
 
 import licensing
-from utils.image_bounds import MAX_INFERENCE_SIZE
+from utils.image_bounds import bound_to_inference_size
 
 logger = logging.getLogger("facet.pyiqa")
+
+# MPS has no adaptive pooling for sizes that do not divide evenly (pytorch#96056),
+# and TOPIQ pools every ResNet feature level down to the stride-32 one, so a 3:2
+# photo (1024x682 after the long-edge bound) failed on every forward. The other
+# PyIQA models score any size on MPS, so only TOPIQ is cropped. A centre crop moved
+# TOPIQ ~4x less than resampling to the same size (sharpness reads the softening).
+MPS_POOL_STRIDE = 32
+_MPS_STRIDE_MODELS = frozenset({'topiq'})
+
+
+def _mps_stride_box(w: int, h: int) -> tuple[int, int, int, int]:
+    """Centre crop box whose sides are multiples of MPS_POOL_STRIDE. A side shorter
+    than the stride is kept: it pools to 1, which MPS handles."""
+    cw, ch = (v if v < MPS_POOL_STRIDE else v // MPS_POOL_STRIDE * MPS_POOL_STRIDE for v in (w, h))
+    left, top = (w - cw) // 2, (h - ch) // 2
+    return left, top, left + cw, top + ch
 
 # Lazy import to avoid loading pyiqa unless needed
 pyiqa = None
@@ -284,12 +300,13 @@ class PyIQAScorer:
         if image.mode != 'RGB':
             image = image.convert('RGB')
 
-        # Resize if larger than max inference size to prevent OOM
-        w, h = image.size
-        long_edge = max(w, h)
-        if long_edge > MAX_INFERENCE_SIZE:
-            scale = MAX_INFERENCE_SIZE / long_edge
-            image = image.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
+        # Bound first, then crop: a scan hands over the already-bounded copy and a
+        # recompute decodes the original, and both reach the same pixels this way.
+        image = bound_to_inference_size(image)
+        if self.model_name in _MPS_STRIDE_MODELS and str(self.device).startswith('mps'):
+            box = _mps_stride_box(*image.size)
+            if box != (0, 0, *image.size):
+                image = image.crop(box)
 
         # Convert to tensor: (H, W, C) -> (C, H, W)
         img_array = np.array(image).astype(np.float32) / 255.0

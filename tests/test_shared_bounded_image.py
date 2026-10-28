@@ -74,10 +74,11 @@ def _load(proc, paths):
     return images
 
 
-def _pyiqa_scorer():
+def _pyiqa_scorer(device="cpu"):
     from models.pyiqa_scorer import PyIQAScorer
     scorer = PyIQAScorer.__new__(PyIQAScorer)
-    scorer.device = "cpu"
+    scorer.device = device
+    scorer.model_name = "topiq"
     return scorer
 
 
@@ -87,9 +88,12 @@ def _qrealign_scorer():
 
 
 class TestSharedImageEqualsWhatTheConsumerBuilds:
-    def test_pyiqa_tensor_is_identical(self, jpegs):
+    @pytest.mark.parametrize("device", ["cpu", "mps"])
+    def test_pyiqa_tensor_is_identical(self, jpegs, device, monkeypatch):
+        # On MPS TOPIQ snaps the bounded size again (#377); both paths must still agree.
+        monkeypatch.setattr(torch.Tensor, "to", lambda self, *a, **k: self)
         images = _load(_processor(), jpegs)
-        scorer = _pyiqa_scorer()
+        scorer = _pyiqa_scorer(device)
         for path in jpegs:
             data = images[path]
             assert data["bounded"] is not None

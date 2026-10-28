@@ -107,3 +107,45 @@ def test_single_image_uses_serial_path():
     scores = s.score_batch([_img(0)])
     assert len(scores) == 1
     assert s.model.calls == 1
+
+
+@pytest.mark.parametrize("size, expected", [
+    ((1024, 682), (0, 5, 1024, 677)),
+    ((1024, 768), (0, 0, 1024, 768)),
+    ((800, 533), (0, 10, 800, 522)),
+    ((1100, 533), (6, 10, 1094, 522)),
+    ((1024, 20), (0, 0, 1024, 20)),
+])
+def test_mps_stride_box(size, expected):
+    from models.pyiqa_scorer import _mps_stride_box
+    assert _mps_stride_box(*size) == expected
+
+
+@pytest.mark.parametrize("model, device, expected", [
+    ('topiq', 'mps', (672, 1024)),
+    ('topiq', 'cpu', (682, 1024)),
+    ('liqe', 'mps', (682, 1024)),
+])
+def test_preprocess_snaps_only_topiq_on_mps(monkeypatch, model, device, expected):
+    import torch
+    s = _scorer(model)
+    s.device = device
+    monkeypatch.setattr(torch.Tensor, 'to', lambda self, *a, **k: self)
+    assert tuple(s._preprocess_image(_img(0, size=(6240, 4160))).shape[-2:]) == expected
+
+
+@pytest.mark.skipif(
+    not __import__('torch').backends.mps.is_available(), reason="needs an MPS device")
+def test_mps_snapped_size_pools_like_topiq():
+    # pyiqa/archs/topiq_arch.py adaptive-pools each ResNet level (strides 2..32) to
+    # the stride-32 shape; MPS raised on that for the unsnapped 1024x682 (#377).
+    import torch
+    import torch.nn.functional as F
+    from models.pyiqa_scorer import _mps_stride_box
+
+    left, top, right, bottom = _mps_stride_box(1024, 682)
+    w, h = right - left, bottom - top
+    th, tw = h // 32, w // 32
+    for stride in (2, 4, 8, 16):
+        feat = torch.ones(1, 4, h // stride, w // stride, device='mps')
+        assert F.adaptive_avg_pool2d(feat, (th, tw)).shape[2:] == (th, tw)
