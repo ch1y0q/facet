@@ -28,7 +28,7 @@ La GPU viene rilevata automaticamente ed è opzionale. Facet funziona solo su CP
 
 A ogni foto viene assegnato un punteggio su 9 dimensioni: qualità estetica, composizione, qualità del volto, nitidezza degli occhi, nitidezza tecnica, colore, esposizione, salienza del soggetto e gamma dinamica. Le foto vengono categorizzate per contenuto (ritratto, paesaggio, macro, street, ecc. — oltre 30 categorie) e valutate con pesi specifici per categoria. Un filtro **Migliori scelte** classifica la libreria in base a un punteggio combinato.
 
-Passa il puntatore su una foto per vedere un tooltip con il dettaglio del punteggio e i dati EXIF.
+Passa il puntatore su una foto per vedere il dettaglio del punteggio e i dati EXIF nel pannello laterale della galleria, oppure passa a un fumetto al passaggio che mostra a colpo d'occhio i punteggi principali.
 
 <img src="docs/screenshots/hover-tooltip.jpg" alt="Tooltip al passaggio del mouse con dettaglio del punteggio" width="100%">
 
@@ -100,7 +100,7 @@ Passa il puntatore su una foto per vedere un tooltip con il dettaglio del punteg
 - **Ordinamento "I miei gusti"** — ordina la galleria in base al punteggio appreso dal ranker personale, con un badge di confidenza che mostra la copertura appresa e l'accuratezza su dati di validazione
 - **Apprendimento dalle etichette** — le decisioni di selezione, le valutazioni a stelle, i preferiti e i rifiuti alimentano l'ottimizzatore dei pesi (`--sync-label-comparisons`, `--mine-insights`)
 - **Snapshot** — salva, ripristina e confronta le configurazioni dei pesi
-- **Istogramma** — istogramma RGB/luminanza con indicatori di clipping, nel tooltip della foto e nella vista di dettaglio
+- **Istogramma** — istogramma RGB/luminanza con indicatori di clipping, nel pannello laterale della galleria e nella vista di dettaglio
 - **Didascalie IA** `[GPU]` `[16gb/24gb]` `[Edition]` — descrizioni testuali, modificabili e traducibili in 5 lingue
 
 <table><tr>

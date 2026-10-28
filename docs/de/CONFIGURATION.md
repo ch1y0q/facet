@@ -1707,7 +1707,7 @@ Anzeige und Verhalten der Web-Galerie.
       "hide_brackets": true,
       "hide_panoramas": true,
       "hide_details": true,
-      "tooltip_mode": "hover",
+      "tooltip_mode": "panel",
       "hide_rejected": true,
       "sort": "aggregate",
       "sort_direction": "DESC",
@@ -1793,7 +1793,7 @@ Anzeige und Verhalten der Web-Galerie.
 | `hide_brackets` | `true` | Standardmäßig nur die Basisbelichtung einer Belichtungsreihe anzeigen |
 | `hide_panoramas` | `true` | Standardmäßig nur ein repräsentatives Bild je Panorama zeigen |
 | `hide_details` | `true` | Fotodetails auf Karten standardmäßig ausblenden |
-| `tooltip_mode` | `"hover"` | Tooltip-Auslöser: `"hover"`, `"click"`, `"off"` oder `"panel"` (angedockte Leiste statt schwebendem Tooltip — siehe `panel_activation` unten). Ersetzt das frühere boolesche `hide_tooltip`. |
+| `tooltip_mode` | `"panel"` | Tooltip-Auslöser: `"hover"`, `"click"`, `"off"` oder `"panel"` (angedockte Leiste statt schwebendem Tooltip — siehe `panel_activation` unten). Ersetzt das frühere boolesche `hide_tooltip`. |
 | `panel_activation` | `"both"` | Geste, das das ausgewählte Foto der angedockten Leiste umschaltet, wenn `tooltip_mode` `"panel"` ist: `"hover"`, `"click"` oder `"both"`. Ohne Wirkung bei den anderen Tooltip-Modi. Der Standard `"both"` erhält das ursprüngliche Panel-Verhalten |
 | `hide_rejected` | `true` | Abgelehnte Fotos standardmäßig ausblenden |
 | `gallery_mode` | `"mosaic"` | Standard-Galerie-Layout (`"grid"` oder `"mosaic"`) |
@@ -1858,7 +1858,7 @@ auseinanderlaufen können.
 | `badge_percent` | `5` | Prozent der Pixel im schlechtesten R/G/B-Kanal, ab dem die Karte ein Badge erhält. Über 28 Stichprobenfotos gemessen: der Median lag bei 0,31 %, das p90 bei 2,35 % — 5 % trifft also etwa 1 von 25 Fotos |
 | `indicator_percent` | `1` | Schwelle für die R/G/B-Marker des Histogramms. Feiner als das Badge, weil bereits ein einzelnes Foto betrachtet wird |
 | `histogram_mode` | `"rgb"` | Hausstandard für das Histogramm des **Detailbereichs**: `"luma"`, `"rgb"`, oder ein einzelner Kanal (`"r"` / `"g"` / `"b"`). Die eigene Wahl der Nutzerin für diese Ansicht liegt in `localStorage` unter `facet_histogram_mode` und hat Vorrang vor diesem Wert |
-| `tooltip_histogram_mode` | `"luma"` | Hausstandard für das Histogramm des **Hover-/angehefteten Tooltips**, dieselben fünf Werte. Bewusst unabhängig von `histogram_mode` und unter einem eigenen `localStorage`-Schlüssel gespeichert (`facet_histogram_mode_tooltip`): Der Detailbereich dient dem Studium eines einzelnen Fotos, wo Detail pro Kanal seinen Platz verdient; das Tooltip dient dem schnellen Durchsehen vieler Fotos, wo eine einfache Luminanzkurve meist schneller lesbar ist. Das Einstellen des einen stellt das andere nie um, und der Umschalter dafür wird nur angezeigt, solange das Tooltip angeheftet ist (angedockte Leiste oder `tooltip_mode: "click"`) — im reinen Hover-Modus zeigt es nur seinen aufgelösten Modus schreibgeschützt an |
+| `tooltip_histogram_mode` | `"luma"` | Hausstandard für das Histogramm im Histogramm-Tab der **Seitenleiste** (`tooltip_mode: "panel"`), dieselben fünf Werte. Bewusst unabhängig von `histogram_mode` und unter einem eigenen `localStorage`-Schlüssel gespeichert (`facet_histogram_mode_tooltip`): Die Fotodetailansicht dient dem Studium eines einzelnen Fotos, wo Detail pro Kanal seinen Platz verdient; die Seitenleiste dient dem schnellen Durchsehen vieler Fotos, wo eine einfache Luminanzkurve meist schneller lesbar ist. Das Einstellen des einen stellt das andere nie um. Die Blasen **Hover** und **Klick** zeigen kein Histogramm |
 
 **Beschnitt wird pro Kanal gemessen, exakt bei Bin 0 und Bin 255.** Er steht in
 `photos.channel_clip_shadow_pct` / `channel_clip_highlight_pct` als Prozentsatz des

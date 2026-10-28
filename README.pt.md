@@ -28,7 +28,7 @@ A GPU é detectada automaticamente e é opcional. O Facet roda somente com CPU o
 
 Cada foto é pontuada em 9 dimensões: qualidade estética, composição, qualidade dos rostos, nitidez dos olhos, nitidez técnica, cor, exposição, saliência do sujeito e faixa dinâmica. As fotos são categorizadas por conteúdo (retrato, paisagem, macro, urbana, etc. — mais de 30 categorias) e pontuadas com pesos específicos de cada categoria. Um filtro **Melhores Escolhas** classifica a biblioteca por uma pontuação combinada.
 
-Passe o cursor sobre qualquer foto para ver uma dica com o detalhamento da pontuação e os dados EXIF.
+Passe o cursor sobre qualquer foto para ver o detalhamento da pontuação e os dados EXIF no painel lateral da galeria, ou mude para uma bolha ao passar o cursor que resume num relance as pontuações principais.
 
 <img src="docs/screenshots/hover-tooltip.jpg" alt="Dica ao passar o cursor com o detalhamento da pontuação" width="100%">
 
@@ -100,7 +100,7 @@ Passe o cursor sobre qualquer foto para ver uma dica com o detalhamento da pontu
 - **Ordenação Meu Gosto** — ordene a galeria pela pontuação aprendida do classificador pessoal, com um selo de confiança que mostra a cobertura aprendida e a precisão em dados separados
 - **Aprendizado a partir de rótulos** — decisões de seleção, classificações por estrelas, favoritos e rejeições alimentam o otimizador de pesos (`--sync-label-comparisons`, `--mine-insights`)
 - **Snapshots** — salve, restaure e compare configurações de pesos
-- **Histograma** — histograma RGB/luminância com indicadores de clipping, na dica da foto e na visualização de detalhes
+- **Histograma** — histograma RGB/luminância com indicadores de clipping, no painel lateral da galeria e na visualização de detalhes
 - **Legendas por IA** `[GPU]` `[16gb/24gb]` — descrições em texto, editáveis `[Edition]` e traduzíveis para 5 idiomas (a visualização é aberta; a geração e a edição exigem edição)
 
 <table><tr>

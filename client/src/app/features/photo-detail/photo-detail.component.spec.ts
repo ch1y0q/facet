@@ -32,6 +32,9 @@ vi.doMock('leaflet', () => leafletMock);
 let PhotoDetailComponent: typeof import('./photo-detail.component').PhotoDetailComponent;
 
 describe('PhotoDetailComponent', () => {
+  // The open metric tab is remembered across tests otherwise.
+  afterEach(() => localStorage.removeItem('facet_photo_detail_tab'));
+
    
   let component: any;
   let changes$: Subject<AssistantChangeBatch>;
@@ -241,6 +244,38 @@ describe('PhotoDetailComponent', () => {
     return view;
   }
 
+  it('ranks each score that has a library distribution, and only those', () => {
+    localStorage.setItem('facet_photo_detail_tab', 'quality');
+    const view = renderDetail();
+    TestBed.inject(GalleryStore).metricRanges.set({
+      min_aesthetic: { column: 'aesthetic', min: 0, max: 10, buckets: [1, 1] },
+    });
+    view.componentInstance.photo.set(makePhoto({ aesthetic: 7.2 }));
+    view.detectChanges();
+    const ranks = view.debugElement.queryAll(By.css('app-metric-rank'));
+    expect(ranks).toHaveLength(1);
+    expect(ranks[0].nativeElement.querySelector('[tabindex="0"]')).not.toBeNull();
+  });
+
+  it('places the aggregate in its library distribution in the header', () => {
+    const view = renderDetail();
+    TestBed.inject(GalleryStore).metricRanges.set({
+      min_score: { column: 'aggregate', min: 0, max: 10, buckets: [1, 1] },
+    });
+    view.componentInstance.photo.set(makePhoto({ aggregate: 6.4 }));
+    view.detectChanges();
+    const header = view.debugElement.queryAll(By.css('app-metric-rank.w-28'));
+    expect(header).toHaveLength(1);
+    expect(header[0].componentInstance.value()).toBe(6.4);
+  });
+
+  it('loads the library distributions on a deep-linked open', async () => {
+    createComponent();
+    const ensure = vi.spyOn(TestBed.inject(GalleryStore), 'ensureMetricRanges').mockResolvedValue();
+    await component.ngOnInit();
+    expect(ensure).toHaveBeenCalled();
+  });
+
   it.each([
     { kept: true, decision: 'undecided', icon: 'check_circle' },
     { kept: false, decision: 'kept', icon: 'check_circle_outline' },
@@ -262,6 +297,7 @@ describe('PhotoDetailComponent', () => {
   });
 
   it('renders NULL and zero extended metrics in the actual detail template', () => {
+    localStorage.setItem('facet_photo_detail_tab', 'quality');
     const view = renderDetail();
     TestBed.inject(GalleryStore).config.set({ populated_scores: ['aesthetic_v25', 'qrealign_score', 'deqa_score'] } as never);
     view.componentInstance.photo.set(makePhoto({ aesthetic_v25: null, qrealign_score: 0, deqa_score: null }));
@@ -455,7 +491,8 @@ describe('PhotoDetailComponent', () => {
       await component.ngOnInit();
 
       expect(component.photo()).toEqual(samplePhoto);
-      expect(mockApi.get).not.toHaveBeenCalled();
+      // The photo is not refetched; the only read is the library distributions.
+      expect(mockApi.get.mock.calls.map(call => call[0])).toEqual(['/filter_options/metric_ranges']);
     });
 
     it('should load photo from API when no history state', async () => {

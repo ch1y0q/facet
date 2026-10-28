@@ -1698,7 +1698,7 @@ Exibição e comportamento da galeria web.
       "hide_brackets": true,
       "hide_panoramas": true,
       "hide_details": true,
-      "tooltip_mode": "hover",
+      "tooltip_mode": "panel",
       "hide_rejected": true,
       "sort": "aggregate",
       "sort_direction": "DESC",
@@ -1784,7 +1784,7 @@ Exibição e comportamento da galeria web.
 | `hide_brackets` | `true` | Mostra apenas a exposição base de cada bracketing por padrão |
 | `hide_panoramas` | `true` | Mostrar por predefinição apenas um fotograma representativo por panorâmica |
 | `hide_details` | `true` | Oculta os detalhes da foto nos cartões por padrão |
-| `tooltip_mode` | `"hover"` | Gatilho do tooltip: `"hover"`, `"click"`, `"off"` ou `"panel"` (barra fixada em vez de um tooltip flutuante — veja `panel_activation` abaixo). Substitui o antigo booleano `hide_tooltip`. |
+| `tooltip_mode` | `"panel"` | Gatilho do tooltip: `"hover"`, `"click"`, `"off"` ou `"panel"` (barra fixada em vez de um tooltip flutuante — veja `panel_activation` abaixo). Substitui o antigo booleano `hide_tooltip`. |
 | `panel_activation` | `"both"` | Gesto que atualiza a foto selecionada na barra fixada quando `tooltip_mode` é `"panel"`: `"hover"`, `"click"` ou `"both"`. Sem efeito nos outros modos de tooltip. O padrão `"both"` preserva o comportamento original do painel |
 | `hide_rejected` | `true` | Oculta fotos rejeitadas por padrão |
 | `gallery_mode` | `"mosaic"` | Layout padrão da galeria (`"grid"` ou `"mosaic"`) |
@@ -1849,7 +1849,7 @@ não possam divergir.
 | `badge_percent` | `5` | Percentagem de píxeis, no pior dos canais R/G/B, acima da qual o cartão recebe selo. Medido em 28 fotos de amostra: mediana de 0,31 % e p90 de 2,35 %, pelo que 5 % dispara em cerca de 1 foto em 25 |
 | `indicator_percent` | `1` | Limiar dos marcadores R/G/B do histograma. Mais fino do que o selo porque já se está a olhar para uma única foto |
 | `histogram_mode` | `"rgb"` | Predefinição do histograma do **painel de detalhe**: `"luma"`, `"rgb"`, ou um único canal (`"r"` / `"g"` / `"b"`). A escolha do utilizador para esta superfície fica em `localStorage` sob `facet_histogram_mode` e prevalece sobre este valor |
-| `tooltip_histogram_mode` | `"luma"` | Predefinição do histograma do **tooltip ao pairar/fixado**, os mesmos cinco valores. Deliberadamente independente de `histogram_mode` e persistido sob a sua própria chave de `localStorage` (`facet_histogram_mode_tooltip`): o painel de detalhe serve para estudar uma única foto, onde o detalhe por canal justifica o espaço; o tooltip serve para percorrer muitas fotos rapidamente, onde uma curva de luminância simples costuma ler-se mais depressa. Ajustar um nunca reajusta o outro, e o alternador para o mudar só aparece enquanto o tooltip está fixado (barra fixada, ou `tooltip_mode: "click"`) — em modo de simples pairar, mostra apenas o seu modo resolvido em modo só de leitura |
+| `tooltip_histogram_mode` | `"luma"` | Predefinição do histograma do separador Histograma do **painel lateral** (`tooltip_mode: "panel"`), os mesmos cinco valores. Deliberadamente independente de `histogram_mode` e persistido sob a sua própria chave de `localStorage` (`facet_histogram_mode_tooltip`): o detalhe da foto serve para estudar uma única foto, onde o detalhe por canal justifica o espaço; o painel lateral serve para percorrer muitas fotos rapidamente, onde uma curva de luminância simples costuma ler-se mais depressa. Ajustar um nunca reajusta o outro. As bolhas **Passar o mouse** e **Clicar** não mostram histograma |
 
 **O recorte é medido por canal, exatamente nos bins 0 e 255.** Fica em
 `photos.channel_clip_shadow_pct` / `channel_clip_highlight_pct` como a percentagem

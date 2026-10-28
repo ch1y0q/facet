@@ -21,6 +21,8 @@ import { makePhoto } from '../../../../testing/photo.fixture';
                              [burstFramesVisible]="burstFramesVisible()"
                              [collapsedSetKinds]="collapsedSetKinds()"
                              [isEditionMode]="isEditionMode()"
+                             [metricRanges]="metricRanges()"
+                             [currentSort]="currentSort()"
                              (selectionChange)="selected.push($event.photo.path)"
                              (doubleClicked)="opened.push($event.path)" />`,
 })
@@ -30,6 +32,8 @@ class TestHostComponent {
   burstFramesVisible = signal(false);
   collapsedSetKinds = signal<readonly string[]>([]);
   isEditionMode = signal(false);
+  metricRanges = signal<Record<string, { min: number; max: number; buckets: number[] }>>({});
+  currentSort = signal('aggregate');
   selected: string[] = [];
   opened: string[] = [];
 }
@@ -50,6 +54,60 @@ describe('PhotoCardComponent', () => {
   function getCard(): PhotoCardComponent {
     return fixture.debugElement.children[0].componentInstance as PhotoCardComponent;
   }
+
+  describe('score badge library placement', () => {
+    const badgeTooltips = () => fixture.debugElement.queryAll(By.directive(MatTooltip))
+      .map(el => el.injector.get(MatTooltip).message)
+      .filter(message => message.startsWith('gallery.aggregate_score'));
+
+    it('keeps the plain tooltip when no distribution was loaded', () => {
+      fixture.componentInstance.photo.set(makePhoto({ aggregate: 7.5 }));
+      fixture.detectChanges();
+      expect(badgeTooltips()).toEqual(['gallery.aggregate_score']);
+    });
+
+    it('says where the score sits in the library when its distribution is known', () => {
+      fixture.componentInstance.photo.set(makePhoto({ aggregate: 7.5 }));
+      fixture.componentInstance.metricRanges.set({ aggregate: { min: 0, max: 10, buckets: [1, 1] } });
+      fixture.detectChanges();
+      expect(badgeTooltips()).toEqual(['gallery.aggregate_score · photo_detail.distribution.top']);
+      expect(mockI18n.t).toHaveBeenCalledWith('photo_detail.distribution.top', { pct: 25 });
+    });
+
+    describe('under another sort', () => {
+      const sortTooltips = () => fixture.debugElement.queryAll(By.directive(MatTooltip))
+        .map(el => el.injector.get(MatTooltip).message)
+        .filter(message => message.startsWith('gallery.sort_score'));
+      const even = { min: 0, max: 10, buckets: [1, 1] };
+
+      beforeEach(() => mockI18n.t.mockClear());
+
+      it('ranks the sorted column, not the aggregate', () => {
+        fixture.componentInstance.photo.set(makePhoto({ aggregate: 7.5, aesthetic: 2.5 }));
+        fixture.componentInstance.metricRanges.set({ aggregate: even, aesthetic: even });
+        fixture.componentInstance.currentSort.set('aesthetic');
+        fixture.detectChanges();
+        expect(sortTooltips()).toEqual(['gallery.sort_score (aesthetic) · photo_detail.distribution.top']);
+        expect(mockI18n.t).toHaveBeenCalledWith('photo_detail.distribution.top', { pct: 75 });
+      });
+
+      it('ranks the aggregate the badge falls back to for a non-numeric sort', () => {
+        fixture.componentInstance.photo.set(makePhoto({ aggregate: 7.5 }));
+        fixture.componentInstance.metricRanges.set({ aggregate: even });
+        fixture.componentInstance.currentSort.set('date_taken');
+        fixture.detectChanges();
+        expect(mockI18n.t).toHaveBeenCalledWith('photo_detail.distribution.top', { pct: 25 });
+      });
+
+      it('keeps the plain tooltip for a sorted column without a distribution', () => {
+        fixture.componentInstance.photo.set(makePhoto({ aggregate: 7.5, star_rating: 4 }));
+        fixture.componentInstance.metricRanges.set({ aggregate: even });
+        fixture.componentInstance.currentSort.set('star_rating');
+        fixture.detectChanges();
+        expect(sortTooltips()).toEqual(['gallery.sort_score (star_rating)']);
+      });
+    });
+  });
 
   it('should create with required photo input', () => {
     const card = getCard();

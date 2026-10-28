@@ -1740,6 +1740,44 @@ describe('gallery session query (nav-icon return)', () => {
     });
   });
 
+  describe('ensureMetricRanges', () => {
+    const range = { column: 'aesthetic', min: 1, max: 9, buckets: [1, 2, 3] };
+
+    it('fetches once when empty and keys the ranges by photo column', async () => {
+      apiGet.mockReturnValue(of({ ranges: { min_aesthetic: range, min_legacy: { min: 0, max: 1, buckets: [1] } } }));
+      await Promise.all([store.ensureMetricRanges(), store.ensureMetricRanges()]);
+      expect(apiGet.mock.calls.filter(c => c[0] === '/filter_options/metric_ranges')).toHaveLength(1);
+      expect(store.metricRangesByColumn()).toEqual({ aesthetic: range });
+    });
+
+    it('does not refetch ranges the gallery already loaded', async () => {
+      store.metricRanges.set({ min_aesthetic: range });
+      await store.ensureMetricRanges();
+      expect(apiGet).not.toHaveBeenCalledWith('/filter_options/metric_ranges');
+    });
+
+    it('leaves star_rating out: a photo shows the viewer\'s own rating, not the global column', () => {
+      store.metricRanges.set({ min_aesthetic: range, min_rating: { column: 'star_rating', min: 0, max: 5, buckets: [1] } });
+      expect(store.metricRangesByColumn()).toEqual({ aesthetic: range });
+    });
+
+    it('stays empty after a failed fetch and retries on the next call', async () => {
+      apiGet.mockReturnValueOnce(throwError(() => new Error('down')));
+      await store.ensureMetricRanges();
+      expect(store.metricRanges()).toEqual({});
+      apiGet.mockReturnValueOnce(of({ ranges: { min_aesthetic: range } }));
+      await store.ensureMetricRanges();
+      expect(store.metricRangesByColumn()).toEqual({ aesthetic: range });
+    });
+
+    it('keeps loaded ranges when a later request fails', async () => {
+      store.metricRanges.set({ min_aesthetic: range });
+      apiGet.mockImplementation((path: string) => path === '/filter_options/metric_ranges' ? throwError(() => new Error('down')) : of({}));
+      await store.loadFilterOptions();
+      expect(store.metricRanges()).toEqual({ min_aesthetic: range });
+    });
+  });
+
   describe('pinned list (showPaths)', () => {
     const paths = ['/b.jpg', '/a.jpg'];
     const byPaths = () => of({ photos: [makePhoto({ path: '/b.jpg' }), makePhoto({ path: '/a.jpg' })], total: 2, missing: ['/gone.jpg'] });

@@ -14,26 +14,25 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom, skip, finalize } from 'rxjs';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { AssistantChangeBatch, AssistantChangesService } from '../../core/agent/assistant-changes.service';
-import { ExtendedQualityComponent } from '../../shared/components/extended-quality/extended-quality.component';
+import { MetricRankComponent } from '../../shared/components/metric-rank/metric-rank.component';
 import { Photo, KeeperHint, PhotoSet, normalisePhotoFlags } from '../../shared/models/photo.model';
 import { AuthService } from '../../core/services/auth.service';
 import { StalenessGuardFactory } from '../../core/services/staleness-guard.service';
 import { PhotoActionsService } from '../../core/services/photo-actions.service';
 import { PhotoDetailBase } from '../../shared/directives/photo-detail-base.directive';
 import { FixedPipe } from '../../shared/pipes/fixed.pipe';
-import { ShutterSpeedPipe } from '../../shared/pipes/shutter-speed.pipe';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { ThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
 import { PersonThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
 import { CategoryLabelPipe } from '../gallery/photo-tooltip.component';
-import { IsLensNamePipe } from '../../shared/pipes/is-lens-name.pipe';
 import { DownloadIconPipe } from '../../shared/pipes/download-icon.pipe';
 import { PhotoSetKindIconPipe, PhotoSetKindLabelPipe } from '../../shared/pipes/photo-set-kind.pipe';
 import { SEQUENCE_KINDS_KEPT_WHOLE } from '../../shared/pipes/sequence-kind.pipe';
 import { EvOffsetPipe } from '../gallery/burst-culling.pipes';
 import {
-  HISTOGRAM_PANEL_HEIGHT, HistogramComponent,
+  HISTOGRAM_PANEL_HEIGHT,
 } from '../../shared/components/histogram/histogram.component';
+import { PhotoMetricsTabsComponent } from '../../shared/components/photo-metrics-tabs/photo-metrics-tabs.component';
 import { HistogramMode, isHistogramMode } from '../../shared/utils/histogram';
 import { ComparisonCategoryExplainerComponent } from '../comparison/comparison-category-explainer.component';
 import { DownloadOption } from '../../core/api/types';
@@ -56,7 +55,8 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
 @Component({
   selector: 'app-photo-detail',
   imports: [
-    ExtendedQualityComponent,
+    MetricRankComponent,
+    PhotoMetricsTabsComponent,
     MatIconModule,
     MatButtonModule,
     MatTooltipModule,
@@ -67,23 +67,20 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
     MatProgressSpinnerModule,
     MatSnackBarModule,
     FixedPipe,
-    ShutterSpeedPipe,
     TranslatePipe,
     ThumbnailUrlPipe,
     PersonThumbnailUrlPipe,
     CategoryLabelPipe,
-    IsLensNamePipe,
     DownloadIconPipe,
     PhotoSetKindIconPipe,
     PhotoSetKindLabelPipe,
     EvOffsetPipe,
-    HistogramComponent,
     ComparisonCategoryExplainerComponent,
   ],
   template: `
     @if (photo(); as p) {
       <!-- Header bar -->
-      <div class="flex items-center gap-2 px-1 py-1 border-b border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface-container)]">
+      <div class="flex items-center gap-2 px-2 py-1 border-b border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface-container)]">
         <button mat-icon-button (click)="goBack()" [matTooltip]="I18N.photo_detail.back | translate" [attr.aria-label]="I18N.photo_detail.back | translate">
           <mat-icon>arrow_back</mat-icon>
         </button>
@@ -222,7 +219,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
         <!-- Info panel -->
         <div class="lg:w-[380px] lg:shrink-0 lg:overflow-y-auto p-4 space-y-4 text-sm text-[var(--mat-sys-on-surface)]">
           <!-- Filename + Date + Category + Aggregate -->
-          <div>
+          <div class="mb-2">
             <div class="font-semibold text-lg">{{ p.filename }}</div>
             @if (p.date_taken || auth.isEdition()) {
               <div class="flex items-center gap-1 text-[var(--mat-sys-on-surface-variant)] text-xs">
@@ -262,20 +259,24 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
                   {{ I18N.culling.reason.better_shot | translate }}
                 </span>
               }
-              <span class="text-[var(--mat-sys-primary)] font-semibold ml-auto">{{ p.aggregate | fixed:1 }}</span>
+              <span class="ml-auto flex items-center gap-2">
+                @if (store.metricRangesByColumn()['aggregate']; as range) {<app-metric-rank class="w-28" [range]="range" [value]="p.aggregate" />}
+                <span class="text-[var(--mat-sys-primary)] font-semibold">{{ p.aggregate | fixed:1 }}</span>
+              </span>
             </div>
           </div>
 
           <!-- Category explainer: the target-category select and its explanation -->
           @if (auth.isEdition() && explainerOpen()) {
             <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3">
-              <mat-form-field class="w-full">
+              <mat-form-field class="w-full" subscriptSizing="dynamic">
                 <mat-label>{{ I18N.photo.category_override.target_category_label | translate }}</mat-label>
                 <mat-select [value]="explainerTargetCategory()" (selectionChange)="explainerTargetCategory.set($event.value)">
                   @for (name of explainerCategories(); track name) {
                     <mat-option [value]="name">{{ name | categoryLabel }}</mat-option>
                   }
                 </mat-select>
+                <mat-hint>{{ I18N.photo.category_override.target_category_hint | translate }}</mat-hint>
               </mat-form-field>
               @if (explainerTargetCategory(); as target) {
                 <app-category-explainer [path]="p.path" [targetCategory]="target" />
@@ -285,7 +286,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
 
           <!-- Rating controls (edition only) -->
           @if (auth.isEdition()) {
-            <div class="flex items-center border-t border-[var(--mat-sys-outline-variant)] pt-3">
+            <div class="flex items-center border-t border-[var(--mat-sys-outline-variant)] pt-1 mb-1">
               <!-- Star rating -->
               @for (star of stars; track star) {
                 <button class="w-8 h-8 rounded-full inline-flex items-center justify-center hover:bg-[var(--mat-sys-surface-container-high)] transition-colors cursor-pointer" (click)="setRating(p.path, star)">
@@ -322,8 +323,8 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
           }
 
           <!-- Caption -->
-          <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3">
-            <div class="flex items-center justify-between mb-2">
+          <div>
+            <div class="flex items-center justify-between mb-1">
               <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)]">{{ I18N.photo_detail.caption | translate }}</div>
               @if (auth.isEdition()) {
                 <div class="flex gap-1">
@@ -351,167 +352,17 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
             }
           </div>
 
-          <!-- Quality section -->
-          <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3">
-            <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)] mb-2">{{ I18N.photo_detail.quality | translate }}</div>
-            <div class="flex flex-col gap-0.5">
-              <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.aesthetic | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.aesthetic | fixed:1 }}</span></div>
-              @if (p.quality_score !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.quality_score | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.quality_score | fixed:1 }}</span></div>
-              }
-              @if (p.topiq_score !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.topiq_score | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.topiq_score | fixed:1 }}</span></div>
-              }
-              @if (p.tech_sharpness !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.tech_sharpness | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.tech_sharpness | fixed:1 }}</span></div>
-              }
-              @if (p.face_count > 0 && p.face_quality !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.face_quality | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.face_quality | fixed:1 }}</span></div>
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.faces | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.face_count }}</span></div>
-                @if (p.face_ratio) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.face_ratio | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.face_ratio * 100 | fixed:0 }}%</span></div>
-                }
-                @if (p.face_sharpness !== null) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.face_sharpness | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.face_sharpness | fixed:1 }}</span></div>
-                }
-                @if (p.eye_sharpness !== null) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.eye_sharpness | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.eye_sharpness | fixed:1 }}</span></div>
-                }
-                @if (p.face_confidence !== null && p.face_confidence !== undefined) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.face_confidence | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.face_confidence * 100 | fixed:0 }}%</span></div>
-                }
-              }
-              @if (p.aesthetic_iaa !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.aesthetic_iaa | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.aesthetic_iaa | fixed:1 }}</span></div>
-              }
-              @if (p.face_quality_iqa !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.face_quality_iqa | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.face_quality_iqa | fixed:1 }}</span></div>
-              }
-              @if (p.liqe_score !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.liqe_score | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.liqe_score | fixed:1 }}</span></div>
-              }
-              <app-extended-quality [photo]="p" [populated]="store.config()?.populated_scores" />
-            </div>
-          </div>
+          <!-- Metric tabs: EXIF | Quality | Composition | Technical | Histogram -->
+          <app-photo-metrics-tabs [photo]="p" [ranges]="store.metricRangesByColumn()"
+                                  [populated]="store.config()?.populated_scores"
+                                  [histogramHeight]="HISTOGRAM_PANEL_HEIGHT"
+                                  [histogramDefaultMode]="histogramDefaultMode()"
+                                  [indicatorPercent]="clippingIndicatorPercent()" />
 
-          <!-- Composition section -->
-          <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3">
-            <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)] mb-2">{{ I18N.photo_detail.composition | translate }}</div>
-            <div class="flex flex-col gap-0.5">
-              @if (p.comp_score !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.composition | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.comp_score | fixed:1 }}</span></div>
-              }
-              @if (p.composition_pattern) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.pattern | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ ('composition_patterns.' + p.composition_pattern) | translate }}</span></div>
-              }
-              @if (p.power_point_score !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.power_points | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.power_point_score | fixed:1 }}</span></div>
-              }
-              @if (p.leading_lines_score !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.leading_lines | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.leading_lines_score | fixed:1 }}</span></div>
-              }
-              @if (p.isolation_bonus !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.isolation | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.isolation_bonus | fixed:1 }}</span></div>
-              }
-            </div>
-          </div>
-
-          <!-- Subject Saliency section -->
-          @if (p.subject_sharpness !== null || p.subject_prominence !== null || p.subject_placement !== null || p.bg_separation !== null) {
-            <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3">
-              <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)] mb-2">{{ I18N.photo_detail.saliency | translate }}</div>
-              <div class="flex flex-col gap-0.5">
-                @if (p.subject_sharpness !== null) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.subject_sharpness | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.subject_sharpness | fixed:1 }}</span></div>
-                }
-                @if (p.subject_prominence !== null) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.subject_prominence | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.subject_prominence | fixed:1 }}</span></div>
-                }
-                @if (p.subject_placement !== null) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.subject_placement | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.subject_placement | fixed:1 }}</span></div>
-                }
-                @if (p.bg_separation !== null) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.bg_separation | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.bg_separation | fixed:1 }}</span></div>
-                }
-              </div>
-            </div>
-          }
-
-          <!-- Technical section -->
-          <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3">
-            <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)] mb-2">{{ I18N.photo_detail.technical | translate }}</div>
-            <div class="flex flex-col gap-0.5">
-              @if (p.exposure_score !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.exposure | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.exposure_score | fixed:1 }}</span></div>
-              }
-              @if (p.color_score !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.color | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.color_score | fixed:1 }}</span></div>
-              }
-              @if (p.contrast_score !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.contrast | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.contrast_score | fixed:1 }}</span></div>
-              }
-              @if (p.dynamic_range_stops !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.dynamic_range | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.dynamic_range_stops | fixed:1 }}</span></div>
-              }
-              @if (p.mean_saturation !== null && p.mean_saturation !== undefined) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.saturation | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ (p.mean_saturation * 100) | fixed:0 }}%</span></div>
-              }
-              @if (p.noise_sigma !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.noise | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.noise_sigma | fixed:1 }}</span></div>
-              }
-              @if (p.mean_luminance !== null && p.mean_luminance !== undefined) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.luminance | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.mean_luminance * 100 | fixed:0 }}%</span></div>
-              }
-              @if (p.histogram_spread !== null) {
-                <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.histogram_spread | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.histogram_spread | fixed:1 }}</span></div>
-              }
-            </div>
-          </div>
-
-          <!-- EXIF section -->
-          @if (hasExif()) {
-            <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3">
-              <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)] mb-2">{{ I18N.photo_detail.exif | translate }}</div>
-              <div class="flex flex-col gap-0.5">
-                @if (p.camera_model) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.camera | translate }}</span><span class="val truncate">{{ p.camera_model }}</span></div>
-                }
-                @if (p.lens_model && (p.lens_model | isLensName)) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.lens | translate }}</span><span class="val truncate">{{ p.lens_model }}</span></div>
-                }
-                @if (p.focal_length) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.focal | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.focal_length }}mm</span></div>
-                }
-                @if (p.f_stop) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.aperture | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">f/{{ p.f_stop }}</span></div>
-                }
-                @if (p.shutter_speed) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.shutter | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.shutter_speed | shutterSpeed }}</span></div>
-                }
-                @if (p.iso) {
-                  <div class="flex justify-between items-baseline gap-2"><span class="text-[var(--mat-sys-on-surface-variant)]">{{ I18N.tooltip.iso | translate }}</span><span class="text-[var(--mat-sys-primary)] font-medium">{{ p.iso }}</span></div>
-                }
-              </div>
-            </div>
-          }
-
-          <!-- Histogram: the graph runs edge to edge (the panel's only full-width
-               block), so the negative margin cancelling the panel's own p-4
-               goes on this section's container. The label gets its own
-               horizontal padding back so it still lines up with every other
-               section's label above it. -->
-          <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3 -mx-4">
-            <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)] mb-2 px-4">{{ I18N.tooltip.histogram | translate }}</div>
-            <app-histogram [path]="p.path" [src]="p.path | thumbnailUrl:640" [monochrome]="!!p.is_monochrome"
-                           [height]="HISTOGRAM_PANEL_HEIGHT" [showModeToggle]="true"
-                           [surface]="'detail'"
-                           [defaultMode]="histogramDefaultMode()"
-                           [indicatorPercent]="clippingIndicatorPercent()" />
-          </div>
 
           <!-- Location -->
           @if (p.gps_latitude !== null && p.gps_longitude !== null) {
-            <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3">
+            <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3 mb-2">
               <div class="flex items-center justify-between mb-2">
                 <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)]">{{ I18N.photo_detail.location | translate }}</div>
                 @if (auth.isEdition()) {
@@ -527,7 +378,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
               <div #locationMapContainer class="w-full h-40 rounded-lg overflow-hidden"></div>
             </div>
           } @else if (auth.isEdition()) {
-            <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3">
+            <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3 mb-2">
               <div class="flex items-center justify-between">
                 <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)]">{{ I18N.photo_detail.location | translate }}</div>
                 <button mat-icon-button class="!w-7 !h-7 !p-0" (click)="editGps(p)" [matTooltip]="I18N.photo_detail.add_location | translate" [attr.aria-label]="I18N.photo_detail.add_location | translate">
@@ -540,7 +391,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
 
           <!-- Tags section: AI chips, then manual chips (marked, removable for editors) -->
           @if (p.tags_list.length || p.manual_tags.length || auth.isEdition()) {
-            <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3" data-testid="tags-section">
+            <div data-testid="tags-section">
               <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)] mb-2">{{ I18N.photo_detail.tags | translate }}</div>
               <div class="flex gap-1.5 flex-wrap items-center">
                 @for (tag of p.tags_list; track tag) {
@@ -579,7 +430,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
                          [placeholder]="I18N.manual_tags.add | translate"
                          (input)="onNewTagInput($event)"
                          (keydown.enter)="addManualTag(p, newTag())" />
-                  <button mat-icon-button class="!w-7 !h-7 !p-0" (click)="addManualTag(p, newTag())"
+                  <button mat-icon-button class="!w-7 !h-7 !p-0 !inline-flex !items-center !justify-center shrink-0" (click)="addManualTag(p, newTag())"
                           [disabled]="!newTag().trim()"
                           [matTooltip]="I18N.manual_tags.add | translate" [attr.aria-label]="I18N.manual_tags.add | translate">
                     <mat-icon class="!text-base !w-4 !h-4 !leading-4">add</mat-icon>
@@ -591,7 +442,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
 
           <!-- Persons section -->
           @if (p.persons.length) {
-            <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3">
+            <div class="pt-1">
               <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)] mb-2">{{ I18N.photo_detail.persons | translate }}</div>
               <div class="flex gap-3 flex-wrap">
                 @for (person of p.persons; track person.id) {
@@ -612,13 +463,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
           <!-- Set section (bracket/panorama/hdr_panorama/burst/duplicate) -->
           @if (photoSet(); as set) {
             @if (set.kind) {
-              <div class="border-t border-[var(--mat-sys-outline-variant)] pt-3">
-                <div class="flex items-center justify-between mb-2">
-                  <div class="text-[0.625rem] uppercase tracking-wider text-[var(--mat-sys-on-surface-variant)]">{{ I18N.photo_detail.set.title | translate }}</div>
-                  <button mat-button class="!min-w-0" (click)="openSetInGallery()">
-                    <mat-icon>photo_library</mat-icon> {{ I18N.photo_detail.set.open_in_gallery | translate }}
-                  </button>
-                </div>
+              <div class="pt-1">
                 <div class="flex items-center gap-2 flex-wrap mb-2 text-sm">
                   <mat-icon class="!text-base !w-4 !h-4 !leading-4 opacity-70">{{ set.kind | photoSetKindIcon }}</mat-icon>
                   <span class="font-medium">{{ set.kind | photoSetKindLabel | translate }}</span>
@@ -626,6 +471,10 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
                   @if (set.ev_span !== null) {
                     <span class="text-xs text-[var(--mat-sys-on-surface-variant)]">{{ I18N.photo_detail.set.ev_span | translate }}: {{ set.ev_span | fixed:1 }} EV</span>
                   }
+                  <button mat-icon-button class="!w-7 !h-7 !p-0 !inline-flex !items-center !justify-center ml-auto" (click)="openSetInGallery()"
+                          [matTooltip]="I18N.photo_detail.set.open_in_gallery | translate" [attr.aria-label]="I18N.photo_detail.set.open_in_gallery | translate">
+                    <mat-icon class="!text-base !w-4 !h-4 !leading-4">photo_library</mat-icon>
+                  </button>
                 </div>
                 <div class="flex gap-2 flex-wrap">
                   @for (member of set.members; track member.path) {
@@ -884,6 +733,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    void this.store.ensureMetricRanges();
     // Back/Forward between two photos reuses this component instead of creating a new one.
     this.route.queryParamMap.pipe(skip(1), takeUntilDestroyed(this.destroyRef)).subscribe(params => {
       const path = params.get('path');

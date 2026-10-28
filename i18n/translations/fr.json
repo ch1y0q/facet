@@ -139,20 +139,16 @@
   "tooltip": {
     "not_computed": "Non calculé",
     "category": "Catégorie",
-    "aggregate": "Agrégat",
-    "quality_section": "Qualité",
     "aesthetic": "Esthétique",
     "quality_score": "Score qualité",
     "face_quality": "Qualité visage",
     "face_sharpness": "Netteté visage",
     "eye_sharpness": "Netteté yeux",
     "tech_sharpness": "Netteté tech.",
-    "composition_section": "Composition",
     "composition": "Composition",
     "pattern": "Motif",
     "power_points": "Points forts",
     "leading_lines": "Lignes directrices",
-    "technical_section": "Technique",
     "exposure": "Exposition",
     "color": "Couleur",
     "contrast": "Contraste",
@@ -162,7 +158,6 @@
     "noise": "Bruit",
     "bonus_section": "Bonus",
     "isolation": "Isolation",
-    "exif_section": "EXIF",
     "camera": "Appareil",
     "lens": "Objectif",
     "focal": "Focale",
@@ -188,7 +183,6 @@
     "qrealign_score": "Q-ReAlign",
     "aesthetic_v25": "Esthétique V2.5",
     "deqa_score": "DeQA",
-    "saliency_section": "Saillance du sujet",
     "subject_sharpness": "Netteté sujet",
     "subject_prominence": "Proéminence",
     "subject_placement": "Placement",
@@ -201,7 +195,6 @@
     "color_harmony": "Harmonie couleurs",
     "caption": "Légende",
     "filter_by_person": "Filtrer par {name}",
-    "set_section": "Groupe",
     "histogram": "Histogramme"
   },
   "photoCard": {
@@ -577,7 +570,8 @@
     "mark_rejected": "Marquer comme rejeté",
     "unmark_rejected": "Retirer la marque rejeté",
     "rejected_badge": "Rejetée",
-    "rating_badge": "Note : {stars}"
+    "rating_badge": "Note : {stars}",
+    "stars_out_of_five": "Noté {stars} sur 5"
   },
   "similar": {
     "title": "Photos similaires",
@@ -2464,7 +2458,6 @@
     "location": "Localisation",
     "social_crop": "Recadrage social",
     "set": {
-      "title": "Groupe",
       "ev_span": "Écart EV",
       "kind_duplicate": "Doublon",
       "open_in_gallery": "Ouvrir ce groupe dans la galerie",
@@ -2522,6 +2515,11 @@
       "batch_error": "Impossible d’appliquer le lieu. Sélectionnez au plus 1000 photos et recommencez l’aperçu ; la sélection ou le lieu enregistré a pu changer.",
       "batch_limit": "Sélectionnez au plus 1000 photos. Les lieux existants sont remplacés sans la protection. Les fichiers originaux restent inchangés.",
       "batch_hint": "Choisissez un lieu, puis prévisualisez les changements avant d’enregistrer la sélection."
+    },
+    "distribution": {
+      "top": "Top {pct} % de la photothèque",
+      "range": "Plage de la photothèque {min}–{max}",
+      "top_in_range": "Top {pct} % de la photothèque · plage de la photothèque {min}–{max}"
     }
   },
   "manual_tags": {
@@ -2546,7 +2544,8 @@
       "success": "Catégorie définie sur {category}.",
       "cleared": "Remplacement effacé. Recalculez pour appliquer la catégorie basée sur les filtres.",
       "explainer_toggle": "Pourquoi n'est-ce pas une autre catégorie ?",
-      "target_category_label": "Comparer à"
+      "target_category_label": "Comparer à",
+      "target_category_hint": "Choisissez une catégorie pour voir quels filtres en excluent cette photo, et ce qui lui permettrait d'y entrer."
     }
   },
   "download": {

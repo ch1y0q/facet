@@ -1666,7 +1666,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
       "hide_brackets": true,
       "hide_panoramas": true,
       "hide_details": true,
-      "tooltip_mode": "hover",
+      "tooltip_mode": "panel",
       "hide_rejected": true,
       "sort": "aggregate",
       "sort_direction": "DESC",
@@ -1752,7 +1752,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 | `hide_brackets` | `true` | 默认只显示包围曝光组的基准曝光 |
 | `hide_panoramas` | `true` | 默认每组全景只显示一张代表帧 |
 | `hide_details` | `true` | 默认在卡片上隐藏照片详情 |
-| `tooltip_mode` | `"hover"` | 提示浮层的触发方式：`"hover"`、`"click"`、`"off"` 或 `"panel"`（停靠侧栏，而非浮动提示 — 见下文的 `panel_activation`）。取代了此前的 `hide_tooltip` 布尔值。 |
+| `tooltip_mode` | `"panel"` | 提示浮层的触发方式：`"hover"`、`"click"`、`"off"` 或 `"panel"`（停靠侧栏，而非浮动提示 — 见下文的 `panel_activation`）。取代了此前的 `hide_tooltip` 布尔值。 |
 | `panel_activation` | `"both"` | 当 `tooltip_mode` 为 `"panel"` 时，哪种手势会重新指定停靠侧栏所选的照片：`"hover"`、`"click"` 或 `"both"`。对其他提示模式无效。默认的 `"both"` 保持原有的面板行为 |
 | `hide_rejected` | `true` | 默认隐藏已淘汰照片 |
 | `gallery_mode` | `"mosaic"` | 默认的照片库布局（`"grid"` 或 `"mosaic"`） |
@@ -1817,7 +1817,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 | `badge_percent` | `5` | R/G/B 中最差通道的像素占比，超过此值的照片会在照片库卡片上加角标。在 28 张照片的样本上实测：最差通道的高光溢出中位数为 0.31%、p90 为 2.35%，因此 5% 大约每 25 张触发 1 张 |
 | `indicator_percent` | `1` | 直方图自身 R/G/B 端点标记的阈值。比角标更精细，因为此时你已经在看单张照片 |
 | `histogram_mode` | `"rgb"` | **详情面板**直方图的官方默认值：`"luma"`、`"rgb"`，或单个通道（`"r"` / `"g"` / `"b"`）。用户为该界面自己做的选择会存在 `localStorage` 的 `facet_histogram_mode` 下，并优先于此项 |
-| `tooltip_histogram_mode` | `"luma"` | **悬停/固定提示浮层**直方图的官方默认值，取值同样是那五种。它刻意独立于 `histogram_mode`，并持久化在自己的 `localStorage` 键（`facet_histogram_mode_tooltip`）下：面板是用来细看一张照片的，逐通道细节值得占用空间；提示浮层是用来快速扫过许多照片的，一条朴素的亮度曲线通常读起来更快。设置其中一个绝不会改动另一个，而且只有在提示浮层被固定时（停靠侧栏，或 `tooltip_mode: "click"`）才会渲染切换控件 — 在普通悬停模式下它只以只读方式显示解析出的模式 |
+| `tooltip_histogram_mode` | `"luma"` | **侧边面板**直方图标签页（`tooltip_mode: "panel"`）中直方图的官方默认值，取值同样是那五种。它刻意独立于 `histogram_mode`，并持久化在自己的 `localStorage` 键（`facet_histogram_mode_tooltip`）下：照片详情是用来细看一张照片的，逐通道细节值得占用空间；侧边面板是用来快速扫过许多照片的，一条朴素的亮度曲线通常读起来更快。设置其中一个绝不会改动另一个。**悬停**和**点击**气泡不显示直方图 |
 
 **溢出是按通道、恰好在第 0 格和第 255 格上测量的。** 它以最差通道的
 像素百分比存储在 `photos.channel_clip_shadow_pct` / `channel_clip_highlight_pct`
