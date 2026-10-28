@@ -4377,6 +4377,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stacks/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stack Suggestions
+         * @description Scoped, bounded suggestions only; no writes, filesystem reads or cached private rows.
+         */
+        post: operations["stack_suggestions_api_stacks_suggestions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/stacks/{stack_id}": {
         parameters: {
             query?: never;
@@ -8586,6 +8606,32 @@ export interface components {
         StackMutation: {
             stack: components["schemas"]["PhotoStack"] | null;
             undo: components["schemas"]["StackUndo"] | null;
+        };
+        /** StackSuggestion */
+        StackSuggestion: {
+            /** Cover Path */
+            cover_path: string;
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "duplicate" | "burst";
+            /** Paths */
+            paths: string[];
+        };
+        /** StackSuggestionsRequest */
+        StackSuggestionsRequest: {
+            /** Filters */
+            filters?: {
+                [key: string]: string | number | boolean;
+            };
+        };
+        /** StackSuggestionsResponse */
+        StackSuggestionsResponse: {
+            /** Suggestions */
+            suggestions: components["schemas"]["StackSuggestion"][];
         };
         /** StackUndo */
         StackUndo: {
@@ -15625,6 +15671,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PhotoStack"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stack_suggestions_api_stacks_suggestions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StackSuggestionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StackSuggestionsResponse"];
                 };
             };
             /** @description Validation Error */

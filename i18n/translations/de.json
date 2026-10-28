@@ -2971,6 +2971,15 @@
     "stack": "Fotostapel"
   },
   "stacks": {
+    "suggestions": "Vorgeschlagene Stapel",
+    "suggestions_hint": "Vorschläge aus erkannten Duplikaten und Serien innerhalb dieser Filter. Deren automatisches Ausblenden wird zur Prüfung aufgehoben. Bestehende Stapel und Belichtungs-/Panoramaserien werden übersprungen. Höchstens 20 Vorschläge; Filter für weitere Fotos eingrenzen. Ausblenden gilt nur für diesen geöffneten Dialog.",
+    "suggestions_empty": "Keine Stapelvorschläge in dieser Ansicht",
+    "suggestion_burst": "Serie",
+    "suggestion_duplicate": "Duplikate",
+    "suggestion_review": "Prüfen und Titelbild wählen",
+    "suggestion_dismiss": "Vorerst ausblenden",
+    "suggestions_error": "Vorschläge konnten nicht geladen werden. Bitte erneut versuchen.",
+    "suggestions_reload": "Vorschläge neu laden",
     "previous": "Vorheriges Stapelfoto",
     "next": "Nächstes Stapelfoto",
     "browse_position": "{position} von {count}",

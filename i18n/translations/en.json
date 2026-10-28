@@ -2971,6 +2971,15 @@
     "stack": "Photo stack"
   },
   "stacks": {
+    "suggestions": "Suggested stacks",
+    "suggestions_hint": "Suggestions use detected duplicates and bursts within these filters. Automatic burst/duplicate hiding is bypassed for review. Existing stacks and bracket/panorama sets are skipped. Up to 20 suggestions are shown; narrow your filters for other photos. Dismissal lasts only while this dialog is open.",
+    "suggestions_empty": "No stack suggestions in this view",
+    "suggestion_burst": "Burst",
+    "suggestion_duplicate": "Duplicates",
+    "suggestion_review": "Review and choose cover",
+    "suggestion_dismiss": "Dismiss for now",
+    "suggestions_error": "Could not load suggestions. Try again.",
+    "suggestions_reload": "Reload suggestions",
     "previous": "Previous stack photo",
     "next": "Next stack photo",
     "browse_position": "{position} of {count}",
