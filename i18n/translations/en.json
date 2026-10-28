@@ -2514,6 +2514,9 @@
       "online_disabled": "Online search is disabled.",
       "online_loading": "Searching online…",
       "online_empty": "No places found. Try another query or enter coordinates.",
+      "online_results": "{count} place found",
+      "online_results_plural": "{count} places found",
+      "online_results_label": "Online results",
       "online_error": "Online search failed or is busy. Wait a moment and try again, or enter coordinates.",
       "preview_hint": "Choose a location, then Save to apply it to this photo.",
       "search": "Search saved places",
@@ -2751,7 +2754,10 @@
       "receipt": "Receipts",
       "meme": "Memes",
       "slide": "Slides"
-    }
+    },
+    "candidates": "{count} candidate",
+    "candidates_plural": "{count} candidates",
+    "empty_kind": "No candidates of this kind. Try \"All kinds\" in the filter menu."
   },
   "social_export": {
     "presets": {

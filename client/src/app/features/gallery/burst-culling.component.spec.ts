@@ -2230,6 +2230,16 @@ describe('BurstCullingComponent', () => {
       };
     };
 
+    it('announces the loading skeleton with text content, not only an aria-label', async () => {
+      const { fixture, teardown } = await renderList([]);
+      fixture.componentInstance['cull'].loading.set(true);
+      fixture.detectChanges();
+      const skeleton = [...(fixture.nativeElement as HTMLElement).querySelectorAll('[role="status"]')]
+        .find(el => el.querySelector('.animate-pulse'));
+      expect(skeleton?.textContent?.trim()).toBe('ui.labels.loading');
+      teardown();
+    });
+
     const byAriaLabel = (fixture: ComponentFixture<BurstCullingComponent>, label: string) =>
       [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')]
         .find(el => el.getAttribute('aria-label') === label);

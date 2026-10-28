@@ -2514,6 +2514,9 @@
       "online_disabled": "La ricerca online è disattivata.",
       "online_loading": "Ricerca online…",
       "online_empty": "Nessun luogo trovato. Prova un’altra ricerca o inserisci le coordinate.",
+      "online_results": "{count} luogo trovato",
+      "online_results_plural": "{count} luoghi trovati",
+      "online_results_label": "Risultati online",
       "online_error": "Ricerca online non riuscita o occupata. Attendi e riprova, oppure inserisci le coordinate.",
       "preview_hint": "Scegli un luogo, poi Salva per applicarlo a questa foto.",
       "search": "Cerca luoghi salvati",
@@ -2751,7 +2754,10 @@
       "receipt": "Ricevute",
       "meme": "Meme",
       "slide": "Diapositive"
-    }
+    },
+    "candidates": "{count} candidato",
+    "candidates_plural": "{count} candidati",
+    "empty_kind": "Nessun candidato di questo tipo. Prova «Tutti i tipi» nel menu dei filtri."
   },
   "social_export": {
     "presets": {

@@ -529,7 +529,8 @@ interface SceneSummary {
         <!-- Skeleton groups instead of a bare spinner: the first load of a
              10k+ library takes seconds, and a shape the result will resemble
              reads as "working" rather than "stuck". -->
-        <div class="space-y-3 pb-4" [attr.aria-label]="I18N.ui.labels.loading | translate" role="status">
+        <div class="space-y-3 pb-4" role="status">
+          <span class="sr-only">{{ I18N.ui.labels.loading | translate }}</span>
           @for (h of [340, 380, 300, 340]; track $index) {
             <div class="rounded-xl border-2 border-[var(--mat-sys-surface-container-high)] overflow-hidden bg-[var(--mat-sys-surface-container)]">
               <div class="flex gap-2 p-2" [style.height.px]="h * 0.55">
