@@ -27,7 +27,7 @@ export abstract class PhotoDetailBase {
 
   protected readonly fullImageUrl = computed(() => {
     const p = this.photo();
-    return p ? this.api.imageUrl(p.path) : '';
+    return p ? this.api.imageUrl(p.path, p.preview_revision) : '';
   });
 
   protected readonly hasExif = computed(() => {

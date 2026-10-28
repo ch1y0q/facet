@@ -1,4 +1,20 @@
 {
+  "photo_refresh": {
+    "limit": "Selecciona entre 1 y 100 fotos.",
+    "reasons": {
+      "unavailable": "Origen no disponible",
+      "changed": "Foto modificada; actualiza de nuevo",
+      "busy": "Biblioteca ocupada; reintenta más tarde",
+      "failed": "No se pudo leer esta foto"
+    },
+    "title": "Actualizar metadatos y vista previa",
+    "description": "Lee los metadatos disponibles y regenera la vista previa. Las anotaciones manuales, valoraciones, caras y puntuaciones de IA no cambian. Los originales no se modifican. Vuelve a escanear para actualizar puntuaciones y caras tras cambiar los píxeles.",
+    "one": "1 foto seleccionada",
+    "many": "{count} fotos seleccionadas",
+    "start": "Actualizar",
+    "completed": "Actualizadas: {count}",
+    "failed": "Algunas fotos no pudieron actualizarse. Reintenta para actualizar solo las restantes."
+  },
   "ui": {
     "title": "Facet",
     "filters": {

@@ -15,6 +15,7 @@ from typing import Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from db.preview_versions import attach_preview_versions
 from api.auth import CurrentUser, get_optional_user, require_edition
 from api.config import VIEWER_CONFIG, server_scoring_config
 from api.database import get_async_db, get_db
@@ -482,6 +483,7 @@ def list_albums(
             album['photo_count'] = count_map.get(row['id'], 0)
             album['first_photo_path'] = _get_first_photo_path(conn, row)
             albums.append(album)
+        attach_preview_versions(conn, albums, 'first_photo_path')
         return {
             'albums': albums,
             'total': total,

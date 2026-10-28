@@ -67,7 +67,7 @@ import { i18nKeys } from '../../../core/i18n/keys';
         <!-- Image panel -->
         <div class="shrink-0 lg:h-auto lg:flex-1 flex items-center justify-center bg-black lg:min-h-0 relative">
           <img
-            [src]="p.path | thumbnailUrl:640"
+            [src]="p.path | thumbnailUrl:640:p.preview_revision"
             [alt]="p.filename"
             class="w-full lg:max-w-full lg:max-h-full object-contain transition-opacity duration-300"
             [class.opacity-0]="fullImageLoaded()"

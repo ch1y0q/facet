@@ -6,6 +6,7 @@ export interface KeeperHint {
 }
 
 export interface Photo {
+  preview_revision?: string | null;
   path: string;
   filename: string;
   // Scores
@@ -163,6 +164,7 @@ export interface PhotoSetMember {
    *  every other kind, which has no base frame to measure against. */
   ev_offset: number | null;
   is_lead: boolean;
+  preview_revision?: string | null;
 }
 
 /** The bracket/panorama/hdr_panorama/burst/duplicate set a photo belongs to,

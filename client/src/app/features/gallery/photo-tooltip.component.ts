@@ -90,7 +90,7 @@ export class CategoryLabelPipe implements PipeTransform {
                than stretched and letterboxed, so the box is the picture and the
                rounded corners show on every orientation. -->
           <img
-            [src]="p.path | thumbnailUrl:640"
+            [src]="p.path | thumbnailUrl:640:p.preview_revision"
             [alt]="p.filename"
             class="rounded-md shrink-0 max-w-full w-auto h-auto"
             [class.self-center]="docked()"
@@ -233,7 +233,7 @@ export class CategoryLabelPipe implements PipeTransform {
                             [class.ring-2]="member.path === p.path"
                             [attr.aria-label]="('photo_detail.set.member_position' | translate:{ position: $index + 1, count: set.members.length }) + (member.ev_offset !== null ? ', ' + (member.ev_offset | evOffset) : '')"
                             (click)="openSetMember(member.path)">
-                      <img [src]="member.path | thumbnailUrl:96" alt="" class="w-full h-full object-cover" />
+                      <img [src]="member.path | thumbnailUrl:96:member.preview_revision" alt="" class="w-full h-full object-cover" />
                       @if (member.ev_offset !== null) {
                         <span class="absolute bottom-0 inset-x-0 text-center text-[0.625rem] leading-4 bg-black/60 text-white">{{ member.ev_offset | evOffset }}</span>
                       }

@@ -102,6 +102,8 @@ def get_stack(conn: sqlite3.Connection, owner: str, stack_id: str, *,
     visible = [dict(path=m['path'], position=i) for i, m in enumerate(m for m in members if m['path'] in permitted)]
     if not visible:
         return None
+    from db.preview_versions import attach_preview_versions
+    attach_preview_versions(conn, visible)
     return dict(id=row[0], revision=row[1], cover_path=row[2] if row[2] in permitted else visible[0]['path'],
                 members=visible, editable=editable and len(visible) == len(members))
 

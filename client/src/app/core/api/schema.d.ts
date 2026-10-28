@@ -3699,6 +3699,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Photos */
+        post: operations["refresh_photos_api_photos_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/review_progress": {
         parameters: {
             query?: never;
@@ -5016,6 +5033,8 @@ export interface components {
             is_smart: boolean;
             /** Name */
             name: string;
+            /** Preview Revision */
+            preview_revision?: string | null;
             /** Scoring Context */
             scoring_context?: string | null;
             /** Smart Filter Json */
@@ -5597,6 +5616,8 @@ export interface components {
             id: string;
             /** Photo Count */
             photo_count: number;
+            /** Preview Revision */
+            preview_revision?: string | null;
             /** Subtitle */
             subtitle: string;
             /** Title */
@@ -6265,6 +6286,8 @@ export interface components {
             path: string;
             /** Photo Count */
             photo_count: number;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /**
          * FoldersResponse
@@ -6677,6 +6700,8 @@ export interface components {
             lat: number;
             /** Lng */
             lng: number;
+            /** Preview Revision */
+            preview_revision?: string | null;
             /** Representative Path */
             representative_path?: string | null;
         };
@@ -6696,6 +6721,8 @@ export interface components {
             lng: number;
             /** Path */
             path: string;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /** McpCallRequest */
         McpCallRequest: {
@@ -7576,6 +7603,8 @@ export interface components {
             phash?: string | null;
             /** Power Point Score */
             power_point_score?: number | null;
+            /** Preview Revision */
+            preview_revision?: string | null;
             /** Qrealign Score */
             qrealign_score?: number | null;
             /** Quality Score */
@@ -7794,6 +7823,28 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** PhotoRefreshFailure */
+        PhotoRefreshFailure: {
+            /** Path */
+            path: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "unavailable" | "changed" | "busy" | "failed";
+        };
+        /** PhotoRefreshRequest */
+        PhotoRefreshRequest: {
+            /** Paths */
+            paths: string[];
+        };
+        /** PhotoRefreshResponse */
+        PhotoRefreshResponse: {
+            /** Failed */
+            failed: components["schemas"]["PhotoRefreshFailure"][];
+            /** Refreshed */
+            refreshed: string[];
+        };
         /**
          * PhotoSearchResponse
          * @description Semantic/text search results.
@@ -7828,6 +7879,8 @@ export interface components {
             is_lead: boolean;
             /** Path */
             path: string;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /**
          * PhotoSetResponse
@@ -8318,6 +8371,8 @@ export interface components {
             filename?: string | null;
             /** Path */
             path: string;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /** ScenesResponse */
         ScenesResponse: {
@@ -8588,6 +8643,8 @@ export interface components {
             path: string;
             /** Position */
             position: number;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /** StackMutation */
         StackMutation: {
@@ -8929,6 +8986,8 @@ export interface components {
             date?: string | null;
             /** Hero Photo Path */
             hero_photo_path?: string | null;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /** TimelineDatesResponse */
         TimelineDatesResponse: {
@@ -8946,6 +9005,8 @@ export interface components {
             hero_photo_path?: string | null;
             /** Month */
             month: string;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /** TimelineMonthsResponse */
         TimelineMonthsResponse: {
@@ -8961,6 +9022,8 @@ export interface components {
             count: number;
             /** Hero Photo Path */
             hero_photo_path?: string | null;
+            /** Preview Revision */
+            preview_revision?: string | null;
             /** Year */
             year: string;
         };
@@ -14710,6 +14773,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PhotoPathsResponse"];
+                };
+            };
+        };
+    };
+    refresh_photos_api_photos_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoRefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoRefreshResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
