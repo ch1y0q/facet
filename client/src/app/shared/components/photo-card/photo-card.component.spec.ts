@@ -120,12 +120,35 @@ describe('PhotoCardComponent', () => {
     fixture.detectChanges();
     const opened = vi.fn(); getCard().openStackClicked.subscribe(opened);
     const button = fixture.nativeElement.querySelector('[data-stack-badge]') as HTMLButtonElement;
-    expect(button.textContent).toContain('2'); expect(button.textContent).toContain('/4');
+    // The bubble shows the matching count; the permitted total lives in the
+    // tooltip/aria-label, which a 14px bubble has no room for.
+    expect(button.textContent?.replace('layers', '').trim()).toBe('2');
     expect(button.getAttribute('aria-label')).toBe('stacks.badge_filtered');
     button.click();
     expect(opened).toHaveBeenCalledWith(fixture.componentInstance.photo());
     expect(fixture.componentInstance.selected).toEqual([]);
     expect(fixture.nativeElement.querySelector('img').src).toContain('/thumbnail?');
+  });
+
+  it('offers the stack as a configurable hover action only on a stacked photo', () => {
+    fixture.componentInstance.photo.set(makePhoto({ stack_id: 'stack', stack_count: 3, stack_total_count: 3 }));
+    fixture.detectChanges();
+    const opened = vi.fn(); getCard().openStackClicked.subscribe(opened);
+    const action = fixture.nativeElement.querySelector('button[aria-label="photoCard.stack_set"]') as HTMLButtonElement;
+    action.click();
+    expect(opened).toHaveBeenCalledWith(fixture.componentInstance.photo());
+    fixture.componentInstance.photo.set(makePhoto({}));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('button[aria-label="photoCard.stack_set"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-stack-badge]')).toBeNull();
+  });
+
+  it('hides the stack badge but keeps the hover action when badges.stack is off', () => {
+    fixture.componentInstance.config.set({ badges: { stack: false } });
+    fixture.componentInstance.photo.set(makePhoto({ stack_id: 'stack', stack_count: 3, stack_total_count: 3 }));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-stack-badge]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('button[aria-label="photoCard.stack_set"]')).not.toBeNull();
   });
 
   it('should have default input values', () => {

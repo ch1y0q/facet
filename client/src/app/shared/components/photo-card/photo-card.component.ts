@@ -36,6 +36,7 @@ export interface BadgeVisibility {
   rejected: boolean;
   sequence_kind: boolean;
   sequence_override_pending: boolean;
+  stack: boolean;
   keeper_hint: boolean;
   best_of_burst: boolean;
   clipping_highlight: boolean;
@@ -51,6 +52,7 @@ export const DEFAULT_BADGE_VISIBILITY: BadgeVisibility = {
   rejected: true,
   sequence_kind: true,
   sequence_override_pending: true,
+  stack: true,
   keeper_hint: true,
   best_of_burst: true,
   clipping_highlight: true,
@@ -166,15 +168,6 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
           (load)="imageLoaded.set(true)"
         />
 
-        @if (photo().stack_id) {
-          <button mat-button data-stack-badge class="!absolute !top-1 !right-1 !z-30 !min-w-0 !bg-black/75 !text-white"
-            (click)="openStackClicked.emit(photo()); $event.stopPropagation()"
-            (keydown)="$event.stopPropagation()"
-            [attr.aria-label]="((photo().stack_count ?? 0) !== (photo().stack_total_count ?? photo().stack_count ?? 0) ? I18N.stacks.badge_filtered : I18N.stacks.badge) | translate:{ count: photo().stack_count ?? 0, total: photo().stack_total_count ?? photo().stack_count ?? 0 }">
-            <mat-icon aria-hidden="true">photo_library</mat-icon>
-            {{ photo().stack_count }}@if (photo().stack_total_count !== photo().stack_count) { /{{ photo().stack_total_count }} }
-          </button>
-        }
         <!-- Persistent badges.
              Each one occupies the EXACT box of the hover-bar control it stands
              for -- same w-7 h-7, same bottom-1, same left-1.5 / right-1.5 /
@@ -220,6 +213,23 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
             <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white drop-shadow-md"
                       aria-hidden="true">{{ kind | photoSetKindIcon }}</mat-icon>
           </div>
+        }
+
+        <!-- A manual stack: like the set-kind badge it states a standing fact
+             the tile hides (the other members), so it does not fade on hover.
+             It takes the bottom-left slot next to the rating, which the hover
+             bar leaves free, and stays clickable so touch screens -- which never
+             see the hover row's stack button -- can still open the stack. -->
+        @if (badges().stack && photo().stack_id) {
+          <button type="button" data-stack-badge
+            class="absolute left-9 w-7 h-7 z-30 inline-flex items-center justify-center bottom-1 rounded-full hover:bg-black/60 text-white cursor-pointer"
+            (click)="openStackClicked.emit(photo()); $event.stopPropagation()"
+            (keydown)="$event.stopPropagation()"
+            [matTooltip]="((photo().stack_count ?? 0) !== (photo().stack_total_count ?? photo().stack_count ?? 0) ? I18N.stacks.badge_filtered : I18N.stacks.badge) | translate:{ count: photo().stack_count ?? 0, total: photo().stack_total_count ?? photo().stack_count ?? 0 }"
+            [attr.aria-label]="((photo().stack_count ?? 0) !== (photo().stack_total_count ?? photo().stack_count ?? 0) ? I18N.stacks.badge_filtered : I18N.stacks.badge) | translate:{ count: photo().stack_count ?? 0, total: photo().stack_total_count ?? photo().stack_count ?? 0 }">
+            <mat-icon class="!text-base !w-4 !h-4 !leading-4 drop-shadow-md" aria-hidden="true">layers</mat-icon>
+            <span class="absolute -top-0.5 -right-0.5 min-w-3.5 h-3.5 px-0.5 rounded-full bg-white text-black text-[10px] font-bold flex items-center justify-center leading-none" aria-hidden="true">{{ photo().stack_count }}</span>
+          </button>
         }
 
         <!-- A pending panorama correction. Keyed on the override, never on
@@ -765,6 +775,7 @@ export class PhotoCardComponent {
       duplicate_set: photo.duplicate_group_id != null,
       burst_set: photo.burst_group_id != null,
       sequence_set: !!photo.sequence_kind && photo.sequence_group_id != null,
+      stack_set: !!photo.stack_id,
       open_detail: true,
     };
     return cfg.order.filter(id => !cfg.hidden.includes(id) && available[id]);
@@ -782,6 +793,7 @@ export class PhotoCardComponent {
       case 'duplicate_set': this.openSetClicked.emit({ photo, kind: 'duplicate' }); break;
       case 'burst_set': this.openSetClicked.emit({ photo, kind: 'burst' }); break;
       case 'sequence_set': this.openSetClicked.emit({ photo, kind: 'sequence' }); break;
+      case 'stack_set': this.openStackClicked.emit(photo); break;
       case 'open_detail': this.openDetailClicked.emit(photo); break;
       case 'similar': break;
       default: {

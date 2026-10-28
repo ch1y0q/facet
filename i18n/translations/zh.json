@@ -202,6 +202,7 @@
     "duplicate_set": "查看重复照片组",
     "burst_set": "查看连拍组",
     "sequence_set": "查看包围曝光/全景组",
+    "stack_set": "打开照片堆叠",
     "open_detail": "打开照片页",
     "key_hint": "1-5 评分 · F 收藏 · X 淘汰 · 空格 选择 · 回车 打开"
   },

@@ -216,6 +216,7 @@ export const I18N = {
     duplicate_set: "photoCard.duplicate_set",
     burst_set: "photoCard.burst_set",
     sequence_set: "photoCard.sequence_set",
+    stack_set: "photoCard.stack_set",
     open_detail: "photoCard.open_detail",
     key_hint: "photoCard.key_hint",
   },

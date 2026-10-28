@@ -1822,6 +1822,7 @@ also weggelassen werden, ohne dass sich etwas ändert.
       "rejected": true,
       "sequence_kind": true,
       "sequence_override_pending": true,
+      "stack": true,
       "keeper_hint": true,
       "best_of_burst": true,
       "clipping_highlight": true,
@@ -1844,6 +1845,7 @@ also weggelassen werden, ohne dass sich etwas ändert.
 | `badges.rejected` | `true` | Daumen-runter-Badge auf einem abgelehnten Foto (Bearbeitungsmodus) |
 | `badges.sequence_kind` | `true` | Serien-Badge (Serienaufnahme/Belichtungsreihe/Panorama/Duplikat), links vom Ablehnen-Badge, nur sichtbar solange die Ausblendoption die Serie zusammenklappt |
 | `badges.sequence_override_pending` | `true` | Uhr-Badge für eine Panorama-Korrektur, die auf den nächsten Erkennungslauf wartet |
+| `badges.stack` | `true` | Ebenen-Badge mit Mitgliederzahl auf dem Cover eines manuellen Fotostapels; ein Klick öffnet den Stapel. Aus blendet nur das Badge aus — die Kartenschaltfläche „Fotostapel öffnen" funktioniert weiter |
 | `badges.keeper_hint` | `true` | Pfeil „in dieser Gruppe gibt es eine bessere Aufnahme" aus dem gelernten Keeper-Modell |
 | `badges.best_of_burst` | `true` | „Beste"-Badge auf dem Leitbild einer Serie. Nur sichtbar, wenn `hide_bursts` aus ist — sonst ist jedes sichtbare Serienfoto ohnehin schon das Leitbild |
 | `badges.clipping_highlight` | `true` | Badge für ein Foto, dessen Lichter `clipping.badge_percent` überschreiten |

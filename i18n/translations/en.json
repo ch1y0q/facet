@@ -202,6 +202,7 @@
     "duplicate_set": "Open duplicate group",
     "burst_set": "Open burst group",
     "sequence_set": "Open bracket/panorama set",
+    "stack_set": "Open photo stack",
     "open_detail": "Open photo page",
     "key_hint": "1-5 rate · F fav · X reject · Space select · Enter open"
   },
