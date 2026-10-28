@@ -794,6 +794,30 @@ describe('App', () => {
       }
     });
 
+    it.each(['constructor', 'toString', '__proto__'])('keeps an unknown %s sort label a string rather than reading Object.prototype', sort => {
+      const { fixture, root, store } = render();
+      store.filters.update(filters => ({ ...filters, sort }));
+      fixture.detectChanges();
+      for (const button of sortButtons(root)) {
+        expect(button.getAttribute('aria-label')).toBe(sortLabel(`sort_options.${sort}`));
+      }
+    });
+
+    it('gives current model labels the same width as their menu markers in both layouts', () => {
+      const { fixture, root, store } = render();
+      store.filters.update(filters => ({ ...filters, sort: 'deqa_score' }));
+      fixture.detectChanges();
+      for (const button of sortButtons(root)) {
+        const icon = button.querySelector('mat-icon')!;
+        expect(icon.textContent?.trim()).toBe('DeQA');
+        expect(icon.classList.contains('!w-8')).toBe(true);
+        expect(icon.classList.contains('text-center')).toBe(true);
+        expect(icon.classList.contains('-mx-1')).toBe(true);
+        expect(icon.getAttribute('aria-hidden')).toBe('true');
+        expect(button.getAttribute('aria-label')).toBe(sortLabel('sort_options.deqa_score'));
+      }
+    });
+
     it('lists the fallback sorts with icons, marks the current one and runs the saved-sort handler on click', async () => {
       const { fixture, root, store } = render();
       await openMenu(fixture, sortButtons(root)[0]);

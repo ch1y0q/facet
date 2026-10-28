@@ -204,7 +204,7 @@
           @let sortTooltip = I18N.gallery.sort_current | translate:{ label: (currentSortLabelKey() | translate) };
           <button mat-icon-button class="!hidden lg:!inline-flex" [matMenuTriggerFor]="sortMenu" [matTooltip]="sortTooltip" [attr.aria-label]="sortTooltip">
             @let currentIcon = store.filters().sort | sortOptionIcon;
-            <mat-icon aria-hidden="true" [class]="currentIcon.classes">{{ currentIcon.text }}</mat-icon>
+            <mat-icon aria-hidden="true" class="!w-8 -mx-1 text-center" [class]="currentIcon.classes">{{ currentIcon.text }}</mat-icon>
           </button>
           <button
             class="!hidden lg:!inline-flex"
@@ -511,7 +511,7 @@
           <!-- Sort: icon button opening the shared sort menu -->
           <button mat-icon-button class="!w-9 !h-9 shrink-0" [matMenuTriggerFor]="sortMenu" [matTooltip]="sortTooltip" [attr.aria-label]="sortTooltip">
             @let currentIcon = store.filters().sort | sortOptionIcon;
-            <mat-icon aria-hidden="true" [class]="currentIcon.classes">{{ currentIcon.text }}</mat-icon>
+            <mat-icon aria-hidden="true" class="!w-8 -mx-1 text-center" [class]="currentIcon.classes">{{ currentIcon.text }}</mat-icon>
           </button>
           <!-- Sort direction toggle -->
           <button mat-icon-button class="!w-9 !h-9 shrink-0" (click)="toggleSortDirection()"

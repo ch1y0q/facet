@@ -321,7 +321,9 @@ export class App implements OnInit {
   protected readonly currentSortLabelKey = computed(() => {
     const sort = this.store.filters().sort;
     const match = this.sortMenuSections().flatMap(section => section.options).find(opt => opt.column === sort);
-    return match?.labelKey ?? App.SORT_LABELS_OUTSIDE_MENU[sort] ?? sortOptionLabelKey(sort);
+    const outsideLabel = Object.hasOwn(App.SORT_LABELS_OUTSIDE_MENU, sort)
+      ? App.SORT_LABELS_OUTSIDE_MENU[sort] : undefined;
+    return match?.labelKey ?? outsideLabel ?? sortOptionLabelKey(sort);
   });
 
   private static readonly RANGE_CHIPS: { minKey: string; maxKey: string; labelKey: string }[] = [
