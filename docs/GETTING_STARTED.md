@@ -70,11 +70,11 @@ do that from the terminal ([Scanning](COMMANDS.md#scanning)) or from the browser
   you need the superadmin role.
 - Add the folder to `viewer.scan_directories` so the launcher has something to pick.
 
-A **Scan for new photos** button then sits in the header, right after the **Sort** selector
-(in the bottom bar on small screens), not only on the empty gallery. Full rules: [Scan Trigger](VIEWER.md#scan-trigger). The first
+A **Scan for new photos** button then sits at the end of the header, just before the account menu
+(at the right end of the bottom bar on small screens), not only on the empty gallery. Full rules: [Scan Trigger](VIEWER.md#scan-trigger). The first
 scan downloads the AI models once ([First run](INSTALLATION.md#first-run-what-to-expect)).
 
-![Scan button in the header, after the Sort selector](screenshots/getting-started-scan-button.jpg)
+![Scan button at the end of the header](screenshots/getting-started-scan-button.jpg)
 
 ### Step 2: Find duplicates, bursts and look-alikes
 

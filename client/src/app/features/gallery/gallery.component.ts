@@ -75,7 +75,7 @@ import {
   gridColumnCount, totalRowsHeight, windowRange,
 } from './gallery-rows.util';
 import { noticeLiftPx } from './selection-bar-layout.util';
-import { GalleryFilters, applyQueryParams, applySavedAlbumFilters, loadDisplayOptionsFromStorage } from './gallery-filters.util';
+import { GalleryFilters, activeFilterKeys, applyQueryParams, applySavedAlbumFilters, loadDisplayOptionsFromStorage } from './gallery-filters.util';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { AlbumService, Album } from '../../core/services/album.service';
 import { CreateAlbumDialogComponent } from '../albums/create-album-dialog.component';
@@ -567,8 +567,8 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
            The container is its own stacking context, so a notice outside it cannot sit under the
            mobile 'over' drawer; it steps aside while that drawer is open instead.
            Lifted above the floating selection card, only when the two overlap horizontally. Order: review
-           progress, the remembered review queue, the hidden-photos notice, then the thumbnail-migration
-           notice. The migration notice is the only place the command that regenerates RAW thumbnails is
+           progress, the remembered review queue, the hidden-photos notice, the active-filters notice, then the
+           thumbnail-migration notice. The migration notice is the only place the command that regenerates RAW thumbnails is
            surfaced: the grid reads photos.thumbnail, so browsing never regenerates it. -->
       @if (noticeStackVisible()) {
         <div data-gallery-notices class="pointer-events-none absolute z-10 flex flex-col gap-2 w-[min(26rem,calc(100%-1rem))]"
@@ -623,6 +623,18 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                 {{ I18N.gallery.hidden_banner.restore | translate }}
               </button>
               <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'restore_hidden' }" />
+            </div>
+          }
+          @if (activeFiltersNoticeShown()) {
+            <div role="status" [class]="NOTICE_CARD_CLASS">
+              <mat-icon class="opacity-70 !text-base !w-5 !h-5">filter_alt</mat-icon>
+              <span id="notice-text-active_filters" class="flex-1">
+                {{ store.activeFilterCount() | pluralKey:I18N.gallery.filters_notice.message:I18N.gallery.filters_notice.message_plural | translate:{ count: store.activeFilterCount() } }}
+              </span>
+              <button mat-button class="!min-w-0" (click)="store.resetFilters()">
+                {{ I18N.gallery.filters_notice.reset | translate }}
+              </button>
+              <ng-container *ngTemplateOutlet="noticeClose; context: { $implicit: 'active_filters' }" />
             </div>
           }
           @if (showRenderMigrationBanner()) {
@@ -1166,6 +1178,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     review_bookmark: JSON.stringify(this.store.reviewBookmark()?.filters ?? null),
     hidden: JSON.stringify([this.store.reviewProgressKey(), this.store.hiddenSummary().total]),
     restore_hidden: JSON.stringify(this.store.hiddenFiltersStash()),
+    active_filters: JSON.stringify(activeFilterKeys(this.store.filters())),
     render_migration: String(this.renderMigrationPending()),
   }));
 
@@ -1196,9 +1209,16 @@ export class GalleryComponent implements OnInit, OnDestroy {
   protected readonly hiddenNoticeShown = computed(() => this.showHiddenBanner() && !this.noticeClosed('hidden'));
   protected readonly restoreNoticeShown = computed(() => this.canRestoreHidden() && !this.noticeClosed('restore_hidden'));
 
+  /** The active-filters card: any filter on, outside an album. An album view is skipped because a
+   *  smart album's saved filters are always "active" there (a permanent card), and the reset would
+   *  also leave the album -- the sidebar's reset stays the way out. The album id itself is never counted. */
+  protected readonly activeFiltersNoticeShown = computed(() =>
+    this.store.activeFilterCount() > 0 && !this.store.currentAlbum() && !this.noticeClosed('active_filters'));
+
   /** Whether the floating notice stack has at least one card to show. */
   protected readonly noticesShown = computed(() => this.reviewProgressShown() || this.reviewBookmarkShown()
-    || this.hiddenNoticeShown() || this.restoreNoticeShown() || this.showRenderMigrationBanner());
+    || this.hiddenNoticeShown() || this.restoreNoticeShown() || this.activeFiltersNoticeShown()
+    || this.showRenderMigrationBanner());
 
   /** The stack steps aside while the mobile 'over' drawer is open (see the template comment). */
   protected readonly noticeStackVisible = computed(() => !this.overDrawerOpen() && this.noticesShown());

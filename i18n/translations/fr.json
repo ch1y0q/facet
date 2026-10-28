@@ -458,6 +458,7 @@
     "exposure": "Exposition",
     "composition": "Composition",
     "subject_saliency": "Saillance du sujet",
+    "content": "Contenu",
     "camera": "Appareil"
   },
   "sort_options": {
@@ -1040,6 +1041,11 @@
       "restore": "Rétablir les filtres",
       "showing_all": "Toutes les photos sont affichées, y compris clignements, rafales et doublons"
     },
+    "filters_notice": {
+      "message": "{count} filtre actif",
+      "message_plural": "{count} filtres actifs",
+      "reset": "Réinitialiser tous les filtres"
+    },
     "render_migration": {
       "message": "{n} photos RAW affichent encore une miniature issue du rendu précédent.",
       "command_hint": "Lancez {command} pour toutes les rafraîchir d'un coup."
@@ -1054,6 +1060,7 @@
     },
     "all_photos": "Toutes les photos",
     "sort": "Trier par",
+    "sort_current": "Trier par : {label}",
     "sort_aggregate": "Agrégat",
     "sort_aesthetic": "Esthétique",
     "sort_date": "Date",

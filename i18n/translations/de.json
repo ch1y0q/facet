@@ -458,6 +458,7 @@
     "exposure": "Belichtung",
     "composition": "Komposition",
     "subject_saliency": "Motivhervorhebung",
+    "content": "Inhalt",
     "camera": "Kamera"
   },
   "sort_options": {
@@ -1040,6 +1041,11 @@
       "restore": "Filter wiederherstellen",
       "showing_all": "Alle Fotos werden angezeigt – einschließlich Blinzler, Serien und Duplikate"
     },
+    "filters_notice": {
+      "message": "{count} Filter aktiv",
+      "message_plural": "{count} Filter aktiv",
+      "reset": "Alle Filter zurücksetzen"
+    },
     "render_migration": {
       "message": "{n} RAW-Fotos zeigen noch eine Miniatur aus der vorherigen Darstellung.",
       "command_hint": "Führen Sie {command} aus, um alle auf einmal aufzufrischen."
@@ -1054,6 +1060,7 @@
     },
     "all_photos": "Alle Fotos",
     "sort": "Sortieren nach",
+    "sort_current": "Sortieren nach: {label}",
     "sort_aggregate": "Gesamtwertung",
     "sort_aesthetic": "Ästhetik",
     "sort_date": "Datum",

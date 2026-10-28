@@ -458,6 +458,7 @@
     "exposure": "Exposição",
     "composition": "Composição",
     "subject_saliency": "Saliência do sujeito",
+    "content": "Conteúdo",
     "camera": "Câmera"
   },
   "sort_options": {
@@ -1040,6 +1041,11 @@
       "restore": "Restaurar filtros",
       "showing_all": "A mostrar todas as fotos, incluindo piscadelas, rajadas e duplicados"
     },
+    "filters_notice": {
+      "message": "{count} filtro ativo",
+      "message_plural": "{count} filtros ativos",
+      "reset": "Redefinir todos os filtros"
+    },
     "render_migration": {
       "message": "{n} fotos RAW ainda mostram uma miniatura da renderização anterior.",
       "command_hint": "Execute {command} para atualizar todas de uma vez."
@@ -1054,6 +1060,7 @@
     },
     "all_photos": "Todas as fotos",
     "sort": "Ordenar por",
+    "sort_current": "Ordenar por: {label}",
     "sort_aggregate": "Agregado",
     "sort_aesthetic": "Estética",
     "sort_date": "Data",
