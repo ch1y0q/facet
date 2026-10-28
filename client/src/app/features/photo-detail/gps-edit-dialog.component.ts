@@ -22,6 +22,9 @@ import { PluralKeyPipe } from '../../shared/pipes/plural-key.pipe';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 import { HANDLE_PLACE_SEARCH_ERRORS_LOCALLY } from '../../core/utils/place-search-error.util';
 
+/** The keyCode browsers report for a keydown the IME is still processing. */
+const IME_PROCESS_KEY_CODE = 229;
+
 export interface GpsEditDialogData {
   path: string;
   filename: string;
@@ -275,7 +278,11 @@ export class GpsEditDialogComponent {
 
   /** Enter that commits an IME candidate is part of typing, which never sends the query. */
   onOnlineEnter(event: Event): void {
-    if (!(event as KeyboardEvent).isComposing) void this.searchOnline();
+    // Safari fires compositionend before the keydown of the Enter that commits an
+    // IME candidate, so that Enter carries isComposing false and keyCode 229.
+    const key = event as KeyboardEvent;
+    if (key.isComposing || key.keyCode === IME_PROCESS_KEY_CODE) return;
+    void this.searchOnline();
   }
 
   async searchOnline(): Promise<void> {
