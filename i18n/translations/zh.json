@@ -1055,6 +1055,7 @@
     },
     "all_photos": "全部照片",
     "sort": "排序方式",
+    "sort_current": "排序方式：{label}",
     "sort_aggregate": "综合评分",
     "sort_aesthetic": "美观度",
     "sort_date": "日期",

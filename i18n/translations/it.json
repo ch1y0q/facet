@@ -1055,6 +1055,7 @@
     },
     "all_photos": "Tutte le foto",
     "sort": "Ordina per",
+    "sort_current": "Ordina per: {label}",
     "sort_aggregate": "Aggregato",
     "sort_aesthetic": "Estetica",
     "sort_date": "Data",
