@@ -48,15 +48,19 @@ const MODEL_LABELS: Readonly<Record<string, string>> = {
   face_quality_iqa: 'IQA',
 };
 
+/** A model label is short text set in the icon slot, so it drops the icon font and shrinks to fit. */
+const MODEL_LABEL_CLASSES = '!font-sans !text-[11px] !font-semibold !leading-6';
+
 export interface SortOptionIcon {
   text: string;
-  model: boolean;
+  /** Extra classes for the `mat-icon` showing `text`: empty for a Material icon. */
+  classes: string;
 }
 
 @Pipe({ name: 'sortOptionIcon', standalone: true, pure: true })
 export class SortOptionIconPipe implements PipeTransform {
   transform(column: string): SortOptionIcon {
-    if (Object.hasOwn(MODEL_LABELS, column)) return { text: MODEL_LABELS[column], model: true };
-    return { text: Object.hasOwn(SORT_ICONS, column) ? SORT_ICONS[column] : 'sort', model: false };
+    if (Object.hasOwn(MODEL_LABELS, column)) return { text: MODEL_LABELS[column], classes: MODEL_LABEL_CLASSES };
+    return { text: Object.hasOwn(SORT_ICONS, column) ? SORT_ICONS[column] : 'sort', classes: '' };
   }
 }

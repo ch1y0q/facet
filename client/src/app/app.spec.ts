@@ -857,11 +857,31 @@ describe('App', () => {
       const items = menuItems();
       expect(items.map(item => iconOf(item))).toEqual(['search', 'psychology', 'event', 'IAA', 'Q-R', 'sort']);
       const panel = items[0].closest('.mat-mdc-menu-panel')!;
-      const headers = Array.from(panel.querySelectorAll('[role="presentation"]')).map(el => el.textContent?.trim());
+      const groups = Array.from(panel.querySelectorAll('[role="group"]'));
+      const headers = groups.map(group => document.getElementById(group.getAttribute('aria-labelledby')!)?.textContent?.trim());
       expect(headers).toEqual(['sort_groups.general', 'sort_groups.face_metrics']);
+      expect(groups.map(group => group.querySelectorAll('[role="menuitemradio"]').length)).toEqual([3, 1]);
       for (const item of items) expect(item.querySelector('mat-icon')?.getAttribute('aria-hidden')).toBe('true');
       items[3].click();
       expect(store.setUserSort).toHaveBeenLastCalledWith('aesthetic_iaa');
+    });
+
+    it('offers the tooltip modes as one shared radio menu with the current mode checked', async () => {
+      const { fixture, root, store } = render();
+      store.filters.update(filters => ({ ...filters, tooltip_mode: 'click' }));
+      fixture.detectChanges();
+      const triggers = Array.from(byLabel(root, I18N.gallery.tooltip_mode.label)) as HTMLButtonElement[];
+      expect(triggers).toHaveLength(2);
+      const menus = fixture.debugElement.queryAll(By.directive(MatMenuTrigger))
+        .filter(d => triggers.includes(d.nativeElement as HTMLButtonElement))
+        .map(d => d.injector.get(MatMenuTrigger).menu);
+      expect(menus[0]).toBe(menus[1]);
+      await openMenu(fixture, triggers[1]);
+      const items = menuItems();
+      expect(items.map(item => item.getAttribute('aria-checked'))).toEqual(['false', 'true', 'false']);
+      expect(items.map(item => item.textContent?.includes('check'))).toEqual([false, true, false]);
+      items[2].click();
+      expect(store.updateFilter).toHaveBeenCalledWith('tooltip_mode', 'off');
     });
 
     it('is one shared menu for both triggers', () => {
