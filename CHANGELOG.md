@@ -6,7 +6,13 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
+- **Suggested photo stacks.** Review existing duplicate and burst groups within the current gallery filters, choose a cover and explicitly create a stack. Suggestions preserve photo decisions and files; dismissal lasts for the open dialog only.
+- **Immich diagnostics in the user menu.** Administrators can inspect a bounded path-mapping sample and explicitly test read-only connectivity without exposing API keys or modifying remote photos.
 - **The gallery notice stack folds itself away.** After six seconds without interaction the bottom-right cards collapse into a small count pill so they stop covering the grid; hovering the stack, a new or dismissed card, or a click on the pill unfolds it again with a fresh window. Returning from a photo restarts the countdown; nothing is persisted, the per-tab × dismissals work exactly as before, and the scroll-to-top button stays outside the collapse.
+
+### Fixed
+
+- **Suggested stack availability.** Similar Photos and semantic-search views no longer offer suggestions that their search scope cannot represent.
 
 ## [1.26.0] "Histogramme" — 2026-10-28
 

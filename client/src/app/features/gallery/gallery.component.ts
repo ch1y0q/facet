@@ -181,6 +181,12 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
           [matTooltip]="(store.collapseStacks() ? I18N.stacks.expand_all : I18N.stacks.collapse) | translate"
           [attr.aria-label]="(store.collapseStacks() ? I18N.stacks.expand_all : I18N.stacks.collapse) | translate"><mat-icon>{{ store.collapseStacks() ? 'unfold_more' : 'unfold_less' }}</mat-icon></button>
       }
+      @if (store.canScopeSelectionToView()) {
+        <button mat-icon-button data-stack-suggestions (click)="openStackSuggestions()"
+          [matTooltip]="I18N.stacks.suggestions | translate" [attr.aria-label]="I18N.stacks.suggestions | translate">
+          <mat-icon>auto_awesome_motion</mat-icon>
+        </button>
+      }
       <!-- Keep top N%: server-rank the current view by the current sort and
            select the bottom (100-N)% for review/rejection via the selection bar. -->
       @if (auth.isEdition() && store.total() > 0 && store.canScopeSelectionToView()) {
@@ -2273,6 +2279,17 @@ export class GalleryComponent implements OnInit, OnDestroy {
   protected async openStack(photo: Photo): Promise<void> {
     if (!photo.stack_id) return;
     this.downloadPhoto(photo);
+  }
+
+  protected async openStackSuggestions(): Promise<void> {
+    const filters = this.store.filterPayload();
+    if (!filters) return;
+    const session = this.stacks.context();
+    const scope = JSON.stringify(filters);
+    const { StackSuggestionsDialogComponent } = await import('./stack-suggestions-dialog.component');
+    if (this.destroyRef.destroyed || !session() || this.pinned()
+      || JSON.stringify(this.store.filterPayload()) !== scope || this.dialog.openDialogs.length) return;
+    this.dialog.open(StackSuggestionsDialogComponent, { width: '800px', maxWidth: '96vw', data: { filters } });
   }
 
   private async launchStack(data: import('./stack-dialog.component').StackDialogData): Promise<void> {

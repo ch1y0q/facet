@@ -14,9 +14,10 @@ export const RENDER_URL_VERSION = '2';
 /** Above the stored edge the server renders the original. `v` skips the soft
  *  frame browsers cached under the old URL; `ngsw-bypass` because the service
  *  worker ignores Cache-Control. */
-export function thumbnailUrl(path: string, size?: number): string {
+export function thumbnailUrl(path: string, size?: number, revision?: string | null): string {
   const params = new URLSearchParams({ path });
   if (size) params.set('size', String(size));
+  if (revision) params.set('preview', revision);
   if (size && size > STORED_THUMBNAIL_EDGE) {
     params.set('v', RENDER_URL_VERSION);
     params.set('ngsw-bypass', '1');
@@ -26,8 +27,8 @@ export function thumbnailUrl(path: string, size?: number): string {
 
 @Pipe({ name: 'thumbnailUrl', standalone: true, pure: true })
 export class ThumbnailUrlPipe implements PipeTransform {
-  transform(path: string, size?: number): string {
-    return thumbnailUrl(path, size);
+  transform(path: string, size?: number, revision?: string | null): string {
+    return thumbnailUrl(path, size, revision);
   }
 }
 

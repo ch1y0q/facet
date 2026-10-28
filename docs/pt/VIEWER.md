@@ -256,6 +256,8 @@ Pilhas são privadas do proprietário (instalação no modo de usuário único),
 
 As exportações completas da base de dados do visualizador omitem as pilhas de origem e os álbuns inteligentes cujos filtros indicam uma pilha privada. Também omitem álbuns inteligentes com filtros ilegíveis (JSON inválido, valores que não são objetos, aninhamento excessivo ou mais de 1 MiB); os álbuns normais permanecem. As atualizações incrementais não copiam álbuns nem pilhas da origem e preservam os próprios do destino.
 
+**Pilhas sugeridas** usa duplicados e sequências já detetados nos filtros atuais, sem ocultar automaticamente os membros. Os outros filtros e permissões mantêm-se. Rever abre o editor com fotos explícitas e capa alterável antes da criação. Não cria pilhas, rejeita fotos nem altera ficheiros automaticamente. Grupos com fotos correspondentes já empilhadas e séries bracket/panorama são excluídos. Propostas sobrepostas são ignoradas integralmente, com prioridade aos duplicados. Até 40 grupos são examinados, devolvendo no máximo 20 propostas e 2000 fotos (1000 por grupo); restrinja filtros para outras fotos. Dispensar só vale enquanto o diálogo estiver aberto. Listas exatas fixadas e vistas de fotos semelhantes ou pesquisa semântica não oferecem sugestões. Contas só de leitura podem inspecionar mas não criar pilhas. Recarregar ou reabrir as sugestões obtém as pré-visualizações guardadas mais recentes.
+
 ### Cartões de Foto
 
 - Miniatura com selo de pontuação — passe o cursor para ver onde a pontuação se situa na sua biblioteca («Top 18% da biblioteca»)
@@ -1519,6 +1521,7 @@ Os tipos TypeScript do cliente são gerados a partir desse esquema em `client/sr
 | `DELETE /api/photo/capture_date?path=` | `[Edição]` Descarta uma data de captura corrigida e relê a do próprio arquivo (ou limpa a data se o arquivo não tiver nenhuma); retorna `{date_taken, date_manually_set}`. `409` quando a data do arquivo não é suportada (a data manual é mantida) ou a foto mudou nesse meio-tempo, `404` quando o arquivo não pode ser lido |
 | `GET /api/stacks/by-photo` | Ler pilha privada por caminho exato; apenas membros permitidos |
 | `GET /api/stacks/{stack_id}` | Ler pilha privada por UUID; visibilidade parcial é somente leitura |
+| `POST /api/stacks/suggestions` | Pesquisa sem escritas. Corpo `{filters}`: filtros da galeria exceto recolha de pilhas e ocultação de sequências/duplicados. Devolve `{suggestions: [{key, kind, paths, cover_path}]}`, máximo 20 sugestões / 2000 caminhos. Filtro desconhecido: 422. Acesso ao álbum e visibilidade verificados. |
 | `POST /api/stacks` | [Edição] Criar com 2–1000 caminhos explícitos e cover_path; retorna stack e undo.entry_id |
 | `PUT /api/stacks/{stack_id}` | [Edição] Substituir paths/ordem e cover_path opcional com expected_revision; 0/1 membro dissolve |
 | `DELETE /api/stacks/{stack_id}` | [Edição] Dissolver com expected_revision na consulta; recusa revisão antiga/visibilidade parcial |
@@ -1597,6 +1600,7 @@ O endpoint `/api/download/options` detecta automaticamente arquivos RAW companhe
 | Endpoint | Descrição |
 |----------|-------------|
 | `POST /api/immich/webhook` | Recebe um webhook de fluxo de trabalho do Immich e reflete imediatamente a avaliação enviada; um item que o Facet ainda não pontuou entra na fila para o próximo `--immich-sync`. Autenticação por token estático (`immich.webhook.token_env`; não definido ⇒ 404); nunca aciona uma varredura. Veja [docs/IMMICH.md](IMMICH.md) |
+| `GET /api/immich/diagnostics` | Apenas administradores; `check_connection=true` testa a ligação através de leituras remotas. |
 
 ### Saúde
 

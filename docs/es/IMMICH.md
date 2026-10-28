@@ -20,6 +20,7 @@ La conexión es solo REST en ambos sentidos. Facet nunca toca la base de datos d
 - [Envío de rechazos](#envío-de-rechazos)
 - [Importar y enviar pilas manuales](#importar-y-enviar-pilas-manuales)
 - [El webhook entrante](#el-webhook-entrante)
+- [Diagnóstico en el visor](#diagnóstico-en-el-visor)
 - [Referencia de configuración](#referencia-de-configuración)
 - [Solución de problemas](#solución-de-problemas)
 
@@ -248,6 +249,10 @@ Escanea esas fotos (`python facet.py /mnt/photos`) y caerán de la lista en la s
 - Sirve el visor sobre HTTPS si Immich lo alcanza a través de algo menos confiable que una red bridge privada — el token viaja en una cabecera en cada entrega.
 - Rota el token cambiando a la vez la variable de entorno y la cabecera del flujo de trabajo de Immich, y reiniciando después el visor.
 - El webhook lee las columnas de valoración globales, así que en modo multiusuario refleja la valoración compartida/global, no la capa de ningún usuario concreto. Si lo que quieres en Immich son valoraciones por usuario, deja el webhook desactivado y usa `--immich-sync --user <nombre>` según una programación.
+
+## Diagnóstico en el visor
+
+Abre **Diagnóstico de Immich** desde el menú de usuario. En modo multiusuario se requiere superadministrador; en modo individual, edición protegida o edición local de confianza. **Probar conexión** solo lee la versión y el acceso a la cuenta, sin escrituras remotas. La cobertura analiza hasta 200 fotos indexadas y no verifica coincidencias remotas. El estado registrado puede ser anterior a cambios del servidor configurado. La versión no confirma permisos de pilas. No se devuelven claves ni rutas del servidor.
 
 ## Referencia de configuración
 
