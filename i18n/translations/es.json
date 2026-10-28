@@ -1347,7 +1347,11 @@
     "faces_need_names": "Caras sin nombre",
     "faces_need_names_hint": "Incluye caras sin asignar y grupos de personas sin nombre. Usa + para asignar una cara o nombra un grupo en Personas. No incluye fotos sin caras detectadas.",
     "faces_need_names_readonly_hint": "Incluye caras sin asignar y grupos sin nombre. Quien tenga acceso de edición puede asignar caras o nombrar grupos. Se excluyen fotos sin caras detectadas.",
-    "help_none": "Esta página aún no tiene texto de ayuda."
+    "help_none": "Esta página aún no tiene texto de ayuda.",
+    "notices": {
+      "collapsed": "{count} aviso",
+      "collapsed_plural": "{count} avisos"
+    }
   },
   "composition_patterns": {
     "none": "Ninguno",

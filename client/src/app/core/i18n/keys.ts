@@ -1362,6 +1362,10 @@ export const I18N = {
     faces_need_names_hint: "gallery.faces_need_names_hint",
     faces_need_names_readonly_hint: "gallery.faces_need_names_readonly_hint",
     help_none: "gallery.help_none",
+    notices: {
+      collapsed: "gallery.notices.collapsed",
+      collapsed_plural: "gallery.notices.collapsed_plural",
+    },
   },
   composition_patterns: {
     none: "composition_patterns.none",

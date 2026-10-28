@@ -1347,7 +1347,11 @@
     "faces_need_names": "Visages sans nom",
     "faces_need_names_hint": "Inclut les visages non attribués et les groupes sans nom. Utilisez + pour attribuer un visage ou nommez un groupe dans Personnes. Les photos sans visage détecté sont exclues.",
     "faces_need_names_readonly_hint": "Inclut les visages non attribués et les groupes sans nom. Une personne ayant accès à la modification peut attribuer les visages ou nommer les groupes. Les photos sans visage détecté sont exclues.",
-    "help_none": "Cette page n'a pas encore de texte d'aide."
+    "help_none": "Cette page n'a pas encore de texte d'aide.",
+    "notices": {
+      "collapsed": "{count} notice",
+      "collapsed_plural": "{count} notices"
+    }
   },
   "composition_patterns": {
     "none": "Aucun",
