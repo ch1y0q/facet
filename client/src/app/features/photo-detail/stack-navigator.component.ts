@@ -85,8 +85,11 @@ export class StackNavigatorComponent {
     // Invalidate immediately so an older reply or key press cannot use the old members.
     this.store.organizationRestored$.pipe(takeUntilDestroyed()).subscribe(() => this.invalidate());
     this.assistantChanges.batch$.pipe(takeUntilDestroyed()).subscribe(batch => {
-      if (batch.paths === null || batch.paths.some(path => path === this.path()
-        || this.stack()?.members.some(member => member.path === path))) this.invalidate();
+      // A pending response has not disclosed membership yet. Any nonempty
+      // batch may change that unknown set, so do not let its old reply land.
+      if (batch.paths === null || (this.loading() && batch.paths.length > 0)
+        || batch.paths.some(path => path === this.path()
+          || this.stack()?.members.some(member => member.path === path))) this.invalidate();
     });
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
       if (event instanceof NavigationStart) this.navigating = true;

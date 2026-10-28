@@ -474,7 +474,7 @@ describe('manual stack browsing through rendered viewer, Router and HTTP', () =>
     expect(root().querySelector('[data-stack-navigator]')).toBeNull();
   });
 
-  it('ignores unrelated assistant rows and refuses stale pre-assistant membership responses immediately', async () => {
+  it.each([null, [paths[0]]])('ignores unrelated rows after loading and refuses a stale membership reply after assistant changes (%s)', async changedPaths => {
     await open();
     assistantBatches.next({ paths: ['/unrelated.jpg'] });
     await initialPhoto();
@@ -482,7 +482,7 @@ describe('manual stack browsing through rendered viewer, Router and HTTP', () =>
     const navigator = harness.routeDebugElement!.query(By.directive(StackNavigatorComponent)).componentInstance as StackNavigatorComponent;
     navigator.retry(); harness.detectChanges();
     const oldRead = http.expectOne(request => request.url === '/api/stacks/by-photo');
-    assistantBatches.next({ paths: null });
+    assistantBatches.next({ paths: changedPaths });
     oldRead.flush(stack);
     expect(navigator.stack()).toBeNull();
     await membership(null);
