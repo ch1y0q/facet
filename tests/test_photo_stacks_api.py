@@ -145,7 +145,7 @@ def test_partial_snapshot_does_not_expose_hidden_order(edition_client, seed_phot
     stack = edition_client.post('/api/stacks', json=dict(paths=[a, b, c], cover_path=a)).json()['stack']
     monkeypatch.setitem(config._FULL_CONFIG, 'users', {'test': {'directories': ['/stack-api/c/']}})
     read = edition_client.get('/api/stacks/' + stack['id']).json()
-    assert read['members'] == [dict(path=c, position=0)]
+    assert read['members'] == [dict(path=c, position=0, preview_revision=None)]
     assert read['cover_path'] == c and read['editable'] is False
 
 

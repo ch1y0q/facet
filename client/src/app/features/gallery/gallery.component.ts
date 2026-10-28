@@ -65,7 +65,7 @@ import { STACK_MAX_MEMBERS, STACK_MIN_MEMBERS } from './stack-limits';
 import { PhotoStackService } from '../../core/services/photo-stack.service';
 import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
-import { PhotoActionsService } from '../../core/services/photo-actions.service';
+import { MAX_REFRESH_PATHS, PhotoActionsService } from '../../core/services/photo-actions.service';
 import { CardActionsService } from './card-actions.service';
 import { SlideshowComponent } from './slideshow.component';
 import { GalleryFilterSidebarComponent } from './gallery-filter-sidebar.component';
@@ -712,6 +712,10 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
           @if (canCompareSelection()) {
             <button mat-icon-button disabledInteractive (click)="compareSelection()" [matTooltip]="I18N.gallery.selection.compare | translate" [attr.aria-label]="I18N.gallery.selection.compare | translate"><mat-icon>compare</mat-icon></button>
           }
+          @if (auth.isEdition()) {
+            <button mat-icon-button [disabled]="viewScoped() || selectionCount() > MAX_REFRESH_PATHS" (click)="refreshSelectedPhotos()"
+              [matTooltip]="I18N.photo_refresh.title | translate" [attr.aria-label]="I18N.photo_refresh.title | translate"><mat-icon>refresh</mat-icon></button>
+          }
           <!-- Mobile: single Actions trigger opening a touch-friendly bottom sheet -->
           @if (auth.isEdition()) {
             <button mat-icon-button data-create-stack (click)="createStack()" [disabled]="!canCreateStack()"
@@ -885,6 +889,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
 })
 export class GalleryComponent implements OnInit, OnDestroy {
   protected readonly I18N = i18nKeys();
+  protected readonly MAX_REFRESH_PATHS = MAX_REFRESH_PATHS;
   protected readonly store = inject(GalleryStore);
   protected readonly auth = inject(AuthService);
   private readonly cardActionsService = inject(CardActionsService);
@@ -2236,6 +2241,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
       case 'open': this.downloadPhoto(photo); break;
       case 'similar': this.openSimilar(photo, action.mode); break;
       case 'critique': this.openCritique(photo); break;
+      case 'refresh': await this.photoActions.refreshPhotos(paths); break;
       case 'embed': this.embedMetadata(photo); break;
       case 'assign-face': this.openAddPerson(photo); break;
       case 'album': await this.addToAlbum(action.albumId, paths); break;
@@ -2329,8 +2335,13 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   /** Runs one bulk action on the current selection. Shared by the mobile
    *  sheet and the right-click menu's bulk mode so the two cannot drift. */
+  protected async refreshSelectedPhotos(): Promise<void> {
+    if (!this.viewScoped()) await this.photoActions.refreshPhotos([...this.selectedPaths()]);
+  }
+
   private async runSelectionAction(action: SheetAction): Promise<void> {
     switch (action.kind) {
+      case 'refresh': await this.refreshSelectedPhotos(); break;
       case 'stack': await this.createStack(); break;
       case 'review': await this.batchReview(action.decision); break;
       case 'favorite': await this.batchFavorite(); break;

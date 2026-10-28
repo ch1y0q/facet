@@ -1,4 +1,20 @@
 {
+  "photo_refresh": {
+    "limit": "Seleziona da 1 a 100 foto.",
+    "reasons": {
+      "unavailable": "Sorgente non disponibile",
+      "changed": "Foto modificata; aggiorna di nuovo",
+      "busy": "Libreria occupata; riprova più tardi",
+      "failed": "Impossibile leggere questa foto"
+    },
+    "title": "Aggiorna metadati e anteprima",
+    "description": "Legge i metadati disponibili e ricrea l’anteprima. Annotazioni manuali, valutazioni, volti e punteggi IA restano invariati. Gli originali non vengono modificati. Riesegui la scansione per aggiornare punteggi e volti dopo modifiche ai pixel.",
+    "one": "1 foto selezionata",
+    "many": "{count} foto selezionate",
+    "start": "Aggiorna",
+    "completed": "Aggiornate: {count}",
+    "failed": "Alcune foto non sono state aggiornate. Riprova per aggiornare solo quelle rimanenti."
+  },
   "ui": {
     "title": "Facet",
     "filters": {

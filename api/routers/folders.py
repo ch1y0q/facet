@@ -7,6 +7,7 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
+from db.preview_versions import attach_preview_versions_async
 from api.auth import CurrentUser, get_optional_user
 from api.database import get_async_db
 from api.db_helpers import (
@@ -120,6 +121,8 @@ async def api_folders(
                     'photo_count': entry['count'],
                     'cover_photo_path': entry['best_path'],
                 })
+
+            await attach_preview_versions_async(conn, folders, 'cover_photo_path')
 
         except Exception:
             logger.exception("Failed to fetch folders")
