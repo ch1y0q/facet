@@ -39,6 +39,7 @@ import { CompareFiltersService } from '../comparison/compare-filters.service';
 import { PanoramaSettingsService } from '../comparison/panorama-settings.service';
 import { SequenceOverrideService, SequenceKind } from '../../core/services/sequence-override.service';
 import { UndoService } from '../../core/services/undo.service';
+import { StackActionsService } from './stack-actions.service';
 import { SequenceKindLabelPipe, SUPPRESSED_OVERRIDE } from '../../shared/pipes/sequence-kind.pipe';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
@@ -61,7 +62,7 @@ import {
   SortIconPipe, CategoryIconPipe, CullProfileIconPipe, CullPreviewUrlPipe,
   SubjectForPathPipe, SubjectRingClassPipe, EvOffsetPipe, GroupOverridePipe,
   GroupOverridePendingPipe, PeakingOverlayPipe, FrameViewBoxPipe, GridLinesPipe,
-  KeySubjectForPathPipe, IsKeyFacePipe, CanMarkBracketPipe,
+  KeySubjectForPathPipe, IsKeyFacePipe, CanMarkBracketPipe, CanStackGroupPipe, canStackGroup,
   cullPreviewUrl, computePeakingOverlay, computePooledPeakingOverlays, loadFrameImage, GRID_MODES,
   PEAKING_FIT_EDGE,
   KEY_SUBJECT_COORDINATE_SPACE,
@@ -196,6 +197,7 @@ interface SceneSummary {
     KeySubjectForPathPipe,
     IsKeyFacePipe,
     CanMarkBracketPipe,
+    CanStackGroupPipe,
     SequenceKindLabelPipe,
     InfiniteScrollDirective,
     NgTemplateOutlet,
@@ -966,6 +968,12 @@ interface SceneSummary {
                     (click)="toggleDarkroomLoupe()">
               <mat-icon>{{ darkroomLoupeActive() ? 'zoom_in' : 'search' }}</mat-icon>
             </button>
+            @if (auth.isEdition() && (lbGroup | canStackGroup)) {
+              <button mat-icon-button class="!text-white" aria-keyshortcuts="S"
+                      [matTooltip]="I18N.culling.stack_group | translate"
+                      [attr.aria-label]="I18N.culling.stack_group | translate"
+                      (click)="stackGroup(lbGroup)"><mat-icon>layers</mat-icon></button>
+            }
             @if (cullStyleCapable() && compareMode() === 'single') {
               <button mat-icon-button [matMenuTriggerFor]="cullStyleMenu"
                       [class.!text-white]="activeStyle() === ''"
@@ -1477,6 +1485,8 @@ export class BurstCullingComponent implements OnDestroy {
   private readonly sequenceOverrides = inject(SequenceOverrideService);
   private readonly panoramaSettings = inject(PanoramaSettingsService);
   private readonly undoService = inject(UndoService);
+  private readonly stackActions = inject(StackActionsService);
+  private stacking = false;
   protected readonly auth = inject(AuthService);
   protected readonly store = inject(GalleryStore);
   private readonly dialog = inject(MatDialog);
@@ -2899,6 +2909,32 @@ export class BurstCullingComponent implements OnDestroy {
         return Promise.resolve();
       },
     });
+  }
+
+  /** S stacks the open group with the focused frame as cover; culling decisions are untouched.
+   *  Bracket and panorama sets are left out, as Suggested stacks leaves them out: their frames
+   *  are meant to be merged, and the gallery already folds them behind one frame. */
+  @HostListener('document:keydown.s', ['$event'])
+  protected onStackKey(event: Event): void {
+    if (this.shortcutsBlocked(event)) return;
+    const group = this.lightboxGroup();
+    if (!group || isTypingContext(event)) return;
+    event.preventDefault();
+    void this.stackGroup(group);
+  }
+
+  protected async stackGroup(group: CullingGroup): Promise<void> {
+    const cover = group.photos[this.lightboxIndex()]?.path;
+    if (!cover || !canStackGroup(group) || !this.auth.isEdition() || this.stacking) return;
+    this.stacking = true;
+    try {
+      await this.stackActions.create(group.photos.map(p => p.path), cover);
+    } catch {
+      this.snackBar.open(this.i18n.t(I18N.stacks.stack_failed), '',
+                         { duration: 4000, horizontalPosition: 'right', verticalPosition: 'bottom' });
+    } finally {
+      this.stacking = false;
+    }
   }
 
   /** True when the event originates from a text/slider control we must not hijack. */

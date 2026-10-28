@@ -4,6 +4,7 @@ import { By } from '@angular/platform-browser';
 import { HttpErrorResponse } from '@angular/common/http';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Subject, of, throwError } from 'rxjs';
+import { StackActionsService } from './stack-actions.service';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatDialog } from '@angular/material/dialog';
 import { provideNativeDateAdapter } from '@angular/material/core';
@@ -2923,6 +2924,53 @@ describe('BurstCullingComponent', () => {
 
       expect(component['peakingActive']()).toBe(true);
       expect(component['gridMode']()).toBe('thirds');
+    });
+  });
+
+  describe('darkroom stacking', () => {
+    const photo = (path: string, extra = {}) => ({ path, filename: path.slice(1), aggregate: 8, aesthetic: 7, tech_sharpness: 6, is_blink: 0, is_burst_lead: 0, date_taken: '2024-01-01', burst_score: 8, ...extra });
+    const grp = { group_id: 6, type: 'burst' as const, reason: '', best_path: '/s1.jpg', count: 2, photos: [photo('/s1.jpg'), photo('/s2.jpg')] };
+    const keyEvent = () => ({ preventDefault: vi.fn(), target: document.body, defaultPrevented: false }) as unknown as Event;
+    let create: Mock;
+    const open = (group: typeof grp, index = 0) => {
+      store.groups.set([group]);
+      component['lightboxGroupId'].set(store.groupKey(group));
+      component['lightboxIndex'].set(index);
+    };
+    beforeEach(() => {
+      create = vi.spyOn(TestBed.inject(StackActionsService), 'create').mockResolvedValue() as unknown as Mock;
+    });
+
+    it('S stacks the open group with the focused frame as cover', async () => {
+      component['onStackKey'](keyEvent());
+      expect(create).not.toHaveBeenCalled();
+      open(grp, 1);
+      component['onStackKey'](keyEvent());
+      expect(create).toHaveBeenCalledWith(['/s1.jpg', '/s2.jpg'], '/s2.jpg');
+    });
+
+    it('ignores a second press while the first is in flight', async () => {
+      let finish!: () => void;
+      create.mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve; }));
+      open(grp);
+      const first = component['stackGroup'](grp);
+      await component['stackGroup'](grp);
+      expect(create).toHaveBeenCalledTimes(1);
+      finish(); await first;
+    });
+
+    it('leaves bracket and panorama frames alone', async () => {
+      const bracket = { ...grp, photos: [photo('/b1.jpg', { sequence_kind: 'bracket' }), photo('/b2.jpg')] };
+      open(bracket);
+      await component['stackGroup'](bracket);
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('reports a refused stack', async () => {
+      create.mockRejectedValueOnce(new Error('409'));
+      open(grp);
+      await component['stackGroup'](grp);
+      expect(mockSnackBar.open).toHaveBeenCalledWith('stacks.stack_failed', '', expect.anything());
     });
   });
 

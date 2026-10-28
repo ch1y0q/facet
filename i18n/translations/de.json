@@ -2247,7 +2247,8 @@
       "oversize": "Ausgelassene Gruppen (zu groß, um hier bestätigt zu werden): {count}",
       "out_of_date": "Der Plan des Assistenten ist veraltet - bitten Sie ihn, die Vorschau erneut zu erstellen",
       "replan_flips_dropped": "{count} Ihrer Änderungen passen zu keiner Gruppe mehr und wurden verworfen."
-    }
+    },
+    "stack_group": "Diese Gruppe stapeln, aktuelles Bild als Titelbild"
   },
   "scenes": {
     "title": "Szenen",
@@ -2982,12 +2983,13 @@
   },
   "stacks": {
     "suggestions": "Vorgeschlagene Stapel",
-    "suggestions_hint": "Vorschläge aus erkannten Duplikaten und Serien innerhalb dieser Filter. Deren automatisches Ausblenden wird zur Prüfung aufgehoben. Bestehende Stapel und Belichtungs-/Panoramaserien werden übersprungen. Höchstens 20 Vorschläge; Filter für weitere Fotos eingrenzen. Ausblenden gilt nur für diesen geöffneten Dialog.",
+    "suggestions_hint": "Vorschläge nutzen erkannte Duplikate und Serien innerhalb dieser Filter, ohne automatisches Ausblenden von Serien/Duplikaten, eine Gruppe nach der anderen. ← → wählen das Titelbild, S stapelt mit diesem Titelbild, X überspringt. Übersprungene Gruppen bleiben ausgeblendet, bis sich ihre Fotos ändern. Bestehende Stapel sowie Belichtungsreihen und Panoramen werden nicht vorgeschlagen. Bis zu 20 Vorschläge werden auf einmal geladen; Neu laden holt weitere.",
     "suggestions_empty": "Keine Stapelvorschläge in dieser Ansicht",
     "suggestion_burst": "Serie",
     "suggestion_duplicate": "Duplikate",
-    "suggestion_review": "Prüfen und Titelbild wählen",
-    "suggestion_dismiss": "Vorerst ausblenden",
+    "suggestion_edit_members": "Mitglieder bearbeiten",
+    "suggestion_skip": "Überspringen",
+    "suggestion_skip_group": "Diesen Stapel überspringen",
     "suggestions_error": "Vorschläge konnten nicht geladen werden. Bitte erneut versuchen.",
     "suggestions_reload": "Vorschläge neu laden",
     "previous": "Vorheriges Stapelfoto",
@@ -3024,7 +3026,16 @@
     "badge": "Stapel öffnen: {count} Mitglieder",
     "badge_filtered": "Stapel öffnen: {count} passende von {total} erlaubten Mitgliedern",
     "stack_id": "Stapel-ID",
-    "position": "Position"
+    "position": "Position",
+    "suggestion_stack": "Mit diesem Titelbild stapeln",
+    "stacked": "{count} Fotos gestapelt",
+    "suggestion_skipped": "Vorschlag übersprungen",
+    "suggestion_progress": "Vorschlag {position} von {count}",
+    "suggestion_cover_previous": "Vorheriges Bild als Titelbild",
+    "suggestion_cover_next": "Nächstes Bild als Titelbild",
+    "suggestions_done": "Alle Vorschläge in dieser Ansicht sind geprüft. Neu laden, um weitere zu suchen.",
+    "stack_failed": "Stapeln fehlgeschlagen: Ein Foto gehört möglicherweise bereits zu einem Stapel.",
+    "suggestion_failed": "Diese Änderung wurde nicht gespeichert. Versuchen Sie es erneut."
   },
   "immich_diagnostics": {
     "title": "Immich-Diagnose",

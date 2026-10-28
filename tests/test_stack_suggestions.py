@@ -1,4 +1,6 @@
 """Suggestion discovery never writes decisions or broadens the reviewed set."""
+import pytest
+
 from api.database import get_db
 
 
@@ -202,3 +204,181 @@ def test_suggestion_identity_follows_membership_not_reused_detector_id(edition_c
         conn.execute('UPDATE photos SET duplicate_group_id=NULL,burst_group_id=NULL WHERE path=?', (paths[-1],))
     changed = discover(edition_client).json()['suggestions'][0]
     assert changed['key'] != original['key']
+
+
+@pytest.fixture(autouse=True)
+def _drop_dismissals():
+    yield
+    with get_db() as conn, conn:
+        conn.execute("DELETE FROM stack_suggestion_dismissals WHERE photo_path LIKE '/suggestions/%'")
+
+
+def skip(client, suggestion):
+    return client.post('/api/stacks/suggestions/dismissals',
+                       json={'kind': suggestion['kind'], 'paths': suggestion['paths']})
+
+
+def test_dismissal_persists_and_can_be_restored(edition_client, regular_client, seed_photos_prefix):
+    seed(seed_photos_prefix)
+    duplicate = discover(edition_client).json()['suggestions'][0]
+    assert skip(edition_client, duplicate).status_code == 204
+    assert skip(edition_client, duplicate).status_code == 204
+    # The same photos' burst group is a different suggestion and surfaces instead.
+    [burst] = discover(edition_client).json()['suggestions']
+    assert burst['kind'] == 'burst'
+    assert skip(regular_client, burst).status_code == 403
+    assert skip(edition_client, burst).status_code == 204
+    assert discover(edition_client).json()['suggestions'] == []
+    assert edition_client.delete(f"/api/stacks/suggestions/dismissals/{duplicate['key']}").status_code == 204
+    assert [s['key'] for s in discover(edition_client).json()['suggestions']] == [duplicate['key']]
+
+
+def test_skip_is_lifted_when_membership_changes(edition_client, seed_photos_prefix):
+    paths = seed(seed_photos_prefix)
+    for suggestion in discover(edition_client).json()['suggestions']:
+        skip(edition_client, suggestion)
+    with get_db() as conn, conn:
+        conn.execute('UPDATE photos SET burst_group_id=NULL, duplicate_group_id=NULL WHERE path=?', (paths[2],))
+    assert {s['kind'] for s in discover(edition_client).json()['suggestions']} == {'duplicate'}
+
+
+def test_skips_are_private_to_each_account(edition_client, regular_client, seed_photos_prefix, monkeypatch):
+    from api import config
+    from api.routers import stacks as stacks_router
+    seed(seed_photos_prefix)
+    monkeypatch.setitem(config._FULL_CONFIG, 'users', {
+        'test': {'directories': ['/suggestions/']}, 'u1': {'directories': ['/suggestions/']}})
+    monkeypatch.setattr(stacks_router, 'is_multi_user_enabled', lambda: True)
+    first = discover(edition_client).json()['suggestions']
+    # The duplicate and burst groups cover the same photos: at most two skips empty the feed.
+    for _ in range(2):
+        suggestions = discover(edition_client).json()['suggestions']
+        if suggestions:
+            assert skip(edition_client, suggestions[0]).status_code == 204
+    assert discover(edition_client).json()['suggestions'] == []
+    assert [s['key'] for s in discover(regular_client).json()['suggestions']] == [first[0]['key']]
+
+
+def test_dismissal_requests_are_validated(edition_client):
+    for body in ({'kind': 'burst', 'paths': ['/a.jpg']}, {'kind': 'scene', 'paths': ['/a.jpg', '/b.jpg']}):
+        assert edition_client.post('/api/stacks/suggestions/dismissals', json=body).status_code == 422
+    assert edition_client.delete('/api/stacks/suggestions/dismissals/NOTAHASH').status_code == 422
+
+
+def test_skipped_groups_do_not_use_up_the_candidate_window(edition_client, seed_photos_prefix, monkeypatch):
+    from db import stack_suggestions
+    monkeypatch.setattr(stack_suggestions, 'MAX_CANDIDATE_GROUPS', 2)
+    rows = [dict(path=f'/suggestions/{n}.jpg', filename=f'{n}.jpg', burst_group_id=900100 + n // 2)
+            for n in range(8)]
+    seed_photos_prefix('/suggestions/', rows)
+    first = discover(edition_client).json()['suggestions']
+    assert len(first) == 2
+    for suggestion in first:
+        skip(edition_client, suggestion)
+    later = discover(edition_client).json()['suggestions']
+    assert len(later) == 2 and not {s['key'] for s in later} & {s['key'] for s in first}
+
+
+def test_deleting_a_photo_drops_its_skip_rows(edition_client, seed_photos_prefix):
+    seed(seed_photos_prefix)
+    skip(edition_client, discover(edition_client).json()['suggestions'][0])
+    with get_db() as conn, conn:
+        conn.execute("DELETE FROM photos WHERE path='/suggestions/0.jpg'")
+        assert conn.execute("SELECT COUNT(*) FROM stack_suggestion_dismissals WHERE photo_path='/suggestions/0.jpg'").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM stack_suggestion_dismissals WHERE photo_path LIKE '/suggestions/%'").fetchone()[0] == 2
+
+
+def skip_rows(owner):
+    with get_db() as conn:
+        return conn.execute("SELECT COUNT(*) FROM stack_suggestion_dismissals WHERE owner=? AND photo_path LIKE '/suggestions/%'",
+                            (owner,)).fetchone()[0]
+
+
+def test_restore_only_lifts_the_callers_own_skip(edition_client, superadmin_client, seed_photos_prefix, monkeypatch):
+    from api import config
+    from api.routers import stacks as stacks_router
+    seed(seed_photos_prefix)
+    monkeypatch.setitem(config._FULL_CONFIG, 'users', {
+        'test': {'directories': ['/suggestions/']}, 'root': {'directories': ['/suggestions/']}})
+    monkeypatch.setattr(stacks_router, 'is_multi_user_enabled', lambda: True)
+    duplicate = discover(edition_client).json()['suggestions'][0]
+    assert skip(edition_client, duplicate).status_code == 204
+    assert skip_rows('test') == 3
+    # The key is a content hash, so any account that sees these photos can compute it.
+    assert superadmin_client.delete(f"/api/stacks/suggestions/dismissals/{duplicate['key']}").status_code == 204
+    assert skip_rows('test') == 3
+    assert duplicate['key'] not in {s['key'] for s in discover(edition_client).json()['suggestions']}
+    assert edition_client.delete(f"/api/stacks/suggestions/dismissals/{duplicate['key']}").status_code == 204
+    assert skip_rows('test') == 0
+
+
+def test_skipped_group_that_gains_a_photo_is_suggested_again(edition_client, seed_photos_prefix):
+    seed_photos_prefix('/suggestions/', [dict(path=f'/suggestions/{n}.jpg', filename=f'{n}.jpg',
+        duplicate_group_id=900002 if n < 3 else None) for n in range(4)])
+    [group] = discover(edition_client).json()['suggestions']
+    assert len(group['paths']) == 3
+    assert skip(edition_client, group).status_code == 204
+    assert discover(edition_client).json()['suggestions'] == []
+    with get_db() as conn, conn:
+        conn.execute("UPDATE photos SET duplicate_group_id=900002 WHERE path='/suggestions/3.jpg'")
+    [grown] = discover(edition_client).json()['suggestions']
+    assert len(grown['paths']) == 4 and grown['key'] != group['key']
+
+
+def test_skip_matches_the_membership_under_the_filters_it_was_made_with(edition_client, seed_photos_prefix):
+    paths = seed(seed_photos_prefix)
+    with get_db() as conn, conn:
+        conn.execute("UPDATE photos SET burst_group_id=NULL WHERE path LIKE '/suggestions/%'")
+        conn.execute('UPDATE photos SET is_rejected=1 WHERE path=?', (paths[-1],))
+    [narrow] = discover(edition_client, hide_rejected='true').json()['suggestions']
+    assert len(narrow['paths']) == 2
+    assert skip(edition_client, narrow).status_code == 204
+    assert discover(edition_client, hide_rejected='true').json()['suggestions'] == []
+    # Without the filter the group has three members, which is not what was skipped.
+    [wide] = discover(edition_client).json()['suggestions']
+    assert len(wide['paths']) == 3
+    assert skip(edition_client, wide).status_code == 204
+    assert discover(edition_client).json()['suggestions'] == []
+    assert discover(edition_client, hide_rejected='true').json()['suggestions'] == []
+    assert edition_client.delete(f"/api/stacks/suggestions/dismissals/{narrow['key']}").status_code == 204
+    # Only the narrow skip was lifted, so the wide read stays skipped.
+    assert discover(edition_client).json()['suggestions'] == []
+    assert len(discover(edition_client, hide_rejected='true').json()['suggestions']) == 1
+
+
+def test_moving_a_photo_carries_its_skip_rows_along(edition_client, seed_photos_prefix):
+    seed(seed_photos_prefix)
+    skip(edition_client, discover(edition_client).json()['suggestions'][0])
+    with get_db() as conn, conn:
+        conn.execute("UPDATE photos SET path='/suggestions/moved.jpg' WHERE path='/suggestions/0.jpg'")
+        old = conn.execute("SELECT COUNT(*) FROM stack_suggestion_dismissals WHERE photo_path='/suggestions/0.jpg'").fetchone()[0]
+        new = conn.execute("SELECT COUNT(*) FROM stack_suggestion_dismissals WHERE photo_path='/suggestions/moved.jpg'").fetchone()[0]
+    assert (old, new) == (0, 1)
+
+
+def test_skipped_lookup_uses_an_index_on_the_group_id(edition_client, seed_photos_prefix):
+    """A bare CASE has no type affinity, so SQLite's automatic index drops the group id and the
+    check scans every skipped group per candidate."""
+    from api.routers.gallery import gallery_scope_sql
+    from db import stack_suggestions
+    seed(seed_photos_prefix)
+    statements = []
+    with get_db() as conn:
+        conn.set_trace_callback(statements.append)
+        source, where, params = gallery_scope_sql(conn, {'path_prefix': '/suggestions/', 'collapse_stacks': 'false'}, 'test')
+        stack_suggestions.suggestions(conn, '', source, where, params)
+        conn.set_trace_callback(None)
+        [sql] = [q for q in statements if q.lstrip().startswith('WITH scoped')]
+        plan = ' '.join(r[3] for r in conn.execute('EXPLAIN QUERY PLAN ' + sql))
+    assert 'AUTOMATIC COVERING INDEX (kind=? AND group_id=?' in plan, plan
+
+
+def test_skipped_group_with_a_swapped_member_is_suggested_again(edition_client, seed_photos_prefix):
+    seed_photos_prefix('/suggestions/', [dict(path=f'/suggestions/{n}.jpg', filename=f'{n}.jpg',
+        duplicate_group_id=900002 if n < 3 else None) for n in range(4)])
+    assert skip(edition_client, discover(edition_client).json()['suggestions'][0]).status_code == 204
+    with get_db() as conn, conn:
+        conn.execute("UPDATE photos SET duplicate_group_id=NULL WHERE path='/suggestions/2.jpg'")
+        conn.execute("UPDATE photos SET duplicate_group_id=900002 WHERE path='/suggestions/3.jpg'")
+    [swapped] = discover(edition_client).json()['suggestions']
+    assert len(swapped['paths']) == 3 and '/suggestions/3.jpg' in swapped['paths']

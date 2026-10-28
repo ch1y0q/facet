@@ -11,6 +11,7 @@ export const DARKROOM_SHORTCUTS: CullingShortcutRow[] = [
   { keys: ['P'], labelKey: 'culling.shortcuts.peaking' },
   { keys: ['G'], labelKey: 'culling.shortcuts.grid' },
   { keys: ['F'], labelKey: 'slideshow.fullscreen' },
+  { keys: ['S'], labelKey: 'culling.stack_group' },
   { keys: ['Space'], labelKey: 'culling.shortcuts.confirm_next' },
   { keys: ['Esc'], labelKey: 'culling.shortcuts.close' },
 ];

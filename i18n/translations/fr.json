@@ -2247,7 +2247,8 @@
       "oversize": "Groupes écartés (trop grands pour être confirmés ici) : {count}",
       "out_of_date": "Le plan de l'assistant est périmé - demandez-lui de le prévisualiser à nouveau",
       "replan_flips_dropped": "{count} de vos modifications ne correspondent plus à aucun groupe et ont été abandonnées."
-    }
+    },
+    "stack_group": "Empiler ce groupe, image affichée en couverture"
   },
   "scenes": {
     "title": "Scènes",
@@ -2982,12 +2983,13 @@
   },
   "stacks": {
     "suggestions": "Piles suggérées",
-    "suggestions_hint": "Suggestions issues des doublons et rafales dans ces filtres. Leur masquage automatique est ignoré pour la révision. Les piles existantes et séries bracket/panorama sont exclues. Au plus 20 suggestions ; affinez les filtres pour d’autres photos. Ignorer ne vaut que pendant cette ouverture.",
+    "suggestions_hint": "Les suggestions utilisent les doublons et rafales détectés dans ces filtres, sans le masquage automatique des rafales/doublons, un groupe à la fois. ← → choisissent la couverture, S empile avec cette couverture, X passe. Les groupes passés restent masqués jusqu’à ce que leurs photos changent. Les piles existantes et les séries de bracketing ou panoramas ne sont pas suggérées. Jusqu’à 20 suggestions sont chargées à la fois ; Recharger en récupère d’autres.",
     "suggestions_empty": "Aucune suggestion de pile dans cette vue",
     "suggestion_burst": "Rafale",
     "suggestion_duplicate": "Doublons",
-    "suggestion_review": "Réviser et choisir la couverture",
-    "suggestion_dismiss": "Ignorer pour le moment",
+    "suggestion_edit_members": "Modifier les membres",
+    "suggestion_skip": "Passer",
+    "suggestion_skip_group": "Passer cette pile",
     "suggestions_error": "Impossible de charger les suggestions. Réessayez.",
     "suggestions_reload": "Recharger les suggestions",
     "previous": "Photo précédente de la pile",
@@ -3024,7 +3026,16 @@
     "badge": "Ouvrir la pile : {count} membres",
     "badge_filtered": "Ouvrir la pile : {count} correspondances sur {total} membres autorisés",
     "stack_id": "Identifiant de pile",
-    "position": "Position"
+    "position": "Position",
+    "suggestion_stack": "Empiler avec cette couverture",
+    "stacked": "{count} photos empilées",
+    "suggestion_skipped": "Suggestion passée",
+    "suggestion_progress": "Suggestion {position} sur {count}",
+    "suggestion_cover_previous": "Image précédente comme couverture",
+    "suggestion_cover_next": "Image suivante comme couverture",
+    "suggestions_done": "Toutes les suggestions de cette vue ont été examinées. Rechargez pour en chercher d’autres.",
+    "stack_failed": "Empilement impossible : une photo appartient peut-être déjà à une pile.",
+    "suggestion_failed": "Cette modification n’a pas été enregistrée. Réessayez."
   },
   "immich_diagnostics": {
     "title": "Diagnostic Immich",

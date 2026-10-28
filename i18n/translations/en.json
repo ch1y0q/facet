@@ -2247,7 +2247,8 @@
       "oversize": "Groups left out (too large to confirm here): {count}",
       "out_of_date": "The assistant's plan is out of date - ask it to preview again",
       "replan_flips_dropped": "{count} of your changes no longer match a group and were dropped."
-    }
+    },
+    "stack_group": "Stack this group, focused frame as cover"
   },
   "scenes": {
     "title": "Scenes",
@@ -2982,12 +2983,13 @@
   },
   "stacks": {
     "suggestions": "Suggested stacks",
-    "suggestions_hint": "Suggestions use detected duplicates and bursts within these filters. Automatic burst/duplicate hiding is bypassed for review. Existing stacks and bracket/panorama sets are skipped. Up to 20 suggestions are shown; narrow your filters for other photos. Dismissal lasts only while this dialog is open.",
+    "suggestions_hint": "Suggestions use detected duplicates and bursts within these filters, with automatic burst/duplicate hiding bypassed, one group at a time. ← → pick the cover, S stacks with that cover, X skips. Skipped groups stay hidden until their photos change. Existing stacks and bracket/panorama sets are not suggested. Up to 20 suggestions load at once; Reload fetches more.",
     "suggestions_empty": "No stack suggestions in this view",
     "suggestion_burst": "Burst",
     "suggestion_duplicate": "Duplicates",
-    "suggestion_review": "Review and choose cover",
-    "suggestion_dismiss": "Dismiss for now",
+    "suggestion_edit_members": "Edit members",
+    "suggestion_skip": "Skip",
+    "suggestion_skip_group": "Skip this stack",
     "suggestions_error": "Could not load suggestions. Try again.",
     "suggestions_reload": "Reload suggestions",
     "previous": "Previous stack photo",
@@ -3024,7 +3026,16 @@
     "badge": "Open stack: {count} members",
     "badge_filtered": "Open stack: {count} matching of {total} permitted members",
     "stack_id": "Stack ID",
-    "position": "Position"
+    "position": "Position",
+    "suggestion_stack": "Stack with this cover",
+    "stacked": "Stacked {count} photos",
+    "suggestion_skipped": "Suggestion skipped",
+    "suggestion_progress": "Suggestion {position} of {count}",
+    "suggestion_cover_previous": "Previous frame as cover",
+    "suggestion_cover_next": "Next frame as cover",
+    "suggestions_done": "All suggestions in this view are reviewed. Reload to look for more.",
+    "stack_failed": "Could not stack: a photo may already belong to a stack.",
+    "suggestion_failed": "That change was not saved. Try again."
   },
   "immich_diagnostics": {
     "title": "Immich diagnostics",

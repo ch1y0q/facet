@@ -58,5 +58,10 @@ class StackSuggestion(BaseModel):
     cover_path: str
 
 
+class StackSuggestionDismissal(BaseModel):
+    kind: Literal['duplicate', 'burst']
+    paths: list[str] = Field(min_length=2, max_length=1000)
+
+
 class StackSuggestionsResponse(BaseModel):
     suggestions: list[StackSuggestion]

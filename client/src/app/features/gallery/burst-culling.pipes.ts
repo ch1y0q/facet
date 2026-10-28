@@ -565,6 +565,17 @@ export class CanMarkBracketPipe implements PipeTransform {
   }
 }
 
+/** Whether the darkroom's Stack action applies: two or more frames, none of them part of a
+ *  bracket or panorama set (the per-frame rule Suggested stacks applies). */
+export function canStackGroup(group: CullingGroup): boolean {
+  return group.photos.length > 1 && group.photos.every(p => !p.sequence_kind);
+}
+
+@Pipe({ name: 'canStackGroup' })
+export class CanStackGroupPipe implements PipeTransform {
+  transform(group: CullingGroup): boolean { return canStackGroup(group); }
+}
+
 /** A configured darktable style for the edited-look cull preview. */
 export interface CullStyle {
   name: string;

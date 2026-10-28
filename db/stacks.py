@@ -30,6 +30,20 @@ def init_schema(conn: sqlite3.Connection) -> None:
         PRIMARY KEY(stack_id,photo_path), UNIQUE(owner,photo_path),
         UNIQUE(stack_id,position),
         FOREIGN KEY(stack_id,owner) REFERENCES photo_stacks(id,owner) ON DELETE CASCADE)""")
+    # One row per member of a skipped suggestion; `key` is the suggestion's content hash.
+    conn.execute("""CREATE TABLE IF NOT EXISTS stack_suggestion_dismissals (
+        owner TEXT NOT NULL, key TEXT NOT NULL, kind TEXT NOT NULL, size INTEGER NOT NULL,
+        photo_path TEXT NOT NULL, PRIMARY KEY(owner,key,photo_path))""")
+    conn.execute('CREATE INDEX IF NOT EXISTS stack_suggestion_dismissals_path '
+                 'ON stack_suggestion_dismissals(photo_path)')
+    conn.execute("""CREATE TRIGGER IF NOT EXISTS organization_stack_suggestion_photos_delete
+        AFTER DELETE ON photos BEGIN
+        DELETE FROM stack_suggestion_dismissals WHERE photo_path=OLD.path;
+        END""")
+    conn.execute("""CREATE TRIGGER IF NOT EXISTS organization_stack_suggestion_photos_move
+        AFTER UPDATE OF path ON photos WHEN OLD.path IS NOT NEW.path BEGIN
+        UPDATE stack_suggestion_dismissals SET photo_path=NEW.path WHERE photo_path=OLD.path;
+        END""")
     conn.execute('CREATE INDEX IF NOT EXISTS photo_stacks_owner ON photo_stacks(owner,id)')
     conn.execute('CREATE INDEX IF NOT EXISTS photo_stack_members_path ON photo_stack_members(photo_path)')
     # Explicit cleanup also works for external writers with foreign_keys=OFF.
