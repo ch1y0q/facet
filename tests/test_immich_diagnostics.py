@@ -8,23 +8,23 @@ import threading
 import pytest
 
 from api.routers import immich_diagnostics as diagnostics
+from db.schema import init_database
 
 
 @pytest.fixture
 def local_db(tmp_path, monkeypatch):
     import db
     path = tmp_path / 'diagnostics.db'
+    init_database(str(path))
     with sqlite3.connect(path) as conn:
-        conn.execute('CREATE TABLE photos(path TEXT PRIMARY KEY)')
-        conn.execute('CREATE TABLE stats_cache(key TEXT PRIMARY KEY, value TEXT, updated_at REAL)')
-        conn.executemany('INSERT INTO photos VALUES (?)', [('/photos/a.jpg',), ('/elsewhere/b.jpg',)])
-        conn.execute("INSERT INTO stats_cache VALUES ('immich_synced_paths:global', '{}', 1700000000)")
+        conn.executemany('INSERT INTO photos (path) VALUES (?)', [('/photos/a.jpg',), ('/elsewhere/b.jpg',)])
+        conn.execute("INSERT INTO stats_cache (key, value, updated_at) VALUES ('immich_synced_paths:global', '{}', 1700000000)")
     monkeypatch.setattr(db, 'DEFAULT_DB_PATH', str(path))
     return path
 
 
 @contextmanager
-def remote(responses):
+def remote(responses, *, truncated_path=None):
     calls = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -34,6 +34,12 @@ def remote(responses):
             self.send_response(status)
             if status == 302:
                 self.send_header('Location', '/redirect-target')
+            if self.path == truncated_path:
+                self.send_header('Transfer-Encoding', 'chunked')
+                self.end_headers()
+                self.wfile.write(b'100\r\nprivate-provider-text')
+                self.close_connection = True
+                return
             self.end_headers()
             if callable(payload):
                 payload = payload()
@@ -76,7 +82,7 @@ def test_local_status_is_read_only_and_does_not_contact_remote(local_db):
 
 def test_sample_is_bounded(local_db):
     with sqlite3.connect(local_db) as conn:
-        conn.executemany('INSERT INTO photos VALUES (?)', [(f'/photos/{i:04}.jpg',) for i in range(400)])
+        conn.executemany('INSERT INTO photos (path) VALUES (?)', [(f'/photos/{i:04}.jpg',) for i in range(400)])
     value = diagnostics._diagnose(config(''), False)
     assert value['sampled_photos'] == value['sample_limit'] == 200
 
@@ -112,6 +118,46 @@ def test_remote_errors_are_safe_and_release_admission(local_db, code, payload, e
     assert 'private' not in json.dumps(value)
     assert diagnostics._connection_test.acquire(blocking=False)
     diagnostics._connection_test.release()
+
+
+@pytest.mark.parametrize('truncated_path', ['/api/server/version', '/api/users/me'])
+def test_interrupted_chunked_response_is_safe_and_retryable(local_db, monkeypatch, truncated_path):
+    import api.auth
+    import api.config
+    from api import create_app
+    from api.auth import CurrentUser, require_authenticated
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(api.auth, 'is_multi_user_enabled', lambda: True)
+    app = create_app()
+    app.dependency_overrides[require_authenticated] = lambda: CurrentUser(
+        user_id='test', role='superadmin', edition_authenticated=True)
+    replies = {'/api/server/version': (200, {'major': 3, 'minor': 2, 'patch': 1}),
+               '/api/users/me': (200, {'id': 'private-remote-user'})}
+    try:
+        with TestClient(app, raise_server_exceptions=False) as client:
+            with remote(replies, truncated_path=truncated_path) as (url, calls):
+                monkeypatch.setitem(api.config._FULL_CONFIG, 'immich', config(url)['immich'])
+                response = client.get('/api/immich/diagnostics?check_connection=true')
+            assert response.status_code == 200
+            assert response.json()['connection'] == 'invalid_response'
+            assert response.headers['cache-control'] == 'no-store'
+            assert 'private' not in response.text
+            assert calls[-1] == ('GET', truncated_path, 'private-api-key')
+            assert diagnostics._connection_test.acquire(blocking=False)
+            diagnostics._connection_test.release()
+
+            with remote(replies) as (url, calls):
+                monkeypatch.setitem(api.config._FULL_CONFIG, 'immich', config(url)['immich'])
+                retry = client.get('/api/immich/diagnostics?check_connection=true')
+            assert retry.status_code == 200
+            assert retry.json()['connection'] == 'connected'
+            assert retry.json()['version'] == '3.2.1'
+            assert retry.headers['cache-control'] == 'no-store'
+            assert 'private' not in retry.text
+            assert [path for _, path, _ in calls] == ['/api/server/version', '/api/users/me']
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_incomplete_config_does_not_make_requests(local_db):
@@ -186,8 +232,8 @@ def test_superadmin_sample_is_visibility_scoped_before_limit(local_db, monkeypat
         'other': {'role': 'user', 'directories': ['/elsewhere']},
     })
     with sqlite3.connect(local_db) as conn:
-        conn.executemany('INSERT INTO photos VALUES (?)', [(f'/aaa-hidden/{i}.jpg',) for i in range(250)])
-        conn.execute("INSERT INTO stats_cache VALUES ('immich_synced_paths:other', '{}', 1900000000)")
+        conn.executemany('INSERT INTO photos (path) VALUES (?)', [(f'/aaa-hidden/{i}.jpg',) for i in range(250)])
+        conn.execute("INSERT INTO stats_cache (key, value, updated_at) VALUES ('immich_synced_paths:other', '{}', 1900000000)")
     value = diagnostics._diagnose(config(''), False, 'root')
     assert value['sampled_photos'] == 1
     assert value['mapped_photos'] == 1

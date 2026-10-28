@@ -2,6 +2,7 @@
 from contextlib import closing
 from copy import deepcopy
 import datetime
+from http.client import HTTPException as HTTPProtocolError
 import json
 import logging
 import math
@@ -144,7 +145,7 @@ def _diagnose(config, check_connection, user_id=None):
     except (OSError, error.URLError):
         status['connection'] = 'unreachable'
         logger.warning('Immich diagnostic connection failed')
-    except (ValueError, TypeError, RecursionError):
+    except (HTTPProtocolError, ValueError, TypeError, RecursionError):
         status['connection'] = 'invalid_response'
         logger.warning('Immich diagnostic response was invalid')
     finally:
