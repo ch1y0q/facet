@@ -28,6 +28,9 @@ export interface PhotoDeleteResponse {
   errors: Record<string, string>;
 }
 
+/** Mirrors `MAX_REFRESH_PATHS` in api/routers/photo_refresh.py. */
+export const MAX_REFRESH_PATHS = 100;
+
 @Injectable({ providedIn: 'root' })
 export class PhotoActionsService {
   private readonly dialog = inject(MatDialog);
@@ -75,7 +78,7 @@ export class PhotoActionsService {
 
   async refreshPhotos(paths: string[]): Promise<string[]> {
     if (!this.auth.isEdition() || this.refreshOpening || this.dialog.openDialogs.length) return [];
-    if (!paths.length || paths.length > 100) {
+    if (!paths.length || paths.length > MAX_REFRESH_PATHS) {
       this.snackBar.open(this.i18n.t(I18N.photo_refresh.limit), '', { duration: 4000 });
       return [];
     }

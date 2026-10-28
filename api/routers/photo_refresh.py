@@ -1,6 +1,7 @@
 """Refresh selected indexed previews and available source EXIF without scoring."""
 import logging
 import sqlite3
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,27 +11,30 @@ from api.auth import CurrentUser, require_edition
 from api.database import get_db
 from api.db_helpers import after_commit, is_locked_error
 from api.path_validation import resolve_photo_disk_path
-from api.routers.faces import _require_writable_photo
-from api.routers.capture_dates import _identity
-from api.routers.thumbnails import _image_render_budget
-from db.manual_faces import is_current, apply_review_states
-from db.maintenance import evict_derived_stats_cache
-from db.render_version import DISPLAY_RENDER_VERSION
-from exiftool.exiftool_batch import get_exif_batch
-from utils.manual_face_frame import invalidate_path
-from utils.capture_dates import format_capture_date, parse_capture_date
 from api.raw_processing import load_viewer_image
+from api.routers.capture_dates import _identity
+from api.routers.faces import _require_writable_photo
+from api.routers.thumbnails import _image_render_budget
+from db.maintenance import evict_derived_stats_cache
+from db.manual_faces import apply_review_states, is_current
+from db.render_version import render_version_for
+from exiftool.exiftool_batch import get_exif_batch
+from utils.capture_dates import format_capture_date, parse_capture_date
 from utils.image_loading import RAW_EXTENSIONS, load_image_from_path
-from pathlib import Path
 from utils.image_transforms import generate_photo_thumbnail, thumbnail_has_signal
+from utils.manual_face_frame import invalidate_path
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=['photo_refresh'])
 
 
+MAX_REFRESH_PATHS = 100
+_MAX_PATH_LENGTH = 4096
+
+
 class PhotoRefreshRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    paths: list[str] = Field(min_length=1, max_length=100)
+    paths: list[str] = Field(min_length=1, max_length=MAX_REFRESH_PATHS)
 
 
 class PhotoRefreshFailure(BaseModel):
@@ -63,9 +67,10 @@ def _refresh(path, user):
             # DB face coordinates belong to the metrics frame, never the camera
             # preview or a bracket's gain-free display buffer. Close it before
             # decoding the display frame so only one full plane remains alive.
-            metrics = load_image_from_path(disk)
+            metrics, metrics_bgr = load_image_from_path(disk)
             if metrics is None:
                 raise ValueError('Source frame unavailable')
+            del metrics_bgr
             try:
                 width, height = metrics.size
             finally:
@@ -81,12 +86,15 @@ def _refresh(path, user):
             image.close()
         if not thumbnail_has_signal(thumbnail):
             raise ValueError('No usable preview')
-        metadata = get_exif_batch([disk])
-        if disk not in metadata:
-            raise ValueError('Metadata could not be read')
-        values = metadata[disk]
         invalidate_path(disk)
         review_states = {(row['id'], row['manual_source']): is_current(disk, row['manual_source'], verify_pixels=True) for row in marks}
+    # Outside the render slot: an exiftool subprocess holds no pixel plane.
+    # Without exiftool (or a readable tag block) the preview still refreshes
+    # and every stored metadata value is kept.
+    values = get_exif_batch([disk]).get(disk)
+    if values is None:
+        logger.warning('Photo refresh read no source metadata for %s; keeping stored values', disk)
+        values = {}
     updates = {key: values[key] for key in _METADATA_FIELDS if values.get(key) is not None}
     source_date = values.get('date_taken')
     date = parse_capture_date(source_date) if isinstance(source_date, str) else None
@@ -106,8 +114,10 @@ def _refresh(path, user):
             assignments += ['gps_latitude=CASE WHEN gps_manually_set=1 THEN gps_latitude ELSE ? END',
                             'gps_longitude=CASE WHEN gps_manually_set=1 THEN gps_longitude ELSE ? END']
             params += [latitude, longitude]
+        # The photos_preview_revision trigger only fires when the thumbnail
+        # bytes change; an identical re-render must still bust warm caches.
         assignments += ['thumbnail=?', 'image_width=?', 'image_height=?', 'render_version=?', 'histogram_data=NULL', 'preview_revision=lower(hex(randomblob(16)))']
-        params += [thumbnail, width, height, DISPLAY_RENDER_VERSION, path]
+        params += [thumbnail, width, height, render_version_for(before[2]), path]
         conn.execute('UPDATE photos SET '+','.join(assignments)+' WHERE path=?', params)
         apply_review_states(conn, review_states)
         conn.execute('DELETE FROM iqa_declined WHERE photo_path=?', (path,))
@@ -118,7 +128,7 @@ def _refresh(path, user):
 @router.post('/api/photos/refresh', response_model=PhotoRefreshResponse)
 def refresh_photos(body: PhotoRefreshRequest, user: CurrentUser = Depends(require_edition)):
     paths = list(dict.fromkeys(body.paths))
-    if any(not path or '\x00' in path or len(path) > 4096 for path in paths):
+    if any(not path or '\x00' in path or len(path) > _MAX_PATH_LENGTH for path in paths):
         raise HTTPException(422, 'Choose explicit photo paths')
     # An unauthorized target refuses the whole request before any source read or write.
     with get_db() as conn:

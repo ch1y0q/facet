@@ -1,6 +1,6 @@
 {
   "photo_refresh": {
-    "limit": "Wählen Sie zwischen 1 und 100 explizite Fotos.",
+    "limit": "Wählen Sie 1 bis 100 Fotos aus.",
     "reasons": {
       "unavailable": "Quelle nicht verfügbar",
       "changed": "Foto geändert; erneut aktualisieren",

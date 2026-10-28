@@ -1,6 +1,6 @@
 {
   "photo_refresh": {
-    "limit": "Select between 1 and 100 explicit photos.",
+    "limit": "Select between 1 and 100 photos.",
     "reasons": {
       "unavailable": "Source unavailable",
       "changed": "Photo changed; refresh again",

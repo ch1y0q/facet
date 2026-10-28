@@ -1,6 +1,6 @@
 {
   "photo_refresh": {
-    "limit": "请明确选择 1 至 100 张照片。",
+    "limit": "请选择 1 至 100 张照片。",
     "reasons": {
       "unavailable": "源文件不可用",
       "changed": "照片已更改，请重新刷新",

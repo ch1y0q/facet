@@ -305,3 +305,151 @@ def test_scene_http_responses_preserve_refreshed_preview_revisions(edition_clien
     assert summaries.status_code == 200, summaries.text
     assert summaries.json()['scenes']
     assert all('photos' not in scene for scene in summaries.json()['scenes'])
+
+
+def _post(client, *paths):
+    return client.post('/api/photos/refresh', json={'paths': list(paths)}).json()
+
+
+def test_raw_refresh_stores_metrics_frame_size_and_kind_render_version(edition_client, seed_photos_prefix, tmp_path):
+    from db.render_version import render_version_for
+    path = str(tmp_path/'frame.cr2')
+    open(path, 'wb').write(b'raw bytes')
+    _seed(seed_photos_prefix, path, sequence_kind='bracket', image_width=1, image_height=1)
+    metrics = Image.new('RGB', (4000, 3000), 'white')
+    with patch('api.routers.photo_refresh.load_image_from_path', return_value=(metrics, None)), \
+         patch('api.routers.photo_refresh.load_viewer_image', return_value=Image.new('RGB', (640, 480), 'red')) as display, \
+         patch('api.routers.photo_refresh.get_exif_batch', return_value={}):
+        assert _post(edition_client, path) == {'refreshed': [path], 'failed': []}
+    assert display.call_args.args[1] == 'bracket'
+    row = _row(path)
+    assert (row['image_width'], row['image_height']) == (4000, 3000)
+    assert row['render_version'] == render_version_for('bracket')
+
+
+def test_raw_refresh_without_a_metrics_frame_fails_untouched(edition_client, seed_photos_prefix, tmp_path):
+    path = str(tmp_path/'frame.cr2')
+    open(path, 'wb').write(b'raw bytes')
+    _seed(seed_photos_prefix, path)
+    before = _row(path)
+    with patch('api.routers.photo_refresh.load_image_from_path', return_value=(None, None)):
+        assert _post(edition_client, path)['failed'] == [{'path': path, 'reason': 'failed'}]
+    assert _row(path) == before
+
+
+def test_refresh_without_exiftool_rebuilds_preview_and_keeps_metadata(edition_client, seed_photos_prefix, tmp_path):
+    path = _source(tmp_path, 'blue')
+    _seed(seed_photos_prefix, path, camera_model='Stored Camera', iso=100, date_taken='2001:01:01 01:01:01')
+    before = _row(path)
+    with patch('api.routers.photo_refresh.get_exif_batch', return_value={}):
+        assert _post(edition_client, path)['refreshed'] == [path]
+    after = _row(path)
+    assert (after['camera_model'], after['iso'], after['date_taken']) == ('Stored Camera', 100, '2001:01:01 01:01:01')
+    assert after['thumbnail'] != before['thumbnail']
+
+
+def test_refresh_writes_source_gps_only_when_complete_and_in_range(edition_client, seed_photos_prefix, tmp_path):
+    from api.routers.photo_refresh import get_exif_batch
+    path = _source(tmp_path)
+    _seed(seed_photos_prefix, path, gps_latitude=1.0, gps_longitude=2.0)
+    for gps, expected in [((91.0, 10.0), (1.0, 2.0)), ((45.0, None), (1.0, 2.0)), ((45.0, 10.0), (45.0, 10.0))]:
+        def read(paths, gps=gps):
+            values = get_exif_batch(paths)
+            values[path]['gps_latitude'], values[path]['gps_longitude'] = gps
+            return values
+        with patch('api.routers.photo_refresh.get_exif_batch', side_effect=read):
+            assert _post(edition_client, path)['refreshed'] == [path]
+        row = _row(path)
+        assert (row['gps_latitude'], row['gps_longitude']) == expected
+
+
+def test_refresh_failure_reasons_leave_the_row_untouched(edition_client, seed_photos_prefix, tmp_path):
+    import sqlite3
+    path = _source(tmp_path)
+    _seed(seed_photos_prefix, path)
+
+    def bump_revision(paths):
+        with get_db() as conn, conn:
+            conn.execute("UPDATE photos SET preview_revision='concurrent' WHERE path=?", (path,))
+        return {}
+
+    def locked(paths):
+        raise sqlite3.OperationalError('database is locked')
+
+    for side_effect, reason in [(bump_revision, 'changed'), (locked, 'busy')]:
+        before = _row(path)
+        with patch('api.routers.photo_refresh.get_exif_batch', side_effect=side_effect):
+            assert _post(edition_client, path)['failed'] == [{'path': path, 'reason': reason}]
+        after = _row(path)
+        assert after['thumbnail'] == before['thumbnail']
+
+    def delete_row(paths):
+        with get_db() as conn, conn:
+            conn.execute('DELETE FROM photos WHERE path=?', (path,))
+        return {}
+    with patch('api.routers.photo_refresh.get_exif_batch', side_effect=delete_row):
+        assert _post(edition_client, path)['failed'] == [{'path': path, 'reason': 'unavailable'}]
+
+
+def test_refresh_clears_derived_preview_state_and_keeps_user_state(edition_client, seed_photos_prefix, tmp_path):
+    path = _source(tmp_path)
+    _seed(seed_photos_prefix, path, histogram_data=b'histogram', is_favorite=1, is_rejected=1)
+    with get_db() as conn, conn:
+        conn.execute("INSERT INTO iqa_declined (photo_path, model, scan_fingerprint) VALUES (?, 'topiq_nr_face', 'x')", (path,))
+        conn.execute("INSERT INTO user_preferences (user_id, photo_path, star_rating, is_favorite) VALUES ('someone', ?, 3, 1)", (path,))
+        preferences = conn.execute('SELECT * FROM user_preferences WHERE photo_path=?', (path,)).fetchall()
+    assert _post(edition_client, path)['refreshed'] == [path]
+    row = _row(path)
+    assert row['histogram_data'] is None
+    assert (row['is_favorite'], row['is_rejected'], row['star_rating']) == (1, 1, 4)
+    with get_db() as conn:
+        assert conn.execute('SELECT COUNT(*) FROM iqa_declined WHERE photo_path=?', (path,)).fetchone()[0] == 0
+        assert [tuple(r) for r in conn.execute('SELECT * FROM user_preferences WHERE photo_path=?', (path,))] == [tuple(r) for r in preferences]
+
+
+def test_photo_set_members_carry_preview_revisions(edition_client, seed_photos_prefix, tmp_path):
+    paths = [str(tmp_path/f'frame{i}.jpg') for i in range(2)]
+    seed_photos_prefix(str(tmp_path)+os.sep, [
+        dict(path=p, filename=os.path.basename(p), thumbnail=b'old', burst_group_id=987654, is_burst_lead=int(i == 0),
+             preview_revision=f'rev{i}')
+        for i, p in enumerate(paths)])
+    members = edition_client.get('/api/photo/set', params={'path': paths[0]}).json()['members']
+    assert {m['path']: m['preview_revision'] for m in members} == {paths[0]: 'rev0', paths[1]: 'rev1'}
+
+
+def test_attach_preview_versions_chunks_dedupes_and_skips_missing_paths():
+    import asyncio
+    import sqlite3
+    import aiosqlite
+    from db.preview_versions import attach_preview_versions, attach_preview_versions_async
+
+    def build(conn):
+        conn.execute('CREATE TABLE photos (path TEXT PRIMARY KEY, preview_revision TEXT)')
+        conn.executemany('INSERT INTO photos VALUES (?, ?)', [(f'/p{i}', f'r{i}') for i in range(650)])
+
+    def rows():
+        return [{'path': f'/p{i}'} for i in range(650)] + [{'path': '/p1'}, {'path': None}, {'path': '/absent'}]
+
+    def check(result):
+        assert all(row['preview_revision'] == 'r' + row['path'][2:] for row in result[:651])
+        assert 'preview_revision' not in result[651] and 'preview_revision' not in result[652]
+
+    conn = sqlite3.connect(':memory:')
+    build(conn)
+    synced = rows()
+    attach_preview_versions(conn, synced)
+    check(synced)
+    bare = sqlite3.connect(':memory:')
+    bare.execute('CREATE TABLE photos (path TEXT)')
+    untouched = rows()
+    attach_preview_versions(bare, untouched)
+    assert all('preview_revision' not in row for row in untouched)
+
+    async def run_async():
+        async with aiosqlite.connect(':memory:') as aconn:
+            await aconn.execute('CREATE TABLE photos (path TEXT PRIMARY KEY, preview_revision TEXT)')
+            await aconn.executemany('INSERT INTO photos VALUES (?, ?)', [(f'/p{i}', f'r{i}') for i in range(650)])
+            result = rows()
+            await attach_preview_versions_async(aconn, result)
+            return result
+    check(asyncio.run(run_async()))

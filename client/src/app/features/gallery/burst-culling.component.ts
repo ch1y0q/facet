@@ -1678,7 +1678,7 @@ export class BurstCullingComponent implements OnDestroy {
    *  controls neighbour prefetch, while every pane owns its fallback source. */
   private onSharpState(src: string, path: string | undefined, state: 'loaded' | 'pending' | 'failed'): void {
     if (!path || !this.darkroomFramePaths().includes(path)
-      || src !== this.thumbnailUrl.transform(path, DARKROOM_THUMB_SIZE)) return;
+      || src !== this.frameThumbUrl(path, DARKROOM_THUMB_SIZE)) return;
     const visible = this.darkroomFramePaths();
     this.failedRenderPaths.update(paths => {
       const next = new Set([...paths].filter(path => visible.includes(path)));
@@ -1704,6 +1704,13 @@ export class BurstCullingComponent implements OnDestroy {
   /** Path of the frame the single pane shows. A string, so a new group object
    *  holding the same frame does not notify the prefetch effects. */
   private readonly currentPath = computed(() => this.lightboxGroup()?.photos[this.lightboxIndex()]?.path);
+  /** Each frame's preview revision, so the URLs built here match the ones the template binds. */
+  private readonly frameRevisions = computed(() =>
+    new Map((this.lightboxGroup()?.photos ?? []).map(photo => [photo.path, photo.preview_revision] as const)));
+
+  private frameThumbUrl(path: string, size: number): string {
+    return this.thumbnailUrl.transform(path, size, this.frameRevisions().get(path));
+  }
 
   /** Fetch `urls` into the browser cache, diffing the previous batch in `sink`
    *  by URL: a fetch still wanted, or listed in `keep` (the frame being stepped
@@ -1818,8 +1825,8 @@ export class BurstCullingComponent implements OnDestroy {
    *  rule). */
   private frameSource(path: string, hiRes: boolean): string {
     return hiRes
-      ? this.fullResUrl.transform(path, true)
-      : this.thumbnailUrl.transform(path, this.failedRenderPaths().has(path) ? STORED_EDGE : DARKROOM_THUMB_SIZE);
+      ? this.fullResUrl.transform(path, true, this.frameRevisions().get(path))
+      : this.frameThumbUrl(path, this.failedRenderPaths().has(path) ? STORED_EDGE : DARKROOM_THUMB_SIZE);
   }
 
   /** Drop the overlays and everything that could still republish them: a pass
@@ -2205,8 +2212,8 @@ export class BurstCullingComponent implements OnDestroy {
       const paths = this.neighbourPaths();
       const current = this.currentPath();
       untracked(() => {
-        const keep = current ? [this.thumbnailUrl.transform(current, STORED_EDGE)] : [];
-        this.neighbourThumbs = this.prefetch(paths.map(p => this.thumbnailUrl.transform(p, STORED_EDGE)), this.neighbourThumbs, undefined, keep);
+        const keep = current ? [this.frameThumbUrl(current, STORED_EDGE)] : [];
+        this.neighbourThumbs = this.prefetch(paths.map(p => this.frameThumbUrl(p, STORED_EDGE)), this.neighbourThumbs, undefined, keep);
       });
     });
     effect(() => {
@@ -2214,11 +2221,11 @@ export class BurstCullingComponent implements OnDestroy {
       const current = this.currentPath();
       const sharp = this.sharpPath() === current;
       untracked(() => {
-        const urls = sharp ? paths.map(p => this.thumbnailUrl.transform(p, DARKROOM_THUMB_SIZE)) : [];
+        const urls = sharp ? paths.map(p => this.frameThumbUrl(p, DARKROOM_THUMB_SIZE)) : [];
         // Keep already-started current/neighbor renders while revalidating a
         // revisit; only a fresh success may start additional neighbor work.
         const keep = [current, ...paths].filter((path): path is string => !!path)
-          .map(path => this.thumbnailUrl.transform(path, DARKROOM_THUMB_SIZE));
+          .map(path => this.frameThumbUrl(path, DARKROOM_THUMB_SIZE));
         this.neighbourRenders = this.prefetch(urls, this.neighbourRenders, url => this.loadedRenders.add(url), keep);
       });
     });

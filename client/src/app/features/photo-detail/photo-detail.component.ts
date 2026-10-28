@@ -492,7 +492,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
                             [class.ring-2]="member.path === p.path"
                             [attr.aria-label]="(I18N.photo_detail.set.member_position | translate:{ position: $index + 1, count: set.members.length }) + (member.ev_offset !== null ? ', ' + (member.ev_offset | evOffset) : '')"
                             (click)="openSetMember(member.path)">
-                      <img [src]="member.path | thumbnailUrl:96" alt="" class="w-full h-full object-cover" />
+                      <img [src]="member.path | thumbnailUrl:96:member.preview_revision" alt="" class="w-full h-full object-cover" />
                       @if (member.ev_offset !== null) {
                         <span class="absolute bottom-0 inset-x-0 text-center text-[0.625rem] leading-4 bg-black/60 text-white">{{ member.ev_offset | evOffset }}</span>
                       }

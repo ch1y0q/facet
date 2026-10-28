@@ -27,7 +27,7 @@ type RefreshResult = components['schemas']['PhotoRefreshResponse'];
       @if (failed()) { <p class="mt-3 text-[var(--mat-sys-error)]" role="alert">{{ I18N.photo_refresh.failed | translate }}</p> }
       @if (errorDetail(); as detail) { <p class="mt-2 text-sm text-[var(--mat-sys-error)]" role="alert">{{ detail }}</p> }
       @for (item of failures(); track item.path) {
-        <p class="mt-2 text-sm break-all">{{ item.path }} — {{ 'photo_refresh.reasons.' + item.reason | translate }}</p>
+        <p class="mt-2 text-sm break-all">{{ item.path }} — {{ reasonKeys[item.reason] | translate }}</p>
       }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
@@ -38,6 +38,12 @@ type RefreshResult = components['schemas']['PhotoRefreshResponse'];
 })
 export class PhotoRefreshDialogComponent {
   protected readonly I18N = i18nKeys();
+  protected readonly reasonKeys: Record<RefreshResult['failed'][number]['reason'], string> = {
+    unavailable: this.I18N.photo_refresh.reasons.unavailable,
+    changed: this.I18N.photo_refresh.reasons.changed,
+    busy: this.I18N.photo_refresh.reasons.busy,
+    failed: this.I18N.photo_refresh.reasons.failed,
+  };
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthService);
   private readonly ref = inject(MatDialogRef<PhotoRefreshDialogComponent>);

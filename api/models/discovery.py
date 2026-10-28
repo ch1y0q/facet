@@ -12,6 +12,7 @@ class PhotoSetMember(BaseModel):
     path: str
     ev_offset: Optional[float] = None
     is_lead: bool
+    preview_revision: Optional[str] = None
 
 
 class PhotoSetResponse(BaseModel):

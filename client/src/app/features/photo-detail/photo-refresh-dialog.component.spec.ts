@@ -10,17 +10,19 @@ import { PhotoRefreshDialogComponent } from './photo-refresh-dialog.component';
 
 describe('PhotoRefreshDialogComponent HTTP workflow', () => {
   let owner: ReturnType<typeof signal<string>>;
+  let edition: ReturnType<typeof signal<boolean>>;
   let close: ReturnType<typeof vi.fn>;
   let http: HttpTestingController;
   let fixture: ReturnType<typeof TestBed.createComponent<PhotoRefreshDialogComponent>>;
   beforeEach(() => {
     owner = signal('alice');
+    edition = signal(true);
     close = vi.fn();
     TestBed.configureTestingModule({
       imports: [PhotoRefreshDialogComponent],
       providers: [provideHttpClient(), provideHttpClientTesting(),
         { provide: MAT_DIALOG_DATA, useValue: ['/a.jpg', '/b.jpg'] },
-        { provide: AuthService, useValue: { identity: owner, isEdition: () => true } },
+        { provide: AuthService, useValue: { identity: owner, isEdition: edition } },
         { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
         { provide: MatDialogRef, useValue: { close, beforeClosed: () => new Subject<void>() } },
       ],
@@ -41,6 +43,7 @@ describe('PhotoRefreshDialogComponent HTTP workflow', () => {
     request.flush({ refreshed: ['/a.jpg'], failed: [{ path: '/b.jpg', reason: 'unavailable' }] });
     await fixture.whenStable(); fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('photo_refresh.failed');
+    expect(fixture.nativeElement.textContent).toContain('/b.jpg — photo_refresh.reasons.unavailable');
     start.click();
     const retry = http.expectOne('/api/photos/refresh');
     expect(retry.request.body).toEqual({ paths: ['/b.jpg'] });
@@ -66,13 +69,22 @@ describe('PhotoRefreshDialogComponent HTTP workflow', () => {
     request.flush({ refreshed: ['/a.jpg', '/b.jpg'], failed: [] });
     await pending;
     expect(fixture.componentInstance.completed()).toEqual([]);
+    fixture.detectChanges();
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('closes when the edition session ends', () => {
+    edition.set(false);
+    fixture.detectChanges();
+    expect(close).toHaveBeenCalled();
   });
 
   it('makes a failed request retryable without claiming success', async () => {
     const pending = fixture.componentInstance.run();
-    http.expectOne('/api/photos/refresh').flush({}, { status: 503, statusText: 'Unavailable' });
+    http.expectOne('/api/photos/refresh').flush({ detail: 'Another library job is running' }, { status: 503, statusText: 'Unavailable' });
     await pending; fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('photo_refresh.failed');
+    expect(fixture.nativeElement.textContent).toContain('Another library job is running');
     expect(fixture.componentInstance.completed()).toEqual([]);
     const retry = fixture.componentInstance.run();
     http.expectOne('/api/photos/refresh').flush({ refreshed: ['/a.jpg', '/b.jpg'], failed: [] });

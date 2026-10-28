@@ -282,6 +282,11 @@ def _coalesced_jpegxl_conversion(file_path: str, mtime: float, quality: int, rev
     return result
 
 
+def _bind_preview_etag(response: Response, revision: str) -> None:
+    """Fold the preview revision into a file ETag so a refresh revalidates it."""
+    response.headers['etag'] = '"' + hashlib.sha256((response.headers['etag'] + revision).encode()).hexdigest() + '"'
+
+
 def _render_from_original(path: str, sequence_kind: Optional[str], revision: Optional[str] = None) -> Optional[bytes]:
     """None when the original can't be rendered."""
     try:
@@ -560,7 +565,7 @@ def image(
                 return _stored_thumbnail_response(path, request, vary_accept=True)
             return Response(content="Not found", status_code=404, headers={'Vary': 'Accept'})
         if row['preview_revision']:
-            original.headers['etag'] = '"' + hashlib.sha256((original.headers['etag'] + row['preview_revision']).encode()).hexdigest() + '"'
+            _bind_preview_etag(original, row['preview_revision'])
         if request.headers.get('if-none-match') == original.headers['etag']:
             return Response(status_code=304,
                             headers={'ETag': original.headers['etag'], 'Vary': 'Accept'})
@@ -590,5 +595,5 @@ def image(
     except OSError:
         return _stored_thumbnail_response(path, request) if want_fallback else Response(status_code=404)
     if row['preview_revision']:
-        original.headers['etag'] = '"' + hashlib.sha256((original.headers['etag'] + row['preview_revision']).encode()).hexdigest() + '"'
+        _bind_preview_etag(original, row['preview_revision'])
     return original

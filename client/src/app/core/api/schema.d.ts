@@ -7815,6 +7815,8 @@ export interface components {
             is_lead: boolean;
             /** Path */
             path: string;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /**
          * PhotoSetResponse
