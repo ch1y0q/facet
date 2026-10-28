@@ -1796,6 +1796,7 @@ nothing.
       "rejected": true,
       "sequence_kind": true,
       "sequence_override_pending": true,
+      "stack": true,
       "keeper_hint": true,
       "best_of_burst": true,
       "clipping_highlight": true,
@@ -1818,6 +1819,7 @@ nothing.
 | `badges.rejected` | `true` | Thumb-down badge on a rejected photo (edition mode) |
 | `badges.sequence_kind` | `true` | Set badge (burst/bracket/panorama/duplicate), drawn left of the rejected badge, shown only while the matching hide toggle collapses the set |
 | `badges.sequence_override_pending` | `true` | Clock badge for a panorama correction awaiting the next detection run |
+| `badges.stack` | `true` | Layers + member-count badge on every card of a manual photo stack (with stacks collapsed, the visible cover); clickable, it opens the stack. Off hides the badge only — the "Open photo stack" card button still works |
 | `badges.keeper_hint` | `true` | "A better shot exists in this group" arrow from the learned keeper head |
 | `badges.best_of_burst` | `true` | "Best" badge on a burst lead. Shown only when `hide_bursts` is off — with it on, every burst photo on screen is already its group's lead |
 | `badges.clipping_highlight` | `true` | Badge a photo whose highlights clip past `clipping.badge_percent` |

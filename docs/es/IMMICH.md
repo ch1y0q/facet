@@ -18,6 +18,7 @@ La conexión es solo REST en ambos sentidos. Facet nunca toca la base de datos d
 - [Paso 3 — asigna las rutas](#paso-3--asigna-las-rutas)
 - [Paso 4 — prueba y luego envía](#paso-4--prueba-y-luego-envía)
 - [Envío de rechazos](#envío-de-rechazos)
+- [Importar y enviar pilas manuales](#importar-y-enviar-pilas-manuales)
 - [El webhook entrante](#el-webhook-entrante)
 - [Referencia de configuración](#referencia-de-configuración)
 - [Solución de problemas](#solución-de-problemas)
@@ -68,7 +69,7 @@ Si en cambio subes a Immich de forma normal (copia de seguridad automática móv
 
 En Immich: **haz clic en tu avatar → Configuración de la cuenta → Claves de API → Nueva clave de API**.
 
-Immich ≥ 3.0 te permite acotar el ámbito de una clave en lugar de concederle acceso a todo. Facet necesita exactamente seis ámbitos:
+Immich ≥ 3.0 permite limitar una clave. Estrellas/favoritos usan los ámbitos siguientes; las pilas manuales necesitan los permisos adicionales descritos abajo:
 
 | Ámbito | Qué hace Facet con él |
 |-------|-------------------------|
@@ -164,6 +165,16 @@ Con `push.rejected` activado:
 - `push.ratings: false` lo suprime. `-1` es una escritura de valoración, así que una configuración que desactivó el envío de valoraciones no ve colarse una por la puerta de atrás.
 
 Déjalo desactivado si otras personas (o tu teléfono) consultan la biblioteca de Immich: un `-1` es visible allí, y "rechazada en Facet" es un juicio de trabajo que quizá no quieras difundir.
+
+## Importar y enviar pilas manuales
+
+Las pilas usan **plan y aplicación explícitos desde la CLI local**, con las opciones existentes `--config`, `--db`, `--user`. En multiusuario se exige un usuario existente explícito. La clave global de Immich no se expone mediante web, asistentes/MCP ni webhook de carga para pilas. Las estrellas/favoritos mantienen su sincronización. Se exige Immich **≥ 3.0** con comprobaciones de capacidad. Añade `user.read` y `stack.read` a `asset.read`, más `stack.create` y `asset.update` para enviar. La v1 no necesita `stack.update` ni `stack.delete`.
+
+La vista previa no escribe en ningún lado ni migra la base. Revisa su resumen SHA-256 antes de aplicar. `--stack-id UUID`, repetible, limita pilas del lado de origen. `--stack-plan-out` crea atómicamente un JSON privado nuevo (POSIX `0600`), sin sobrescribir. Límites: **1000 grupos, 1000 miembros por grupo, 20000 miembros totales y 16 MiB**; acota con `--stack-id`. En Windows, elige una carpeta de salida cuya ACL limite el acceso a tu cuenta; los bits de permisos POSIX no garantizan la privacidad de los archivos en Windows.
+
+Cada miembro importado debe corresponder únicamente a una foto indexada, visible, disponible y del propietario remoto. El envío también comprueba todos los miembros antes de crear un grupo remoto completamente sin apilar. Un miembro ausente/ambiguo omite todo el grupo, nunca importa un subconjunto. Miembros y portada idénticos permiten adoptar el vínculo duradero al aplicar. Solapamientos parciales, portada/membresía diferentes y desapilado divergente son conflictos/grupos omitidos; no se actualiza ninguna pila local o remota existente. El orden más allá de la portada no se transfiere. No hay sincronización bidireccional automática, sondeo ni propagación del desapilado.
+
+Planes, vínculos y recibos privados se limitan a servidor, cuenta remota, propietario local y huella del mapa de rutas; cambiar el ámbito invalida su uso. Los recibos guardan resultados e ID remotos sin credenciales. Aplicar revalida antes de cada grupo y relee miembros/portada después de escribir. Una respuesta de creación perdida exige reconciliar antes de reintentar; envíos inciertos nunca se repiten a ciegas. Cancelar para entre grupos; otra aplicación explícita reconcilia los recibos. Immich no ofrece compare-and-swap al crear pilas: otro cliente puede intervenir tras la última comprobación. La posvalidación no garantiza atomicidad distribuida ni reversión automática. Las pruebas usan un servidor HTTP local simulado; no certifican un despliegue real de Immich.
 
 ## El webhook entrante
 

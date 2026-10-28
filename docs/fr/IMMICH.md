@@ -18,6 +18,7 @@ Le lien est exclusivement REST dans les deux sens. Facet ne touche jamais à la 
 - [Étape 3 — mettre en correspondance les chemins](#étape-3--mettre-en-correspondance-les-chemins)
 - [Étape 4 — tester, puis pousser](#étape-4--tester-puis-pousser)
 - [Pousser les rejets](#pousser-les-rejets)
+- [Piles manuelles : import et envoi](#piles-manuelles--import-et-envoi)
 - [Le webhook entrant](#le-webhook-entrant)
 - [Référence de configuration](#référence-de-configuration)
 - [Dépannage](#dépannage)
@@ -68,7 +69,7 @@ Si à la place vous envoyez normalement vers Immich (sauvegarde automatique mobi
 
 Dans Immich : **cliquez sur votre avatar → Account Settings → API Keys → New API Key**.
 
-Immich ≥ 3.0 permet de restreindre la portée d'une clé plutôt que de tout lui accorder. Facet a besoin d'exactement six portées :
+Immich ≥ 3.0 permet de restreindre la portée d'une clé. La synchronisation notes/favoris utilise les portées suivantes ; les piles nécessitent les permissions supplémentaires décrites ci-dessous :
 
 | Portée | Ce que Facet en fait |
 |-------|-------------------------|
@@ -164,6 +165,16 @@ Avec `push.rejected` activé :
 - `push.ratings: false` le supprime. `-1` est une écriture de note, donc une configuration qui a désactivé l'envoi des notes n'en voit pas une se réintroduire en douce.
 
 Laissez-le désactivé si d'autres personnes (ou votre téléphone) consultent la bibliothèque Immich : un `-1` y est visible, et « rejetée dans Facet » est un jugement de travail que vous ne voulez peut-être pas diffuser.
+
+## Piles manuelles : import et envoi
+
+Les piles utilisent un **plan puis une application explicites en CLI locale**, avec `--config`, `--db` et `--user` existants. En multi-utilisateur, nommez un utilisateur existant. La clé Immich globale n'est exposée ni au web, ni aux assistants/MCP, ni au webhook pour les piles. La synchronisation notes/favoris reste inchangée. Immich **≥ 3.0** est requis avec vérification des capacités ; ajoutez `user.read` et `stack.read` à `asset.read`, puis `stack.create` et `asset.update` pour l'envoi. La v1 ne demande ni `stack.update` ni `stack.delete`.
+
+L'aperçu ne modifie aucun côté et ne migre pas la base. Vérifiez son empreinte SHA-256 avant l'application. `--stack-id UUID`, répétable, limite les piles du côté source. `--stack-plan-out` crée atomiquement un nouveau JSON privé (POSIX `0600`), sans écrasement. Limites : **1000 piles, 1000 membres par pile, 20000 membres au total et 16 MiB** ; réduisez avec `--stack-id`. Sous Windows, choisissez un dossier de sortie dont l’ACL limite l’accès à votre compte ; les bits de mode POSIX ne garantissent pas la confidentialité des fichiers Windows.
+
+Chaque membre importé doit correspondre uniquement à une photo indexée, visible, disponible et appartenant au compte distant. L'envoi vérifie aussi tous les membres avant de créer une pile distante entièrement non groupée. Un membre absent/ambigu fait ignorer tout le groupe, jamais un sous-ensemble. Un ensemble de membres et une couverture identiques permettent d'adopter le lien durable à l'application. Chevauchement partiel, couverture ou membres différents, ou désempilage divergent : conflit/groupe ignoré ; aucune pile locale ou distante existante n'est modifiée. L'ordre au-delà de la couverture ne fait pas l'aller-retour. Pas de synchronisation bidirectionnelle automatique, de sondage ni de propagation du désempilage.
+
+Plans, liens et reçus privés sont liés au serveur, compte distant, propriétaire local et empreinte de correspondance des chemins ; tout changement invalide leur réutilisation. Les reçus conservent résultats et identifiants distants sans identifiants de connexion. L'application revalide avant chaque pile puis relit membres/couverture après écriture. Une réponse de création perdue impose une réconciliation avant réessai ; aucun envoi incertain n'est répété aveuglément. L'annulation s'arrête entre piles ; une application explicite ultérieure réconcilie les reçus. Immich n'a pas de compare-and-swap pour la création : un autre client peut intervenir après la dernière vérification. La postvalidation ne garantit ni atomicité distribuée ni annulation automatique. Les tests utilisent un faux serveur HTTP local, sans certifier un déploiement Immich réel.
 
 ## Le webhook entrant
 

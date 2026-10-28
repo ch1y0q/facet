@@ -141,6 +141,10 @@ class Photo(BaseModel):
     learned_score: Optional[float] = None
     similarity: Optional[float] = None
     embedding_similarity: Optional[float] = None
+    stack_id: Optional[str] = None
+    stack_count: Optional[int] = None
+    stack_total_count: Optional[int] = None
+    stack_revision: Optional[int] = None
 
     model_config = {'from_attributes': True}
 
@@ -164,6 +168,7 @@ class PhotosResponse(PaginationEnvelope):
     """
 
     photos: list[Photo]
+    photo_total: Optional[int] = None
     sort_col: str
     hidden_summary: Optional[HiddenSummary] = None
 
@@ -390,6 +395,9 @@ class GalleryParams(BaseModel):
     sequence_kind: str = ''
     burst_group_id: str = ''
     duplicate_group_id: str = ''
+    # Display grouping never narrows the underlying action/selection scope.
+    collapse_stacks: Literal['', '0', '1', 'true', 'false'] = '1'
+    stack_id: Annotated[str, StringConstraints(pattern=r'^$|^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')] = ''
 
     model_config = {'extra': 'ignore'}
 

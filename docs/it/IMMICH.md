@@ -18,6 +18,7 @@ Il collegamento è solo REST in entrambe le direzioni. Facet non tocca mai il da
 - [Passaggio 3 — mappa i percorsi](#passaggio-3--mappa-i-percorsi)
 - [Passaggio 4 — verifica, poi invia](#passaggio-4--verifica-poi-invia)
 - [Invio dei rifiuti](#invio-dei-rifiuti)
+- [Importare e inviare pile manuali](#importare-e-inviare-pile-manuali)
 - [Il webhook in entrata](#il-webhook-in-entrata)
 - [Riferimento di configurazione](#riferimento-di-configurazione)
 - [Risoluzione dei problemi](#risoluzione-dei-problemi)
@@ -68,7 +69,7 @@ Se invece carichi in Immich normalmente (backup automatico da mobile, il caricat
 
 In Immich: **click your avatar → Account Settings → API Keys → New API Key**.
 
-Immich ≥ 3.0 permette di limitare lo scope di una chiave invece di concederle tutto. Facet ha bisogno esattamente di sei scope:
+Immich ≥ 3.0 permette di limitare lo scope di una chiave. Stelle/preferiti usano gli scope seguenti; le pile manuali richiedono i permessi aggiuntivi descritti sotto:
 
 | Scope | Cosa ne fa Facet |
 |-------|-------------------------|
@@ -164,6 +165,16 @@ Con `push.rejected` attivo:
 - `push.ratings: false` lo sopprime. `-1` è una scrittura di valutazione, quindi una configurazione che ha disattivato l'invio delle valutazioni non se ne vede reintrodurre una di nascosto.
 
 Lascialo disattivato se altre persone (o il tuo telefono) guardano la libreria Immich: un `-1` è visibile lì, e «rifiutata in Facet» è un giudizio di lavoro che potresti non voler diffondere.
+
+## Importare e inviare pile manuali
+
+Le pile usano un **piano e un'applicazione espliciti dalla CLI locale**, con `--config`, `--db`, `--user` esistenti. In modalità multiutente serve un utente esistente esplicito. La chiave Immich globale non è esposta a web, assistenti/MCP o webhook di caricamento per le pile. La sincronizzazione stelle/preferiti resta invariata. Serve Immich **≥ 3.0**, con verifica delle capacità a runtime. A `asset.read` aggiungi `user.read` e `stack.read`, più `stack.create` e `asset.update` per l'invio. La v1 non richiede `stack.update` né `stack.delete`.
+
+L'anteprima non scrive su nessun lato e non migra il database. Controlla il digest SHA-256 prima di applicare. `--stack-id UUID`, ripetibile, limita le pile sul lato sorgente. `--stack-plan-out` crea atomicamente un nuovo JSON privato (POSIX `0600`), senza sovrascrivere. Limiti: **1000 gruppi, 1000 membri per gruppo, 20000 membri totali, 16 MiB**; restringi con `--stack-id`. Su Windows, scegli una cartella di destinazione la cui ACL limiti l’accesso al tuo account; i permessi POSIX non garantiscono la riservatezza dei file Windows.
+
+Ogni membro importato deve corrispondere univocamente a una foto indicizzata, visibile, disponibile e di proprietà dell'account remoto. L'invio controlla ugualmente tutti i membri prima di creare un gruppo remoto interamente non impilato. Un membro mancante/ambiguo fa saltare tutto il gruppo, mai un sottoinsieme. Membri e copertina identici possono adottare il collegamento durevole all'applicazione. Sovrapposizioni parziali, copertine/membri diversi e separazioni divergenti causano conflitti/gruppi ignorati; nessuna pila locale o remota esistente viene aggiornata. L'ordine oltre la copertina non viene trasferito. Nessuna sincronizzazione bidirezionale automatica, polling o propagazione della separazione.
+
+Piani, collegamenti e ricevute private sono legati a server, account remoto, proprietario locale e impronta della mappatura; cambiamenti ne invalidano il riutilizzo. Le ricevute conservano risultati e ID delle risorse remote senza credenziali. L'applicazione riconvalida ogni gruppo e rilegge membri/copertina dopo la scrittura. Una risposta di creazione persa richiede riconciliazione prima del tentativo successivo; invii incerti non vengono ripetuti alla cieca. L'annullamento si ferma tra i gruppi; una successiva applicazione esplicita riconcilia le ricevute. Immich non ha compare-and-swap per creare pile: un altro client può intervenire dopo l'ultimo controllo. La verifica successiva non garantisce atomicità distribuita né rollback automatico. I test usano un server HTTP locale simulato, senza certificare un'installazione Immich reale.
 
 ## Il webhook in entrata
 

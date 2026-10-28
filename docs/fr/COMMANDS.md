@@ -114,6 +114,18 @@ Poussez vos notes et favoris Facet vers un serveur [Immich](https://immich.app/)
 
 Les notes suivent la politique de compatibilité de version d'Immich (1–5 uniquement, jamais 0/−1) ; un album de coups de cœur facultatif rassemble les photos au-dessus d'un seuil de note. REST uniquement — aucun couplage direct à la base de données Immich. Voir [Configuration — Synchronisation Immich](CONFIGURATION.md#immich-sync) pour le bloc complet.
 
+### Plans de piles Immich
+
+Options existantes : `--config`, `--db`, `--user` ; en multi-utilisateur, propriétaire existant explicite obligatoire. Aucun écrit ni migration pendant l’aperçu. L’application exige l’empreinte vérifiée.
+
+| CLI | |
+|---|---|
+| `python facet.py --immich-stacks-plan import --stack-plan-out NEW_JSON` | Prévisualiser les piles distantes à importer |
+| `python facet.py --immich-stacks-plan push --stack-id UUID --stack-plan-out NEW_JSON` | Prévisualiser les piles locales à créer à distance |
+| `python facet.py --immich-stacks-apply PLAN_JSON --ack-stack-plan SHA256` | Appliquer explicitement le plan vérifié |
+
+Répétez `--stack-id UUID` pour limiter la source. `--stack-plan-out NEW_JSON` crée un fichier privé (POSIX `0600`), sans écrasement. Limites : 1000 piles, 1000 membres/pile, 20000 membres, 16 MiB. Les correspondances exactes peuvent adopter un lien ; correspondances incomplètes et chevauchements font ignorer tout le groupe. Aucune pile existante n’est modifiée ; créations incertaines réconciliées avant réessai. Voir [permissions, conflits et concurrence distante](IMMICH.md#piles-manuelles--import-et-envoi). Sous Windows, choisissez un dossier de sortie dont l’ACL limite l’accès à votre compte ; les bits de mode POSIX ne garantissent pas la confidentialité des fichiers Windows.
+
 ## Opérations de recalcul
 
 Ces commandes mettent à jour des métriques spécifiques, dérivent de nouvelles données (légendes IA, GPS, embeddings) ou analysent la base de données — le tout sans réexécuter l'intégralité du pipeline de notation. La plupart réutilisent les miniatures/points de repère stockés et sont légères pour le CPU, mais les lignes IA/extraction (par ex. `--generate-captions`) et les lignes de recalcul à partir de l'image sont gourmandes en GPU.

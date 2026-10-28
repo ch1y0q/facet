@@ -113,6 +113,18 @@ Envie suas avaliações e favoritos do Facet para um servidor [Immich](https://i
 
 As avaliações seguem a política segura de versão do Immich (apenas 1–5, nunca 0/−1); um álbum opcional de melhores escolhas reúne fotos acima de um limiar de avaliação. Somente REST — sem acoplamento direto ao banco de dados do Immich. Veja [Configuração — Immich Sync](CONFIGURATION.md#immich-sync) para o bloco completo.
 
+### Planos de pilhas Immich
+
+Use `--config`, `--db`, `--user` existentes; multiusuário exige proprietário existente explícito. Prévia sem gravações nem migrações. Aplicação exige o resumo revisado.
+
+| CLI | |
+|---|---|
+| `python facet.py --immich-stacks-plan import --stack-plan-out NEW_JSON` | Prévia das pilhas remotas para importar |
+| `python facet.py --immich-stacks-plan push --stack-id UUID --stack-plan-out NEW_JSON` | Prévia das pilhas locais para criar remotamente |
+| `python facet.py --immich-stacks-apply PLAN_JSON --ack-stack-plan SHA256` | Aplicar explicitamente o plano revisado |
+
+Repita `--stack-id UUID` para limitar a origem. `--stack-plan-out NEW_JSON` cria arquivo privado (POSIX `0600`), sem sobrescrever. Limites: 1000 grupos, 1000 membros/grupo, 20000 totais, 16 MiB. Correspondências exatas podem adotar vínculos; mapas incompletos e sobreposições ignoram grupos inteiros. Pilhas existentes nunca são atualizadas; criações incertas são reconciliadas antes de repetir. Veja [permissões, conflitos e concorrência remota](IMMICH.md#importar-e-enviar-pilhas-manuais). No Windows, escolha uma pasta de saída cuja ACL restrinja o acesso à sua conta; os bits de permissões POSIX não garantem a privacidade dos ficheiros Windows.
+
 ## Recompute Operations
 
 Esses comandos atualizam métricas específicas, derivam novos dados (legendas por IA, GPS, embeddings) ou analisam o banco de dados — tudo sem reexecutar o pipeline completo de pontuação. A maioria reutiliza miniaturas/landmarks armazenados e é leve para a CPU, mas as linhas de IA/extração (por exemplo, `--generate-captions`) e as linhas de recálculo a partir da imagem são pesadas para a GPU.

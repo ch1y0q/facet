@@ -115,6 +115,18 @@ Envía tus valoraciones y favoritos de Facet a un servidor [Immich](https://immi
 
 Las valoraciones siguen la política segura por versión de Immich (solo 1–5, nunca 0/−1); un álbum opcional de mejores fotos recopila las fotos por encima de un umbral de valoración. Solo REST — sin acoplamiento directo con la base de datos de Immich. Consulta [Configuración — Sincronización con Immich](CONFIGURATION.md#immich-sync) para el bloque completo.
 
+### Planes de pilas Immich
+
+Usa `--config`, `--db`, `--user` existentes; multiusuario exige propietario existente explícito. Vista previa sin escritura ni migración. Aplicación con el resumen revisado.
+
+| CLI | |
+|---|---|
+| `python facet.py --immich-stacks-plan import --stack-plan-out NEW_JSON` | Previsualizar pilas remotas para importarlas |
+| `python facet.py --immich-stacks-plan push --stack-id UUID --stack-plan-out NEW_JSON` | Previsualizar pilas locales para crearlas a distancia |
+| `python facet.py --immich-stacks-apply PLAN_JSON --ack-stack-plan SHA256` | Aplicar explícitamente el plan revisado |
+
+Repite `--stack-id UUID` para acotar el origen. `--stack-plan-out NEW_JSON` crea un archivo privado (POSIX `0600`), sin sobrescribir. Límites: 1000 grupos, 1000 miembros/grupo, 20000 totales, 16 MiB. Coincidencias exactas pueden adoptar vínculos; mapas incompletos y solapamientos omiten grupos enteros. No se actualizan pilas existentes; creaciones inciertas se reconcilian antes de reintentar. Consulta [permisos, conflictos y concurrencia remota](IMMICH.md#importar-y-enviar-pilas-manuales). En Windows, elige una carpeta de salida cuya ACL limite el acceso a tu cuenta; los bits de permisos POSIX no garantizan la privacidad de los archivos en Windows.
+
 ## Operaciones de recálculo
 
 Estos comandos actualizan métricas específicas, derivan datos nuevos (leyendas de IA, GPS, embeddings) o analizan la base de datos — todo sin volver a ejecutar el pipeline completo de puntuación. La mayoría reutilizan las miniaturas/puntos de referencia almacenados y son ligeros para la CPU, pero las filas de IA/extracción (p. ej. `--generate-captions`) y las de recálculo a partir de la imagen son intensivas en GPU.

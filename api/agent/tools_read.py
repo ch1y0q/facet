@@ -141,7 +141,7 @@ def _list_result(upstream: dict, extra_fields: tuple = ()) -> dict:
         "rows": [compact_photo(p, extra_fields) for p in body.get("photos", [])],
         "total": body.get("total", 0),
     }
-    for key in ("page", "per_page", "has_more", "hidden_summary", "query"):
+    for key in ("photo_total", "page", "per_page", "has_more", "hidden_summary", "query"):
         if key in body:
             data[key] = body[key]
     if body.get("error"):
@@ -602,6 +602,9 @@ def register_read_tools(server: MCPServer, client: InternalClient, status_extra,
 
     add(search_photos, "search_photos",
         "Search and filter the photo library like the viewer gallery. Applies the viewer's "
+        "stack collapse: `total` counts displayed items; `photo_total` counts matching originals, including "
+        "folded stack members. Use `photo_total` as a filter-scoped write's expected_count. Exact pinned lists "
+        "keep the requested photos. Applies the viewer's "
         "default hide toggles (bursts, duplicates, brackets, panoramas, blinks) unless the filter "
         "sets them, and reports `hidden_summary` so you can say how many more are hidden. " + SHOW_RULE +
         " Filters the gallery sidebar has no field for (exclude_tags, require_tags, is_silhouette, "

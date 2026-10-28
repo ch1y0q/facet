@@ -1,7 +1,8 @@
 """Bounded organization snapshots and SQL revisions, independent of API connections.
 
-Triggers observe every writer (including imports and SQL tools). History itself is
-explicitly recorded only by organization actions, in their existing transaction.
+Triggers observe photo-field writers (including imports and SQL tools). Private
+stack mutations stamp revisions through their helpers; direct edits to stack tables
+are unsupported. History is recorded by organization actions in their transaction.
 """
 import json
 import sqlite3
@@ -101,11 +102,17 @@ def init_schema(conn: sqlite3.Connection) -> None:
 
 def snapshot(conn: sqlite3.Connection, kind: str, scope: str, paths: list[str]) -> dict[str, dict[str, Any]]:
     result = {}
-    fields = FIELDS[kind]
+    fields = FIELDS.get(kind, ())
     for start in range(0, len(paths), 400):
         chunk = paths[start:start + 400]
         marks = ','.join('?' for _ in chunk)
-        if kind == 'review' and scope:
+        if kind == 'stack':
+            rows = conn.execute(f'''SELECT p.path,m.stack_id,s.cover_path,m.position FROM photos p
+                LEFT JOIN photo_stack_members m ON m.photo_path=p.path AND m.owner=?
+                LEFT JOIN photo_stacks s ON s.id=m.stack_id AND s.owner=m.owner
+                WHERE p.path IN ({marks})''', [scope, *chunk])
+            values = {r[0]: list(r[1:]) if r[1] else [] for r in rows}
+        elif kind == 'review' and scope:
             columns = ','.join(f'up.{field}' for field in fields)
             rows = conn.execute(f"SELECT p.path,{columns},up.photo_path FROM photos p LEFT JOIN user_preferences up ON up.photo_path=p.path AND up.user_id=? WHERE p.path IN ({marks})", [scope, *chunk])
             values = {r[0]: list(r[1:5]) if r[5] is not None else [0, 0, 0, 0] for r in rows}
@@ -117,29 +124,41 @@ def snapshot(conn: sqlite3.Connection, kind: str, scope: str, paths: list[str]) 
     return result
 
 
+def _encode(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=True, separators=(',', ':'), allow_nan=False)
+
+
 def record(conn: sqlite3.Connection, owner: str, kind: str, scope: str,
            before: dict[str, dict[str, Any]]) -> None:
     after = snapshot(conn, kind, scope, list(before))
-    changes = [dict(path=path, before=old['values'], after=after[path]['values'], revision=after[path]['revision'])
-               for path, old in before.items() if path in after and old['values'] != after[path]['values']]
-    if not changes:
+    present = {path: old for path, old in before.items() if path in after}
+    if all(old['values'] == after[path]['values'] for path, old in present.items()):
         return
+    # Whole-stack Undo must include unchanged retained members too. A stack
+    # action cannot be split: each part would restore incomplete membership.
+    changes = [dict(path=path, before=old['values'], after=after[path]['values'], revision=after[path]['revision'])
+               for path, old in present.items() if kind == 'stack' or old['values'] != after[path]['values']]
     # Parts preserve existing unbounded filtered-review edits. A single photo
     # that cannot be represented is rejected; the enclosing edit rolls back.
     parts: list[list[dict[str, Any]]] = []
-    part: list[dict[str, Any]] = []
-    size = 2
-    for change in changes:
-        encoded_size = len(json.dumps(change, ensure_ascii=True, separators=(',', ':'), allow_nan=False).encode())
-        if encoded_size + 2 > MAX_BYTES:
+    if kind == 'stack':
+        if len(_encode(changes).encode()) > MAX_BYTES:
             raise ValueError('Organization history entry is too large')
-        if part and (len(part) == MAX_PHOTOS or size + encoded_size + 1 > MAX_BYTES):
-            parts.append(part)
-            part, size = [], 2
-        size += encoded_size + bool(part)
-        part.append(change)
-    parts.append(part)
+        parts.append(changes)
+    else:
+        part: list[dict[str, Any]] = []
+        size = 2
+        for change in changes:
+            encoded_size = len(_encode(change).encode())
+            if encoded_size + 2 > MAX_BYTES:
+                raise ValueError('Organization history entry is too large')
+            if part and (len(part) == MAX_PHOTOS or size + encoded_size + 1 > MAX_BYTES):
+                parts.append(part)
+                part, size = [], 2
+            size += encoded_size + bool(part)
+            part.append(change)
+        parts.append(part)
     for index, part in enumerate(parts, 1):
         conn.execute('INSERT INTO organization_history(owner,kind,scope,payload,part,parts) VALUES (?,?,?,?,?,?)',
-                     (owner, kind, scope, json.dumps(part, ensure_ascii=True, separators=(',', ':'), allow_nan=False), index, len(parts)))
+                     (owner, kind, scope, _encode(part), index, len(parts)))
     conn.execute('DELETE FROM organization_history WHERE owner=? AND id NOT IN (SELECT id FROM organization_history WHERE owner=? ORDER BY id DESC LIMIT ?)', (owner, owner, MAX_ENTRIES))

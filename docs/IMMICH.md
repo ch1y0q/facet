@@ -18,6 +18,7 @@ The link is REST-only in both directions. Facet never touches Immich's database,
 - [Step 3 — map the paths](#step-3--map-the-paths)
 - [Step 4 — test, then push](#step-4--test-then-push)
 - [Pushing rejections](#pushing-rejections)
+- [Manual stack import and push](#manual-stack-import-and-push)
 - [The inbound webhook](#the-inbound-webhook)
 - [Configuration reference](#configuration-reference)
 - [Troubleshooting](#troubleshooting)
@@ -68,7 +69,7 @@ If instead you upload into Immich normally (mobile auto-backup, the web uploader
 
 In Immich: **click your avatar → Account Settings → API Keys → New API Key**.
 
-Immich ≥ 3.0 lets you scope a key rather than granting it everything. Facet needs exactly six scopes:
+Immich ≥ 3.0 lets you scope a key rather than granting it everything. Rating/favorite sync uses the following scopes; manual stacks need the additional permissions described below:
 
 | Scope | What Facet does with it |
 |-------|-------------------------|
@@ -164,6 +165,16 @@ With `push.rejected` on:
 - `push.ratings: false` suppresses it. `-1` is a rating write, so a config that disabled rating pushes does not get one smuggled back in.
 
 Leave it off if other people (or your phone) look at the Immich library: a `-1` is visible there, and "rejected in Facet" is a working judgement you may not want broadcast.
+
+## Manual stack import and push
+
+Manual stacks use a separate **local CLI plan/apply** workflow, with the existing `--config`, `--db` and `--user` options. Multi-user installations require an explicit existing user. The global Immich key is never exposed through web, assistant/MCP or upload-webhook stack operations. Existing rating/favorite sync is unchanged. Immich **≥ 3.0** is required, with runtime stack capability checks; add `user.read` and `stack.read` to the existing `asset.read` permission, plus `stack.create` and `asset.update` for push. Version 1 needs neither `stack.update` nor `stack.delete`.
+
+Preview is read-only on both sides and does not migrate the database. Review its SHA-256 digest before explicit apply. `--stack-id UUID` is repeatable and scopes stack IDs in the source direction. `--stack-plan-out` creates a new private JSON file atomically (POSIX mode `0600`), refusing overwrite. Plans are capped at **1000 groups, 1000 members per group, 20000 total members and 16 MiB**; narrow with `--stack-id` when over a limit. On Windows, choose an output directory whose ACL restricts access to your account; POSIX mode bits do not establish Windows file privacy.
+
+Import requires every remote member to map uniquely to an indexed, visible, online photo owned by the remote account. Push likewise resolves and checks all local members before creating an entirely unstacked remote group. No incomplete group is imported: one missing/ambiguous member skips the whole group. An exact member-and-cover match can adopt the durable link on apply. Partial overlap, different covers, changed membership and local/remote unstack discrepancies are conflicts/skips; this version updates neither an existing local nor an existing remote stack. Order beyond the cover does not round-trip. No automatic bidirectional sync, polling or unstack propagation runs.
+
+Plans, links and private per-stack receipts are scoped to the server, remote account, local owner and path-map fingerprint; changed scope invalidates reuse. Receipts store outcome and remote asset IDs without credentials. Apply revalidates state before each group and rereads remote membership/cover after a write. A lost create response must be reconciled before retry; unresolved sends are never blindly reposted. Cancellation stops between groups, and a later explicit apply reconciles receipts. Immich has no stack-create compare-and-swap: another client can race the final check, and postvalidation does not provide distributed atomicity or automatic rollback. Tests cover a local fake HTTP server; they do not certify a real Immich deployment.
 
 ## The inbound webhook
 

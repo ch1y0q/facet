@@ -203,8 +203,9 @@
     "duplicate_set": "Ouvrir le groupe de doublons",
     "burst_set": "Ouvrir le groupe de rafale",
     "sequence_set": "Ouvrir bracket/panorama",
+    "stack_set": "Ouvrir la pile de photos",
     "open_detail": "Ouvrir la page photo",
-    "key_hint": "1-5 noter · F favori · X rejeter · Espace sélectionner · Entrée ouvrir"
+    "key_hint": "1-5 noter · {favourite} favori · {reject} rejeter · Espace sélectionner · Entrée ouvrir"
   },
   "notifications": {
     "copied": "Copie !",
@@ -2674,7 +2675,13 @@
     "toggle_filters": "Afficher / masquer le panneau de filtres",
     "toggle_layout": "Basculer grille / mosaïque",
     "comp_left_wins": "La photo de gauche gagne",
-    "comp_right_wins": "La photo de droite gagne"
+    "comp_right_wins": "La photo de droite gagne",
+    "keymap_hint": "Cliquez sur une action, puis appuyez sur la nouvelle touche.",
+    "press_key": "Appuyez sur une touche…",
+    "reset_keys": "Tout réinitialiser",
+    "key_in_use": "Cette touche est déjà attribuée",
+    "key_reserved": "Cette touche est réservée",
+    "keymap_title": "Personnaliser les raccourcis"
   },
   "pwa": {
     "update_available": "Une nouvelle version est disponible",
@@ -2850,7 +2857,11 @@
       "set_favorite": "Favoris modifiés",
       "set_rating": "Notation",
       "set_rejected": "Rejet",
-      "start_scan": "Analyse lancée"
+      "start_scan": "Analyse lancée",
+      "create_photo_stack": "Pile de photos créée",
+      "update_photo_stack": "Pile de photos modifiée",
+      "unstack_photos": "Pile de photos dissociée",
+      "undo_photo_stack": "Modification de pile annulée"
     },
     "ui": {
       "ui_navigate": "Page ouverte",
@@ -2940,6 +2951,44 @@
     "unknown": "Inconnu",
     "photo_count": "Photos : {count}",
     "field": "Champ",
-    "entry_action": "{action} · {kind} · {date} · #{id}"
+    "entry_action": "{action} · {kind} · {date} · #{id}",
+    "stack": "Pile de photos"
+  },
+  "stacks": {
+    "previous": "Photo précédente de la pile",
+    "next": "Photo suivante de la pile",
+    "browse_position": "{position} sur {count}",
+    "manage": "Gérer la pile",
+    "title": "Pile de photos",
+    "create": "Empiler les photos",
+    "hint": "Les originaux et leurs décisions sont conservés. Choisissez une couverture puis enregistrez. L’ordre initial est chronologique.",
+    "member_count": "{count} membre",
+    "member_count_plural": "{count} membres",
+    "open_member": "Ouvrir {path}",
+    "cover_for": "Utiliser {path} comme couverture",
+    "cover": "Couverture",
+    "move_up": "Avancer {path}",
+    "move_down": "Reculer {path}",
+    "remove": "Retirer {path} de la pile",
+    "add_selected": "Ajouter {count} photo sélectionnée",
+    "add_selected_plural": "Ajouter {count} photos sélectionnées",
+    "select_all": "Sélectionner les {count} membres",
+    "unstack": "Dissocier",
+    "read_only": "Vous pouvez voir les membres autorisés. L’édition exige l’accès à tous les membres.",
+    "dissolve_hint": "Avec moins de deux membres, l’enregistrement dissocie la pile. Les photos sont conservées.",
+    "error": "La requête a échoué. Votre brouillon est conservé ; réessayez.",
+    "conflict": "La pile a changé, est indisponible, ou une photo appartient déjà à une pile. Rechargez les membres. Ouvrez les piles existantes depuis leur badge et retirez les membres avant de les regrouper.",
+    "unavailable": "Cette pile ou un membre est indisponible.",
+    "reload": "Recharger les membres",
+    "saved": "Pile de photos mise à jour",
+    "expand_all": "Développer toutes les piles",
+    "collapse": "Réduire les piles",
+    "totals": "{photos} photos correspondantes · {items} éléments affichés",
+    "folded_scope": "Les actions sur toute la vue incluent les membres repliés. Une vignette sélectionnée seule ne cible que cette photo.",
+    "explicit_only": "Sélectionnez explicitement 2 à 1000 photos pour créer une pile.",
+    "badge": "Ouvrir la pile : {count} membres",
+    "badge_filtered": "Ouvrir la pile : {count} correspondances sur {total} membres autorisés",
+    "stack_id": "Identifiant de pile",
+    "position": "Position"
   }
 }

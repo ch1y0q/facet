@@ -18,6 +18,7 @@ from api.agent.ui_tools import UI_TOOLS
 from tests.conftest import AGENT_DIR, intercept_internal_call, serve_app, visual_ranking
 
 READ_TOOLS = {
+    "get_photo_stack",
     "search_photos", "semantic_search", "get_photo", "similar_photos", "filter_options",
     "list_persons", "list_albums", "library_stats", "status", "available_actions", "get_thumbnail", "contact_sheet", "possible_faces",
 }

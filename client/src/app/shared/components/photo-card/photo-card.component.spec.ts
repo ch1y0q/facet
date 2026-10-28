@@ -6,6 +6,7 @@ import { MATERIAL_ANIMATIONS } from '@angular/material/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import { MatMenuTrigger } from '@angular/material/menu';
 import { I18nService } from '../../../core/services/i18n.service';
+import { KeyboardMappingService, KEYMAP_STORAGE_KEY } from '../../../core/services/keyboard-mapping.service';
 import { PhotoCardComponent } from './photo-card.component';
 import { CardActionsConfig } from './card-actions';
 import type { Photo } from '../../models/photo.model';
@@ -113,6 +114,42 @@ describe('PhotoCardComponent', () => {
     const card = getCard();
     expect(card).toBeTruthy();
     expect(card.photo().filename).toBe('test.jpg');
+  });
+
+  it('opens a stack from its matching/permitted count badge without selecting the representative', () => {
+    fixture.componentInstance.photo.set(makePhoto({ stack_id: 'stack', stack_count: 2, stack_total_count: 4 }));
+    fixture.detectChanges();
+    const opened = vi.fn(); getCard().openStackClicked.subscribe(opened);
+    const button = fixture.nativeElement.querySelector('[data-stack-badge]') as HTMLButtonElement;
+    // The bubble shows the matching count; the permitted total lives in the
+    // tooltip/aria-label, which a 14px bubble has no room for.
+    expect(button.textContent?.replace('layers', '').trim()).toBe('2');
+    expect(button.getAttribute('aria-label')).toBe('stacks.badge_filtered');
+    button.click();
+    expect(opened).toHaveBeenCalledWith(fixture.componentInstance.photo());
+    expect(fixture.componentInstance.selected).toEqual([]);
+    expect(fixture.nativeElement.querySelector('img').src).toContain('/thumbnail?');
+  });
+
+  it('offers the stack as a configurable hover action only on a stacked photo', () => {
+    fixture.componentInstance.photo.set(makePhoto({ stack_id: 'stack', stack_count: 3, stack_total_count: 3 }));
+    fixture.detectChanges();
+    const opened = vi.fn(); getCard().openStackClicked.subscribe(opened);
+    const action = fixture.nativeElement.querySelector('button[aria-label="photoCard.stack_set"]') as HTMLButtonElement;
+    action.click();
+    expect(opened).toHaveBeenCalledWith(fixture.componentInstance.photo());
+    fixture.componentInstance.photo.set(makePhoto({}));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('button[aria-label="photoCard.stack_set"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[data-stack-badge]')).toBeNull();
+  });
+
+  it('hides the stack badge but keeps the hover action when badges.stack is off', () => {
+    fixture.componentInstance.config.set({ badges: { stack: false } });
+    fixture.componentInstance.photo.set(makePhoto({ stack_id: 'stack', stack_count: 3, stack_total_count: 3 }));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-stack-badge]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('button[aria-label="photoCard.stack_set"]')).not.toBeNull();
   });
 
   it('should have default input values', () => {
@@ -909,6 +946,19 @@ describe('PhotoCardComponent current-photo marker', () => {
     fixture.componentRef.setInput('isEditionMode', false);
     fixture.detectChanges();
     expect(hint()).toBeUndefined();
+  });
+
+  it('names the favourite and reject keys the user mapped in the focused-card hint', () => {
+    localStorage.removeItem(KEYMAP_STORAGE_KEY);
+    const fixture = createCard({ isActive: true, gridHasActiveCard: true });
+    const mapping = TestBed.inject(KeyboardMappingService);
+    mapping.setKey('favourite', 'z');
+    fixture.componentRef.setInput('isEditionMode', true);
+    fixture.componentRef.setInput('config', { features: { show_rating_controls: true } });
+    fixture.detectChanges();
+    expect(TestBed.inject(I18nService).t).toHaveBeenCalledWith('photoCard.key_hint', { favourite: 'Z', reject: 'X' });
+    mapping.resetAll();
+    localStorage.removeItem(KEYMAP_STORAGE_KEY);
   });
 
   it.each([

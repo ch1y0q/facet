@@ -136,6 +136,14 @@ describe('JunkSweepComponent', () => {
     expect(component.total()).toBe(4);
   });
 
+  it('lists every stacked junk frame, not only the stack representative', async () => {
+    createComponent();
+
+    await component.ngOnInit();
+
+    expect(mockApi.get).toHaveBeenCalledWith('/photos', expect.objectContaining({ collapse_stacks: 0 }));
+  });
+
   it('keeps the counter a finite number after rejecting a photo (no NaN)', async () => {
     createComponent();
     await component.ngOnInit();

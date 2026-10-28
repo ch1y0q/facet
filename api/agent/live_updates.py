@@ -29,6 +29,7 @@ COUNT_KEYS = ("count", "affected", "moved", "trashed", "copied", "rejected", "cl
 # Every ``write=True`` route in ROUTE_ALLOWLIST and CULLING_ROUTES sits in exactly one of the two sets
 # (tests/test_agent_live_updates.py walks both tables), so a new write route fails CI until classified.
 PHOTO_EFFECT_TOOLS = frozenset({
+    "create_photo_stack", "update_photo_stack", "unstack_photos", "undo_photo_stack",
     "set_rating", "toggle_favorite", "toggle_rejected", "batch_favorite", "batch_reject", "batch_rating",
     "batch_manual_tags", "clear_junk", "set_caption", "album_add_photos", "album_remove_photos",
     "cull_apply", "delete_photos", "override_sequence", "clear_sequence_override", "override_category",
@@ -50,6 +51,9 @@ CALL_CONTEXT: ContextVar[Optional[tuple[str, str]]] = ContextVar("facet_call_con
 
 def changed_paths(tool: str, body: Any) -> Optional[list[str]]:
     """The unique photo paths ``body`` names, in order, or ``None`` when the tab must reload instead."""
+    # A row patch cannot repair representative paging/counts, and update bodies omit former members/covers.
+    if tool in {"create_photo_stack", "update_photo_stack", "unstack_photos", "undo_photo_stack"}:
+        return None
     if not isinstance(body, dict) or body.get("include_sequence_siblings") is True:
         return None
     seen: dict[str, None] = {}

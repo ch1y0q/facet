@@ -1,5 +1,5 @@
 import { i18nKeys } from '../../../core/i18n/keys';
-import { Component, computed, effect, input, output, signal, untracked, viewChildren, ChangeDetectionStrategy } from '@angular/core';
+import { Component, computed, effect, inject, input, output, signal, untracked, viewChildren, ChangeDetectionStrategy } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
@@ -16,6 +16,7 @@ import { ScoreClassPipe, SortScorePipe, sortScoreColumn } from '../../pipes/scor
 import { SortPersonsPipe } from '../../pipes/sort-persons.pipe';
 import { closeOverlayDirectives } from '../../utils/overlays';
 import { MetricDistribution, topPercentOf } from '../../utils/metric-distribution';
+import { KeyboardMappingService } from '../../../core/services/keyboard-mapping.service';
 
 interface AppConfig {
   quality_thresholds?: { excellent: number; great: number; good: number };
@@ -36,6 +37,7 @@ export interface BadgeVisibility {
   rejected: boolean;
   sequence_kind: boolean;
   sequence_override_pending: boolean;
+  stack: boolean;
   keeper_hint: boolean;
   best_of_burst: boolean;
   clipping_highlight: boolean;
@@ -51,6 +53,7 @@ export const DEFAULT_BADGE_VISIBILITY: BadgeVisibility = {
   rejected: true,
   sequence_kind: true,
   sequence_override_pending: true,
+  stack: true,
   keeper_hint: true,
   best_of_burst: true,
   clipping_highlight: true,
@@ -211,6 +214,26 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
             <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white drop-shadow-md"
                       aria-hidden="true">{{ kind | photoSetKindIcon }}</mat-icon>
           </div>
+        }
+
+        <!-- A manual stack: like the set-kind badge it states a standing fact
+             the tile hides (the other members), so it does not fade on hover.
+             It takes the bottom-left slot next to the rating, which the hover
+             bar leaves free, and stays clickable so touch screens -- which never
+             see the hover row's stack button -- can still open the stack. -->
+        @if (badges().stack && photo().stack_id) {
+          @let stackCount = photo().stack_count ?? 0;
+          @let stackTotal = photo().stack_total_count ?? stackCount;
+          @let stackLabel = (stackCount !== stackTotal ? I18N.stacks.badge_filtered : I18N.stacks.badge) | translate:{ count: stackCount, total: stackTotal };
+          <button type="button" data-stack-badge
+            class="absolute left-9 w-7 h-7 z-30 inline-flex items-center justify-center bottom-1 rounded-full hover:bg-black/60 text-white cursor-pointer"
+            (click)="openStackClicked.emit(photo()); $event.stopPropagation()"
+            (keydown)="$event.stopPropagation()"
+            [matTooltip]="stackLabel"
+            [attr.aria-label]="stackLabel">
+            <mat-icon class="!text-base !w-4 !h-4 !leading-4 drop-shadow-md" aria-hidden="true">layers</mat-icon>
+            <span class="absolute -top-0.5 -right-0.5 min-w-3.5 h-3.5 px-0.5 rounded-full bg-white text-black text-[10px] font-bold flex items-center justify-center leading-none" aria-hidden="true">{{ photo().stack_count }}</span>
+          </button>
         }
 
         <!-- A pending panorama correction. Keyed on the override, never on
@@ -375,7 +398,7 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
           <div class="absolute bottom-1.5 left-1.5 z-20 px-1.5 py-0.5 rounded-md
                       bg-black/60 text-white/90 text-[10px] leading-4 pointer-events-none
                       hidden md:block whitespace-nowrap" aria-hidden="true">
-            {{ 'photoCard.key_hint' | translate }}
+            {{ 'photoCard.key_hint' | translate: keyHintVars() }}
           </div>
         }
       </div>
@@ -462,6 +485,12 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
 })
 export class PhotoCardComponent {
   protected readonly I18N = i18nKeys();
+  private readonly keymap = inject(KeyboardMappingService).keymap;
+  /** The remappable keys the focused-card hint names, as the user set them. */
+  protected readonly keyHintVars = computed(() => ({
+    favourite: this.keymap().favourite.toUpperCase(),
+    reject: this.keymap().reject.toUpperCase(),
+  }));
   // Data
   readonly photo = input.required<Photo>();
   readonly config = input<AppConfig | null>(null);
@@ -727,6 +756,7 @@ export class PhotoCardComponent {
   readonly openCritiqueClicked = output<Photo>();
   readonly embedMetadataClicked = output<Photo>();
   readonly openAddPersonClicked = output<Photo>();
+  readonly openStackClicked = output<Photo>();
   readonly openSetClicked = output<{ photo: Photo; kind: CardSetKind }>();
   readonly openDetailClicked = output<Photo>();
   readonly favoriteToggled = output<string>();
@@ -755,6 +785,7 @@ export class PhotoCardComponent {
       duplicate_set: photo.duplicate_group_id != null,
       burst_set: photo.burst_group_id != null,
       sequence_set: !!photo.sequence_kind && photo.sequence_group_id != null,
+      stack_set: !!photo.stack_id,
       open_detail: true,
     };
     return cfg.order.filter(id => !cfg.hidden.includes(id) && available[id]);
@@ -772,6 +803,7 @@ export class PhotoCardComponent {
       case 'duplicate_set': this.openSetClicked.emit({ photo, kind: 'duplicate' }); break;
       case 'burst_set': this.openSetClicked.emit({ photo, kind: 'burst' }); break;
       case 'sequence_set': this.openSetClicked.emit({ photo, kind: 'sequence' }); break;
+      case 'stack_set': this.openStackClicked.emit(photo); break;
       case 'open_detail': this.openDetailClicked.emit(photo); break;
       case 'similar': break;
       default: {

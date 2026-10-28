@@ -293,7 +293,7 @@ def seeded_history(seeded_photos):
     return history.json()['entries'][0]['id']
 
 
-def _bind(requests, photo_path, album_id, history_id, job_id):
+def _bind(requests, photo_path, album_id, history_id, job_id, stack_paths=None):
     """``requests`` with the photo and album placeholders replaced by real rows."""
     def value(v):
         if v == _PLACEHOLDER_PHOTO:
@@ -306,6 +306,8 @@ def _bind(requests, photo_path, album_id, history_id, job_id):
     for method, path, params, body, user in requests:
         if path.startswith('/api/export/sidecar_jobs/not-a-job'):
             path = path.replace('/not-a-job', '/' + job_id, 1)
+        if method == 'POST' and path == '/api/stacks' and stack_paths:
+            body = {'paths': stack_paths, 'cover_path': stack_paths[0]}
         if method == 'POST' and path == '/api/export/sidecar_jobs':
             body = {'paths': [photo_path]}
         if path == '/api/organization_history/1/revert':
@@ -335,7 +337,8 @@ def test_no_route_runs_a_blocking_opener_on_the_event_loop(seeded_photos, seeded
     monkeypatch.setitem(scan.VIEWER_CONFIG, 'features',
                         {**scan.VIEWER_CONFIG.get('features', {}), 'show_scan_button': True})
     statuses = []
-    assert _drive(list(_bind(REQUESTS, seeded_photos[0]["path"], seeded_album, seeded_history, seeded_sidecar_job)), statuses) == []
+    assert _drive(list(_bind(REQUESTS, seeded_photos[0]["path"], seeded_album, seeded_history, seeded_sidecar_job,
+                             stack_paths=[photo["path"] for photo in seeded_photos[:2]])), statuses) == []
     assert [st for st in statuses if not _answered_as_expected(*st)] == []
     assert len(statuses) == len(REQUESTS)
 
