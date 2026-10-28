@@ -1673,6 +1673,7 @@ The `/api/download/options` endpoint detects companion RAW files automatically a
 | Endpoint | Description |
 |----------|-------------|
 | `POST /api/immich/webhook` | Receive an Immich workflow webhook and mirror the pushed rating back immediately; an asset Facet hasn't scored yet is queued for the next `--immich-sync`. Static-token auth (`immich.webhook.token_env`; unset ⇒ 404); never triggers a scan. See [docs/IMMICH.md](IMMICH.md) |
+| `GET /api/immich/diagnostics` | Administrator-only status; `check_connection=true` explicitly tests connectivity with read-only remote requests. |
 
 ### Health
 

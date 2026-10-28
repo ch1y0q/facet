@@ -2999,5 +2999,29 @@
     "badge_filtered": "打开堆叠：{total} 个可访问成员中有 {count} 个匹配",
     "stack_id": "堆叠 ID",
     "position": "位置"
+  },
+  "immich_diagnostics": {
+    "title": "Immich 诊断",
+    "read_only": "只读检查。不会更改照片、评分或堆叠。",
+    "configuration": "配置",
+    "configured": "已配置服务器和密钥",
+    "not_configured": "请先配置服务器和 API 密钥。",
+    "mapping_rules": "路径映射规则",
+    "mapping_sample": "路径覆盖（样本）",
+    "sample_hint": "最多抽样 {limit} 张已索引照片。路径可映射不代表远程存在匹配资源。无规则时路径保持不变。",
+    "last_push": "最近记录的同步状态更新时间",
+    "unknown": "无记录",
+    "version": "服务器版本：{version}",
+    "stack_version_ok": "此版本支持堆叠；尚未测试权限或资源匹配。",
+    "stack_version_old": "堆叠交换需要 Immich 3 或更新版本。",
+    "not_checked": "尚未测试连接。",
+    "connected": "服务器可访问，密钥获准读取账户。",
+    "access_denied": "访问被拒绝，请检查密钥和 user.read 权限。",
+    "unreachable": "连接失败，请检查服务器、地址和 TLS。",
+    "invalid_response": "服务器响应不受支持。",
+    "invalid_config": "请在服务器上修正 Immich 配置。",
+    "failed": "无法加载诊断，请重试或检查管理员权限。",
+    "refresh": "刷新状态",
+    "test": "测试连接"
   }
 }

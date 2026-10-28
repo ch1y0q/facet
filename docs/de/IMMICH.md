@@ -20,6 +20,7 @@ Die Verbindung läuft in beide Richtungen ausschließlich über REST. Facet rüh
 - [Ablehnungen übertragen](#ablehnungen-übertragen)
 - [Manuelle Stapel importieren und übertragen](#manuelle-stapel-importieren-und-übertragen)
 - [Der eingehende Webhook](#der-eingehende-webhook)
+- [Diagnose im Viewer](#diagnose-im-viewer)
 - [Konfigurationsreferenz](#konfigurationsreferenz)
 - [Fehlerbehebung](#fehlerbehebung)
 
@@ -248,6 +249,10 @@ Scannen Sie diese Fotos (`python facet.py /mnt/photos`), und sie fallen bei der 
 - Betreiben Sie den Viewer über HTTPS, wenn Immich ihn über etwas weniger Vertrauenswürdiges als ein privates Bridge-Netzwerk erreicht — das Token reist bei jeder Zustellung in einem Header mit.
 - Rotieren Sie, indem Sie die Umgebungsvariable und den Immich-Workflow-Header gemeinsam ändern und dann den Viewer neu starten.
 - Der Webhook liest die globalen Bewertungsspalten, sodass er im Mehrbenutzermodus die gemeinsame/globale Bewertung spiegelt, nicht das Overlay eines einzelnen Benutzers. Wenn Sie benutzerspezifische Bewertungen in Immich wünschen, lassen Sie den Webhook deaktiviert und verwenden Sie `--immich-sync --user <name>` nach Zeitplan.
+
+## Diagnose im Viewer
+
+Im Benutzermenü **Immich-Diagnose** öffnen. Mehrbenutzerinstallationen benötigen Superadmin-Zugriff, Einzelbenutzerinstallationen gesperrten Editionszugriff oder vertrauenswürdige lokale Bearbeitung. **Verbindung testen** liest nur Version und Kontozugriff, ohne entfernte Schreibvorgänge. Die Pfadabdeckung prüft höchstens 200 erfasste Fotos und bestätigt keine entfernten Dateitreffer. Der gespeicherte Status kann aus einer früheren Serverkonfiguration stammen. Versionskompatibilität bestätigt keine Stapelrechte. Schlüssel und Serverpfade werden nicht zurückgegeben.
 
 ## Konfigurationsreferenz
 

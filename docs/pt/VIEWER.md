@@ -1600,6 +1600,7 @@ O endpoint `/api/download/options` detecta automaticamente arquivos RAW companhe
 | Endpoint | Descrição |
 |----------|-------------|
 | `POST /api/immich/webhook` | Recebe um webhook de fluxo de trabalho do Immich e reflete imediatamente a avaliação enviada; um item que o Facet ainda não pontuou entra na fila para o próximo `--immich-sync`. Autenticação por token estático (`immich.webhook.token_env`; não definido ⇒ 404); nunca aciona uma varredura. Veja [docs/IMMICH.md](IMMICH.md) |
+| `GET /api/immich/diagnostics` | Apenas administradores; `check_connection=true` testa a ligação através de leituras remotas. |
 
 ### Saúde
 

@@ -2999,5 +2999,29 @@
     "badge_filtered": "Open stack: {count} matching of {total} permitted members",
     "stack_id": "Stack ID",
     "position": "Position"
+  },
+  "immich_diagnostics": {
+    "title": "Immich diagnostics",
+    "read_only": "Read-only checks. Photos, ratings and stacks stay unchanged.",
+    "configuration": "Configuration",
+    "configured": "Server and key configured",
+    "not_configured": "Configure the server and API key first.",
+    "mapping_rules": "Path mapping rules",
+    "mapping_sample": "Paths covered (sample)",
+    "sample_hint": "Sample of at most {limit} indexed photos. Coverage does not prove remote matches. Without rules, paths stay unchanged.",
+    "last_push": "Last recorded sync-state update",
+    "unknown": "Not recorded",
+    "version": "Server version: {version}",
+    "stack_version_ok": "Version supports stacks; stack permissions and asset matches are not tested.",
+    "stack_version_old": "Stack exchange requires Immich 3 or later.",
+    "not_checked": "Connection not tested.",
+    "connected": "Server reachable; key accepted for account reads.",
+    "access_denied": "Access refused. Check the key and user.read permission.",
+    "unreachable": "Connection failed. Check the server, address and TLS.",
+    "invalid_response": "Unsupported server response.",
+    "invalid_config": "Correct the Immich configuration on the server.",
+    "failed": "Could not load diagnostics. Retry or check administrator access.",
+    "refresh": "Refresh status",
+    "test": "Test connection"
   }
 }

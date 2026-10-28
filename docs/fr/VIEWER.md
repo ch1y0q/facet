@@ -1602,6 +1602,7 @@ Le point d'accès `/api/download/options` détecte automatiquement les fichiers 
 | Point d'accès | Description |
 |----------|-------------|
 | `POST /api/immich/webhook` | Reçoit un webhook de workflow Immich et répercute immédiatement la note poussée ; un asset que Facet n'a pas encore noté est mis en file pour le prochain `--immich-sync`. Authentification par jeton statique (`immich.webhook.token_env` ; non défini ⇒ 404) ; ne déclenche jamais de scan. Voir [docs/IMMICH.md](IMMICH.md) |
+| `GET /api/immich/diagnostics` | État réservé aux administrateurs ; `check_connection=true` lance des lectures distantes uniquement. |
 
 ### Santé
 
