@@ -203,6 +203,7 @@
     "duplicate_set": "Apri gruppo di duplicati",
     "burst_set": "Apri gruppo di raffica",
     "sequence_set": "Apri bracket/panorama",
+    "stack_set": "Apri pila di foto",
     "open_detail": "Apri pagina foto",
     "key_hint": "1-5 valuta · F preferita · X scarta · Spazio seleziona · Invio apri"
   },
@@ -2850,7 +2851,11 @@
       "set_favorite": "Preferiti modificati",
       "set_rating": "Valutazione",
       "set_rejected": "Scarto",
-      "start_scan": "Scansione avviata"
+      "start_scan": "Scansione avviata",
+      "create_photo_stack": "Pila di foto creata",
+      "update_photo_stack": "Pila di foto aggiornata",
+      "unstack_photos": "Pila di foto separata",
+      "undo_photo_stack": "Modifica della pila annullata"
     },
     "ui": {
       "ui_navigate": "Pagina aperta",
@@ -2940,6 +2945,44 @@
     "unknown": "Sconosciuto",
     "photo_count": "Foto: {count}",
     "field": "Campo",
-    "entry_action": "{action} · {kind} · {date} · #{id}"
+    "entry_action": "{action} · {kind} · {date} · #{id}",
+    "stack": "Pila di foto"
+  },
+  "stacks": {
+    "previous": "Foto precedente della pila",
+    "next": "Foto successiva della pila",
+    "browse_position": "{position} di {count}",
+    "manage": "Gestisci pila",
+    "title": "Pila di foto",
+    "create": "Impila foto",
+    "hint": "Gli originali e le decisioni restano invariati. Scegli una copertina e salva. L’ordine iniziale è cronologico.",
+    "member_count": "{count} membro",
+    "member_count_plural": "{count} membri",
+    "open_member": "Apri {path}",
+    "cover_for": "Usa {path} come copertina",
+    "cover": "Copertina",
+    "move_up": "Sposta {path} prima",
+    "move_down": "Sposta {path} dopo",
+    "remove": "Rimuovi {path} dalla pila",
+    "add_selected": "Aggiungi {count} foto selezionata",
+    "add_selected_plural": "Aggiungi {count} foto selezionate",
+    "select_all": "Seleziona tutti i {count} membri",
+    "unstack": "Separa la pila",
+    "read_only": "Puoi vedere i membri consentiti. La modifica richiede accesso a tutti i membri.",
+    "dissolve_hint": "Salvare meno di due membri scioglie la pila. Le foto vengono conservate.",
+    "error": "Richiesta non riuscita. La bozza è conservata; riprova.",
+    "conflict": "La pila è cambiata, non è disponibile o una foto appartiene già a una pila. Ricarica i membri. Apri le pile esistenti dal distintivo e rimuovi i membri prima di raggrupparli.",
+    "unavailable": "Questa pila o un membro non è disponibile.",
+    "reload": "Ricarica membri",
+    "saved": "Pila di foto aggiornata",
+    "expand_all": "Espandi tutte le pile",
+    "collapse": "Comprimi pile",
+    "totals": "{photos} foto corrispondenti · {items} elementi visualizzati",
+    "folded_scope": "Le azioni sull’intera vista includono i membri compressi. Una singola miniatura selezionata agisce solo su quella foto.",
+    "explicit_only": "Seleziona esplicitamente da 2 a 1000 foto per creare una pila.",
+    "badge": "Apri pila: {count} membri",
+    "badge_filtered": "Apri pila: {count} corrispondenze su {total} membri consentiti",
+    "stack_id": "ID pila",
+    "position": "Posizione"
   }
 }

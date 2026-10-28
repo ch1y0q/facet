@@ -934,9 +934,12 @@ def _count_cache_store(cache_key, count):
                 del _count_cache[k]
 
 
-def _count_cache_key(prefix, from_clause, where_str, sql_params):
+def _count_cache_key(prefix, from_clause, where_str, sql_params, token=None):
     """Cache key for a count-style query: the query, the database it runs on and
-    that database's change token (``api.change_token``).
+    that database's change token (``api.change_token``). A caller reading inside
+    an explicit transaction passes the ``token`` it took BEFORE the transaction
+    began (:func:`snapshot_count_token`): a token read later could be newer than
+    the snapshot, and the stale count would be stored under the current key.
 
     The path is read from ``api.database`` AT CALL TIME because that module's
     ``DEFAULT_DB_PATH`` is the global every request connection opens (and the one
@@ -944,7 +947,8 @@ def _count_cache_key(prefix, from_clause, where_str, sql_params):
     counts under another's.
     """
     db_path = _database.DEFAULT_DB_PATH
-    token = db_change_token(db_path)
+    if token is None:
+        token = db_change_token(db_path)
     digest = hashlib.sha256(
         f"{db_path}:{from_clause}:{where_str}:{tuple(sql_params)}:{token}".encode()
     ).hexdigest()
@@ -964,9 +968,14 @@ def get_cached_count(conn, where_str, sql_params, from_clause="photos"):
     return count
 
 
-async def get_cached_count_async(conn, where_str, sql_params, from_clause="photos"):
+async def snapshot_count_token():
+    """Change token to key a transaction's counts with; take it before ``BEGIN``."""
+    return await asyncio.to_thread(db_change_token, _database.DEFAULT_DB_PATH)
+
+
+async def get_cached_count_async(conn, where_str, sql_params, from_clause="photos", *, token=None):
     """Async variant of get_cached_count for aiosqlite paths."""
-    cache_key = await asyncio.to_thread(_count_cache_key, "", from_clause, where_str, sql_params)
+    cache_key = await asyncio.to_thread(_count_cache_key, "", from_clause, where_str, sql_params, token)
     cached = _count_cache_lookup(cache_key)
     if cached is not None:
         return cached
@@ -979,7 +988,8 @@ async def get_cached_count_async(conn, where_str, sql_params, from_clause="photo
     return count
 
 
-async def get_cached_hidden_aggregates_async(conn, where_str, sql_params, from_clause="photos"):
+async def get_cached_hidden_aggregates_async(conn, where_str, sql_params, from_clause="photos", *,
+                                             stack_owner=None, token=None):
     """Cached blink/burst/duplicate/bracket aggregates over the no-hide set.
 
     The gallery builds its hidden_summary from a full-table aggregate (~100ms on a
@@ -987,19 +997,29 @@ async def get_cached_hidden_aggregates_async(conn, where_str, sql_params, from_c
     with the same TTL/keying as the count cache instead of re-running it on every
     infinite-scroll fetch.
     """
-    cache_key = await asyncio.to_thread(_count_cache_key, "hs:", from_clause, where_str, sql_params)
+    # Manual members are restored by the gallery's automatic-hide exception.
+    # Use the same membership predicate, in this snapshot and owner scope, so the
+    # category counts describe automatic followers that can actually be hidden.
+    auto_exclusion = ''
+    aggregate_params = list(sql_params)
+    if stack_owner is not None:
+        from api.stack_gallery import membership_clause
+        auto_exclusion = f' AND NOT ({membership_clause()})'
+        aggregate_params = [stack_owner, stack_owner, *sql_params]
+    cache_key = await asyncio.to_thread(
+        _count_cache_key, "hs:", from_clause, where_str + auto_exclusion, aggregate_params, token)
     cached = _count_cache_lookup(cache_key)
     if cached is not None:
         return cached
     cursor = await conn.execute(
         "SELECT COUNT(*) AS unhidden, "
         "SUM(CASE WHEN is_blink = 1 THEN 1 ELSE 0 END) AS blinks, "
-        f"SUM(CASE WHEN {HIDDEN_BURST_SQL} THEN 1 ELSE 0 END) AS bursts, "
-        f"SUM(CASE WHEN {HIDDEN_DUPLICATE_SQL} THEN 1 ELSE 0 END) AS duplicates, "
+        f"SUM(CASE WHEN {HIDDEN_BURST_SQL}{auto_exclusion} THEN 1 ELSE 0 END) AS bursts, "
+        f"SUM(CASE WHEN {HIDDEN_DUPLICATE_SQL}{auto_exclusion} THEN 1 ELSE 0 END) AS duplicates, "
         f"SUM(CASE WHEN {HIDDEN_BRACKET_SQL} THEN 1 ELSE 0 END) AS brackets, "
         f"SUM(CASE WHEN {HIDDEN_PANORAMA_SQL} THEN 1 ELSE 0 END) AS panoramas "
         f"FROM {from_clause}{where_str}",
-        sql_params,
+        aggregate_params,
     )
     row = await cursor.fetchone()
     await cursor.close()

@@ -628,9 +628,10 @@ describe('App', () => {
       const reloadPhotos = vi.fn(() => Promise.resolve());
       const store = {
         filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null),
-        types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), reloadPhotos, loadConfig: vi.fn(),
+        types: signal([]), total: signal(0), photoTotal: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), reloadPhotos, loadConfig: vi.fn(),
         viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(false), hiddenFiltersStash: signal(null),
         reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(),
+        collapseStacks: signal(true), toggleStackCollapse: vi.fn(),
         slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(),
       };
       TestBed.configureTestingModule({
@@ -653,6 +654,16 @@ describe('App', () => {
       const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>(`button[aria-label="${I18N.gallery.scan_action}"]`));
       return { fixture, root, buttons, store, openLauncher };
     }
+
+    it('announces matching photo totals in the gallery header and exact item totals for pinned lists', () => {
+      const { fixture, root, store } = render(false);
+      vi.mocked(TestBed.inject(I18nService).t).mockImplementation((key, params) =>
+        key === I18N.gallery.photo_count ? `${params?.['count']} photos` : key);
+      store.total.set(2); store.photoTotal.set(4); fixture.detectChanges();
+      expect(root.textContent).toContain('4 photos');
+      store.pinnedPaths.set(['/a.jpg', '/b.jpg']); fixture.detectChanges();
+      expect(root.textContent).toContain('2 photos');
+    });
 
     it('renders one desktop button just before the account menu, in the tonal colour', () => {
       const { buttons } = render(true);
@@ -723,9 +734,10 @@ describe('App', () => {
     function render(config: { features?: { show_my_taste?: boolean }; sort_options_grouped?: ViewerConfig['sort_options_grouped'] } | null = null) {
       const store = {
         filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(config),
-        types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), reloadPhotos: vi.fn(), loadConfig: vi.fn(),
+        types: signal([]), total: signal(0), photoTotal: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), reloadPhotos: vi.fn(), loadConfig: vi.fn(),
         viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(true), hiddenFiltersStash: signal(null),
         reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(),
+        collapseStacks: signal(true), toggleStackCollapse: vi.fn(),
         slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(),
         setUserSort: vi.fn(() => Promise.resolve()), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(),
       };
@@ -760,6 +772,24 @@ describe('App', () => {
       await fixture.whenStable();
       fixture.detectChanges();
     };
+
+    it('offers stack expansion in the mobile bar to read-only users and hides it for exact pinned lists', () => {
+      const { fixture, root, store } = render();
+      const button = root.querySelector<HTMLButtonElement>('[data-stack-collapse-mobile]');
+      expect(button).not.toBeNull();
+      expect(button?.closest('.lg\\:hidden')).not.toBeNull();
+      expect(button?.getAttribute('aria-label')).toBe(I18N.stacks.expand_all);
+      expect(button?.hasAttribute('aria-pressed')).toBe(false);
+      button?.click();
+      expect(store.toggleStackCollapse).toHaveBeenCalledOnce();
+      store.collapseStacks.set(false); fixture.detectChanges();
+      expect(button?.getAttribute('aria-label')).toBe(I18N.stacks.collapse);
+      expect(button?.hasAttribute('aria-pressed')).toBe(false);
+      store.pinnedPaths.set(['/a.jpg']); fixture.detectChanges();
+      expect(root.querySelector('[data-stack-collapse-mobile]')).toBeNull();
+      store.pinnedPaths.set(null); fixture.detectChanges();
+      expect(root.querySelector('[data-stack-collapse-mobile]')).not.toBeNull();
+    });
 
     it('shows the sort button, sort direction and filter toggle (header and mobile bar) otherwise', () => {
       const { root } = render();
@@ -964,7 +994,7 @@ describe('App', () => {
       TestBed.configureTestingModule({
         providers: [
           provideRouter([]),
-          { provide: GalleryStore, useValue: { filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null), types: signal([]), total: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), loadConfig: vi.fn(), viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(false), hiddenFiltersStash: signal(null), slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(), reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(), notifyOrganizationRestored: vi.fn() } },
+          { provide: GalleryStore, useValue: { filters: signal({ ...DEFAULT_FILTERS }), persons: signal([]), selectionCount: signal(0), config: signal(null), types: signal([]), total: signal(0), photoTotal: signal(0), loadTypeCounts: vi.fn(() => Promise.resolve()), loadConfig: vi.fn(), viewFilterParams: signal({}), activeFilterCount: signal(0), filterDrawerOpen: signal(false), hiddenFiltersStash: signal(null), collapseStacks: signal(true), toggleStackCollapse: vi.fn(), slideshowActive: signal(false), pinnedPaths: signal<string[] | null>(null), setFilterDrawerOpen: vi.fn(), updateFilter: vi.fn(), resetFilters: vi.fn(), restoreHidden: vi.fn(), showAllHidden: vi.fn(), reviewProgressVisible: signal(true), setReviewProgressVisible: vi.fn(), notifyOrganizationRestored: vi.fn() } },
           { provide: ScanService, useValue: { canLaunch: signal(false), openLauncher: vi.fn() } },
           { provide: AuthService, useValue: { identity: () => '0|', isAuthenticated: signal(true), isReadOnlyInstall: signal(false), features: signal({}), user: signal(null), logout: vi.fn(), isEdition: signal(edition), status: signal(null), editionPasswordRequired: signal(false), isMultiUser: signal(multiUser), loginPasswordRequired: signal(false), checkStatus: vi.fn(() => Promise.resolve()) } },
           { provide: I18nService, useValue: { load: vi.fn(() => Promise.resolve()), loadLanguages: vi.fn(() => Promise.resolve()), languages: signal([]), t: vi.fn((k: string) => k), translations: signal({}) } },

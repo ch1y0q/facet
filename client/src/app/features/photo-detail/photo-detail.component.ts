@@ -44,6 +44,8 @@ import { createLeafletMap } from '../../shared/leaflet';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 import { isPageShortcutBlocked, isTypingContext } from '../../shared/utils/keyboard';
 import type { CategoryOverrideResult } from './category-override-dialog.component';
+import { StackNavigatorComponent } from './stack-navigator.component';
+import { PhotoStackService } from '../../core/services/photo-stack.service';
 
 const SOCIAL_SOURCE_KEYS: Record<string, string> = {
   saliency: I18N.social_export.source.saliency,
@@ -54,6 +56,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
 @Component({
   selector: 'app-photo-detail',
   imports: [
+    StackNavigatorComponent,
     MetricRankComponent,
     PhotoMetricsTabsComponent,
     MatIconModule,
@@ -186,8 +189,11 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
         }
       </div>
 
+      <app-stack-navigator [path]="p.path" [allowedPaths]="store.pinnedPaths()" [stacked]="!!p.stack_id"
+        (memberOpened)="openSetMember($event)" />
+
       <!-- Main content: image + info -->
-      <div class="flex flex-col lg:flex-row lg:h-[calc(100%-49px)] lg:overflow-hidden">
+      <div class="flex flex-col lg:flex-row lg:flex-1 lg:min-h-0 lg:overflow-hidden">
         <!-- Image panel -->
         <div #imagePanel class="shrink-0 lg:h-auto lg:flex-1 flex items-center justify-center bg-black lg:min-h-0 relative overflow-hidden cursor-grab"
           [class.cursor-grabbing]="isPanning()"
@@ -509,7 +515,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
     }
   `,
   changeDetection: ChangeDetectionStrategy.Eager,
-  host: { class: 'block h-full overflow-y-auto lg:overflow-y-hidden' },
+  host: { class: 'flex flex-col h-full overflow-y-auto lg:overflow-y-hidden' },
 })
 export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   protected readonly I18N = i18nKeys();
@@ -525,6 +531,11 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   private readonly assistantChanges = inject(AssistantChangesService);
   private readonly photoActions = inject(PhotoActionsService);
   private readonly journal = inject(UserActivityJournal);
+  private readonly stacks = inject(PhotoStackService);
+  private readonly stackNavigator = viewChild(StackNavigatorComponent);
+  private memberRequest = 0;
+  private memberPhoto: { photo: Photo; owner: string } | null = null;
+  private readonly viewerOwner = this.auth.identity();
 
   readonly photo = signal<Photo | null>(null);
   protected readonly photoMissing = signal(false);
@@ -749,7 +760,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       if (path) {
         // The user may leave, or Back may move the address, while this loads; replacing keeps a dead entry out of history.
         const photo = await this.fetchPhoto(path).catch(() => undefined);
-        if (this.destroyRef.destroyed || this.route.snapshot.queryParamMap.get('path') !== path) return;
+        if (this.destroyRef.destroyed || this.viewerOwner !== this.auth.identity() || this.route.snapshot.queryParamMap.get('path') !== path) return;
         if (photo) this.photo.set(photo);
         else this.router.navigate(['/'], { replaceUrl: true });
       } else {
@@ -774,9 +785,11 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   }
 
   private async showPhotoAt(path: string): Promise<void> {
+    if (this.viewerOwner !== this.auth.identity() || (this.memberPhoto?.photo.path === path && !this.memberAllowed(path))) return;
     // Store copy carries edits made since; history.state is the photo as opened.
-    const photo = this.store.photos().find(p => p.path === path) ?? await this.fetchPhoto(path).catch(() => undefined);
-    if (this.route.snapshot.queryParamMap.get('path') !== path) return;
+    const context = this.stacks.context();
+    const photo = (this.memberPhoto?.owner === this.auth.identity() && this.memberPhoto.photo.path === path ? this.memberPhoto.photo : null) ?? this.store.photos().find(p => p.path === path) ?? await this.fetchPhoto(path).catch(() => undefined);
+    if (this.destroyRef.destroyed || !context() || this.route.snapshot.queryParamMap.get('path') !== path) return;
     if (!photo) {
       // Say so rather than keep the previous photo under this address (e.g. Forward to one deleted since).
       this.photo.set(null);
@@ -788,14 +801,26 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     this.fullImageLoaded.set(false);
   }
 
+  private memberAllowed(path: string): boolean {
+    const pinned = this.store.pinnedPaths();
+    return pinned === null || pinned.includes(path);
+  }
+
   protected async openSetMember(path: string): Promise<void> {
-    if (this.photo()?.path === path) return;
+    if (this.viewerOwner !== this.auth.identity() || !this.memberAllowed(path) || this.photo()?.path === path) return;
+    const sequence = ++this.memberRequest;
+    const currentPath = this.photo()?.path;
+    const context = this.stacks.context();
+    const current = () => !this.destroyRef.destroyed && context() && sequence === this.memberRequest && this.photo()?.path === currentPath && this.memberAllowed(path);
     try {
       const photo = await this.fetchPhoto(path);
-      this.router.navigate(['/photo'], { queryParams: { path }, state: { photo }, replaceUrl: true });
-      this.photo.set(photo);
-      this.fullImageLoaded.set(false);
+      if (!current()) return;
+      this.memberPhoto = { photo, owner: this.auth.identity() };
+      try {
+        await this.stacks.navigateMember(path, photo, () => this.memberAllowed(path), true);
+      } finally { this.memberPhoto = null; }
     } catch {
+      if (!current()) return;
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     }
   }
@@ -817,20 +842,27 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     this.router.navigate(['/'], { state: { setScope: updates } });
   }
 
-  @HostListener('document:keydown.escape')
-  protected goBack(): void {
+  private shortcutBlocked(event: Event): boolean {
+    return event.defaultPrevented || isPageShortcutBlocked(event as KeyboardEvent) || this.store.slideshowActive();
+  }
+
+  @HostListener('document:keydown.escape', ['$event'])
+  protected goBack(event?: Event): void {
+    if (event && this.shortcutBlocked(event)) return;
     this.location.back();
   }
 
   @HostListener('document:keydown.arrowleft', ['$event'])
   protected prevPhoto(event: Event): void {
-    if (isTypingContext(event)) return;
+    if (this.shortcutBlocked(event)) return;
+    event.preventDefault();
     void this.navigateAdjacentPhoto(-1);
   }
 
   @HostListener('document:keydown.arrowright', ['$event'])
   protected nextPhoto(event: Event): void {
-    if (isTypingContext(event)) return;
+    if (this.shortcutBlocked(event)) return;
+    event.preventDefault();
     void this.navigateAdjacentPhoto(1);
   }
 
@@ -860,6 +892,8 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   }
 
   private async navigateAdjacentPhoto(delta: number): Promise<void> {
+    // Match the visible stack buttons; its members already respect an exact list.
+    if (this.stackNavigator()?.step(delta)) return;
     const current = this.photo();
     if (!current) return;
     const indexOf = () => this.store.photos().findIndex(p => p.path === current.path);

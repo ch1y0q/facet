@@ -74,6 +74,9 @@ describe('GalleryComponent', () => {
       photos: signal([]),
       focusedPath: signal<string | null>(null),
       total: signal(0),
+      photoTotal: () => mockStore.total(),
+      collapseStacks: signal(true),
+      toggleStackCollapse: vi.fn(),
       loading: signal(false),
       loadError: signal(false),
       loadErrorKey: signal<string | undefined>(undefined),
@@ -3080,6 +3083,22 @@ describe('GalleryComponent', () => {
 
       it('shows when every loaded photo is selected and the view holds more', () => {
         expect(offered()).toBe(true);
+      });
+
+      it('does not mistake folded selected members for selection of every displayed tile', () => {
+        mockStore.photos.set(['/cover.jpg', '/unstacked.jpg'].map(photo));
+        select(['/cover.jpg', '/folded-one.jpg', '/folded-two.jpg']);
+        expect(offered()).toBe(false);
+        expect((component as unknown as { allLoadedSelected: () => boolean }).allLoadedSelected()).toBe(false);
+      });
+
+      it('checks loaded exclusions in a whole-view selection', () => {
+        mockStore.viewScopeSelected.set(true);
+        mockStore.selectionCount.set(649);
+        mockStore.excludedPaths.set(new Set(['/b.jpg']));
+        expect((component as unknown as { allLoadedSelected: () => boolean }).allLoadedSelected()).toBe(false);
+        mockStore.excludedPaths.set(new Set(['/outside-loaded.jpg']));
+        expect((component as unknown as { allLoadedSelected: () => boolean }).allLoadedSelected()).toBe(true);
       });
 
       it('stays hidden while only part of the loaded page is selected', () => {

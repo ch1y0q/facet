@@ -158,7 +158,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        if request.url.path == "/api/organization_history" or request.url.path.startswith("/api/organization_history/"):
+        if (request.url.path == "/api/organization_history" or request.url.path.startswith("/api/organization_history/")
+                or request.url.path == "/api/stacks" or request.url.path.startswith("/api/stacks/")):
             response.headers["Cache-Control"] = "no-store"
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
@@ -625,6 +626,9 @@ def create_app() -> FastAPI:
     app.include_router(capture_dates_router)
     from api.routers.organization_history import router as organization_history_router
     app.include_router(organization_history_router)
+
+    from api.routers.stacks import router as stacks_router
+    app.include_router(stacks_router)
     app.include_router(manual_tags_router)
     app.include_router(timeline_router)
     app.include_router(map_router)

@@ -203,6 +203,7 @@
     "duplicate_set": "Duplikatgruppe öffnen",
     "burst_set": "Seriengruppe öffnen",
     "sequence_set": "Belichtungsreihe/Panorama öffnen",
+    "stack_set": "Fotostapel öffnen",
     "open_detail": "Fotoseite öffnen",
     "key_hint": "1-5 bewerten · F fav · X verwerfen · Leertaste auswählen · Eingabe öffnen"
   },
@@ -2850,7 +2851,11 @@
       "set_favorite": "Favoriten geändert",
       "set_rating": "Bewertet",
       "set_rejected": "Abgelehnt",
-      "start_scan": "Scan gestartet"
+      "start_scan": "Scan gestartet",
+      "create_photo_stack": "Fotostapel erstellt",
+      "update_photo_stack": "Fotostapel geändert",
+      "unstack_photos": "Fotostapel aufgelöst",
+      "undo_photo_stack": "Stapeländerung rückgängig gemacht"
     },
     "ui": {
       "ui_navigate": "Seite geöffnet",
@@ -2940,6 +2945,44 @@
     "unknown": "Unbekannt",
     "photo_count": "Fotos: {count}",
     "field": "Feld",
-    "entry_action": "{action} · {kind} · {date} · #{id}"
+    "entry_action": "{action} · {kind} · {date} · #{id}",
+    "stack": "Fotostapel"
+  },
+  "stacks": {
+    "previous": "Vorheriges Stapelfoto",
+    "next": "Nächstes Stapelfoto",
+    "browse_position": "{position} von {count}",
+    "manage": "Stapel verwalten",
+    "title": "Fotostapel",
+    "create": "Fotos stapeln",
+    "hint": "Originale und ihre Entscheidungen bleiben erhalten. Titelbild wählen und speichern. Die anfängliche Reihenfolge ist chronologisch.",
+    "member_count": "{count} Mitglied",
+    "member_count_plural": "{count} Mitglieder",
+    "open_member": "{path} öffnen",
+    "cover_for": "{path} als Titelbild verwenden",
+    "cover": "Titelbild",
+    "move_up": "{path} nach vorne verschieben",
+    "move_down": "{path} nach hinten verschieben",
+    "remove": "{path} aus dem Stapel entfernen",
+    "add_selected": "{count} ausgewähltes Foto hinzufügen",
+    "add_selected_plural": "{count} ausgewählte Fotos hinzufügen",
+    "select_all": "Alle {count} Mitglieder auswählen",
+    "unstack": "Stapel auflösen",
+    "read_only": "Erlaubte Mitglieder sind sichtbar. Bearbeitung erfordert Editionszugriff auf alle Mitglieder.",
+    "dissolve_hint": "Beim Speichern mit weniger als zwei Mitgliedern wird der Stapel aufgelöst. Die Fotos bleiben erhalten.",
+    "error": "Anfrage fehlgeschlagen. Der Entwurf bleibt erhalten; erneut versuchen.",
+    "conflict": "Der Stapel wurde geändert, ist nicht verfügbar oder ein Foto gehört bereits zu einem Stapel. Mitglieder neu laden. Vorhandene Stapel über ihr Abzeichen öffnen und Mitglieder vor dem Neugruppieren entfernen.",
+    "unavailable": "Dieser Stapel oder ein Mitglied ist nicht verfügbar.",
+    "reload": "Mitglieder neu laden",
+    "saved": "Fotostapel aktualisiert",
+    "expand_all": "Alle Stapel aufklappen",
+    "collapse": "Stapel einklappen",
+    "totals": "{photos} passende Fotos · {items} angezeigte Elemente",
+    "folded_scope": "Aktionen für die gesamte Ansicht umfassen eingeklappte Mitglieder. Eine einzeln ausgewählte Kachel betrifft nur dieses Foto.",
+    "explicit_only": "Zum Erstellen 2–1000 Fotos ausdrücklich auswählen.",
+    "badge": "Stapel öffnen: {count} Mitglieder",
+    "badge_filtered": "Stapel öffnen: {count} passende von {total} erlaubten Mitgliedern",
+    "stack_id": "Stapel-ID",
+    "position": "Position"
   }
 }

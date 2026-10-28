@@ -1815,6 +1815,7 @@ nada.
       "rejected": true,
       "sequence_kind": true,
       "sequence_override_pending": true,
+      "stack": true,
       "keeper_hint": true,
       "best_of_burst": true,
       "clipping_highlight": true,
@@ -1837,6 +1838,7 @@ nada.
 | `badges.rejected` | `true` | Selo de polegar para baixo numa foto rejeitada (modo de edição) |
 | `badges.sequence_kind` | `true` | Selo do conjunto (sequência/bracketing/panorama/duplicado), desenhado à esquerda do selo de rejeição, visível apenas enquanto a opção de ocultar recolhe a série |
 | `badges.sequence_override_pending` | `true` | Selo de relógio para uma correção de panorama à espera da próxima deteção |
+| `badges.stack` | `true` | Selo de camadas com o número de membros em cada cartão de uma pilha de fotos manual (com as pilhas recolhidas, a capa visível); um clique abre a pilha. Desativado oculta apenas o selo: o botão de cartão «Abrir pilha de fotos» continua a funcionar |
 | `badges.keeper_hint` | `true` | Seta «existe uma foto melhor neste grupo» do modelo de seleção aprendido |
 | `badges.best_of_burst` | `true` | Selo «Melhor» na foto principal de uma rajada. Só aparece com `hide_bursts` desativado: caso contrário, todas as fotos de rajada no ecrã já são a principal |
 | `badges.clipping_highlight` | `true` | Selo numa foto cujas altas luzes ultrapassam `clipping.badge_percent` |

@@ -12,6 +12,7 @@ export type CardActionId =
   | 'duplicate_set' // open this photo's duplicate group in the gallery
   | 'burst_set'     // open this photo's burst group in the gallery
   | 'sequence_set'  // open this photo's bracket/panorama set in the gallery
+  | 'stack_set'     // open this photo's manual stack dialog
   | 'open_detail';  // open the photo page
 
 /** How a set-opening action reaches the gallery's set scope. */
@@ -28,7 +29,7 @@ export interface CardActionsConfig {
  *  original buttons, then the set openings and the photo-page shortcut, which
  *  an install shows only after opting in. */
 export const DEFAULT_CARD_ACTIONS: CardActionsConfig = {
-  order: ['similar', 'critique', 'embed', 'assign_face', 'duplicate_set', 'burst_set', 'sequence_set', 'open_detail'],
+  order: ['similar', 'critique', 'embed', 'assign_face', 'duplicate_set', 'burst_set', 'sequence_set', 'stack_set', 'open_detail'],
   hidden: ['burst_set', 'sequence_set', 'open_detail'],
 };
 
@@ -43,5 +44,6 @@ export const CARD_ACTION_META: Record<CardActionId, { icon: string; labelKey: st
   duplicate_set: { icon: 'photo_library', labelKey: 'photoCard.duplicate_set' },
   burst_set: { icon: 'burst_mode', labelKey: 'photoCard.burst_set' },
   sequence_set: { icon: 'auto_awesome_motion', labelKey: 'photoCard.sequence_set' },
+  stack_set: { icon: 'layers', labelKey: 'photoCard.stack_set' },
   open_detail: { icon: 'open_in_full', labelKey: 'photoCard.open_detail' },
 };

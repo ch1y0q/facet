@@ -60,7 +60,7 @@ MISASSIGNED_SCAN_MAX = 200
 CRITIQUE_CONCURRENCY = 4
 # Every hide toggle off except rejected, so a category audit or a weight sample is not under-counted.
 ALL_VISIBLE = {"hide_rejected": "1", "hide_bursts": "0", "hide_duplicates": "0", "hide_brackets": "0",
-               "hide_panoramas": "0", "hide_blinks": "0"}
+               "hide_panoramas": "0", "hide_blinks": "0", "collapse_stacks": "0"}
 BASIS_NOTE = ("an approximation from the stored metrics only (nothing is re-scored or re-read from the files): no percentile normalisation snapshot, no penalties, "
               "no quality-folding or renormalisation for unavailable metrics. Read the RANK changes first; the "
               "mean shift is secondary")

@@ -1,3 +1,4 @@
+import { PhotoStackService } from '../../core/services/photo-stack.service';
 import { GalleryStore } from '../gallery/gallery.store';
 import { makePhoto } from '../../../testing/photo.fixture';
 import type { Mock, MockInstance } from 'vitest';
@@ -102,6 +103,7 @@ describe('PhotoDetailComponent', () => {
   }, 20000);
 
   beforeEach(() => {
+    vi.spyOn(PhotoStackService.prototype, 'byPhoto').mockReturnValue(of(null));
     changes$ = new Subject<AssistantChangeBatch>();
     mockApi = {
       get: vi.fn(() => of(samplePhoto)),
@@ -2147,7 +2149,10 @@ describe('PhotoDetailComponent', () => {
         state: { photo: expect.objectContaining({ path: '/photos/sibling.jpg' }) },
         replaceUrl: true,
       });
-      expect(component.photo()?.path).toBe('/photos/sibling.jpg');
+      // Navigation, not openSetMember, swaps the photo: the route's activation reloads it,
+      // so the component must leave photo() untouched until then (a mocked router never activates).
+      expect(component.photo()).toBe(samplePhoto);
+      expect(mockRouter.navigate).toHaveBeenCalledTimes(1);
     });
   });
 

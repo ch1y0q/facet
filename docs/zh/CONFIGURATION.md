@@ -1783,6 +1783,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
       "rejected": true,
       "sequence_kind": true,
       "sequence_override_pending": true,
+      "stack": true,
       "keeper_hint": true,
       "best_of_burst": true,
       "clipping_highlight": true,
@@ -1805,6 +1806,7 @@ python facet.py --recompute-tags-vlm   # 用 VLM 标签模型重新打标签
 | `badges.rejected` | `true` | 已淘汰照片上的拇指向下角标（编辑模式） |
 | `badges.sequence_kind` | `true` | 连拍/包围曝光/全景/重复照片角标，绘制在"拒绝"角标的左侧，仅当对应的隐藏开关把该组折叠起来时才显示 |
 | `badges.sequence_override_pending` | `true` | 表示某项全景修正正在等待下一次检测运行的时钟角标 |
+| `badges.stack` | `true` | 手动照片堆叠中每张卡片上的图层角标及成员数（堆叠折叠时即可见的封面）；点击即可打开堆叠。关闭只隐藏角标，“打开照片堆叠”卡片按钮仍然可用 |
 | `badges.keeper_hint` | `true` | 来自习得留存模型的“本组中还有更好的一张”箭头 |
 | `badges.best_of_burst` | `true` | 连拍代表帧上的“最佳”角标。仅在 `hide_bursts` 关闭时显示 — 开启时，屏幕上的每张连拍照片本来就是所在组的代表帧 |
 | `badges.clipping_highlight` | `true` | 为高光溢出超过 `clipping.badge_percent` 的照片加角标 |

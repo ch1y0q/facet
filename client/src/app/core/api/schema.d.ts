@@ -4326,6 +4326,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stacks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Stack */
+        post: operations["create_stack_api_stacks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stacks/by-photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stack By Photo */
+        get: operations["stack_by_photo_api_stacks_by_photo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stacks/{stack_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stack By Id */
+        get: operations["stack_by_id_api_stacks__stack_id__get"];
+        /** Update Stack */
+        put: operations["update_stack_api_stacks__stack_id__put"];
+        post?: never;
+        /** Delete Stack */
+        delete: operations["delete_stack_api_stacks__stack_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/stats/categories": {
         parameters: {
             query?: never;
@@ -5816,6 +5869,13 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** CreateStack */
+        CreateStack: {
+            /** Cover Path */
+            cover_path: string;
+            /** Paths */
+            paths: string[];
+        };
         /** CullApplyRequest */
         CullApplyRequest: {
             /**
@@ -7090,7 +7150,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "gps" | "date" | "review";
+            kind: "gps" | "date" | "review" | "stack";
             /** Part */
             part: number;
             /** Parts */
@@ -7472,6 +7532,14 @@ export interface components {
             shutter_speed?: string | null;
             /** Similarity */
             similarity?: number | null;
+            /** Stack Count */
+            stack_count?: number | null;
+            /** Stack Id */
+            stack_id?: string | null;
+            /** Stack Revision */
+            stack_revision?: number | null;
+            /** Stack Total Count */
+            stack_total_count?: number | null;
             /** Star Rating */
             star_rating?: number | null;
             /** Subject Placement */
@@ -7720,6 +7788,19 @@ export interface components {
              */
             members?: components["schemas"]["PhotoSetMember"][];
         };
+        /** PhotoStack */
+        PhotoStack: {
+            /** Cover Path */
+            cover_path: string;
+            /** Editable */
+            editable: boolean;
+            /** Id */
+            id: string;
+            /** Members */
+            members: components["schemas"]["StackMember"][];
+            /** Revision */
+            revision: number;
+        };
         /**
          * PhotoTypeCount
          * @description One gallery sidebar type entry with its non-zero photo count.
@@ -7783,6 +7864,8 @@ export interface components {
             page: number;
             /** Per Page */
             per_page: number;
+            /** Photo Total */
+            photo_total?: number | null;
             /** Photos */
             photos: components["schemas"]["Photo"][];
             /** Sort Col */
@@ -8435,6 +8518,23 @@ export interface components {
             /** Name */
             name?: string | null;
         };
+        /** StackMember */
+        StackMember: {
+            /** Path */
+            path: string;
+            /** Position */
+            position: number;
+        };
+        /** StackMutation */
+        StackMutation: {
+            stack: components["schemas"]["PhotoStack"] | null;
+            undo: components["schemas"]["StackUndo"] | null;
+        };
+        /** StackUndo */
+        StackUndo: {
+            /** Entry Id */
+            entry_id: number;
+        };
         /** StatsCategoryCorrelationsResponse */
         StatsCategoryCorrelationsResponse: {
             /** Configured Weights */
@@ -8856,6 +8956,15 @@ export interface components {
             release_url: string;
             /** Update Available */
             update_available: boolean;
+        };
+        /** UpdateStack */
+        UpdateStack: {
+            /** Cover Path */
+            cover_path?: string | null;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Paths */
+            paths: string[];
         };
         /** UpdateWeightsBody */
         UpdateWeightsBody: {
@@ -12483,7 +12592,10 @@ export interface operations {
     };
     revert_history_api_organization_history__entry_id__revert_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Refuse an entry of another kind */
+                kind?: "stack" | null;
+            };
             header?: never;
             path: {
                 entry_id: number;
@@ -15353,6 +15465,169 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SimilarPhotosResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_stack_api_stacks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStack"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StackMutation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stack_by_photo_api_stacks_by_photo_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoStack"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stack_by_id_api_stacks__stack_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                stack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoStack"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_stack_api_stacks__stack_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                stack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateStack"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StackMutation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_stack_api_stacks__stack_id__delete: {
+        parameters: {
+            query: {
+                expected_revision: number;
+            };
+            header?: never;
+            path: {
+                stack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StackMutation"];
                 };
             };
             /** @description Validation Error */

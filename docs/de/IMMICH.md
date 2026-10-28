@@ -18,6 +18,7 @@ Die Verbindung läuft in beide Richtungen ausschließlich über REST. Facet rüh
 - [Schritt 3 — die Pfade zuordnen](#schritt-3--die-pfade-zuordnen)
 - [Schritt 4 — testen, dann übertragen](#schritt-4--testen-dann-übertragen)
 - [Ablehnungen übertragen](#ablehnungen-übertragen)
+- [Manuelle Stapel importieren und übertragen](#manuelle-stapel-importieren-und-übertragen)
 - [Der eingehende Webhook](#der-eingehende-webhook)
 - [Konfigurationsreferenz](#konfigurationsreferenz)
 - [Fehlerbehebung](#fehlerbehebung)
@@ -68,7 +69,7 @@ Wenn Sie stattdessen normal in Immich hochladen (mobiles Auto-Backup, der Web-Up
 
 In Immich: **Klicken Sie auf Ihren Avatar → Account Settings → API Keys → New API Key**.
 
-Immich ≥ 3.0 erlaubt es, einen Schlüssel einzugrenzen, statt ihm alles zu gewähren. Facet benötigt genau sechs Scopes:
+Immich ≥ 3.0 erlaubt eingeschränkte Schlüssel. Bewertungs-/Favoritensynchronisierung verwendet folgende Scopes; manuelle Stapel benötigen die unten beschriebenen zusätzlichen Rechte:
 
 | Scope | Wofür Facet ihn verwendet |
 |-------|-------------------------|
@@ -164,6 +165,16 @@ Mit aktiviertem `push.rejected`:
 - `push.ratings: false` unterdrückt es. `-1` ist ein Bewertungs-Schreibvorgang, daher schmuggelt sich bei einer Konfiguration, die Bewertungsübertragungen deaktiviert hat, keiner zurück.
 
 Lassen Sie es deaktiviert, wenn andere Personen (oder Ihr Telefon) die Immich-Bibliothek betrachten: Ein `-1` ist dort sichtbar, und „in Facet abgelehnt" ist ein Arbeitsurteil, das Sie vielleicht nicht öffentlich machen möchten.
+
+## Manuelle Stapel importieren und übertragen
+
+Stapel verwenden einen **expliziten lokalen CLI-Plan mit anschließender Anwendung**, mit den vorhandenen Optionen `--config`, `--db`, `--user`. Mehrbenutzerinstallationen benötigen einen ausdrücklich angegebenen bestehenden Benutzer. Der globale Immich-Schlüssel ist weder im Web noch über Assistenten/MCP oder den Upload-Webhook für Stapel verfügbar. Bewertungs-/Favoritensynchronisierung bleibt unverändert. Voraussetzung: Immich **≥ 3.0** mit Laufzeitprüfung der Stapelfunktionen. Zusätzlich zu `asset.read` sind `user.read` und `stack.read` nötig; zum Übertragen auch `stack.create` und `asset.update`. V1 benötigt weder `stack.update` noch `stack.delete`.
+
+Die Vorschau schreibt auf keiner Seite und migriert keine Datenbank. Prüfen Sie den SHA-256-Digest vor dem Anwenden. Wiederholbares `--stack-id UUID` begrenzt Stapel der Quellrichtung. `--stack-plan-out` erstellt atomar eine neue private JSON-Datei (POSIX `0600`) ohne Überschreiben. Grenzen: **1000 Gruppen, 1000 Mitglieder je Gruppe, 20000 Mitglieder insgesamt, 16 MiB**; bei Bedarf mit `--stack-id` eingrenzen. Wählen Sie unter Windows einen Ausgabeordner, dessen ACL den Zugriff auf Ihr Konto beschränkt; POSIX-Modusbits gewährleisten unter Windows keinen privaten Dateizugriff.
+
+Jedes importierte Mitglied muss eindeutig zu einem indexierten, sichtbaren, verfügbaren Foto gehören, dessen Eigentümer das entfernte Konto ist. Übertragen prüft ebenfalls alle Mitglieder und erstellt nur vollständig ungestapelte entfernte Gruppen. Ein fehlendes/mehrdeutiges Mitglied überspringt die ganze Gruppe. Gleiche Mitglieder und gleiches Titelbild können beim Anwenden die dauerhafte Verknüpfung übernehmen. Teilüberschneidung, anderes Titelbild, geänderte Mitglieder oder abweichendes Auflösen ergeben Konflikte/übersprungene Gruppen; bestehende lokale und entfernte Stapel werden nicht aktualisiert. Reihenfolge außer dem Titelbild wird nicht übertragen. Keine automatische bidirektionale Synchronisierung, Abfrage oder Weitergabe des Auflösens.
+
+Pläne, Verknüpfungen und private Einzelbelege gelten nur für Server, entferntes Konto, lokalen Eigentümer und Pfadzuordnungs-Fingerabdruck; Änderungen verhindern Wiederverwendung. Belege speichern Ergebnis und entfernte Asset-IDs ohne Zugangsdaten. Anwenden prüft vor jeder Gruppe neu und liest nach dem Schreiben Mitglieder/Titelbild zurück. Eine verlorene Erstellungsantwort wird vor erneutem Versuch abgeglichen; unklare Übertragungen werden nie blind wiederholt. Abbrechen stoppt zwischen Gruppen; späteres explizites Anwenden gleicht Belege ab. Immich bietet für die Erstellung kein Compare-and-swap: Andere Clients können nach der letzten Prüfung eingreifen. Nachprüfung bietet weder verteilte Atomizität noch automatisches Zurückrollen. Tests nutzen einen lokalen HTTP-Testserver und zertifizieren keine echte Immich-Installation.
 
 ## Der eingehende Webhook
 

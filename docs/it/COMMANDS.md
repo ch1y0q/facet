@@ -115,6 +115,18 @@ Invia le valutazioni e i preferiti di Facet a un server [Immich](https://immich.
 
 Le valutazioni seguono la politica di Immich sicura per le versioni (solo 1–5, mai 0/−1); un album facoltativo delle scelte migliori raccoglie le foto sopra una soglia di valutazione. Solo REST — nessun accoppiamento diretto con il database di Immich. Vedi [Configurazione — Immich Sync](CONFIGURATION.md#immich-sync) per il blocco completo.
 
+### Piani per pile Immich
+
+Usa le opzioni esistenti `--config`, `--db`, `--user`; in multiutente serve un proprietario esistente esplicito. Anteprima senza scritture o migrazioni. Applicazione solo con digest verificato.
+
+| CLI | |
+|---|---|
+| `python facet.py --immich-stacks-plan import --stack-plan-out NEW_JSON` | Anteprima delle pile remote da importare |
+| `python facet.py --immich-stacks-plan push --stack-id UUID --stack-plan-out NEW_JSON` | Anteprima delle pile locali da creare a distanza |
+| `python facet.py --immich-stacks-apply PLAN_JSON --ack-stack-plan SHA256` | Applicazione esplicita del piano verificato |
+
+Ripeti `--stack-id UUID` per limitare i gruppi sorgente. `--stack-plan-out NEW_JSON` crea un file privato (POSIX `0600`), senza sovrascrivere. Limiti: 1000 gruppi, 1000 membri/gruppo, 20000 totali, 16 MiB. Corrispondenze esatte possono adottare collegamenti; mappature incomplete e sovrapposizioni saltano interi gruppi. Le pile esistenti non sono aggiornate; creazioni incerte riconciliate prima di riprovare. Vedi [permessi, conflitti e concorrenza remota](IMMICH.md#importare-e-inviare-pile-manuali). Su Windows, scegli una cartella di destinazione la cui ACL limiti l’accesso al tuo account; i permessi POSIX non garantiscono la riservatezza dei file Windows.
+
 ## Operazioni di ricalcolo
 
 Questi comandi aggiornano metriche specifiche, derivano nuovi dati (didascalie AI, GPS, embedding) o analizzano il database — il tutto senza rieseguire l'intera pipeline di valutazione. La maggior parte riutilizza le miniature/i punti di riferimento memorizzati ed è leggera per la CPU, ma le righe AI/di estrazione (es. `--generate-captions`) e quelle che ricalcolano dall'immagine sono pesanti per la GPU.
