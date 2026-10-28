@@ -27,6 +27,10 @@ All notable changes to Facet are documented in this file.
 - **The side panel no longer flickers open and closed.** A filter drawer animation event arriving after the drawer had already changed state flipped it back, in a loop.
 - **The Content sort group heading is translated.** It showed the raw key `sort_groups.content` in every language.
 
+### Security
+
+- **dnspython 2.9.0** (GHSA-45c3-73f7-pv4m, excessive CPU in `dns.name.from_wire_parser()`) in `requirements.lock.txt` and `requirements.legacy.lock.txt`. dnspython is pulled in only by `python-etcd`; Facet's code never imports either.
+
 ## [1.25.0] "Hyperfocale" — 2026-10-27
 
 ### Added
