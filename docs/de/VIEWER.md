@@ -1602,6 +1602,7 @@ Der Endpunkt `/api/download/options` erkennt begleitende RAW-Dateien automatisch
 | Endpunkt | Beschreibung |
 |----------|-------------|
 | `POST /api/immich/webhook` | Empfängt einen Immich-Workflow-Webhook und spiegelt die gepushte Bewertung sofort zurück; ein von Facet noch nicht bewertetes Asset wird für den nächsten `--immich-sync` vorgemerkt. Statische Token-Authentifizierung (`immich.webhook.token_env`; nicht gesetzt ⇒ 404); löst nie einen Scan aus. Siehe [docs/IMMICH.md](IMMICH.md) |
+| `GET /api/immich/diagnostics` | Nur Administratoren; `check_connection=true` prüft die Verbindung durch entfernte Leseanfragen. |
 
 ### Health
 

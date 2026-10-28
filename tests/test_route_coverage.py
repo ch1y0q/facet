@@ -147,6 +147,7 @@ POST_ROUTES = [
 
 # Routes that require superadmin (scan).
 SUPERADMIN_ROUTES = [
+    '/api/immich/diagnostics',
     '/api/scan/status',
     '/api/scan/directories',
 ]

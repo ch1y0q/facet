@@ -1664,6 +1664,7 @@ python database.py --stats-info
 | 端点 | 说明 |
 |----------|-------------|
 | `POST /api/immich/webhook` | 接收 Immich 工作流 webhook，并立即把推送过来的星级镜像回来；Facet 尚未评分的资源会排队等待下一次 `--immich-sync`。采用静态令牌认证（`immich.webhook.token_env`；未设置 ⇒ 404）；绝不会触发扫描。参见 [docs/IMMICH.md](IMMICH.md) |
+| `GET /api/immich/diagnostics` | 仅限管理员；`check_connection=true` 通过远程只读请求测试连接。 |
 
 ### 健康检查
 

@@ -7,6 +7,7 @@ All notable changes to Facet are documented in this file.
 ### Added
 
 - **Suggested photo stacks.** Review existing duplicate and burst groups within the current gallery filters, choose a cover and explicitly create a stack. Suggestions preserve photo decisions and files; dismissal lasts for the open dialog only.
+- **Immich diagnostics in the user menu.** Administrators can inspect a bounded path-mapping sample and explicitly test read-only connectivity without exposing API keys or modifying remote photos.
 - **Refresh selected photo previews and metadata.** Rebuild previews and read available source EXIF without rerunning AI or writing originals. Manual annotations stay intact; per-photo cache versions refresh gallery and detail images, and failed photos can be retried separately.
 
 ### Fixed

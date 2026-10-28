@@ -3015,5 +3015,29 @@
     "badge_filtered": "Ouvrir la pile : {count} correspondances sur {total} membres autorisés",
     "stack_id": "Identifiant de pile",
     "position": "Position"
+  },
+  "immich_diagnostics": {
+    "title": "Diagnostic Immich",
+    "read_only": "Lecture seule. Photos, notes et piles restent inchangées.",
+    "configuration": "Configuration",
+    "configured": "Serveur et clé configurés",
+    "not_configured": "Configurez d’abord le serveur et la clé API.",
+    "mapping_rules": "Règles de chemins",
+    "mapping_sample": "Chemins couverts (échantillon)",
+    "sample_hint": "Au plus {limit} photos indexées. La couverture ne prouve pas une correspondance distante. Sans règle, les chemins restent inchangés.",
+    "last_push": "Dernière mise à jour enregistrée de l’état de synchronisation",
+    "unknown": "Non enregistré",
+    "version": "Version du serveur : {version}",
+    "stack_version_ok": "Version compatible avec les piles ; permissions et correspondances non testées.",
+    "stack_version_old": "L’échange de piles nécessite Immich 3 ou ultérieur.",
+    "not_checked": "Connexion non testée.",
+    "connected": "Serveur accessible ; clé acceptée pour lire le compte.",
+    "access_denied": "Accès refusé. Vérifiez la clé et la permission user.read.",
+    "unreachable": "Échec de connexion. Vérifiez le serveur, l’adresse et TLS.",
+    "invalid_response": "Réponse du serveur non prise en charge.",
+    "invalid_config": "Corrigez la configuration Immich sur le serveur.",
+    "failed": "Diagnostic indisponible. Réessayez ou vérifiez votre accès administrateur.",
+    "refresh": "Actualiser l’état",
+    "test": "Tester la connexion"
   }
 }
