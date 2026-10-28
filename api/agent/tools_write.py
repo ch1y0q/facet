@@ -618,7 +618,7 @@ def register_write_tools(server: MCPServer, client: InternalClient, registry: Ta
         async def handler(grant, resolved, settings):
             upstream = await client.call(grant, "search_photos", query={
                 "junk_kind": kind or "any", "page": page, "per_page": per_page, "hide_rejected": 1,
-                "hide_blinks": 0, "hide_bursts": 0, "hide_duplicates": 0},
+                "hide_blinks": 0, "hide_bursts": 0, "hide_duplicates": 0, "collapse_stacks": 0},
                 timeout=settings["call_timeout_s"])
             result = _list_result(upstream, ("junk_kind",))
             if show:

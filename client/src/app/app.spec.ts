@@ -779,12 +779,12 @@ describe('App', () => {
       expect(button).not.toBeNull();
       expect(button?.closest('.lg\\:hidden')).not.toBeNull();
       expect(button?.getAttribute('aria-label')).toBe(I18N.stacks.expand_all);
-      expect(button?.getAttribute('aria-pressed')).toBe('false');
+      expect(button?.hasAttribute('aria-pressed')).toBe(false);
       button?.click();
       expect(store.toggleStackCollapse).toHaveBeenCalledOnce();
       store.collapseStacks.set(false); fixture.detectChanges();
       expect(button?.getAttribute('aria-label')).toBe(I18N.stacks.collapse);
-      expect(button?.getAttribute('aria-pressed')).toBe('true');
+      expect(button?.hasAttribute('aria-pressed')).toBe(false);
       store.pinnedPaths.set(['/a.jpg']); fixture.detectChanges();
       expect(root.querySelector('[data-stack-collapse-mobile]')).toBeNull();
       store.pinnedPaths.set(null); fixture.detectChanges();

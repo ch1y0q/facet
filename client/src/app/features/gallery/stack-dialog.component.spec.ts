@@ -235,4 +235,37 @@ describe('StackDialog HTTP workflow', () => {
     component.selectMembers();
     expect(TestBed.inject(GalleryStore).restoreSelection).toHaveBeenCalledWith(['/b.jpg', '/a.jpg']);
   });
+  describe('unavailable and error outcomes', () => {
+    const renderedFailure = (fixture: ReturnType<typeof TestBed.createComponent<StackDialogComponent>>) =>
+      (fixture.nativeElement as HTMLElement).querySelector('[role="alert"]')?.textContent?.trim();
+    it('reports an unavailable stack when the server returns none, and offers a reload', async () => {
+      create(); const fixture = TestBed.createComponent(StackDialogComponent); fixture.detectChanges();
+      http.expectOne('/api/stacks/s1').flush(null); await fixture.whenStable(); fixture.detectChanges();
+      expect(component.ready()).toBe(false); expect(fixture.componentInstance.error()).toBe('unavailable');
+      expect(renderedFailure(fixture)).toBe('stacks.unavailable');
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('stacks.reload');
+      fixture.destroy();
+    });
+    it.each([[['/only.jpg']], [Array.from({ length: 1001 }, (_, i) => `/p${i}.jpg`)]])('refuses to open a creation draft of %j members without any request', async paths => {
+      create({ paths }); await component.load();
+      expect(component.error()).toBe('unavailable'); expect(component.ready()).toBe(false);
+      http.expectNone(() => true);
+    });
+    it('reports unavailable when the exact-list read misses a photo', async () => {
+      create({ paths: ['/a.jpg', '/b.jpg'] }); const loading = component.load();
+      http.expectOne('/api/photos/by_paths').flush({ photos: [{ path: '/a.jpg', date_taken: null }], missing: ['/b.jpg'] }); await loading;
+      expect(component.error()).toBe('unavailable'); expect(component.ready()).toBe(false);
+    });
+    it('reports a generic error when the stack read fails, then recovers on reload', async () => {
+      create(); const failed = component.load();
+      http.expectOne('/api/stacks/s1').flush({}, { status: 500, statusText: 'Failed' }); await failed;
+      expect(component.error()).toBe('error'); expect(component.loading()).toBe(false); expect(component.ready()).toBe(false);
+      await load(); expect(component.error()).toBeNull(); expect(component.ready()).toBe(true);
+    });
+    it.each([[404, 'unavailable'], [403, 'unavailable'], [409, 'conflict'], [500, 'error']] as const)('maps a %i write failure to %s', async (status, expected) => {
+      create(); await load(); component.setCover('/b.jpg'); const saving = component.save();
+      http.expectOne('/api/stacks/s1').flush({}, { status, statusText: 'Failed' }); await saving;
+      expect(component.error()).toBe(expected); expect(close).not.toHaveBeenCalled();
+    });
+  });
 });

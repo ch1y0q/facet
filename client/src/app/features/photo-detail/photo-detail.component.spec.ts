@@ -2149,8 +2149,10 @@ describe('PhotoDetailComponent', () => {
         state: { photo: expect.objectContaining({ path: '/photos/sibling.jpg' }) },
         replaceUrl: true,
       });
-      // Real Router activation owns the photo update; a mocked navigation does not.
-      expect(component.photo()?.path).toBe(samplePhoto.path);
+      // Navigation, not openSetMember, swaps the photo: the route's activation reloads it,
+      // so the component must leave photo() untouched until then (a mocked router never activates).
+      expect(component.photo()).toBe(samplePhoto);
+      expect(mockRouter.navigate).toHaveBeenCalledTimes(1);
     });
   });
 

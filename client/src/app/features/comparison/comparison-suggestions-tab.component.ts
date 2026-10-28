@@ -216,7 +216,7 @@ export class ComparisonSuggestionsTabComponent {
     const data = await firstValueFrom(
       this.api.get<{ photos: TopPhoto[] }>('/photos', {
         category, sort: 'aggregate', sort_direction: 'DESC',
-        per_page: 10, page: 1, hide_duplicates: true, hide_bursts: true,
+        per_page: 10, page: 1, hide_duplicates: true, hide_bursts: true, collapse_stacks: 0,
       }),
     );
     return data.photos ?? [];

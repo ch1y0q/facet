@@ -221,12 +221,15 @@ const DEFAULT_CLIPPING_BADGE_PERCENT = 5;
              bar leaves free, and stays clickable so touch screens -- which never
              see the hover row's stack button -- can still open the stack. -->
         @if (badges().stack && photo().stack_id) {
+          @let stackCount = photo().stack_count ?? 0;
+          @let stackTotal = photo().stack_total_count ?? stackCount;
+          @let stackLabel = (stackCount !== stackTotal ? I18N.stacks.badge_filtered : I18N.stacks.badge) | translate:{ count: stackCount, total: stackTotal };
           <button type="button" data-stack-badge
             class="absolute left-9 w-7 h-7 z-30 inline-flex items-center justify-center bottom-1 rounded-full hover:bg-black/60 text-white cursor-pointer"
             (click)="openStackClicked.emit(photo()); $event.stopPropagation()"
             (keydown)="$event.stopPropagation()"
-            [matTooltip]="((photo().stack_count ?? 0) !== (photo().stack_total_count ?? photo().stack_count ?? 0) ? I18N.stacks.badge_filtered : I18N.stacks.badge) | translate:{ count: photo().stack_count ?? 0, total: photo().stack_total_count ?? photo().stack_count ?? 0 }"
-            [attr.aria-label]="((photo().stack_count ?? 0) !== (photo().stack_total_count ?? photo().stack_count ?? 0) ? I18N.stacks.badge_filtered : I18N.stacks.badge) | translate:{ count: photo().stack_count ?? 0, total: photo().stack_total_count ?? photo().stack_count ?? 0 }">
+            [matTooltip]="stackLabel"
+            [attr.aria-label]="stackLabel">
             <mat-icon class="!text-base !w-4 !h-4 !leading-4 drop-shadow-md" aria-hidden="true">layers</mat-icon>
             <span class="absolute -top-0.5 -right-0.5 min-w-3.5 h-3.5 px-0.5 rounded-full bg-white text-black text-[10px] font-bold flex items-center justify-center leading-none" aria-hidden="true">{{ photo().stack_count }}</span>
           </button>

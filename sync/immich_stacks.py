@@ -19,6 +19,7 @@ import uuid
 from db import stacks
 from db.immich_stacks import init_schema
 from db.maintenance import evict_derived_stats_cache
+from db.schema import table_exists
 from sync.immich import ImmichClient, PUSH_ERRORS, map_facet_path, map_immich_path
 
 logger = logging.getLogger(__name__)
@@ -63,8 +64,7 @@ def _connection(db_path, *, write=False):
     conn.row_factory = sqlite3.Row
     try:
         conn.execute('PRAGMA foreign_keys=ON')
-        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        if not {'photos', 'photo_stacks', 'photo_stack_members'} <= tables:
+        if not all(table_exists(conn, name) for name in ('photos', 'photo_stacks', 'photo_stack_members')):
             raise ValueError('Stack schema unavailable; preview never creates or upgrades a database')
         conn.execute('SELECT path FROM photos LIMIT 1').fetchone()
         yield conn
@@ -215,8 +215,7 @@ def _local(conn, owner, sid, visibility):
                 paths=[m['path'] for m in group['members']])
 
 
-def _remote_for_local(conn, client, group, owner, account, config, visibility):
-    del conn, owner, visibility  # Group was read and authorized through _local.
+def _remote_for_local(client, group, account, config):
     mapping = config.get('immich', {}).get('path_map', [])
     assets = []
     for path in group['paths']:
@@ -261,8 +260,6 @@ def _import_item(conn, client, sid, owner, account, config, visibility, scope):
             raise ValueError('Import overlaps existing local stacks')
     local = None
     if current:
-        if len(current) != 1:
-            raise ValueError('Import overlaps existing local stacks')
         local = _local(conn, owner, next(iter(current)), visibility)
         if set(local['paths']) != set(paths) or local['cover'] != cover:
             raise ValueError('Import conflicts with local stack membership or cover')
@@ -275,7 +272,7 @@ def _import_item(conn, client, sid, owner, account, config, visibility, scope):
 
 def _push_item(conn, client, sid, owner, account, config, visibility, scope):
     local = _local(conn, owner, sid, visibility)
-    remote = _remote_for_local(conn, client, local, owner, account, config, visibility)
+    remote = _remote_for_local(client, local, account, config)
     linked = _existing_link(conn, scope, local_id=sid)
     if linked is not None and linked['remote_stack_id'] != remote['id']:
         raise ValueError('A previously linked remote stack was removed or changed')
@@ -284,7 +281,7 @@ def _push_item(conn, client, sid, owner, account, config, visibility, scope):
 
 
 def _existing_link(conn, scope, *, local_id=None, remote_id=None):
-    if conn.execute("SELECT 1 FROM sqlite_master WHERE name='immich_stack_links' AND type='table'").fetchone() is None:
+    if not table_exists(conn, 'immich_stack_links'):
         return None
     column, value = ('local_stack_id', local_id) if local_id is not None else ('remote_stack_id', remote_id)
     return conn.execute(f'SELECT * FROM immich_stack_links WHERE scope=? AND {column}=?', (scope, value)).fetchone()
@@ -319,7 +316,7 @@ def plan_stacks(db_path, config, direction, *, user_id=None, stack_ids=None, cli
             keys = [_uuid(g.get('id') if isinstance(g, dict) else None) for g in groups]
         if len(keys) > MAX_GROUPS or len(set(keys)) != len(keys):
             raise ValueError('Too many or duplicate stacks; select at most 1000 explicit stack IDs')
-        if stack_ids is None and conn.execute("SELECT 1 FROM sqlite_master WHERE name='immich_stack_links'").fetchone():
+        if stack_ids is None and table_exists(conn, 'immich_stack_links'):
             column = 'local_stack_id' if direction == 'push' else 'remote_stack_id'
             linked = [r[0] for r in conn.execute(f'SELECT {column} FROM immich_stack_links WHERE scope=? LIMIT ?',
                                                 (scope, MAX_GROUPS + 1))]

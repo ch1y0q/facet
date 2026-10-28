@@ -52,7 +52,7 @@ def _mutate(user, operation, *args, **kwargs):
             evict_derived_stats_cache(conn)
     except stacks.StackError as exc:
         raise HTTPException(exc.status, str(exc)) from exc
-    except (ValueError, TypeError) as exc:
+    except ValueError as exc:
         raise HTTPException(422, 'Organization history cannot represent this edit') from exc
     except sqlite3.Error as exc:
         if is_locked_error(exc):

@@ -1839,7 +1839,7 @@ predefinita, quindi ometterlo non cambia nulla.
 | `badges.rejected` | `true` | Badge pollice verso su una foto rifiutata (modalità edizione) |
 | `badges.sequence_kind` | `true` | Badge della serie (sequenza/bracketing/panorama/duplicato), disegnato a sinistra del badge di rifiuto, mostrato solo finché l'opzione di nascondimento comprime la serie |
 | `badges.sequence_override_pending` | `true` | Badge orologio per una correzione panorama in attesa del prossimo rilevamento |
-| `badges.stack` | `true` | Badge livelli con il numero di membri sulla copertina di una pila di foto manuale; un clic apre la pila. Disattivato nasconde solo il badge: il pulsante della scheda «Apri pila di foto» continua a funzionare |
+| `badges.stack` | `true` | Badge livelli con il numero di membri su ogni scheda di una pila di foto manuale (con le pile ripiegate, la copertina visibile); un clic apre la pila. Disattivato nasconde solo il badge: il pulsante della scheda «Apri pila di foto» continua a funzionare |
 | `badges.keeper_hint` | `true` | Freccia «esiste uno scatto migliore in questo gruppo» dal modello di selezione appreso |
 | `badges.best_of_burst` | `true` | Badge «Migliore» sullo scatto guida di una raffica. Mostrato solo con `hide_bursts` disattivato: altrimenti ogni foto di raffica a schermo è già la guida |
 | `badges.clipping_highlight` | `true` | Badge per una foto le cui alte luci superano `clipping.badge_percent` |

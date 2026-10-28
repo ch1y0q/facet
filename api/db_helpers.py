@@ -934,9 +934,12 @@ def _count_cache_store(cache_key, count):
                 del _count_cache[k]
 
 
-def _count_cache_key(prefix, from_clause, where_str, sql_params):
+def _count_cache_key(prefix, from_clause, where_str, sql_params, token=None):
     """Cache key for a count-style query: the query, the database it runs on and
-    that database's change token (``api.change_token``).
+    that database's change token (``api.change_token``). A caller reading inside
+    an explicit transaction passes the ``token`` it took BEFORE the transaction
+    began (:func:`snapshot_count_token`): a token read later could be newer than
+    the snapshot, and the stale count would be stored under the current key.
 
     The path is read from ``api.database`` AT CALL TIME because that module's
     ``DEFAULT_DB_PATH`` is the global every request connection opens (and the one
@@ -944,7 +947,8 @@ def _count_cache_key(prefix, from_clause, where_str, sql_params):
     counts under another's.
     """
     db_path = _database.DEFAULT_DB_PATH
-    token = db_change_token(db_path)
+    if token is None:
+        token = db_change_token(db_path)
     digest = hashlib.sha256(
         f"{db_path}:{from_clause}:{where_str}:{tuple(sql_params)}:{token}".encode()
     ).hexdigest()
@@ -964,11 +968,15 @@ def get_cached_count(conn, where_str, sql_params, from_clause="photos"):
     return count
 
 
-async def get_cached_count_async(conn, where_str, sql_params, from_clause="photos", *, use_cache=True):
+async def snapshot_count_token():
+    """Change token to key a transaction's counts with; take it before ``BEGIN``."""
+    return await asyncio.to_thread(db_change_token, _database.DEFAULT_DB_PATH)
+
+
+async def get_cached_count_async(conn, where_str, sql_params, from_clause="photos", *, token=None):
     """Async variant of get_cached_count for aiosqlite paths."""
-    # Snapshot callers must not stamp an old read with a newer external token.
-    cache_key = await asyncio.to_thread(_count_cache_key, "", from_clause, where_str, sql_params) if use_cache else None
-    cached = _count_cache_lookup(cache_key) if cache_key is not None else None
+    cache_key = await asyncio.to_thread(_count_cache_key, "", from_clause, where_str, sql_params, token)
+    cached = _count_cache_lookup(cache_key)
     if cached is not None:
         return cached
 
@@ -976,13 +984,12 @@ async def get_cached_count_async(conn, where_str, sql_params, from_clause="photo
     row = await cursor.fetchone()
     await cursor.close()
     count = row[0] if row else 0
-    if cache_key is not None:
-        _count_cache_store(cache_key, count)
+    _count_cache_store(cache_key, count)
     return count
 
 
-async def get_cached_hidden_aggregates_async(conn, where_str, sql_params, from_clause="photos", *, use_cache=True,
-                                             stack_owner=None):
+async def get_cached_hidden_aggregates_async(conn, where_str, sql_params, from_clause="photos", *,
+                                             stack_owner=None, token=None):
     """Cached blink/burst/duplicate/bracket aggregates over the no-hide set.
 
     The gallery builds its hidden_summary from a full-table aggregate (~100ms on a
@@ -999,9 +1006,9 @@ async def get_cached_hidden_aggregates_async(conn, where_str, sql_params, from_c
         from api.stack_gallery import membership_clause
         auto_exclusion = f' AND NOT ({membership_clause()})'
         aggregate_params = [stack_owner, stack_owner, *sql_params]
-        use_cache = False
-    cache_key = await asyncio.to_thread(_count_cache_key, "hs:", from_clause, where_str, sql_params) if use_cache else None
-    cached = _count_cache_lookup(cache_key) if cache_key is not None else None
+    cache_key = await asyncio.to_thread(
+        _count_cache_key, "hs:", from_clause, where_str + auto_exclusion, aggregate_params, token)
+    cached = _count_cache_lookup(cache_key)
     if cached is not None:
         return cached
     cursor = await conn.execute(
@@ -1024,8 +1031,7 @@ async def get_cached_hidden_aggregates_async(conn, where_str, sql_params, from_c
         'brackets': int(row['brackets'] or 0) if row else 0,
         'panoramas': int(row['panoramas'] or 0) if row else 0,
     }
-    if cache_key is not None:
-        _count_cache_store(cache_key, agg)
+    _count_cache_store(cache_key, agg)
     return agg
 
 

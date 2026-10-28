@@ -52,7 +52,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `search_photos` | 像图库一样筛选和排序照片库，除非筛选条件另行设置，否则应用查看器的默认隐藏开关（闭眼、连拍、重复、包围曝光、全景、已拒绝）（会报告 `hidden_summary`）。默认显示在你打开的标签页中（见下文）；`fields` 可添加任意照片列 |
 | `semantic_search` | 按含义查找照片，或用 `scope: "text"` 按说明文字中的词查找。它返回的行会固定在标签页中。 `filters` 像图库的筛选一样缩小搜索范围,每一行都带有其 `similarity`。 |
 | `get_photo` | 按路径获取单张照片的完整详情（不含直方图）;或用 `target: "selection"`(配合 `tab_id`)指定用户选中的那一张照片 |
-| `get_photo_stack` | 按精确路径读取本地堆栈，或 null |
+| `get_photo_stack` | 按精确路径读取本地堆叠，或 null |
 | `get_thumbnail` | 查看一张照片:其缩略图作为图像部分(`size` 160 至 640,默认 512)。若 JPEG 会超过 `viewer.mcp.max_image_bytes`,则使用更小的尺寸;都放不下则返回 `too_large`;或用 `target: "selection"`(配合 `tab_id`)指定用户选中的那一张照片 |
 | `contact_sheet` | 将 1 至 16 张照片作为一张带编号的网格图查看(`columns` 2 至 4,最长边 1024)。文本部分列出 `legend`(格子编号对应路径,按请求顺序)和 `unavailable`(因照片缺失或不可见而留空的格子);或用 `target: "selection"` 指定选中的照片(最多 16 张) |
 | `possible_faces` | 与某个已识别人物相似的人脸:与该人物质心的余弦相似度,最佳在前,仅限同一嵌入模型。`scope` 为 `unassigned`(默认)、`other_persons` 或 `all`;`min_similarity` 默认 0.30;`limit` 最多 100。超过 192000 张人脸的扫描会被拒绝(`too_large`):用 `scope`、`path_prefix`、`date_from` 或 `date_to` 缩小范围。照片会显示在你的标签页中。`candidates` 是范围内您可见的人脸数量（在嵌入维度检查之前）；`faces_scanned` 是实际评分的行数。 |
@@ -181,10 +181,10 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `batch_set_rejected` | `edition` | 淘汰大量照片 | 1000 个路径，或 `filters` |
 | `add_tags` | `edition` | 添加手动标签（与 AI 标签分开保存） | 10 个标签；1000 个路径，或 `filters` |
 | `remove_tags` | `edition` | 移除手动标签 | 10 个标签；1000 个路径，或 `filters` |
-| `create_photo_stack` | `edition` | 明确创建本地堆栈，返回撤销条目 | 2–1000 paths |
-| `update_photo_stack` | `edition` | 替换成员/顺序及可选封面，拒绝旧版本 | 1000 paths |
-| `unstack_photos` | `edition` | 解散堆栈，保留原片 |  |
-| `undo_photo_stack` | `edition` | 仅撤销可用的堆栈条目，拒绝后续变更 |  |
+| `create_photo_stack` | `edition` | 明确创建本地堆叠，返回撤销条目 | 2–1000 个路径 |
+| `update_photo_stack` | `edition` | 替换成员/顺序及可选封面，拒绝旧版本 | 1000 个路径 |
+| `unstack_photos` | `edition` | 解散堆叠，保留原片 |  |
+| `undo_photo_stack` | `edition` | 仅撤销可用的堆叠条目，拒绝后续变更 |  |
 | `create_album` | `edition` | 创建相册（不幂等：调用两次会创建两个相册）：可为空，也可由 `filters` / `target: "view"` 创建跟随这些筛选条件的智能相册，或由 `paths` / `target: "selection"` 创建并在同一次调用中填充的固定相册（`added`、`skipped`）。智能相册使用查看器自身的隐藏开关，在 `list_albums` 中显示 0 张照片。不含任何有效筛选条件的 `filters`（`{}`，或仅含已关闭的显示开关）会被拒绝并返回 `invalid_input`：要创建空相册请省略 `filters` | |
 | `album_add_photos` | `edition` | 向相册添加照片（已有的会被忽略） | 1000 个路径 |
 | `album_remove_photos` | `edition` | 从相册移除照片；照片本身不受影响 | 1000 个路径 |
@@ -197,9 +197,9 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 | `cull_apply` | `edition` | 复制保留的照片，或移动、移入回收站被淘汰的照片（[先预览再确认](#破坏性操作先预览再确认)） | 10000 个路径，或 `filters` |
 | `delete_photos` | `edition` | 把文件移入回收站并删除其照片库记录（[先预览再确认](#破坏性操作先预览再确认)） | 1000 个路径 |
 
-### 本地手动堆栈
+### 本地手动堆叠
 
-`get_photo_stack(path)` 读取本地堆栈或 null；部分可见时仅返回有权查看的成员且禁止编辑。`create_photo_stack(paths, cover_path)` 要求明确指定 2–1000 张未堆叠照片。`update_photo_stack(stack_id, paths, expected_revision, cover_path?)` 替换成员和顺序，0/1 个成员时解散。`unstack_photos(stack_id, expected_revision)` 解散堆栈。这三个工具需要 `edition`；已有堆栈须提供 UUID 和当前版本，切勿盲目重试创建。成功变更返回 `undo.entry_id`；`undo_photo_stack(entry_id)` 需要编辑权限，检查历史类型为堆栈，并拒绝后续编辑或可见性丢失。路径最长 4096 字符。不改变文件、审阅决定或远程 Immich 状态；全局凭据仅用于 CLI。 大型变更成功时的 `stack_truncated: true` 表示只返回 UUID/revision/member_count 摘要，仍保留 `undo.entry_id`。这不是可用于编辑的完整成员列表。
+`get_photo_stack(path)` 读取本地堆叠或 null；部分可见时仅返回有权查看的成员且禁止编辑。`create_photo_stack(paths, cover_path)` 要求明确指定 2–1000 张未堆叠照片。`update_photo_stack(stack_id, paths, expected_revision, cover_path?)` 替换成员和顺序，0/1 个成员时解散。`unstack_photos(stack_id, expected_revision)` 解散堆叠。这三个工具需要 `edition`；已有堆叠须提供 UUID 和当前版本，切勿盲目重试创建。成功变更返回 `undo.entry_id`；`undo_photo_stack(entry_id)` 需要编辑权限，检查历史类型为堆叠，并拒绝后续编辑或可见性丢失。路径最长 4096 字符。不改变文件、审阅决定或远程 Immich 状态；全局凭据仅用于 CLI。 大型变更成功时的 `stack_truncated: true` 表示只返回 UUID/revision/member_count 摘要，仍保留 `undo.entry_id`。这不是可用于编辑的完整成员列表。
 
 `search_photos` 和图库上下文区分显示项 `total` 与匹配原片 `photo_total`。筛选写入的 `expected_count` 应使用 `photo_total`。整视图选择和 `target:view` 包括折叠匹配成员，执行前须说明真实照片数和整个视图范围。单张折叠卡片只选择显示的照片。`user_activity` 包含 `stack` create/update/unstack/undo。服务器专用的 `stack_id`/`collapse_stacks` 不是标签页筛选键。
 

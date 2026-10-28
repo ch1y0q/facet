@@ -2944,10 +2944,10 @@
     "stack": "照片堆叠"
   },
   "stacks": {
-    "previous": "上一张堆栈照片",
-    "next": "下一张堆栈照片",
+    "previous": "上一张堆叠照片",
+    "next": "下一张堆叠照片",
     "browse_position": "第 {position} 张，共 {count} 张",
-    "manage": "管理堆栈",
+    "manage": "管理堆叠",
     "title": "照片堆叠",
     "create": "堆叠照片",
     "hint": "堆叠保留每张原片及其审核决定。选择封面后保存。初始顺序按拍摄时间排列。",
@@ -2960,6 +2960,7 @@
     "move_down": "将 {path} 后移",
     "remove": "从堆叠中移除 {path}",
     "add_selected": "添加 {count} 张已选照片",
+    "add_selected_plural": "添加 {count} 张已选照片",
     "select_all": "选择全部 {count} 个成员",
     "unstack": "取消堆叠",
     "read_only": "可以浏览有权限的成员。编辑需要拥有全部成员的编辑权限。",

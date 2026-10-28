@@ -59,6 +59,8 @@ import { I18nService } from '../../core/services/i18n.service';
 import { ApiService } from '../../core/services/api.service';
 import { PluralKeyPipe } from '../../shared/pipes/plural-key.pipe';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { STACK_MAX_MEMBERS, STACK_MIN_MEMBERS } from './stack-limits';
+import { PhotoStackService } from '../../core/services/photo-stack.service';
 import { PhotoTooltipComponent } from './photo-tooltip.component';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 import { PhotoActionsService } from '../../core/services/photo-actions.service';
@@ -174,7 +176,6 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
 
       @if (!pinned()) {
         <button mat-icon-button data-stack-collapse (click)="store.toggleStackCollapse()"
-          [attr.aria-pressed]="!store.collapseStacks()"
           [matTooltip]="(store.collapseStacks() ? I18N.stacks.expand_all : I18N.stacks.collapse) | translate"
           [attr.aria-label]="(store.collapseStacks() ? I18N.stacks.expand_all : I18N.stacks.collapse) | translate"><mat-icon>{{ store.collapseStacks() ? 'unfold_more' : 'unfold_less' }}</mat-icon></button>
       }
@@ -423,7 +424,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                   (openAddPersonClicked)="openAddPerson($event)"
                   [cardActions]="cardActions()"
                   (openStackClicked)="openStack($event)"
-                    (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                  (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
                   (openDetailClicked)="downloadPhoto($event)"
                   (favoriteToggled)="store.toggleFavorite($event)"
                   (rejectedToggled)="store.toggleRejected($event)"
@@ -488,7 +489,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                       (openAddPersonClicked)="openAddPerson($event)"
                       [cardActions]="cardActions()"
                       (openStackClicked)="openStack($event)"
-                    (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
+                      (openSetClicked)="store.scopeToSet($event.photo, $event.kind)"
                       (openDetailClicked)="downloadPhoto($event)"
                       (favoriteToggled)="store.toggleFavorite($event)"
                       (rejectedToggled)="store.toggleRejected($event)"
@@ -881,6 +882,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly sequenceOverrides = inject(SequenceOverrideService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly stacks = inject(PhotoStackService);
   private readonly outlet = inject(RouterOutlet, { optional: true });
   private readonly changeDetector = inject(ChangeDetectorRef);
   private parked = false;
@@ -2154,7 +2156,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (photo) this.downloadPhoto(photo);
   }
 
-  protected readonly canCreateStack = computed(() => this.auth.isEdition() && !this.viewScoped() && this.selectionCount() >= 2 && this.selectionCount() <= 1000);
+  protected readonly canCreateStack = computed(() => this.auth.isEdition() && !this.viewScoped() && this.selectionCount() >= STACK_MIN_MEMBERS && this.selectionCount() <= STACK_MAX_MEMBERS);
 
   protected async createStack(): Promise<void> {
     if (!this.canCreateStack()) return;
@@ -2167,15 +2169,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
   }
 
   private async launchStack(data: import('./stack-dialog.component').StackDialogData): Promise<void> {
-    const identity = this.auth.identity();
-    const url = this.router.url;
-    let navigated = false;
-    const navigation = this.router.events.subscribe(event => { if (event instanceof NavigationStart) navigated = true; });
-    try {
-      const { StackDialogComponent } = await import('./stack-dialog.component');
-      if (this.destroyRef.destroyed || navigated || identity !== this.auth.identity() || url !== this.router.url) return;
-      this.dialog.open(StackDialogComponent, { data, width: '900px', maxWidth: '96vw' });
-    } finally { navigation.unsubscribe(); }
+    const session = this.stacks.context();
+    const { StackDialogComponent } = await import('./stack-dialog.component');
+    if (this.destroyRef.destroyed || !session()) return;
+    this.dialog.open(StackDialogComponent, { data, width: '900px', maxWidth: '96vw' });
   }
 
   protected downloadPhoto(photo: Photo): void {

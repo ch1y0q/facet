@@ -189,7 +189,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
         }
       </div>
 
-      <app-stack-navigator [path]="p.path" [allowedPaths]="store.pinnedPaths()"
+      <app-stack-navigator [path]="p.path" [allowedPaths]="store.pinnedPaths()" [stacked]="!!p.stack_id"
         (memberOpened)="openSetMember($event)" />
 
       <!-- Main content: image + info -->
@@ -842,22 +842,26 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     this.router.navigate(['/'], { state: { setScope: updates } });
   }
 
+  private shortcutBlocked(event: Event): boolean {
+    return event.defaultPrevented || isPageShortcutBlocked(event as KeyboardEvent) || this.store.slideshowActive();
+  }
+
   @HostListener('document:keydown.escape', ['$event'])
   protected goBack(event?: Event): void {
-    if (event && (event.defaultPrevented || isPageShortcutBlocked(event as KeyboardEvent) || this.store.slideshowActive())) return;
+    if (event && this.shortcutBlocked(event)) return;
     this.location.back();
   }
 
   @HostListener('document:keydown.arrowleft', ['$event'])
   protected prevPhoto(event: Event): void {
-    if (event.defaultPrevented || isPageShortcutBlocked(event as KeyboardEvent) || this.store.slideshowActive()) return;
+    if (this.shortcutBlocked(event)) return;
     event.preventDefault();
     void this.navigateAdjacentPhoto(-1);
   }
 
   @HostListener('document:keydown.arrowright', ['$event'])
   protected nextPhoto(event: Event): void {
-    if (event.defaultPrevented || isPageShortcutBlocked(event as KeyboardEvent) || this.store.slideshowActive()) return;
+    if (this.shortcutBlocked(event)) return;
     event.preventDefault();
     void this.navigateAdjacentPhoto(1);
   }

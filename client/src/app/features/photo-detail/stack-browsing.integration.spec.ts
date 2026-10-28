@@ -226,6 +226,31 @@ describe('manual stack browsing through rendered viewer, Router and HTTP', () =>
     expect(root().querySelector('[data-stack-position]')?.textContent).toContain('1 of 3');
   });
 
+  it.each([['not in any stack', 'none'], ['a failed lookup', 'error']])('leaves the arrows to the gallery for a photo with %s', async (_label, mode) => {
+    await router.navigate(['/photo'], { queryParams: { path: paths[1] }, state: { photo: makePhoto({ path: paths[1] }) } });
+    await initialPhoto();
+    const reads = http.match(request => request.url === '/api/stacks/by-photo');
+    reads.forEach(request => mode === 'error' ? request.flush('x', { status: 500, statusText: 'err' }) : request.flush(null));
+    await render();
+    const arrow = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+    document.dispatchEvent(arrow);
+    await render();
+    expect(router.url).toContain(encodeURIComponent('/outside.jpg'));
+  });
+
+  it.each([['an unstacked photo', undefined, true], ['a stacked photo', 'stack-1', false]])(
+    'while the stack lookup is pending, leaves the arrows to the gallery only for %s', async (_label, stackId, leaves) => {
+      await router.navigate(['/photo'], { queryParams: { path: paths[1] }, state: { photo: makePhoto({ path: paths[1], stack_id: stackId }) } });
+      harness.detectChanges();
+      http.match(request => request.url === '/api/photo').forEach(request => request.flush(makePhoto({ path: paths[1], stack_id: stackId })));
+      await render();
+      const arrow = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
+      document.dispatchEvent(arrow);
+      await render();
+      expect(router.url.includes(encodeURIComponent('/outside.jpg'))).toBe(leaves);
+      http.match(request => request.url === '/api/stacks/by-photo').filter(request => !request.cancelled).forEach(request => request.flush(null));
+    });
+
   it('failure keeps current photo and allows retry; rejected router navigation also preserves it', async () => {
     await open();
     const failed = vi.spyOn(harness.routeDebugElement!.injector.get(MatSnackBar), 'open').mockReturnValue(snack.open() as never);

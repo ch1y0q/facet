@@ -139,7 +139,7 @@ describe('stack representative repairs through rendered gallery and HTTP', () =>
       progressRequests().forEach(req => req.flush({ ...counts, total: 4 }));
       await fixture.whenStable(); flushSideData(); fixture.detectChanges(); shell.detectChanges();
       expect(store.total()).toBe(4); expect(store.photoTotal()).toBe(4);
-      expect(button!.getAttribute('aria-pressed')).toBe('true');
+      expect(button!.hasAttribute('aria-pressed')).toBe(false);
       const paging = store.nextPage();
       const next = http.expectOne(req => req.url === '/api/photos');
       expect(next.request.params.get('collapse_stacks')).toBe('0');
@@ -158,7 +158,7 @@ describe('stack representative repairs through rendered gallery and HTTP', () =>
       expect(store.total()).toBe(2); expect(store.photoTotal()).toBe(4);
       expect(store.photos().map(photo => photo.path)).toEqual(['/a.jpg', '/d.jpg']);
       expect((fixture.nativeElement as HTMLElement).querySelectorAll('app-photo-card')).toHaveLength(2);
-      expect(button!.getAttribute('aria-pressed')).toBe('false');
+      expect(button!.hasAttribute('aria-pressed')).toBe(false);
       // Existing bottom-bar actions remain reachable alongside the new control.
       const slideshow = root.querySelector<HTMLButtonElement>('button[aria-label^="slideshow.start"]');
       expect(slideshow).not.toBeNull(); slideshow!.click();
@@ -271,8 +271,7 @@ describe('stack representative repairs through rendered gallery and HTTP', () =>
     http.expectOne(req => req.url === '/api/photos').flush({ ...page, total: 1, photo_total: members.length,
       photos: [{ ...rows[0], stack_id: 's1', stack_count: members.length, stack_total_count: members.length }] });
     progressRequests().forEach(req => req.flush(counts)); await reloading; flushSideData();
-    // Select all members explicitly, then narrow to the one deletion target.
-    store.restoreSelection(members);
+    // Select only the one deletion target.
     const target = scenario === 'hidden-member' ? paths[1] : paths[0];
     store.restoreSelection([target]); fixture.detectChanges();
     vi.spyOn(fixture.debugElement.injector.get(MatDialog), 'open').mockReturnValue({ afterClosed: () => of({ includeCompanions: false, includeSequenceSiblings: false, removeMissing: true }) } as never);

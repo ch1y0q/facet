@@ -64,14 +64,12 @@ def register_stack_tools(server: MCPServer, client: InternalClient) -> None:
 
     async def undo_photo_stack(ctx: Context, entry_id: Revision) -> CallToolResult:
         async def handler(grant, resolved, settings):
-            history = await client.call(grant, 'stack_history', timeout=settings['call_timeout_s'])
-            if not history['ok']:
-                return history
-            entries = (history['data'] or {}).get('entries', [])
-            if not any(entry.get('id') == entry_id and entry.get('kind') == 'stack' for entry in entries):
+            # The route refuses another kind itself; the history list is only a 50-row window.
+            result = await client.call(grant, 'undo_photo_stack', path_args={'entry_id': entry_id},
+                                       query={'kind': 'stack'}, timeout=settings['call_timeout_s'])
+            if result.get('error') == 'not_found':
                 return err('invalid_input', 'No available stack Undo entry with this entry_id')
-            return await client.call(grant, 'undo_photo_stack', path_args={'entry_id': entry_id},
-                                     timeout=settings['call_timeout_s'])
+            return result
         return await run_tool(ctx, 'undo_photo_stack', handler, write=True)
 
     register_tool(server, get_photo_stack, 'get_photo_stack',
@@ -94,7 +92,7 @@ def register_stack_tools(server: MCPServer, client: InternalClient) -> None:
                          'Leaves all originals and independent decisions intact; stale revisions refuse.',
         'undo_photo_stack': 'Undo an available stack organization-history entry only. Requires entry_id from '
                             'a successful stack change. Refuses unrelated entries, later edits, membership reuse '
-                            'and loss of visibility; reads history before using the existing authorized revert route.',
+                            'and loss of visibility; the authorized revert route refuses any other kind.',
     }
     for fn in (create_photo_stack, update_photo_stack, unstack_photos, undo_photo_stack):
         register_tool(server, fn, fn.__name__, descriptions[fn.__name__] + scope,

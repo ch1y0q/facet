@@ -12584,7 +12584,10 @@ export interface operations {
     };
     revert_history_api_organization_history__entry_id__revert_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Refuse an entry of another kind */
+                kind?: "stack" | null;
+            };
             header?: never;
             path: {
                 entry_id: number;

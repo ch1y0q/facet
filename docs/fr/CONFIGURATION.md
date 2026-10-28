@@ -1835,7 +1835,7 @@ donc rien.
 | `badges.rejected` | `true` | Badge pouce baissé sur une photo rejetée (mode édition) |
 | `badges.sequence_kind` | `true` | Badge de série (rafale/bracketing/panorama/doublon), dessiné à gauche du badge de rejet, affiché seulement quand l'option de masquage replie la série |
 | `badges.sequence_override_pending` | `true` | Badge horloge pour une correction de panorama en attente de la prochaine détection |
-| `badges.stack` | `true` | Badge calques avec le nombre de membres sur la couverture d'une pile de photos manuelle ; un clic ouvre la pile. Désactivé masque seulement le badge : le bouton de carte « Ouvrir la pile de photos » reste disponible |
+| `badges.stack` | `true` | Badge calques avec le nombre de membres sur chaque vignette d'une pile de photos manuelle (piles repliées : la couverture visible) ; un clic ouvre la pile. Désactivé masque seulement le badge : le bouton de carte « Ouvrir la pile de photos » reste disponible |
 | `badges.keeper_hint` | `true` | Flèche « une meilleure photo existe dans ce groupe » issue du modèle de sélection appris |
 | `badges.best_of_burst` | `true` | Badge « Meilleure » sur la photo de tête d'une rafale. Affiché uniquement quand `hide_bursts` est désactivé : sinon toutes les photos de rafale à l'écran sont déjà des têtes de groupe |
 | `badges.clipping_highlight` | `true` | Badge sur une photo dont les hautes lumières dépassent `clipping.badge_percent` |

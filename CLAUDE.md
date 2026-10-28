@@ -308,7 +308,7 @@ as what it means rather than what it is silently rewrites the wire.
 
 Lookup and side tables: `photo_tags`, `faces`, `persons`, `albums`, `album_photos`,
 `album_client_picks`, `photo_scoring_overrides`, `photo_sequence_overrides`,
-`photo_metadata_edits` (database-local per-account review edit clocks and XMP source receipts; scanner receipts are not copied into viewer databases), `photo_manual_tags`, `saved_places` and `recent_places` (a viewer editor's private named pins and last-assigned points), `panorama_run_cache` (derived data, rebuilt by one panorama pass, not
+`photo_metadata_edits` (database-local per-account review edit clocks and XMP source receipts; scanner receipts are not copied into viewer databases), `photo_manual_tags`, `photo_stacks` and `photo_stack_members` (an account's private manual stacks: one cover and ordered members per stack, never rewritten by a rescan), `immich_stack_links`, `immich_stack_receipts` and `immich_stack_send_claims` (the durable Immich stack pairing and its per-operation write receipts and admission claims), `saved_places` and `recent_places` (a viewer editor's private named pins and last-assigned points), `panorama_run_cache` (derived data, rebuilt by one panorama pass, not
 merged or exported), `embedding_cache_revision` (derived singleton revision row kept current by triggers on `photos`; see NumPy fallback cache), `location_names`, `comparisons`, `learned_scores`, `weight_optimization_runs`,
 `weight_config_snapshots`, `recommendation_history`, `user_preferences`, `scan_runs`,
 `scan_failures`, `iqa_declined`, `stats_cache`, `organization_history` (the viewer's capped per-account undo

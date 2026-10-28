@@ -291,7 +291,7 @@ def gallery_view(stored=None, total=11, **over):
     """What the tab's ``ui_get_gallery_view`` reports: its contract filters plus the smart-album JSON of its store."""
     stored = {"path_prefix": PFX, "sort": "aggregate", "sort_direction": "DESC"} if stored is None else stored
     return {"route": "/", "filters": {"path_prefix": PFX, "hide_bursts": "1", "sort": "aggregate"},
-            "total": total, "loaded": 11, "has_more": False, "photos": [], "selection_count": 0, "loading": False,
+            "total": total, "photo_total": total, "loaded": 11, "has_more": False, "photos": [], "selection_count": 0, "loading": False,
             "album_filter_json": json.dumps(stored), "filters_scopable": True, **over}
 
 

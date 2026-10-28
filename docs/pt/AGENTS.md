@@ -181,8 +181,8 @@ As ferramentas de escrita estão ao lado das de leitura na mesma lista `/mcp`. C
 | `batch_set_rejected` | `edition` | Rejeita muitas fotos | 1000 caminhos, ou `filters` |
 | `add_tags` | `edition` | Adiciona etiquetas manuais (separadas das etiquetas de IA) | 10 etiquetas; 1000 caminhos, ou `filters` |
 | `remove_tags` | `edition` | Remove etiquetas manuais | 10 etiquetas; 1000 caminhos, ou `filters` |
-| `create_photo_stack` | `edition` | Criar pilha explícita; retorna entrada Desfazer | 2–1000 paths |
-| `update_photo_stack` | `edition` | Substituir membros/ordem e capa opcional; recusa revisão antiga | 1000 paths |
+| `create_photo_stack` | `edition` | Criar pilha explícita; retorna entrada Desfazer | 2–1000 caminhos |
+| `update_photo_stack` | `edition` | Substituir membros/ordem e capa opcional; recusa revisão antiga | 1000 caminhos |
 | `unstack_photos` | `edition` | Dissolver pilha sem alterar originais |  |
 | `undo_photo_stack` | `edition` | Desfazer somente entrada de pilha disponível; recusa alterações posteriores |  |
 | `create_album` | `edition` | Cria um álbum (não idempotente: duas vezes cria dois álbuns): vazio, ou a partir de `filters` / `target: "view"` como álbum inteligente que segue esses filtros, ou a partir de `paths` / `target: "selection"` como álbum fixo preenchido na mesma chamada (`added`, `skipped`). Um álbum inteligente usa os interruptores de ocultação do visualizador e em `list_albums` mostra 0 fotos. Uns `filters` sem nenhum filtro efetivo (`{}`, ou apenas interruptores de visualização desligados) são recusados como `invalid_input`: omita `filters` para um álbum vazio | |

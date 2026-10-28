@@ -112,17 +112,17 @@ API 会将其呈现在 `/api/scan/status` 的 `progress` 字段以及 SSE 数据
 
 评分遵循 Immich 的版本安全策略（只用 1–5，绝不用 0/−1）；还可选择用一个精选照片相册收集评分高于阈值的照片。仅使用 REST——不与 Immich 数据库直接耦合。完整配置块参见 [配置 — Immich 同步](CONFIGURATION.md#immich-同步)。
 
-### Immich 堆栈计划
+### Immich 堆叠计划
 
 沿用 `--config`、`--db`、`--user`；多用户模式须明确指定已有所有者。预览不写入或迁移，应用需要已审阅的摘要。
 
 | CLI | |
 |---|---|
-| `python facet.py --immich-stacks-plan import --stack-plan-out NEW_JSON` | 预览远程堆栈的本地导入 |
-| `python facet.py --immich-stacks-plan push --stack-id UUID --stack-plan-out NEW_JSON` | 预览本地堆栈的远程创建 |
+| `python facet.py --immich-stacks-plan import --stack-plan-out NEW_JSON` | 预览远程堆叠的本地导入 |
+| `python facet.py --immich-stacks-plan push --stack-id UUID --stack-plan-out NEW_JSON` | 预览本地堆叠的远程创建 |
 | `python facet.py --immich-stacks-apply PLAN_JSON --ack-stack-plan SHA256` | 明确应用已审阅的计划 |
 
-重复 `--stack-id UUID` 限制来源组。`--stack-plan-out NEW_JSON` 创建私有文件（POSIX `0600`），拒绝覆盖。上限：1000 组、每组 1000 成员、总计 20000 成员、16 MiB。完全匹配可认领链接；映射不完整和重叠均跳过整组。不更新已有堆栈；不确定的创建先核对再重试。参阅[权限、冲突及远程竞争限制](IMMICH.md#手动堆栈导入和推送)。 在 Windows 上，请选择访问控制列表（ACL）仅允许您的账户访问的输出目录；POSIX 权限位不能保证 Windows 文件的私密性。
+重复 `--stack-id UUID` 限制来源组。`--stack-plan-out NEW_JSON` 创建私有文件（POSIX `0600`），拒绝覆盖。上限：1000 组、每组 1000 成员、总计 20000 成员、16 MiB。完全匹配可认领链接；映射不完整和重叠均跳过整组。不更新已有堆叠；不确定的创建先核对再重试。参阅[权限、冲突及远程竞争限制](IMMICH.md#手动堆叠导入和推送)。 在 Windows 上，请选择访问控制列表（ACL）仅允许您的账户访问的输出目录；POSIX 权限位不能保证 Windows 文件的私密性。
 
 ## 重新计算操作
 

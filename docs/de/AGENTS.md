@@ -181,8 +181,8 @@ Schreibwerkzeuge stehen neben den Lesewerkzeugen in derselben `/mcp`-Liste. Jede
 | `batch_set_rejected` | `edition` | Lehnt viele Fotos ab | 1000 Pfade oder `filters` |
 | `add_tags` | `edition` | Fügt manuelle Tags hinzu (getrennt von den KI-Tags) | 10 Tags; 1000 Pfade oder `filters` |
 | `remove_tags` | `edition` | Entfernt manuelle Tags | 10 Tags; 1000 Pfade oder `filters` |
-| `create_photo_stack` | `edition` | Expliziten Stapel erstellen; liefert Rückgängig-Eintrag | 2–1000 paths |
-| `update_photo_stack` | `edition` | Mitglieder/Reihenfolge und optionales Titelbild ersetzen; alte Revision verweigert | 1000 paths |
+| `create_photo_stack` | `edition` | Expliziten Stapel erstellen; liefert Rückgängig-Eintrag | 2–1000 Pfade |
+| `update_photo_stack` | `edition` | Mitglieder/Reihenfolge und optionales Titelbild ersetzen; alte Revision verweigert | 1000 Pfade |
 | `unstack_photos` | `edition` | Stapel auflösen, Originale bleiben erhalten |  |
 | `undo_photo_stack` | `edition` | Nur verfügbaren Stapeleintrag rückgängig machen; spätere Änderungen verweigert |  |
 | `create_album` | `edition` | Legt ein Album an (nicht idempotent: zweimal ergibt zwei Alben): leer, oder aus `filters` / `target: "view"` als Smart-Album, das diesen Filtern folgt, oder aus `paths` / `target: "selection"` als festes Album, im selben Aufruf befüllt (`added`, `skipped`). Ein Smart-Album nutzt die Ausblend-Schalter des Viewers und zeigt in `list_albums` 0 Fotos. `filters` ohne wirksamen Filter (`{}` oder nur ausgeschaltete Anzeige-Schalter) werden als `invalid_input` abgewiesen: lassen Sie `filters` für ein leeres Album weg | |

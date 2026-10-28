@@ -1,7 +1,15 @@
 """HTTP stack mutations and shared organization Undo."""
 import pytest
+from fastapi.testclient import TestClient
 
+from api.auth import CurrentUser
 from api.database import get_db
+from tests.conftest import _make_client_with_user
+
+
+def client_as(user):
+    """A client whose every auth dependency yields ``user``, built by conftest's override helper."""
+    return TestClient(_make_client_with_user(user))
 
 
 @pytest.fixture(autouse=True)
@@ -20,7 +28,7 @@ def clear_stacks(monkeypatch):
 
 
 def seed(seed_photos_prefix):
-    paths = ['/stack-api/' + p + '.jpg' for p in 'abcd']
+    paths = ['/stack-api/' + p + '/photo.jpg' for p in 'abcd']
     seed_photos_prefix('/stack-api/', [dict(path=p, filename=p.rsplit('/', 1)[-1], is_kept=1) for p in paths])
     return paths
 
@@ -61,9 +69,7 @@ def test_partial_visibility_refuses_every_organization_edit(edition_client, seed
     monkeypatch.setitem(config._FULL_CONFIG, 'users', {'test': {'directories': ['/stack-api/']}})
     created = edition_client.post('/api/stacks', json=dict(paths=[a, b, c], cover_path=a)).json()
     stack = created['stack']
-    monkeypatch.setitem(config._FULL_CONFIG, 'users', {'test': {'directories': [], 'files': [b, c]}})
-    # Configure explicit visibility through the production clause interface.
-    monkeypatch.setattr('api.routers.stacks.get_visibility_clause', lambda _: ('photos.path IN (?,?)', [b, c]))
+    monkeypatch.setitem(config._FULL_CONFIG, 'users', {'test': {'directories': ['/stack-api/b/', '/stack-api/c/']}})
     partial = edition_client.get('/api/stacks/' + stack['id']).json()
     assert partial['cover_path'] == b and not partial['editable']
     assert a not in str(partial)
@@ -72,7 +78,6 @@ def test_partial_visibility_refuses_every_organization_edit(edition_client, seed
         edition_client.delete('/api/stacks/' + stack['id'], params=dict(expected_revision=stack['revision'])),
     ):
         assert response.status_code == 409 and a not in response.text
-    monkeypatch.setattr('api.routers.organization_history.get_visibility_clause', lambda _: ('photos.path IN (?,?)', [b, c]))
     assert edition_client.post('/api/organization_history/' + str(created['undo']['entry_id']) + '/revert').status_code == 409
 
 
@@ -134,9 +139,11 @@ def test_undo_refuses_membership_reuse_after_dissolve(edition_client, seed_photo
 
 
 def test_partial_snapshot_does_not_expose_hidden_order(edition_client, seed_photos_prefix, monkeypatch):
+    from api import config
     a, b, c, _ = seed(seed_photos_prefix)
+    monkeypatch.setitem(config._FULL_CONFIG, 'users', {'test': {'directories': ['/stack-api/']}})
     stack = edition_client.post('/api/stacks', json=dict(paths=[a, b, c], cover_path=a)).json()['stack']
-    monkeypatch.setattr('api.routers.stacks.get_visibility_clause', lambda _: ('photos.path=?', [c]))
+    monkeypatch.setitem(config._FULL_CONFIG, 'users', {'test': {'directories': ['/stack-api/c/']}})
     read = edition_client.get('/api/stacks/' + stack['id']).json()
     assert read['members'] == [dict(path=c, position=0)]
     assert read['cover_path'] == c and read['editable'] is False
@@ -214,65 +221,57 @@ def test_full_member_replacement_keeps_one_atomic_history_entry_and_undo(edition
         assert conn.execute("SELECT count(*) FROM photos WHERE path LIKE '/stack-replacement/%' AND is_kept=1").fetchone()[0] == 2000
 
 
-def test_single_user_stack_does_not_become_installation_named_accounts_stack(edition_client, seed_photos_prefix, monkeypatch):
+def test_single_user_stack_does_not_become_installation_named_accounts_stack(seed_photos_prefix, monkeypatch):
     from api import config
-    from api.auth import CurrentUser, get_optional_user, require_authenticated, require_edition
-
     a, b, _, _ = seed(seed_photos_prefix)
     monkeypatch.setitem(config._FULL_CONFIG, 'users', {})
     single_user = CurrentUser(user_id=None, role='admin', edition_authenticated=True)
-    for dependency in (get_optional_user, require_authenticated, require_edition):
-        edition_client.app.dependency_overrides[dependency] = lambda: single_user
-    created = edition_client.post('/api/stacks', json=dict(paths=[a, b], cover_path=a))
+    client = client_as(single_user)
+    created = client.post('/api/stacks', json=dict(paths=[a, b], cover_path=a))
     assert created.status_code == 201, created.text
     installation_stack = created.json()['stack']
     installation_entry = created.json()['undo']['entry_id']
 
     monkeypatch.setitem(config._FULL_CONFIG, 'users', {'installation': {'directories': ['/stack-api/']}})
     account = CurrentUser(user_id='installation', role='admin', edition_authenticated=True)
-    for dependency in (get_optional_user, require_authenticated, require_edition):
-        edition_client.app.dependency_overrides[dependency] = lambda: account
-    assert edition_client.get('/api/stacks/' + installation_stack['id']).json() is None
-    assert edition_client.get('/api/stacks/by-photo', params=dict(path=a)).json() is None
-    listing = edition_client.get('/api/photos', params=dict(path_prefix='/stack-api/')).json()
+    client = client_as(account)
+    assert client.get('/api/stacks/' + installation_stack['id']).json() is None
+    assert client.get('/api/stacks/by-photo', params=dict(path=a)).json() is None
+    listing = client.get('/api/photos', params=dict(path_prefix='/stack-api/')).json()
     assert listing['total'] == listing['photo_total'] == 4
     assert all(not photo.get('stack_id') for photo in listing['photos'])
-    history = edition_client.get('/api/organization_history').json()['entries']
+    history = client.get('/api/organization_history').json()['entries']
     assert all(entry['id'] != installation_entry for entry in history)
-    assert edition_client.post(f'/api/organization_history/{installation_entry}/revert').status_code == 404
-    personal = edition_client.post('/api/stacks', json=dict(paths=[a, b], cover_path=b))
+    assert client.post(f'/api/organization_history/{installation_entry}/revert').status_code == 404
+    personal = client.post('/api/stacks', json=dict(paths=[a, b], cover_path=b))
     assert personal.status_code == 201, personal.text
     assert personal.json()['stack']['id'] != installation_stack['id']
-    assert edition_client.get('/api/stacks/by-photo', params=dict(path=a)).json()['cover_path'] == b
+    assert client.get('/api/stacks/by-photo', params=dict(path=a)).json()['cover_path'] == b
 
     monkeypatch.setitem(config._FULL_CONFIG, 'users', {})
-    for dependency in (get_optional_user, require_authenticated, require_edition):
-        edition_client.app.dependency_overrides[dependency] = lambda: single_user
-    assert edition_client.get('/api/stacks/' + installation_stack['id']).json() == installation_stack
-    assert edition_client.get('/api/stacks/' + personal.json()['stack']['id']).json() is None
+    client = client_as(single_user)
+    assert client.get('/api/stacks/' + installation_stack['id']).json() == installation_stack
+    assert client.get('/api/stacks/' + personal.json()['stack']['id']).json() is None
 
 
-def test_single_user_review_and_stack_history_share_one_retention_budget(edition_client, seed_photos_prefix, monkeypatch):
+def test_single_user_review_and_stack_history_share_one_retention_budget(seed_photos_prefix, monkeypatch):
     from api import config
-    from api.auth import CurrentUser, get_optional_user, require_authenticated, require_edition
-
     a, b, _, _ = seed(seed_photos_prefix)
     monkeypatch.setitem(config._FULL_CONFIG, 'users', {})
     user = CurrentUser(user_id=None, role='admin', edition_authenticated=True)
-    for dependency in (get_optional_user, require_authenticated, require_edition):
-        edition_client.app.dependency_overrides[dependency] = lambda: user
-    created = edition_client.post('/api/stacks', json=dict(paths=[a, b], cover_path=a)).json()['stack']
+    client = client_as(user)
+    created = client.post('/api/stacks', json=dict(paths=[a, b], cover_path=a)).json()['stack']
     for index in range(50):
-        response = edition_client.post('/api/photos/batch_review', json=dict(
+        response = client.post('/api/photos/batch_review', json=dict(
             photo_paths=[a], decision='undecided' if index % 2 == 0 else 'kept'))
         assert response.status_code == 200, response.text
-    changed = edition_client.put('/api/stacks/' + created['id'], json=dict(
+    changed = client.put('/api/stacks/' + created['id'], json=dict(
         paths=[b, a], cover_path=b, expected_revision=created['revision']))
     assert changed.status_code == 200, changed.text
     with get_db() as conn:
         assert conn.execute("SELECT count(*) FROM organization_history WHERE owner=''").fetchone()[0] == 50
         assert conn.execute("SELECT count(*) FROM organization_history WHERE kind='stack' AND owner!=''").fetchone()[0] == 0
-    entries = edition_client.get('/api/organization_history').json()['entries']
+    entries = client.get('/api/organization_history').json()['entries']
     assert len(entries) == 50
     assert entries[0]['id'] == changed.json()['undo']['entry_id']
     assert {entry['kind'] for entry in entries} == {'review', 'stack'}

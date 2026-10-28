@@ -27,7 +27,7 @@ from api.models.gallery import (
 from api.models.discovery import PhotoSetResponse, PhotoTypeCountsResponse, ViewerConfigResponse
 from api.db_helpers import (
     get_existing_columns, get_cached_count_async,
-    get_cached_hidden_aggregates_async, _add_tag_filter,
+    get_cached_hidden_aggregates_async, snapshot_count_token, _add_tag_filter,
     get_art_tags_from_config, build_hide_clauses,
     hide_toggle_params,
     split_photo_tags, attach_person_data_async, sanitize_float_values,
@@ -1305,7 +1305,9 @@ async def api_photos(
         async with get_async_db() as conn:
             user_id = user.user_id if user else None
             owner = await stack_gallery.enabled_owner_async(conn, user_id)
+            token = None
             if owner is not None:
+                token = await snapshot_count_token()
                 await conn.execute('BEGIN')
             # The listing's own scope, from the same builder every whole-view
             # surface uses -- album access check included. `params` is already
@@ -1319,11 +1321,8 @@ async def api_photos(
                 candidates, where_str, all_params = await _apply_semantic_gate(
                     conn, semantic_q, semantic_threshold, user_id, where_str, all_params, "gallery search")
 
-            if owner is not None:
-                total_count = await get_cached_count_async(
-                    conn, where_str, all_params, from_clause=from_clause, use_cache=False)
-            else:
-                total_count = await get_cached_count_async(conn, where_str, all_params, from_clause=from_clause)
+            total_count = await get_cached_count_async(
+                conn, where_str, all_params, from_clause=from_clause, token=token)
             photo_total = total_count
             display = None
             if owner is not None:
@@ -1350,9 +1349,9 @@ async def api_photos(
                 if candidates is not None:
                     where_str_no_hide = _with_semantic_clause(where_str_no_hide)
                     all_params_no_hide = all_params_no_hide + [candidates.paths_json]
-                aggregate_kwargs = {'use_cache': False, 'stack_owner': owner} if owner is not None else {}
                 agg = await get_cached_hidden_aggregates_async(
-                    conn, where_str_no_hide, all_params_no_hide, from_clause=from_clause, **aggregate_kwargs
+                    conn, where_str_no_hide, all_params_no_hide, from_clause=from_clause,
+                    stack_owner=owner, token=token,
                 )
                 hidden_summary = {
                     'total': max(0, agg['unhidden'] - photo_total),

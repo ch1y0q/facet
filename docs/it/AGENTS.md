@@ -181,8 +181,8 @@ Gli strumenti di scrittura stanno accanto a quelli di lettura nella stessa lista
 | `batch_set_rejected` | `edition` | Scarta molte foto | 1000 percorsi, oppure `filters` |
 | `add_tags` | `edition` | Aggiunge tag manuali (separati dai tag IA) | 10 tag; 1000 percorsi, oppure `filters` |
 | `remove_tags` | `edition` | Rimuove tag manuali | 10 tag; 1000 percorsi, oppure `filters` |
-| `create_photo_stack` | `edition` | Crea una pila esplicita; restituisce voce Annulla | 2–1000 paths |
-| `update_photo_stack` | `edition` | Sostituisce membri/ordine e copertina facoltativa; rifiuta revisione obsoleta | 1000 paths |
+| `create_photo_stack` | `edition` | Crea una pila esplicita; restituisce voce Annulla | 2–1000 percorsi |
+| `update_photo_stack` | `edition` | Sostituisce membri/ordine e copertina facoltativa; rifiuta revisione obsoleta | 1000 percorsi |
 | `unstack_photos` | `edition` | Scioglie una pila senza cambiare gli originali |  |
 | `undo_photo_stack` | `edition` | Annulla solo una voce pila disponibile; rifiuta modifiche successive |  |
 | `create_album` | `edition` | Crea un album (non idempotente: due volte crea due album): vuoto, oppure da `filters` / `target: "view"` come album intelligente che segue quei filtri, oppure da `paths` / `target: "selection"` come album fisso riempito nella stessa chiamata (`added`, `skipped`). Un album intelligente usa gli interruttori di nascondimento del visualizzatore e in `list_albums` mostra 0 foto. Dei `filters` senza alcun filtro effettivo (`{}`, o solo interruttori di visualizzazione disattivati) vengono rifiutati come `invalid_input`: ometti `filters` per un album vuoto | |

@@ -329,6 +329,23 @@ class TestBatchTools:
         assert photo_col(P[4], "junk_kind") == "not_junk"
         assert env.call(token, "junk_clear", {"paths": [P[0]] * 51})["error"] == "too_large"
 
+    def test_junk_list_shows_every_stacked_junk_frame(self, edition, photos):
+        env, token = edition
+        conn = sqlite3.connect(_TEST_DB_FILE.name)
+        conn.execute("UPDATE photos SET junk_kind = 'blurry' WHERE path = ?", (P[3],))
+        conn.commit()
+        conn.close()
+        assert env.call(token, "create_photo_stack", {"paths": [P[3], P[4]], "cover_path": P[4]})["ok"]
+        try:
+            listed = env.call(token, "junk_list", {"kind": "blurry"})
+            assert sorted(r["path"] for r in listed["data"]["rows"]) == sorted([P[3], P[4]])
+        finally:
+            conn = sqlite3.connect(_TEST_DB_FILE.name)
+            conn.execute("DELETE FROM photo_stacks WHERE id IN "
+                         "(SELECT stack_id FROM photo_stack_members WHERE photo_path = ?)", (P[4],))
+            conn.commit()
+            conn.close()
+
 
 def test_user_floor_message_names_edition_on_a_single_password_install(agent_app, photos):
     env = agent_app("legacy")

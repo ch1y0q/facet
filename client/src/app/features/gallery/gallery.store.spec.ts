@@ -134,6 +134,7 @@ describe('GalleryStore', () => {
       store.restoreSelection(['/representative']);
       expect(store.selectionCount()).toBe(1);
     });
+    afterEach(() => localStorage.removeItem('facet_collapse_stacks'));
     it('persists expansion as a listing preference and sends it for later pages', async () => {
       apiGet.mockReturnValue(of(makePhotosResponse({ total: 10, photo_total: 10, has_more: true })));
       await store.toggleStackCollapse();
@@ -141,7 +142,6 @@ describe('GalleryStore', () => {
       expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ collapse_stacks: '0' }));
       await store.nextPage();
       expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ collapse_stacks: '0', page: 2 }));
-      localStorage.removeItem('facet_collapse_stacks');
     });
     it('uses the default collapse preference when browser storage is blocked', () => {
       const original = Storage.prototype.getItem;

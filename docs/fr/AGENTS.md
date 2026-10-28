@@ -181,8 +181,8 @@ Les outils d'écriture figurent à côté des outils de lecture dans la même li
 | `batch_set_rejected` | `edition` | Rejette de nombreuses photos | 1000 chemins, ou `filters` |
 | `add_tags` | `edition` | Ajoute des étiquettes manuelles (séparées des étiquettes IA) | 10 étiquettes ; 1000 chemins, ou `filters` |
 | `remove_tags` | `edition` | Retire des étiquettes manuelles | 10 étiquettes ; 1000 chemins, ou `filters` |
-| `create_photo_stack` | `edition` | Créer une pile explicite ; renvoie une entrée Annuler | 2–1000 paths |
-| `update_photo_stack` | `edition` | Remplacer membres/ordre et couverture facultative ; refuse une révision périmée | 1000 paths |
+| `create_photo_stack` | `edition` | Créer une pile explicite ; renvoie une entrée Annuler | 2–1000 chemins |
+| `update_photo_stack` | `edition` | Remplacer membres/ordre et couverture facultative ; refuse une révision périmée | 1000 chemins |
 | `unstack_photos` | `edition` | Dissoudre une pile sans changer les originaux |  |
 | `undo_photo_stack` | `edition` | Annuler seulement une entrée de pile disponible ; refuse les changements ultérieurs |  |
 | `create_album` | `edition` | Crée un album (non idempotent : deux appels, deux albums) : vide, ou depuis `filters` / `target: "view"` comme album intelligent qui suit ces filtres, ou depuis `paths` / `target: "selection"` comme album fixe rempli dans le même appel (`added`, `skipped`). Un album intelligent applique les bascules de masquage du visualiseur et affiche 0 photo dans `list_albums`. Des `filters` sans aucun filtre effectif (`{}`, ou seulement des bascules d'affichage désactivées) sont refusés en `invalid_input` : omettez `filters` pour un album vide | |

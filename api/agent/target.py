@@ -280,7 +280,7 @@ async def resolve_view(
     if data.get("filters_scopable") is not True:
         return _view_refusal("The tab's current view (similar photos, a semantic search or a list chosen by an "
                              "assistant) cannot be saved as a smart album; use `paths` instead"), "", 0, None
-    total = data.get("photo_total", data.get("total"))
+    total = data.get("photo_total")
     if not isinstance(total, int) or isinstance(total, bool) or total < 0:
         return err("upstream_error", "The tab reported an unusable total"), "", 0, None
     raw = data.get("album_filter_json")

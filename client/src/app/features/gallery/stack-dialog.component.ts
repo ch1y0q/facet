@@ -19,6 +19,7 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { Photo } from '../../shared/models/photo.model';
 import { GalleryStore } from './gallery.store';
 import { BY_PATHS_MAX } from './gallery-filters.util';
+import { STACK_MAX_MEMBERS, STACK_MIN_MEMBERS } from './stack-limits';
 
 export interface StackDialogData {
   stackId?: string;
@@ -27,6 +28,8 @@ export interface StackDialogData {
   /** Explicit selection only. A whole-view selection must never be materialized implicitly. */
   selectedPaths?: string[];
 }
+
+const MUTATION_FAILURE: Record<number, 'conflict' | 'unavailable'> = { 409: 'conflict', 404: 'unavailable', 403: 'unavailable' };
 
 /** Compare stored camera walltimes without guessing a timezone. EXIF and ISO
  *  separators must not make December sort before January in the same year. */
@@ -74,7 +77,7 @@ function captureDateKey(date: string | null | undefined): string {
           }
         </ol>
         @if (editable() && additions().length) {
-          <button mat-button (click)="addSelected()" [disabled]="saving() || paths().length + additions().length > 1000">{{ I18N.stacks.add_selected | translate:{ count: additions().length } }}</button>
+          <button mat-button (click)="addSelected()" [disabled]="saving() || paths().length + additions().length > STACK_MAX_MEMBERS">{{ additions().length | pluralKey:I18N.stacks.add_selected:I18N.stacks.add_selected_plural | translate:{ count: additions().length } }}</button>
         }
       }
     </mat-dialog-content>
@@ -94,6 +97,7 @@ function captureDateKey(date: string | null | undefined): string {
 })
 export class StackDialogComponent implements OnInit {
   protected readonly I18N = i18nKeys();
+  protected readonly STACK_MAX_MEMBERS = STACK_MAX_MEMBERS;
   readonly data = inject<StackDialogData>(MAT_DIALOG_DATA);
   private readonly api = inject(ApiService);
   private readonly stacks = inject(PhotoStackService);
@@ -117,7 +121,7 @@ export class StackDialogComponent implements OnInit {
   readonly editable = computed(() => this.auth.isEdition() && (!this.data.stackId || this.stack()?.editable === true));
   readonly memberCount = computed(() => this.stack()?.members.length ?? this.paths().length);
   readonly additions = computed(() => (this.data.selectedPaths ?? []).filter(path => !this.paths().includes(path)));
-  readonly valid = computed(() => this.paths().length <= 1000 && (this.stack() !== null || this.paths().length >= 2));
+  readonly valid = computed(() => this.paths().length <= STACK_MAX_MEMBERS && (this.stack() !== null || this.paths().length >= STACK_MIN_MEMBERS));
   readonly dirty = computed(() => {
     const previous = this.stack();
     return !previous || previous.cover_path !== this.cover() || JSON.stringify(previous.members.map(m => m.path)) !== JSON.stringify(this.paths());
@@ -153,7 +157,7 @@ export class StackDialogComponent implements OnInit {
         this.stack.set(stack); this.paths.set(stack.members.map(member => member.path)); this.cover.set(stack.cover_path);
       } else {
         const paths = [...new Set(this.data.paths ?? [])];
-        if (paths.length < 2 || paths.length > 1000) { this.error.set('unavailable'); return; }
+        if (paths.length < STACK_MIN_MEMBERS || paths.length > STACK_MAX_MEMBERS) { this.error.set('unavailable'); return; }
         const photos: Photo[] = [];
         for (let offset = 0; offset < paths.length; offset += BY_PATHS_MAX) {
           const res = await firstValueFrom(this.api.post<{ photos: Photo[]; missing: string[] }>('/photos/by_paths',
@@ -184,7 +188,7 @@ export class StackDialogComponent implements OnInit {
     if (this.cover() === path) this.cover.set(this.paths()[0] ?? '');
   }
   addSelected(): void {
-    if (!this.editable() || this.saving() || this.paths().length + this.additions().length > 1000) return;
+    if (!this.editable() || this.saving() || this.paths().length + this.additions().length > STACK_MAX_MEMBERS) return;
     this.paths.update(paths => [...paths, ...this.additions()]);
   }
   selectMembers(): void {
@@ -239,7 +243,7 @@ export class StackDialogComponent implements OnInit {
     } catch (failure) {
       if (this.current()) {
         const status = (failure as { status?: number }).status;
-        this.error.set(status === 409 ? 'conflict' : status === 404 || status === 403 ? 'unavailable' : 'error');
+        this.error.set(MUTATION_FAILURE[status ?? 0] ?? 'error');
       }
     } finally {
       if (this.current()) { this.saving.set(false); this.dialog.disableClose = false; }

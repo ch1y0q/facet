@@ -2,9 +2,9 @@
 import json
 import logging
 import sqlite3
-from typing import Any
+from typing import Annotated, Any, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from api.auth import CurrentUser, require_edition
 from api.database import get_db
@@ -46,10 +46,12 @@ def list_history(response: Response, user: CurrentUser = Depends(require_edition
 
 @router.post('/api/organization_history/{entry_id}/revert', response_model=OrganizationRevert)
 @retry_on_locked()
-def revert_history(entry_id: int, response: Response, user: CurrentUser = Depends(require_edition)) -> dict[str, int]:
+def revert_history(entry_id: int, response: Response, user: CurrentUser = Depends(require_edition),
+                   kind: Annotated[Optional[Literal['stack']], Query(description='Refuse an entry of another kind')] = None
+                   ) -> dict[str, int]:
     response.headers['Cache-Control'] = 'no-store'
     try:
-        return _revert(entry_id, user)
+        return _revert(entry_id, user, kind)
     except sqlite3.Error as exc:
         if is_locked_error(exc):
             raise
@@ -57,12 +59,12 @@ def revert_history(entry_id: int, response: Response, user: CurrentUser = Depend
         raise HTTPException(500, 'Could not restore history', headers={'Cache-Control': 'no-store'}) from exc
 
 
-def _revert(entry_id: int, user: CurrentUser) -> dict[str, int]:
+def _revert(entry_id: int, user: CurrentUser, kind_filter: Optional[str] = None) -> dict[str, int]:
     headers = {'Cache-Control': 'no-store'}
     with get_db() as conn, conn:
         conn.execute('BEGIN IMMEDIATE')
         entry = conn.execute("SELECT * FROM organization_history WHERE id=? AND ((owner=? AND kind!='stack') OR (owner=? AND kind='stack'))", (entry_id, user.user_id or '', stack_owner(user.user_id))).fetchone()
-        if not entry:
+        if not entry or (kind_filter is not None and entry['kind'] != kind_filter):
             raise HTTPException(404, 'History entry not found', headers=headers)
         changes = json.loads(entry['payload'])
         if not _visible(conn, user, changes):

@@ -115,10 +115,22 @@ def test_undo_rejects_unrelated_history_without_writing(edition, monkeypatch):
     calls = []
     intercept_internal_call(monkeypatch, lambda tool, kw: calls.append(tool))
     result = env.call(token, 'undo_photo_stack', dict(entry_id=entry['id']))
-    assert not result['ok']
-    assert calls == ['stack_history']
+    assert not result['ok'] and result['error'] == 'invalid_input'
+    assert calls == ['undo_photo_stack']
     with get_db() as conn:
         assert conn.execute('SELECT is_kept FROM photos WHERE path=?', [P[0]]).fetchone()[0] == 0
+
+
+def test_undo_accepts_a_stack_entry_older_than_the_history_list_window(edition):
+    env, token = edition
+    created = create(env, token)
+    with get_db() as conn, conn:
+        conn.executemany("INSERT INTO organization_history(owner,kind,scope,payload,part,parts) VALUES ('','stack','','[]',1,1)",
+                         [()] * 55)
+    listed = env.client.get('/api/organization_history', headers=env.login(edition=True)).json()['entries']
+    assert all(entry['id'] != created['undo']['entry_id'] for entry in listed)
+    assert env.call(token, 'undo_photo_stack', created['undo'])['ok']
+    assert env.call(token, 'get_photo_stack', dict(path=P[0]))['data'] is None
 
 
 def test_partial_visibility_refuses_updates_unstack_and_undo(agent_app, photos, monkeypatch):
@@ -170,6 +182,9 @@ def test_create_annotations_are_not_retry_safe(edition):
     assert tools['create_photo_stack']['annotations']['idempotentHint'] is False
     assert tools['get_photo_stack']['annotations']['readOnlyHint'] is True
     assert 'immich' not in ' '.join(tools).lower()
+    # The stack tools state the absence ("no Immich call is made"); nothing else may mention a remote.
+    described = ' '.join(tool.get('description', '') for tool in tools.values()).lower()
+    assert 'immich' not in described.replace('no immich call is made', '')
 
 
 def test_search_retains_display_and_original_totals(edition):

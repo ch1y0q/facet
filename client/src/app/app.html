@@ -533,7 +533,6 @@
           </button>
           <button mat-icon-button class="!w-9 !h-9 shrink-0" data-stack-collapse-mobile
                   (click)="store.toggleStackCollapse()"
-                  [attr.aria-pressed]="!store.collapseStacks()"
                   [matTooltip]="(store.collapseStacks() ? I18N.stacks.expand_all : I18N.stacks.collapse) | translate"
                   [attr.aria-label]="(store.collapseStacks() ? I18N.stacks.expand_all : I18N.stacks.collapse) | translate">
             <mat-icon>{{ store.collapseStacks() ? 'unfold_more' : 'unfold_less' }}</mat-icon>

@@ -56,6 +56,8 @@ import { GalleryStore } from '../gallery/gallery.store';
 export class StackNavigatorComponent {
   readonly path = input.required<string>();
   readonly allowedPaths = input<string[] | null>(null);
+  /** Whether the open photo is known to belong to a stack: only then does a pending lookup own the arrows. */
+  readonly stacked = input(false);
   readonly memberOpened = output<string>();
   protected readonly I18N = i18nKeys();
   protected readonly auth = inject(AuthService);
@@ -136,10 +138,11 @@ export class StackNavigatorComponent {
     this.memberOpened.emit(path);
   }
 
-  /** True also at a boundary: arrows never escape an active stack. */
+  /** True also at a boundary: arrows never escape an active stack, nor a pending lookup of a stacked photo. A failed lookup or an unstacked photo leaves them to the gallery. */
   step(delta: number): boolean {
-    if (this.navigating || this.owner !== this.auth.identity() || this.loading() || this.error()) return true;
-    if (!this.stack() || this.position() < 0) return false;
+    if (this.navigating || this.owner !== this.auth.identity()) return true;
+    if (this.loading()) return this.stacked();
+    if (this.error() || !this.stack() || this.position() < 0) return false;
     const next = this.members()[this.position() + delta];
     if (next) this.openMember(next.path);
     return true;

@@ -2974,6 +2974,7 @@ export const I18N = {
     move_down: "stacks.move_down",
     remove: "stacks.remove",
     add_selected: "stacks.add_selected",
+    add_selected_plural: "stacks.add_selected_plural",
     select_all: "stacks.select_all",
     unstack: "stacks.unstack",
     read_only: "stacks.read_only",

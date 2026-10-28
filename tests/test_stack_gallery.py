@@ -28,7 +28,6 @@ def manual_stack(edition_client, stack_photos):
     assert r.status_code == 201, r.text
     stack = r.json()['stack']
     yield stack
-    # Deleting fixture photo rows must clean related stack rows too.
 
 
 def listing(client, **params):
