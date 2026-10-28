@@ -2753,7 +2753,7 @@
     },
     "candidates": "{count} Kandidat",
     "candidates_plural": "{count} Kandidaten",
-    "empty_kind": "Keine Kandidaten dieser Art. Versuche „Alle Arten“ im Filtermenü."
+    "empty_kind": "Keine Kandidaten dieser Art. Versuchen Sie „Alle Arten“ im Filtermenü."
   },
   "social_export": {
     "presets": {

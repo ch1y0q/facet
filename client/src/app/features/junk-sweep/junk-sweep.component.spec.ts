@@ -2,7 +2,7 @@ import type { Mock } from 'vitest';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatDialog } from '@angular/material/dialog';
-import { type Observable, from, of, throwError } from 'rxjs';
+import { Observable, Subject, from, of, throwError } from 'rxjs';
 import { Router, provideRouter } from '@angular/router';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
@@ -30,7 +30,13 @@ describe('JunkSweepComponent', () => {
 
   const kindsList = { junk_kinds: [['meme', 1], ['screenshot', 3]] };
 
-  function createComponent(firstPage: Record<string, unknown> = defaultFirstPage, kindsReply: Observable<unknown> = of(kindsList)) {
+  const emptyPage = { photos: [], total: 0, total_pages: 1, page: 1, has_more: false };
+
+  function createComponent(
+    firstPage: Record<string, unknown> | Observable<unknown> = defaultFirstPage,
+    kindsReply: Observable<unknown> = of(kindsList),
+    laterPages: () => Observable<unknown> = () => of(emptyPage),
+  ) {
     photosCall = 0;
     mockApi = {
       get: vi.fn((url: string) => {
@@ -39,13 +45,13 @@ describe('JunkSweepComponent', () => {
         }
         photosCall += 1;
         if (photosCall === 1) {
-          return of(firstPage);
+          return firstPage instanceof Observable ? firstPage : of(firstPage);
         }
-        return of({ photos: [], total: 0, total_pages: 1, page: 1, has_more: false });
+        return laterPages();
       }),
       post: vi.fn(() => of({})),
     };
-    mockI18n = { t: vi.fn((k: string) => k) };
+    mockI18n = { t: vi.fn((k: string, vars?: Record<string, unknown>) => (vars ? `${k} ${JSON.stringify(vars)}` : k)), translations: () => ({}) } as unknown as { t: Mock };
     mockSnackBar = { open: vi.fn() };
     mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(true) })) };
     journal = { record: vi.fn() };
@@ -238,42 +244,25 @@ describe('JunkSweepComponent', () => {
   });
 
   describe('rendered: candidate count and empty states', () => {
-    /** Like createComponent, but the component is rendered as the fixture root
-     *  so the template can be asserted. Waits for the first page to settle. */
-    async function render(firstPage: Record<string, unknown> = defaultFirstPage): Promise<{ fixture: ComponentFixture<JunkSweepComponent>; host: HTMLElement; component: JunkSweepComponent }> {
-      photosCall = 0;
-      mockApi = {
-        get: vi.fn((url: string) => {
-          if (url.includes('junk_kinds')) return of(kindsList);
-          photosCall += 1;
-          if (photosCall === 1) return of(firstPage);
-          return of({ photos: [], total: 0, total_pages: 1, page: 1, has_more: false });
-        }),
-        post: vi.fn(() => of({})),
-      };
-      mockI18n = { t: vi.fn((k: string, vars?: Record<string, unknown>) => (vars ? `${k} ${JSON.stringify(vars)}` : k)), translations: () => ({}) } as unknown as { t: Mock };
-      mockSnackBar = { open: vi.fn() };
-      mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(true) })) };
-      journal = { record: vi.fn() };
-      TestBed.resetTestingModule();
-      TestBed.configureTestingModule({
-        providers: [
-          provideRouter([{ path: 'junk', children: [] }]),
-          { provide: ApiService, useValue: mockApi },
-          { provide: I18nService, useValue: mockI18n },
-          { provide: MatSnackBar, useValue: mockSnackBar },
-          { provide: MatDialog, useValue: mockDialog },
-          { provide: UserActivityJournal, useValue: journal },
-        ],
-      });
+    /** createComponent, but rendered as the fixture root so the template can be asserted. */
+    async function render(...args: Parameters<typeof createComponent>): Promise<{ fixture: ComponentFixture<JunkSweepComponent>; host: HTMLElement }> {
+      createComponent(...args);
       const fixture = TestBed.createComponent(JunkSweepComponent);
+      component = fixture.componentInstance;
       fixture.detectChanges();
       await fixture.whenStable();
       fixture.detectChanges();
-      return { fixture, host: fixture.nativeElement as HTMLElement, component: fixture.componentInstance };
+      return { fixture, host: fixture.nativeElement as HTMLElement };
     }
 
     const countChip = (host: HTMLElement): HTMLElement | null => host.querySelector('[data-junk-count]');
+    const photosCalls = (): number => mockApi.get.mock.calls.filter(([url]) => url === '/photos').length;
+    /** Exact leaf text: 'junk.empty' is a prefix of 'junk.empty_kind', and
+     *  ancestor divs inherit the message into their own textContent. */
+    const emptyMessages = (host: HTMLElement): (string | undefined)[] => [...host.querySelectorAll('div')]
+      .filter(d => d.children.length === 0)
+      .map(d => d.textContent?.trim())
+      .filter(t => t === 'junk.empty' || t === 'junk.empty_kind');
 
     it('shows the candidate total beside the kind filter once loaded', async () => {
       const { host } = await render();
@@ -281,33 +270,80 @@ describe('JunkSweepComponent', () => {
       expect(countChip(host)!.textContent).toContain('"count":4');
     });
 
+    it('hides the count while the first page is still loading', async () => {
+      const { host } = await render(new Subject<unknown>());
+      expect(countChip(host)).toBeNull();
+    });
+
     it('counts down as a card is rejected from its hover button', async () => {
       const { fixture, host } = await render();
-      const rejectButton = [...host.querySelectorAll<HTMLButtonElement>('button[aria-label="junk.reject"]')]!;
-      expect(rejectButton.length).toBe(4);
-      rejectButton[0].click();
+      const rejectButtons = [...host.querySelectorAll<HTMLButtonElement>('button[aria-label="junk.reject"]')];
+      expect(rejectButtons.length).toBe(4);
+      rejectButtons[0].click();
       fixture.detectChanges();
       expect(countChip(host)!.textContent).toContain('"count":3');
     });
 
+    it('uses the singular label once a kind with one candidate is selected', async () => {
+      const { fixture, host } = await render(defaultFirstPage, of(kindsList),
+        () => of({ photos: [initialPhotos[0]], total: 1, total_pages: 1, page: 1, has_more: false }));
+      await component.selectKind('meme');
+      fixture.detectChanges();
+      expect(countChip(host)!.textContent).toContain('junk.candidates {"count":1}');
+    });
+
+    it('drops the previous kind\'s count when the new kind fails to load', async () => {
+      const { fixture, host } = await render(defaultFirstPage, of(kindsList), () => throwError(() => new Error('boom')));
+      await component.selectKind('meme');
+      fixture.detectChanges();
+      expect(countChip(host)!.textContent).toContain('"count":0');
+      expect(emptyMessages(host)).toEqual(['junk.empty_kind']);
+    });
+
+    it('re-reads the first page once every loaded card is handled while more remain', async () => {
+      const next = { ...initialPhotos[1], path: '/p/next.jpg', filename: 'next.jpg' };
+      const { fixture, host } = await render(
+        { photos: [initialPhotos[0]], total: 2, total_pages: 2, page: 1, has_more: true }, of(kindsList),
+        () => of({ photos: [next], total: 1, total_pages: 1, page: 1, has_more: false }));
+      await component.keep(initialPhotos[0]);
+      fixture.detectChanges();
+      expect(mockApi.get).toHaveBeenLastCalledWith('/photos', expect.objectContaining({ page: 1 }));
+      expect(component.photos().map((p: { path: string }) => p.path)).toEqual(['/p/next.jpg']);
+      expect(countChip(host)!.textContent).toContain('"count":1');
+      expect(emptyMessages(host)).toEqual([]);
+    });
+
+    it('waits for the last write in flight before re-reading the first page', async () => {
+      const { fixture } = await render(
+        { photos: initialPhotos.slice(0, 2), total: 3, total_pages: 2, page: 1, has_more: true }, of(kindsList),
+        () => of({ photos: [initialPhotos[2]], total: 1, total_pages: 1, page: 1, has_more: false }));
+      const second = new Subject<unknown>();
+      mockApi.post.mockReturnValueOnce(of({})).mockReturnValueOnce(second);
+      const first = component.keep(initialPhotos[0]);
+      const pending = component.keep(initialPhotos[1]);
+      await first;
+      expect(photosCalls()).toBe(1);
+      second.next({});
+      second.complete();
+      await pending;
+      fixture.detectChanges();
+      expect(photosCalls()).toBe(2);
+      expect(component.photos().map((p: { path: string }) => p.path)).toEqual([initialPhotos[2].path]);
+    });
+
     it('shows the generic no-junk message when All kinds is empty', async () => {
-      const { host } = await render({ photos: [], total: 0, total_pages: 1, page: 1, has_more: false });
-      expect(host.textContent).toContain('junk.empty');
-      expect(host.textContent).not.toContain('junk.empty_kind');
+      const { host } = await render(emptyPage);
+      expect(emptyMessages(host)).toEqual(['junk.empty']);
     });
 
     it('points at All kinds instead of a rescan when a kind filter comes up empty', async () => {
-      const { fixture, host, component } = await render({ photos: [], total: 0, total_pages: 1, page: 1, has_more: false });
+      const { fixture, host } = await render(emptyPage);
       await TestBed.inject(Router).navigateByUrl('/junk?kind=meme');
-      await vi.waitFor(() => expect((component as unknown as { activeKind(): string }).activeKind()).toBe('meme'), { timeout: 4000 });
-      await vi.waitFor(() => expect((component as unknown as { photos(): unknown[] }).photos()).toHaveLength(0), { timeout: 4000 });
+      await vi.waitFor(() => expect(photosCalls()).toBe(2), { timeout: 4000 });
+      await fixture.whenStable();
       fixture.detectChanges();
-      // Exact leaf text: 'junk.empty' is a prefix of 'junk.empty_kind', and
-      // ancestor divs inherit the message into their own textContent.
-      const leafMessages = [...host.querySelectorAll('div')]
-        .filter(d => d.children.length === 0)
-        .map(d => d.textContent?.trim());
-      expect(leafMessages.filter(t => t === 'junk.empty' || t === 'junk.empty_kind')).toEqual(['junk.empty_kind']);
+      expect(component.activeKind()).toBe('meme');
+      expect(emptyMessages(host)).toEqual(['junk.empty_kind']);
     });
   });
 });
