@@ -359,3 +359,7 @@ The Immich server is older than 3.0. Upgrade — Facet's clear semantics need `n
 ---
 
 **See also:** [Commands — Immich Sync](COMMANDS.md#immich-sync) · [Configuration](CONFIGURATION.md) · [Editor Interop Recipes](INTEROP.md) for XMP round-tripping with Lightroom, darktable, and digiKam.
+
+## Diagnostics in the viewer
+
+From the user menu, open **Immich diagnostics**. Multi-user installations require superadmin access; single-user installations require locked edition access or trusted local editing. Status reads no remote data until **Test connection** is chosen. The test reads the server version and account access only, with no remote writes. Path coverage samples at most 200 indexed photos; it does not verify remote asset matches. The recorded sync-state update can predate changes to the configured server. Version compatibility does not verify stack permissions. Credentials and server paths are not returned.

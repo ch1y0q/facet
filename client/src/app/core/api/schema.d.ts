@@ -2088,6 +2088,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/immich/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Immich Diagnostics
+         * @description Administrator-only local status; network reads require an explicit flag.
+         */
+        get: operations["immich_diagnostics_api_immich_diagnostics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/immich/webhook": {
         parameters: {
             query?: never;
@@ -6307,6 +6327,30 @@ export interface components {
             panoramas: number;
             /** Total */
             total: number;
+        };
+        /** ImmichDiagnosticsResponse */
+        ImmichDiagnosticsResponse: {
+            /** Configured */
+            configured: boolean;
+            /**
+             * Connection
+             * @enum {string}
+             */
+            connection: "not_checked" | "not_configured" | "invalid_config" | "connected" | "access_denied" | "unreachable" | "invalid_response";
+            /** Last Push At */
+            last_push_at: string | null;
+            /** Mapped Photos */
+            mapped_photos: number;
+            /** Mapping Rules */
+            mapping_rules: number;
+            /** Sample Limit */
+            sample_limit: number;
+            /** Sampled Photos */
+            sampled_photos: number;
+            /** Stack Version Supported */
+            stack_version_supported: boolean | null;
+            /** Version */
+            version: string | null;
         };
         /**
          * KeeperHint
@@ -12092,6 +12136,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    immich_diagnostics_api_immich_diagnostics_get: {
+        parameters: {
+            query?: {
+                check_connection?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImmichDiagnosticsResponse"];
                 };
             };
             /** @description Validation Error */

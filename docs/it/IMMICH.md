@@ -359,3 +359,7 @@ Il server Immich è più vecchio della 3.0. Aggiornalo — la semantica di azzer
 ---
 
 **Vedi anche:** [Comandi — Immich Sync](COMMANDS.md#immich-sync) · [Configurazione](CONFIGURATION.md) · [Ricette di interoperabilità con gli editor](INTEROP.md) per il roundtrip XMP con Lightroom, darktable e digiKam.
+
+## Diagnostica nel visualizzatore
+
+Dal menu utente apri **Diagnostica Immich**. In modalità multiutente serve un superamministratore; in modalità singolo utente serve accesso edizione protetto o modifica locale fidata. **Verifica connessione** legge solo versione e accesso al conto, senza scritture remote. La copertura riguarda al massimo 200 foto indicizzate e non verifica corrispondenze remote. Lo stato registrato può precedere modifiche del server configurato. La versione non conferma i permessi delle pile. Chiavi e percorsi del server non vengono restituiti.

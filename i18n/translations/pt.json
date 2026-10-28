@@ -2990,5 +2990,29 @@
     "badge_filtered": "Abrir pilha: {count} correspondentes de {total} membros permitidos",
     "stack_id": "ID da pilha",
     "position": "Posição"
+  },
+  "immich_diagnostics": {
+    "title": "Diagnóstico do Immich",
+    "read_only": "Apenas leitura. Fotos, classificações e pilhas não mudam.",
+    "configuration": "Configuração",
+    "configured": "Servidor e chave configurados",
+    "not_configured": "Configure primeiro o servidor e a chave API.",
+    "mapping_rules": "Regras de caminhos",
+    "mapping_sample": "Caminhos cobertos (amostra)",
+    "sample_hint": "Máximo de {limit} fotos indexadas. A cobertura não confirma correspondências remotas. Sem regras os caminhos não mudam.",
+    "last_push": "Última atualização registada do estado de sincronização",
+    "unknown": "Sem registo",
+    "version": "Versão do servidor:",
+    "stack_version_ok": "Versão compatível com pilhas; permissões e correspondências não testadas.",
+    "stack_version_old": "A troca de pilhas requer Immich 3 ou posterior.",
+    "not_checked": "Ligação não testada.",
+    "connected": "Servidor acessível; chave aceite para ler a conta.",
+    "access_denied": "Acesso recusado. Verifique a chave e a permissão user.read.",
+    "unreachable": "A ligação falhou. Verifique servidor, endereço e TLS.",
+    "invalid_response": "Resposta do servidor não suportada.",
+    "invalid_config": "Corrija a configuração do Immich no servidor.",
+    "failed": "Diagnóstico indisponível. Tente novamente ou verifique acesso de administrador.",
+    "refresh": "Atualizar estado",
+    "test": "Testar ligação"
   }
 }

@@ -359,3 +359,7 @@ Der Immich-Server ist älter als 3.0. Führen Sie ein Upgrade durch — Facets L
 ---
 
 **Siehe auch:** [Befehle — Immich-Synchronisierung](COMMANDS.md#immich-synchronisierung) · [Konfiguration](CONFIGURATION.md) · [Editor-Interop-Rezepte](INTEROP.md) für XMP-Roundtripping mit Lightroom, darktable und digiKam.
+
+## Diagnose im Viewer
+
+Im Benutzermenü **Immich-Diagnose** öffnen. Mehrbenutzerinstallationen benötigen Superadmin-Zugriff, Einzelbenutzerinstallationen gesperrten Editionszugriff oder vertrauenswürdige lokale Bearbeitung. **Verbindung testen** liest nur Version und Kontozugriff, ohne entfernte Schreibvorgänge. Die Pfadabdeckung prüft höchstens 200 erfasste Fotos und bestätigt keine entfernten Dateitreffer. Der gespeicherte Status kann aus einer früheren Serverkonfiguration stammen. Versionskompatibilität bestätigt keine Stapelrechte. Schlüssel und Serverpfade werden nicht zurückgegeben.

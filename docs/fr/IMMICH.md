@@ -359,3 +359,7 @@ Le serveur Immich est antérieur à la version 3.0. Mettez-le à niveau — la s
 ---
 
 **Voir aussi :** [Commandes — Synchronisation Immich](COMMANDS.md#synchronisation-immich) · [Configuration](CONFIGURATION.md) · [Recettes d'interopérabilité avec les éditeurs](INTEROP.md) pour l'aller-retour XMP avec Lightroom, darktable et digiKam.
+
+## Diagnostic dans le visualiseur
+
+Dans le menu utilisateur, ouvrez **Diagnostic Immich**. En multi-utilisateur, seuls les superadministrateurs y accèdent ; en mono-utilisateur, il faut un accès édition verrouillé ou une édition locale approuvée. **Tester la connexion** lit uniquement la version et l’accès au compte, sans écriture distante. La couverture des chemins porte sur 200 photos indexées au maximum et ne vérifie pas les éléments distants. L’état enregistré peut dater d’une ancienne configuration. La version ne confirme pas les permissions des piles. Aucune clé ni chemin du serveur n’est renvoyé.

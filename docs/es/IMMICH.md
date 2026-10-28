@@ -359,3 +359,7 @@ El servidor Immich es anterior a la versión 3.0. Actualízalo — la semántica
 ---
 
 **Consulta también:** [Comandos — Sincronización con Immich](COMMANDS.md#sincronización-con-immich) · [Configuración](CONFIGURATION.md) · [Recetas de interoperabilidad con editores](INTEROP.md) para el ida y vuelta de XMP con Lightroom, darktable y digiKam.
+
+## Diagnóstico en el visor
+
+Abre **Diagnóstico de Immich** desde el menú de usuario. En modo multiusuario se requiere superadministrador; en modo individual, edición protegida o edición local de confianza. **Probar conexión** solo lee la versión y el acceso a la cuenta, sin escrituras remotas. La cobertura analiza hasta 200 fotos indexadas y no verifica coincidencias remotas. El estado registrado puede ser anterior a cambios del servidor configurado. La versión no confirma permisos de pilas. No se devuelven claves ni rutas del servidor.

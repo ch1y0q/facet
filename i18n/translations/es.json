@@ -2990,5 +2990,29 @@
     "badge_filtered": "Abrir pila: {count} coincidencias de {total} miembros permitidos",
     "stack_id": "ID de pila",
     "position": "Posición"
+  },
+  "immich_diagnostics": {
+    "title": "Diagnóstico de Immich",
+    "read_only": "Solo lectura. Fotos, puntuaciones y pilas no cambian.",
+    "configuration": "Configuración",
+    "configured": "Servidor y clave configurados",
+    "not_configured": "Configura primero el servidor y la clave API.",
+    "mapping_rules": "Reglas de rutas",
+    "mapping_sample": "Rutas cubiertas (muestra)",
+    "sample_hint": "Máximo {limit} fotos indexadas. La cobertura no confirma coincidencias remotas. Sin reglas las rutas no cambian.",
+    "last_push": "Última actualización registrada del estado de sincronización",
+    "unknown": "Sin registro",
+    "version": "Versión del servidor:",
+    "stack_version_ok": "Versión compatible con pilas; permisos y coincidencias no probados.",
+    "stack_version_old": "El intercambio de pilas requiere Immich 3 o posterior.",
+    "not_checked": "Conexión no probada.",
+    "connected": "Servidor accesible; clave aceptada para leer la cuenta.",
+    "access_denied": "Acceso denegado. Comprueba la clave y el permiso user.read.",
+    "unreachable": "Falló la conexión. Comprueba servidor, dirección y TLS.",
+    "invalid_response": "Respuesta del servidor no compatible.",
+    "invalid_config": "Corrige la configuración de Immich en el servidor.",
+    "failed": "Diagnóstico no disponible. Reintenta o comprueba acceso de administrador.",
+    "refresh": "Actualizar estado",
+    "test": "Probar conexión"
   }
 }
