@@ -2176,6 +2176,7 @@ describe('GalleryComponent', () => {
   });
 
   describe('openCullDialog', () => {
+    beforeEach(() => { mockAuth['isEdition'] = vi.fn(() => true); });
     function select(paths: string[]) {
       mockStore.selectedPaths.set(new Set(paths));
       mockStore.selectionCount.set(paths.length);
@@ -2240,6 +2241,43 @@ describe('GalleryComponent', () => {
       await component.openCullDialog();
 
       expect(order).toEqual(['load', 'clear']);
+    });
+
+    it.each(['navigation', 'identity', 'edition', 'filters'])(
+      'does not refresh or clear a newer gallery after cull loses %s', async loss => {
+        mockAuth['isEdition'] = vi.fn(() => true);
+        select(['/a.jpg']);
+        const result = new Subject<boolean>();
+        const dialog = TestBed.inject(MatDialog);
+        (dialog.open as Mock).mockReturnValue({ afterClosed: () => result });
+        const pending = component.openCullDialog();
+        await vi.waitFor(() => expect(dialog.open).toHaveBeenCalled());
+        if (loss === 'navigation')
+          (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, '/other'));
+        if (loss === 'identity') (mockAuth['status'] as ReturnType<typeof signal>).set({ user_id: 'bob' });
+        if (loss === 'edition') mockAuth['isEdition'] = vi.fn(() => false);
+        if (loss === 'filters') mockStore.filterPayload.mockReturnValue({ camera: 'Nikon' });
+        select(['/new.jpg']);
+        result.next(true); result.complete(); await pending;
+        expect(mockStore.reloadPhotos).not.toHaveBeenCalled();
+        expect(mockStore.clearSelection).not.toHaveBeenCalled();
+        expect([...mockStore.selectedPaths()]).toEqual(['/new.jpg']);
+      },
+    );
+
+    it('does not clear a new selection when navigation starts during the post-cull reload', async () => {
+      mockAuth['isEdition'] = vi.fn(() => true);
+      select(['/a.jpg']);
+      const dialog = TestBed.inject(MatDialog);
+      (dialog.open as Mock).mockReturnValue({ afterClosed: () => of(true) });
+      let finish!: () => void;
+      mockStore.reloadPhotos.mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+      const pending = component.openCullDialog();
+      await vi.waitFor(() => expect(mockStore.reloadPhotos).toHaveBeenCalled());
+      (TestBed.inject(Router).events as Subject<RouterEvent>).next(new NavigationStart(1, '/other'));
+      select(['/new.jpg']); finish(); await pending;
+      expect(mockStore.clearSelection).not.toHaveBeenCalled();
+      expect([...mockStore.selectedPaths()]).toEqual(['/new.jpg']);
     });
 
     // The guard reads `if (!viewScoped && !paths.length) return;` -- widened
@@ -3848,6 +3886,7 @@ describe('GalleryComponent', () => {
     });
 
     describe('openCullDialog', () => {
+    beforeEach(() => { mockAuth['isEdition'] = vi.fn(() => true); });
       // The real store's loadPhotos() ends a whole-view selection, and its
       // selection methods move the signals. An inert mock hides both.
       beforeEach(() => {
