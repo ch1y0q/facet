@@ -843,6 +843,7 @@ Eine schnelle Review-Warteschlange für den nicht-fotografischen „Müll", der 
 Öffnen Sie sie über die Navigationsschaltfläche **Aufräumen** (die Route `/junk`, nur im Bearbeitungsmodus). Die Seite verwendet erneut das Galerie-Raster und zeigt jeden markierten Kandidaten:
 
 - **Filter-Chips nach Art** — „Alle Arten" plus ein Chip pro erkannter Art mit ihrer Anzahl (aus `GET /api/filter_options/junk_kinds`). Klicken, um die Warteschlange auf eine Art einzugrenzen.
+- **Kandidatenzahl** — die Symbolleiste zeigt immer, wie viele Kandidaten der aktuelle Artfilter enthält, und zählt beim Behalten oder Verwerfen live herunter. Ein leerer Artfilter verweist auf **Alle Arten**, statt einen erneuten Scan vorzuschlagen.
 - **Behalten** (pro Foto) — löscht das Müll-Label, sodass das Foto die Warteschlange **dauerhaft** verlässt: Es wird als bewertet-sauber markiert (`not_junk`) und nie wieder von einem späteren `--detect-junk` markiert.
 - **Verwerfen** (pro Foto) — markiert das Foto als abgelehnt über dieselbe Ablehnungs-Logik wie überall sonst (nichts wird von der Festplatte gelöscht).
 - **Alle angezeigten verwerfen** — ein Sammel-Verwerfen aller aktuell geladenen Kandidaten, hinter einem Bestätigungsdialog.

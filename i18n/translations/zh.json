@@ -2730,7 +2730,10 @@
       "receipt": "收据",
       "meme": "表情包",
       "slide": "幻灯片"
-    }
+    },
+    "candidates": "{count} 张候选",
+    "candidates_plural": "{count} 张候选",
+    "empty_kind": "该类型下没有候选。试试筛选菜单中的「所有类型」。"
   },
   "social_export": {
     "presets": {

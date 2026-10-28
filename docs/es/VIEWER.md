@@ -842,6 +842,7 @@ Una cola de revisión rápida para la basura no fotográfica que se acumula en u
 Ábrela desde el botón de navegación **Limpieza** (la ruta `/junk`, solo de edición). La página reutiliza la cuadrícula de la galería y muestra cada candidato marcado:
 
 - **Chips de filtro por tipo** — "Todos los tipos" más un chip por cada tipo detectado con su recuento (desde `GET /api/filter_options/junk_kinds`). Haz clic para acotar la cola a un solo tipo.
+- **Recuento de candidatos** — la barra siempre muestra cuántos candidatos contiene el filtro de tipo actual, y baja en vivo al mantener o rechazar. Un filtro de tipo sin resultados remite a **Todos los tipos** en lugar de sugerir un reescaneo.
 - **Conservar** (por foto) — borra la etiqueta de basura para que la foto salga de la cola **de forma permanente**: se marca como evaluada-limpia (`not_junk`) y nunca vuelve a marcarse por un `--detect-junk` posterior.
 - **Rechazar** (por foto) — marca la foto como rechazada usando el mismo mecanismo de rechazo que en el resto de la aplicación (nada se borra del disco).
 - **Rechazar todo lo mostrado** — un rechazo masivo de todos los candidatos actualmente cargados, tras un diálogo de confirmación.

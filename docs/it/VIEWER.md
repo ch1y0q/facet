@@ -843,6 +843,7 @@ Una coda di revisione rapida per gli scarti non fotografici che si accumulano in
 Aprila dal pulsante di navigazione **Pulizia** (la rotta `/junk`, riservata alla modifica). La pagina riutilizza la griglia della galleria e mostra ogni candidato segnalato:
 
 - **Chip di filtro per tipo** — "Tutti i tipi" più un chip per ogni tipo rilevato con il suo conteggio (da `GET /api/filter_options/junk_kinds`). Clicca per restringere la coda a un solo tipo.
+- **Conteggio candidati** — la barra mostra sempre quanti candidati contiene il filtro per tipo attivo e si abbassa in tempo reale a ogni mantieni o scarta. Un filtro per tipo senza risultati rimanda a **Tutti i tipi** invece di suggerire una nuova scansione.
 - **Conserva** (per foto) — cancella l'etichetta di scarto così la foto lascia la coda **permanentemente**: viene marcata come valutata-pulita (`not_junk`) e non viene mai più segnalata da un successivo `--detect-junk`.
 - **Rifiuta** (per foto) — segna la foto come rifiutata usando lo stesso meccanismo di rifiuto usato ovunque altrove (nulla viene eliminato dal disco).
 - **Rifiuta tutto** — un rifiuto in blocco di tutti i candidati attualmente caricati, dietro una finestra di conferma.

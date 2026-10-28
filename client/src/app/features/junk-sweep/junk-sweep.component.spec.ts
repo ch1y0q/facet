@@ -1,5 +1,5 @@
 import type { Mock } from 'vitest';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatDialog } from '@angular/material/dialog';
 import { type Observable, from, of, throwError } from 'rxjs';
@@ -235,5 +235,79 @@ describe('JunkSweepComponent', () => {
 
     expect(component.photos().length).toBe(2);
     expect(component.total()).toBe(10);
+  });
+
+  describe('rendered: candidate count and empty states', () => {
+    /** Like createComponent, but the component is rendered as the fixture root
+     *  so the template can be asserted. Waits for the first page to settle. */
+    async function render(firstPage: Record<string, unknown> = defaultFirstPage): Promise<{ fixture: ComponentFixture<JunkSweepComponent>; host: HTMLElement; component: JunkSweepComponent }> {
+      photosCall = 0;
+      mockApi = {
+        get: vi.fn((url: string) => {
+          if (url.includes('junk_kinds')) return of(kindsList);
+          photosCall += 1;
+          if (photosCall === 1) return of(firstPage);
+          return of({ photos: [], total: 0, total_pages: 1, page: 1, has_more: false });
+        }),
+        post: vi.fn(() => of({})),
+      };
+      mockI18n = { t: vi.fn((k: string, vars?: Record<string, unknown>) => (vars ? `${k} ${JSON.stringify(vars)}` : k)), translations: () => ({}) } as unknown as { t: Mock };
+      mockSnackBar = { open: vi.fn() };
+      mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(true) })) };
+      journal = { record: vi.fn() };
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [
+          provideRouter([{ path: 'junk', children: [] }]),
+          { provide: ApiService, useValue: mockApi },
+          { provide: I18nService, useValue: mockI18n },
+          { provide: MatSnackBar, useValue: mockSnackBar },
+          { provide: MatDialog, useValue: mockDialog },
+          { provide: UserActivityJournal, useValue: journal },
+        ],
+      });
+      const fixture = TestBed.createComponent(JunkSweepComponent);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      return { fixture, host: fixture.nativeElement as HTMLElement, component: fixture.componentInstance };
+    }
+
+    const countChip = (host: HTMLElement): HTMLElement | null => host.querySelector('[data-junk-count]');
+
+    it('shows the candidate total beside the kind filter once loaded', async () => {
+      const { host } = await render();
+      expect(countChip(host)!.textContent).toContain('junk.candidates_plural');
+      expect(countChip(host)!.textContent).toContain('"count":4');
+    });
+
+    it('counts down as a card is rejected from its hover button', async () => {
+      const { fixture, host } = await render();
+      const rejectButton = [...host.querySelectorAll<HTMLButtonElement>('button[aria-label="junk.reject"]')]!;
+      expect(rejectButton.length).toBe(4);
+      rejectButton[0].click();
+      fixture.detectChanges();
+      expect(countChip(host)!.textContent).toContain('"count":3');
+    });
+
+    it('shows the generic no-junk message when All kinds is empty', async () => {
+      const { host } = await render({ photos: [], total: 0, total_pages: 1, page: 1, has_more: false });
+      expect(host.textContent).toContain('junk.empty');
+      expect(host.textContent).not.toContain('junk.empty_kind');
+    });
+
+    it('points at All kinds instead of a rescan when a kind filter comes up empty', async () => {
+      const { fixture, host, component } = await render({ photos: [], total: 0, total_pages: 1, page: 1, has_more: false });
+      await TestBed.inject(Router).navigateByUrl('/junk?kind=meme');
+      await vi.waitFor(() => expect((component as unknown as { activeKind(): string }).activeKind()).toBe('meme'), { timeout: 4000 });
+      await vi.waitFor(() => expect((component as unknown as { photos(): unknown[] }).photos()).toHaveLength(0), { timeout: 4000 });
+      fixture.detectChanges();
+      // Exact leaf text: 'junk.empty' is a prefix of 'junk.empty_kind', and
+      // ancestor divs inherit the message into their own textContent.
+      const leafMessages = [...host.querySelectorAll('div')]
+        .filter(d => d.children.length === 0)
+        .map(d => d.textContent?.trim());
+      expect(leafMessages.filter(t => t === 'junk.empty' || t === 'junk.empty_kind')).toEqual(['junk.empty_kind']);
+    });
   });
 });

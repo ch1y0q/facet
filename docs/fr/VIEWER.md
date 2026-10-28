@@ -844,6 +844,7 @@ Une file de revue rapide pour les fichiers non photographiques « indésirables
 Ouvrez-la depuis le bouton de navigation **Nettoyage** (la route `/junk`, réservée à l'édition). La page réutilise la grille de la galerie et affiche chaque candidat signalé :
 
 - **Puces de filtre par type** — « Tous les types » plus une puce par type détecté avec son compte (depuis `GET /api/filter_options/junk_kinds`). Cliquez pour restreindre la file à un seul type.
+- **Compteur de candidats** — la barre affiche toujours le nombre de candidats du filtre de type actif, et décompte en direct à chaque conservation ou rejet. Un filtre de type sans résultat renvoie à **Tous les types** au lieu de suggérer un nouveau balayage.
 - **Conserver** (par photo) — efface l'étiquette d'indésirable pour que la photo quitte la file **définitivement** : elle est marquée comme évaluée-propre (`not_junk`) et n'est plus jamais signalée par un `--detect-junk` ultérieur.
 - **Rejeter** (par photo) — marque la photo comme rejetée en utilisant la même plomberie de rejet que partout ailleurs (rien n'est supprimé du disque).
 - **Tout rejeter** — un rejet groupé de tous les candidats actuellement chargés, derrière une boîte de dialogue de confirmation.

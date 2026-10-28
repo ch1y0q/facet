@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **The junk sweep shows its size.** The toolbar displays the candidate count for the current kind filter, counting down live as photos are kept or rejected, and a kind filter that comes up empty points back to **All kinds** instead of suggesting a rescan.
+
 ## [1.26.0] "Histogramme" — 2026-10-28
 
 ### Added
