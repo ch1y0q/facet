@@ -10,7 +10,7 @@ Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（
 
 **开放安装。** 没有 `viewer.password` 时，即使设置了 `viewer.edition_password`，该安装也视为开放安装。在开放安装上：
 
-- 令牌为 `readonly`，除非启用了 `viewer.trusted_local_editing`；
+- 令牌为 `readonly`，除非启用了 `viewer.trusted_local_editing`，或者令牌是在以编辑密码登录的会话中创建、并从同一台计算机使用的完全编辑令牌（见下文）；
 - 该端点只提供一个只读匿名密钥，它不授予开放的 `/api` 本来没有授予的任何权限；
 - 令牌只能在运行 Facet 的电脑上管理；设置了 `viewer.edition_password` 时，也可在编辑会话中管理（参见[创建令牌](#创建令牌)）。
 
@@ -30,7 +30,7 @@ Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（
 
 - 开放安装只提供**仅读取和操作界面**；
 - **代表我操作**仅出现在多用户安装中；
-- **完全编辑**仅在编辑会话中提供；在开放安装上，这意味着在同一台计算机上的浏览器中，且启用了 `viewer.trusted_local_editing`。
+- **完全编辑**仅在编辑会话中提供；在开放安装上，这意味着在同一台计算机上的浏览器中，且启用了 `viewer.trusted_local_editing`，或者是以 `viewer.edition_password` 登录的会话（此时令牌只能从同一台计算机进行编辑）。
 
 提示词中会写明实际授予的级别。在开放安装上，如果从另一台设备打开且没有编辑会话，对话框会显示“在开放安装中，助手令牌只能在运行 Facet 的电脑上管理。设置 viewer.password 后即可从其他设备管理。”以取代表单。
 
@@ -68,13 +68,17 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 
 - **单密码安装**没有 `user` 级别。`user` 授予在创建时被限制为 `readonly`，有效级别只有 `edition` 或 `readonly`。因此[修改内容](#修改内容)中标为 `user` 的工具需要 `edition` 令牌；级别更低的令牌会收到 `forbidden_level`，并说明需要 `edition`。`edition` 令牌需要编辑会话，且只在编辑密码未变更期间有效。
 - **多用户安装。** 所有者被降级后，其 `edition` 令牌会降为 `user`。升级绝不会让令牌超过其授予级别。
-- **开放安装**（未设置 `viewer.password`，即使设置了 `viewer.edition_password`）。令牌归属于共享所有者 `_anonymous`，为 `readonly`，除非启用了 `viewer.trusted_local_editing`。
+- **开放安装**（未设置 `viewer.password`，即使设置了 `viewer.edition_password`）。令牌归属于共享所有者 `_anonymous`，为 `readonly`，除非启用了 `viewer.trusted_local_editing`，或者令牌来自编辑会话（见接下来两条）。
 - **开放安装上的本地编辑。** 启用 `viewer.trusted_local_editing` 后，“连接助手”对话框可在同一台计算机的浏览器中创建**完全编辑**令牌。仍需 `viewer.mcp.enabled` 和令牌（不带令牌的调用仍为 401）。
   - 该令牌仅对来自同一台机器的 `/mcp` 请求为 `edition`：对端为环回地址，URL 为 `http://localhost:<port>` 或 `127.0.0.1`，且没有代理头。`:4200`（`ng serve` 开发代理）和 `:5000` 均符合。
   - 任何其他请求都会降为 `readonly`，即使提示词写的是完全编辑：局域网客户端、主机名或 `0.0.0.0` 的 URL，或 Docker 部署。
   - 设置任何密码都会把令牌降为 `readonly`；清除密码后令牌恢复。
   - 删除类工具仍需要 `viewer.mcp.allow_destructive`。
   - 与本地浏览器一样，无需 `viewer.features.show_scan_button` 即可扫描（`start_scan`、`scan_status`）。
+- **开放安装上的编辑密码。** 设置了 `viewer.edition_password` 但没有 `viewer.password` 时，以编辑密码登录的会话可以从任何机器创建**完全编辑**令牌；其他任何会话得到 `readonly`。
+  - 只有通过上文同一台机器检查的 `/mcp` 请求，该令牌才是 `edition`。局域网客户端或经过代理的请求得到 `readonly`：在任何人都能读取的安装上，令牌是一个持有者密钥。
+  - 更改或清除编辑密码会将其降为 `readonly`；更改后请创建新令牌。
+  - 扫描仍需要 `viewer.features.show_scan_button`，与浏览器中的编辑会话相同。删除工具仍需要 `viewer.mcp.allow_destructive`。
 
 > **警告：** `ng serve --host 0.0.0.0` 或同一主机上任何不添加代理头的代理，会让发送 `Host: localhost` 的局域网客户端被当作本机。此时只剩令牌保护 `/mcp`。
 
@@ -177,7 +181,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - **谁的标签页。** 工具只能到达令牌所有者的标签页。单密码安装中所有会话是同一个用户；开放安装中每个标签页都属于共享用户 `_anonymous`，包括 edition 登录。
 - **标签页级别。** 每个标签页都带有打开它的会话的级别。令牌只能控制级别不低于其有效级别的标签页：`edition` 令牌绝不会使用仅有查看会话的标签页，而 `readonly` 令牌可以控制 `edition` 标签页。
   - 单密码安装：令牌还受创建它的会话限制。由仅查看会话创建的令牌只能到达查看级标签页，绝不会到达 `edition` 标签页（此规则之前创建的令牌被限制在其自身级别）。
-  - 开放安装：令牌只能到达查看级标签页，绝不会到达 `edition` 标签页，下面的本地编辑标签页除外。
+  - 开放安装：令牌只能到达查看级标签页，绝不会到达 `edition` 标签页，下面的本地编辑标签页除外。在以编辑密码登录的会话中创建的完全编辑令牌，从同一台计算机使用时可以到达 `edition` 标签页。
   - 在开放安装上启用 `viewer.trusted_local_editing` 时，通过同机边界检查的标签页以 `edition` 注册，并在该选项关闭后一次 ping 内降为 `readonly`。局域网或被转发的标签页保持 `readonly`。从本机使用的令牌无论创建时是什么级别，都能到达该标签页。从局域网使用的令牌永远无法到达它，并得到 `no_tab`，附带说明非本地请求无法操控本地编辑标签页的消息。
   - 标签页只能被同级或更高级的标签页替换：仅查看会话重用 `edition` 标签页的 `tab_id` 会被以 4409 拒绝。超过每用户标签页上限时，最低级别的标签页最先被移除。
   - `status` 只列出该令牌能控制的标签页，并返回 `out_of_reach_tabs`，即它无法控制的已打开标签页数量。
@@ -334,7 +338,7 @@ curl -s -X POST http://localhost:5000/api/mcp/tokens -H "Authorization: Bearer $
 - **比较画面**（`readonly`）。`group_compare` 比较一个选片分组中的画面（最多 12 个路径），`by: "faces"`（每帧：人脸数、眨眼、最低睁眼度、最佳笑容、`best_path_by_eyes`）或 `by: "subjects"`（主体清晰度与突出度、`sharpest_path`）。这只是建议，不是决定。
 - **选片报告。** `cull_report` 用一次调用汇总一个范围：总数、保留、淘汰、收藏、已评分、未审阅、隐藏开关会隐藏的内容、垃圾、低分、最佳照片，以及（使用 edition 令牌时）暗房的前几个分组。各原因相互重叠。它的 `basis` 说明每个计数遵循哪些过滤器（计数忽略隐藏开关）。
 - **品味。** `comparison_status`（`edition`）报告你做了多少次成对比较以及它们对照片库的覆盖程度。没有任何工具能提交、编辑或删除比较：每一对的答案是你自己的点击。助手所做的写入（评分、淘汰、暗房确认、`auto_cull`）从不记录比较，也从不触发自动重新训练；你本人在图库中做同样的操作仍会如此。助手写入的评分、收藏和淘汰，在你自己给该照片评分之前，同样不会进入个人排序器的训练对。
-- **扫描。** `start_scan` 和 `scan_status`（`edition`）启动并跟踪对已配置目录的扫描。仅当 `viewer.features.show_scan_button` 开启且安装已锁定（多用户模式下为超级管理员密钥）时才会列出；在 `viewer.trusted_local_editing` 下，本机的完全编辑令牌无需 `show_scan_button` 也会列出。扫描是追加式的，并在另一项任务运行时被拒绝（`conflict`）。与 Immich 的同步仍通过命令行进行。
+- **扫描。** `start_scan` 和 `scan_status`（`edition`）启动并跟踪对已配置目录的扫描。仅当 `viewer.features.show_scan_button` 开启且安装已锁定（多用户模式下为超级管理员密钥）时才会列出；在 `viewer.trusted_local_editing` 下，本机的完全编辑令牌无需 `show_scan_button` 也会列出。扫描是追加式的，并在另一项任务运行时被拒绝（`conflict`）。与 Immich 的同步仍通过命令行进行。在设置了 `viewer.edition_password` 的开放安装上，在编辑会话中创建的本机完全编辑令牌也会获得它们，但仅在启用 `show_scan_button` 时。
 - **资源。** 除工具外，服务器还列出五个只读的 `facet://` 资源：`facet://categories`、`facet://tags`、`facet://persons`、`facet://filters`（每个搜索筛选条件及其取值范围，加上指标范围）和 `facet://scoring-contexts`。每个资源按密钥所有者看到的照片库读取，上限 200 行和 32 KiB（`truncated` 会标明）。第六个资源 `facet://scoring-weights`（每个类别的非零权重）仅向 `edition` 密钥提供。
 - **选择列出的内容。** `viewer.mcp.tool_profile` 为 `full`（默认）或 `core`。`core` 只列出面向小模型的 11 个工具（`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`）；它只改变列表，不改变密钥可调用的内容。`viewer.mcp.allow_destructive`（默认 `false`）控制 `delete_photos`（关闭时不列出）、`cull_apply` 的 `move_rejects` 与 `trash_rejects` 操作，以及带 `allow_reassign` 的 `assign_faces`；被拒绝的调用返回 `feature_disabled`。令牌级别无法调用的工具同样不会列出。
 - **另外两个错误代码。** `feature_disabled`：该路由被某个配置键关闭，消息中会指出该键。`conflict`：照片库正忙于与此冲突的任务（例如已有扫描在运行）。
