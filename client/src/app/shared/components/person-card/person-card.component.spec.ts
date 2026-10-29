@@ -72,6 +72,14 @@ describe('PersonCardComponent', () => {
     expect(emitted).toEqual([{ id: 1, name: 'Bob' }]);
   });
 
+  it('keeps the rename input usable in a narrow tile by wrapping its buttons', () => {
+    host.isEditing.set(true);
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    expect(input.classList.contains('min-w-24')).toBe(true);
+    expect(input.parentElement!.classList.contains('flex-wrap')).toBe(true);
+  });
+
   it('onSave emits empty string when no input element exists', () => {
     // isEditing is false so no input is rendered
     const card = getCard();

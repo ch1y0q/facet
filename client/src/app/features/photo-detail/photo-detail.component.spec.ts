@@ -298,6 +298,18 @@ describe('PhotoDetailComponent', () => {
     expect(keep.querySelector('mat-icon')!.textContent!.trim()).not.toBe(icon);
   });
 
+  it('folds the secondary header actions into a More menu below md while the title keeps min-w-0', () => {
+    const view = renderDetail();
+    view.componentInstance.photo.set(makePhoto({}));
+    view.detectChanges();
+    const root = view.nativeElement as HTMLElement;
+    const more = root.querySelector('button[aria-label="nav.more"]') as HTMLButtonElement;
+    expect(more.classList.contains('md:!hidden')).toBe(true);
+    const refresh = root.querySelector('button[aria-label="photo_refresh.title"]') as HTMLButtonElement;
+    expect(refresh.classList.contains('max-md:!hidden')).toBe(true);
+    expect(root.querySelector('span.truncate')!.classList.contains('min-w-0')).toBe(true);
+  });
+
   it('renders NULL and zero extended metrics in the actual detail template', () => {
     localStorage.setItem('facet_photo_detail_tab', 'quality');
     const view = renderDetail();
