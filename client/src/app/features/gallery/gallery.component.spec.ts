@@ -5985,8 +5985,8 @@ describe('GalleryComponent', () => {
 
       it('focuses the search with a remapped key, and no longer with /', () => {
         stubWide(true);
-        TestBed.inject(KeyboardMappingService).setKey('focusSearch', 's');
-        expect(key({ key: 's' }).defaultPrevented).toBe(true);
+        TestBed.inject(KeyboardMappingService).setKey('focusSearch', 'g');
+        expect(key({ key: 'g' }).defaultPrevented).toBe(true);
         expect(document.activeElement).toBe(search);
         search.blur();
         expect(key({ key: '/' }).defaultPrevented).toBe(false);

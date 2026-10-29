@@ -42,8 +42,10 @@ import { KEYMAP_ACTIONS, KeymapConfig, KeyboardMappingService } from '../../../c
               (click)="startCapture(action.id, $event)">
               @if (capturing() === action.id) {
                 {{ I18N.shortcuts.press_key | translate }}
-              } @else {
+              } @else if (keyLabels()[action.id]) {
                 {{ keyLabels()[action.id] }}
+              } @else {
+                {{ I18N.shortcuts.unassigned | translate }}
               }
             </button>
           </div>

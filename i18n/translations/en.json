@@ -2705,6 +2705,9 @@
     "reset_keys": "Reset all",
     "key_in_use": "That key is already assigned",
     "key_reserved": "That key is reserved",
+    "stack": "Stack selected photos (editing only)",
+    "unassigned": "Unassigned",
+    "stack_hint": "Stack photos ({key})",
     "keymap_title": "Customize shortcuts"
   },
   "pwa": {

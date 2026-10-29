@@ -2705,6 +2705,9 @@
     "reset_keys": "全部恢复默认",
     "key_in_use": "该按键已被其他操作使用",
     "key_reserved": "该按键为保留按键",
+    "stack": "堆叠所选照片（仅限编辑权限）",
+    "unassigned": "未分配",
+    "stack_hint": "堆叠照片（{key}）",
     "keymap_title": "自定义快捷键"
   },
   "pwa": {

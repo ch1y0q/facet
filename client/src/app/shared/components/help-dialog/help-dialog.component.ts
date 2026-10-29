@@ -57,6 +57,8 @@ interface HelpDialogData { key?: string | null; note?: PageHelpNote | null; shor
                     <span class="flex gap-1">
                       @for (k of row.keys; track k) {
                         <kbd class="px-1.5 py-0.5 rounded border border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface-container-high)] text-xs font-mono">{{ k }}</kbd>
+                      } @empty {
+                        {{ I18N.shortcuts.unassigned | translate }}
                       }
                     </span>
                     <span class="opacity-80">{{ row.labelKey | translate }}</span>

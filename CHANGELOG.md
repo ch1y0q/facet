@@ -4,6 +4,11 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Regroup manual photo stacks.** Preview combining existing stacks or moving only selected photos, inspect the remaining source groups, choose a cover and order, and Undo the complete change. The larger editor shows a focused preview and preserves exclusions when switching policies.
+- **Open the stack editor with S.** The gallery shortcut is remappable and requires an explicit selection of 2–1000 photos and editing access. Existing saved S bindings are preserved; Stack stays unassigned until a free key is chosen.
+
 ## [1.26.0] "Histogramme" — 2026-10-28
 
 ### Added

@@ -2705,6 +2705,9 @@
     "reset_keys": "Restaurar tudo",
     "key_in_use": "Essa tecla já está em uso",
     "key_reserved": "Essa tecla é reservada",
+    "stack": "Empilhar fotos selecionadas (apenas edição)",
+    "unassigned": "Não atribuído",
+    "stack_hint": "Empilhar fotos ({key})",
     "keymap_title": "Personalizar atalhos"
   },
   "pwa": {

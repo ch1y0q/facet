@@ -2705,6 +2705,9 @@
     "reset_keys": "Restablecer todo",
     "key_in_use": "Esa tecla ya está asignada",
     "key_reserved": "Esa tecla está reservada",
+    "stack": "Apilar fotos seleccionadas (solo edición)",
+    "unassigned": "Sin asignar",
+    "stack_hint": "Apilar fotos ({key})",
     "keymap_title": "Personalizar atajos"
   },
   "pwa": {

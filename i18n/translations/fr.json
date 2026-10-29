@@ -2705,6 +2705,9 @@
     "reset_keys": "Tout réinitialiser",
     "key_in_use": "Cette touche est déjà attribuée",
     "key_reserved": "Cette touche est réservée",
+    "stack": "Empiler les photos sélectionnées (édition uniquement)",
+    "unassigned": "Non attribué",
+    "stack_hint": "Empiler les photos ({key})",
     "keymap_title": "Personnaliser les raccourcis"
   },
   "pwa": {

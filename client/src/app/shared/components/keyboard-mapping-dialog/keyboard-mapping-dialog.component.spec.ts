@@ -42,10 +42,23 @@ describe('KeyboardMappingDialogComponent', () => {
   it('lists every remappable action with its current key', () => {
     const root = render();
     const buttons = actionButtons(root);
-    expect(buttons.length).toBe(6);
+    expect(buttons.length).toBe(7);
     expect(buttons[0].textContent!.trim()).toBe(DEFAULT_KEYMAP.favourite.toUpperCase());
     expect(buttons[2].textContent!.trim()).toBe(DEFAULT_KEYMAP.keep.toUpperCase());
     expect(buttons.map(b => b.textContent!.trim())).toContain('/');
+  });
+
+  it('shows Stack unassigned and captures a free binding without replacing the older S action', () => {
+    const root = render();
+    const service = TestBed.inject(KeyboardMappingService);
+    service.keymap.set({ ...DEFAULT_KEYMAP, stack: '', focusSearch: 's' });
+    fixture.detectChanges();
+    const button = root.querySelector<HTMLButtonElement>('#keymap-key-stack')!;
+    expect(button.textContent!.trim()).toBe('shortcuts.unassigned');
+    expect(root.querySelector('#keymap-label-stack')!.textContent).toContain('shortcuts.stack');
+    button.click(); press('g');
+    expect(button.textContent!.trim()).toBe('G');
+    expect(service.keymap().focusSearch).toBe('s');
   });
 
   it('captures a pressed key into the clicked action and persists it', () => {

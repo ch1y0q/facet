@@ -2705,6 +2705,9 @@
     "reset_keys": "Ripristina tutto",
     "key_in_use": "Questo tasto è già assegnato",
     "key_reserved": "Questo tasto è riservato",
+    "stack": "Impila le foto selezionate (solo modifica)",
+    "unassigned": "Non assegnato",
+    "stack_hint": "Impila foto ({key})",
     "keymap_title": "Personalizza le scorciatoie"
   },
   "pwa": {
