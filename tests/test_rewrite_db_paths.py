@@ -157,3 +157,33 @@ def test_nested_prefixes_are_refused_and_nothing_changes(library, src, dst, flag
     assert result.returncode == 2
     assert 'inside the other' in result.stderr
     assert _paths(library, 'SELECT path FROM photos ORDER BY rowid') == before
+
+
+def test_stacks_move_and_skipped_suggestions_stay_skipped(library):
+    from db.stack_suggestions import dismiss, suggestion_key
+    old = ['/data/photos/2024/trip/a.jpg', '/data/photos/b.jpg']
+    new = [r'\\NAS\Photos\2024\trip\a.jpg', r'\\NAS\Photos\b.jpg']
+    with sqlite3.connect(library) as conn:
+        conn.execute("INSERT INTO photo_stacks (id, owner, cover_path, revision) VALUES ('s1', '', ?, 1)", (old[0],))
+        conn.executemany("INSERT INTO photo_stack_members (stack_id, owner, photo_path, position) VALUES ('s1', '', ?, ?)",
+                         [(path, i) for i, path in enumerate(old)])
+        dismiss(conn, '', 'burst', old)
+    out = _run(library).stdout
+    assert _paths(library, 'SELECT cover_path FROM photo_stacks') == [new[0]]
+    assert sorted(_paths(library, 'SELECT photo_path FROM photo_stack_members')) == sorted(new)
+    # The key hashes the member paths: unchanged, the skipped suggestion would come back.
+    assert _paths(library, 'SELECT DISTINCT key FROM stack_suggestion_dismissals') == [suggestion_key('burst', new)]
+    assert 'stack_suggestion_dismissals: 1 skipped suggestions re-keyed' in out
+
+
+def test_a_locked_database_is_refused_cleanly(library):
+    holder = sqlite3.connect(library, isolation_level=None)
+    holder.execute('BEGIN IMMEDIATE')
+    try:
+        done = _run(library, '--no-backup', check=False)
+    finally:
+        holder.execute('ROLLBACK')
+        holder.close()
+    assert done.returncode == 1
+    assert 'stop the viewer' in done.stderr and 'Traceback' not in done.stderr
+    assert _paths(library, "SELECT count(*) FROM photos WHERE path LIKE '/data/photos/%'") == [2]

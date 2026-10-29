@@ -205,6 +205,8 @@ cd "$env:LOCALAPPDATA\Facet\app\installer"
 **每个文件夹只用一种写法。** Facet 按扫描时使用的路径保存每张照片，所以 `\\NAS\Photos` 和映射为
 `Z:\` 的同一个共享对它来说是两个不同的文件夹：两个都扫描会让每张照片出现两次。请选定一种写法并一直使用。
 
+**受管理的计算机。** 快捷方式以 `-ExecutionPolicy Bypass` 运行 Facet 未签名的 PowerShell 脚本。通过组策略设置的执行策略优先于此参数，因此在受管理的电脑上这些脚本可能无法运行；请联系管理员允许它们运行。
+
 **卸载**（设置 → 应用）会停止 Facet，移除程序、快捷方式、Python 环境和 ExifTool（自定义的
 `FACET_HOME` 下同样会移除），保留 `data` 和 `config`。无法删除的内容会记录在
 `data\logs\uninstall.log` 中。uv 的下载缓存（`%LOCALAPPDATA%\uv\cache`）和已下载的模型会保留

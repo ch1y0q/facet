@@ -1,8 +1,9 @@
 # Build (or repair) the Facet Python environment. Runs once after install, and again after an
 # upgrade that changes the lock files or this script; safe to re-run.
 # Picks the PyTorch build the way install.sh does: by the lowest GPU compute capability and the
-# CUDA version the NVIDIA driver supports, else CPU. Then both lock files from PyPI with that
-# torch held, then, on a CUDA 12 build, the CPU onnxruntime swapped for onnxruntime-gpu.
+# CUDA version the NVIDIA driver supports, else CPU. Then the matching pair of lock files from
+# PyPI with that torch held, then, on a CUDA 12 build, the CPU onnxruntime swapped for
+# onnxruntime-gpu.
 #   -Cpu    install the CPU build even when an NVIDIA GPU is present
 param([switch]$Force, [switch]$Cpu)
 $ErrorActionPreference = 'Stop'
@@ -21,9 +22,12 @@ Step 'Python 3.12 virtual environment'
 if ($LASTEXITCODE) { throw 'uv venv failed' }
 
 # The PyTorch build. cu128 wheels ship sm_75 upwards only, so a Maxwell, Pascal or Volta card
-# (compute capability below 7.5) takes cu126 whatever the driver (issue #119). The pinned
-# version is the one the Docker images ship; the older CUDA indexes stop at older releases.
-$variant, $torchPin, $ortGpu = 'cpu', '2.11.0', $true
+# (compute capability below 7.5) takes cu126 whatever the driver (issue #119). Every build is
+# pinned to what a Docker image ships: torch 2.11.0 with requirements.lock.txt (the cpu and cuda
+# images), or, for the older CUDA indexes, torch 2.6.0 with requirements.legacy.lock.txt (the
+# cuda-legacy image). The two cannot share a lock: torch 2.6.0 pins sympy==1.13.1 and torch
+# 2.11.0 needs sympy>=1.13.3, and the cu124 and cu118 indexes stop at 2.6.0 on Python 3.12.
+$variant, $legacy, $ortGpu = 'cpu', $false, $true
 $smi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
 if ($smi -and -not $Cpu) {
     $cudaText = (& $smi.Source) -join "`n"
@@ -33,25 +37,27 @@ if ($smi -and -not $Cpu) {
     if (-not $cuda) {
         Write-Warning 'nvidia-smi found, but it reports no CUDA version: installing the CPU build'
     } elseif ($arch -and $arch -lt [version]'7.5') {
-        $variant, $torchPin = 'cu126', $null
+        $variant, $legacy = 'cu126', $true
         Write-Host "GPU compute capability $arch (pre-Turing): cu126, which still ships its kernels"
     } elseif ($cuda -ge [version]'12.8') {
         $variant = 'cu128'
     } elseif ($cuda -ge [version]'12.6') {
-        $variant, $torchPin = 'cu126', $null
+        $variant, $legacy = 'cu126', $true
     } elseif ($cuda -ge [version]'12.4') {
-        $variant, $torchPin = 'cu124', $null
+        $variant, $legacy = 'cu124', $true
     } elseif ($cuda -ge [version]'11.8') {
         # The only onnxruntime-gpu for CUDA 11 links cuDNN 8 and the cu118 wheels ship cuDNN 9,
         # so its CUDA provider would never load: keep the CPU onnxruntime.
-        $variant, $torchPin, $ortGpu = 'cu118', $null, $false
+        $variant, $legacy, $ortGpu = 'cu118', $true, $false
         Write-Warning 'Driver supports CUDA 11.8 only: face detection runs on the CPU. Update the NVIDIA driver for GPU face detection.'
     } else {
         Write-Warning "Driver supports CUDA $cuda only, too old for PyTorch: installing the CPU build. Update the NVIDIA driver to use the GPU."
     }
 }
-$torchSpec = if ($torchPin) { @("torch==$torchPin", 'torchvision==0.26.0') } else { @('torch', 'torchvision') }
-Step "PyTorch ($variant)"
+$torchSpec = if ($legacy) { @('torch==2.6.0', 'torchvision==0.21.0') } else { @('torch==2.11.0', 'torchvision==0.26.0') }
+$locks = if ($legacy) { @('requirements.legacy.lock.txt', 'requirements.legacy.restricted.lock.txt') } `
+    else { @('requirements.lock.txt', 'requirements.restricted.lock.txt') }
+Step "PyTorch ($variant, $($torchSpec[0]))"
 & $FacetUv pip install --python $FacetPython @torchSpec --index-url "https://download.pytorch.org/whl/$variant"
 if ($LASTEXITCODE) { throw 'torch install failed' }
 
@@ -62,9 +68,9 @@ if ($LASTEXITCODE) { throw 'torch import failed' }
 $constraint = Join-Path $env:TEMP 'facet-torch-constraint.txt'
 Set-Content $constraint $held -Encoding ascii
 
-Step 'Facet dependencies (requirements.lock.txt + restricted lock)'
+Step "Facet dependencies ($($locks -join ' + '))"
 & $FacetUv pip install --python $FacetPython -c $constraint `
-    -r (Join-Path $FacetApp 'requirements.lock.txt') -r (Join-Path $FacetApp 'requirements.restricted.lock.txt')
+    -r (Join-Path $FacetApp $locks[0]) -r (Join-Path $FacetApp $locks[1])
 if ($LASTEXITCODE) { throw 'dependency install failed' }
 
 if ($variant -ne 'cpu' -and $ortGpu) {

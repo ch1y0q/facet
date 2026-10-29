@@ -35,6 +35,7 @@ afterwards: each entry is tied to its photos' revisions, which a path change adv
 purpose. The tool reports how many entries that affects.
 """
 import argparse
+import contextlib
 import json
 import re
 import sqlite3
@@ -112,6 +113,25 @@ def load_vec(conn):
         return False
 
 
+def rekey_dismissals(conn):
+    """Recompute each skipped stack suggestion's key from its rewritten member paths.
+
+    The key is a hash of the group's kind and sorted paths (``db.stack_suggestions.suggestion_key``),
+    so a rewrite that leaves it alone silently brings back every suggestion the user skipped.
+    """
+    from db.stack_suggestions import suggestion_key
+    groups = {}
+    for owner, key, kind, path in conn.execute('SELECT owner, key, kind, photo_path FROM stack_suggestion_dismissals'):
+        groups.setdefault((owner, key, kind), []).append(path)
+    rekeyed = 0
+    for (owner, key, kind), paths in groups.items():
+        new = suggestion_key(kind, paths)
+        if new != key:
+            conn.execute('UPDATE stack_suggestion_dismissals SET key = ? WHERE owner = ? AND key = ?', (new, owner, key))
+            rekeyed += 1
+    return rekeyed
+
+
 def rewrite(conn, src, dst, sep, vec):
     """Apply every change inside the open transaction; return the report lines."""
     report = []
@@ -132,6 +152,10 @@ def rewrite(conn, src, dst, sep, vec):
                 changed += 1
         if changed:
             report.append(f'{table}.{col}: {changed} (json)')
+    if has_table(conn, 'stack_suggestion_dismissals'):
+        rekeyed = rekey_dismissals(conn)
+        if rekeyed:
+            report.append(f'stack_suggestion_dismissals: {rekeyed} skipped suggestions re-keyed')
     if has_table(conn, 'stats_cache'):
         conn.execute('DELETE FROM stats_cache')
     if has_table(conn, 'photos_fts'):
@@ -176,14 +200,21 @@ def main():
 
     if not args.dry_run and not args.no_backup:
         backup = Path(f'{args.db}.before-rewrite-{time.strftime("%Y%m%d-%H%M%S")}')
-        with sqlite3.connect(backup) as copy:
+        # Closed, not just committed: the backup file is released before the long write starts.
+        with contextlib.closing(sqlite3.connect(backup)) as copy:
             conn.backup(copy)
         print(f'backup: {backup}')
     history = conn.execute('SELECT count(*) FROM organization_history WHERE reverted = 0').fetchone()[0] \
         if has_table(conn, 'organization_history') else 0
 
     fk_before = len(conn.execute('PRAGMA foreign_key_check').fetchall())
-    conn.execute('BEGIN IMMEDIATE')
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+    except sqlite3.OperationalError as exc:
+        if 'locked' not in str(exc):
+            raise
+        sys.exit('the database is locked by another process (a running viewer?): stop the viewer and '
+                 'run again. Nothing changed.')
     try:
         report = rewrite(conn, src, dst, sep, vec)
         fk_after = len(conn.execute('PRAGMA foreign_key_check').fetchall())

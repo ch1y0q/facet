@@ -44,15 +44,16 @@ New-Item -ItemType Directory -Force (Join-Path $stage 'installer\bin') | Out-Nul
 Copy-Item $Uv (Join-Path $stage 'installer\bin\uv.exe')
 Set-Content (Join-Path $stage 'BUILD.txt') "Facet $version, commit $commit, built $(Get-Date -Format s)" -Encoding ascii
 
-# Harvest, compile, link. ICE validation is skipped: a per-user install with file key paths
-# trips ICE38/ICE64/ICE91 by design, and the app folder is replaced wholesale on upgrade.
+# Harvest, compile, link. A per-user install with file key paths trips ICE38/ICE64/ICE91 by
+# design, and the app folder is replaced wholesale on upgrade: those three are suppressed, every
+# other ICE still validates.
 & "$WixDir\heat.exe" dir $stage -nologo -cg AppFiles -dr INSTALLDIR -srd -gg -sfrag -sreg -var var.StageDir -out (Join-Path $obj 'AppFiles.wxs')
 if ($LASTEXITCODE) { throw 'heat failed' }
 & "$WixDir\candle.exe" -nologo -arch x64 "-dStageDir=$stage" "-dVersion=$version" -out "$obj\" `
     (Join-Path $PSScriptRoot 'Facet.wxs') (Join-Path $obj 'AppFiles.wxs')
 if ($LASTEXITCODE) { throw 'candle failed' }
 $msi = Join-Path $out "Facet-$version-$commit.msi"
-& "$WixDir\light.exe" -nologo -sval -out $msi (Join-Path $obj 'Facet.wixobj') (Join-Path $obj 'AppFiles.wixobj')
+& "$WixDir\light.exe" -nologo -sice:ICE38 -sice:ICE64 -sice:ICE91 -out $msi (Join-Path $obj 'Facet.wixobj') (Join-Path $obj 'AppFiles.wixobj')
 if ($LASTEXITCODE) { throw 'light failed' }
 Remove-Item -Recurse -Force $work
 Get-Item $msi | Select-Object Name, @{n = 'MB'; e = { [math]::Round($_.Length / 1MB, 1) } }

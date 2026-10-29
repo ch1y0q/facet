@@ -209,6 +209,8 @@ devices, and refuses to start until `viewer.password` is set in the config.
 `\\NAS\Photos` and the same share mapped as `Z:\` are two different folders to it: scanning
 both adds every photo twice. Pick one and keep it.
 
+**Managed computers.** The shortcuts run Facet's unsigned PowerShell scripts with `-ExecutionPolicy Bypass`. An execution policy set by Group Policy overrides that, so on a managed PC the scripts may not run; ask its administrator to allow them.
+
 **Uninstalling** (Settings, Apps) stops Facet and removes the program, its shortcuts, the Python
 environment and ExifTool (under a custom `FACET_HOME` too), and keeps `data` and `config`.
 Anything it cannot delete is listed in `data\logs\uninstall.log`. uv's download cache

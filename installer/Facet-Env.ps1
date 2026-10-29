@@ -16,10 +16,13 @@ if (-not (Test-Path $FacetUv)) { $FacetUv = (Get-Command uv -ErrorAction Silentl
 $FacetReady  = Join-Path $FacetVenv '.facet-setup-ok'
 $FacetExifTool = Join-Path $FacetRoot 'exiftool'
 
-# What the environment was built from: both lock files and the setup script. The marker holds
-# this key, so an upgrade that changes any of them makes the next start set up again.
+# What the environment was built from: the lock files (both pairs: setup picks one by GPU) and
+# the setup script. The marker holds this key, so an upgrade that changes any of them makes the
+# next start set up again.
 function Get-FacetSetupKey {
-    $files = @('requirements.lock.txt', 'requirements.restricted.lock.txt') | ForEach-Object { Join-Path $FacetApp $_ }
+    $files = @('requirements.lock.txt', 'requirements.restricted.lock.txt',
+               'requirements.legacy.lock.txt', 'requirements.legacy.restricted.lock.txt') |
+        ForEach-Object { Join-Path $FacetApp $_ }
     $files += Join-Path $PSScriptRoot 'Setup-Facet.ps1'
     $sha = [Security.Cryptography.SHA256]::Create()
     try {

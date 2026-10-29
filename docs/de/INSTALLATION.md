@@ -215,6 +215,8 @@ Geräte und startet erst, wenn `viewer.password` in der Konfiguration gesetzt is
 wurde; `\\NAS\Photos` und dieselbe Freigabe als Laufwerk `Z:\` sind für Facet zwei verschiedene
 Ordner: Wer beide scannt, hat jedes Foto doppelt. Wählen Sie eine Schreibweise und bleiben Sie dabei.
 
+**Verwaltete Rechner.** Die Verknüpfungen starten Facets unsignierte PowerShell-Skripte mit `-ExecutionPolicy Bypass`. Eine per Gruppenrichtlinie gesetzte Ausführungsrichtlinie hat Vorrang, sodass die Skripte auf einem verwalteten PC womöglich nicht laufen; bitten Sie die Administration, sie zuzulassen.
+
 **Die Deinstallation** (Einstellungen, Apps) beendet Facet und entfernt das Programm, die
 Verknüpfungen, die Python-Umgebung und ExifTool (auch unter einem eigenen `FACET_HOME`) und
 behält `data` und `config`. Was sie nicht löschen kann, steht in `data\logs\uninstall.log`. Der

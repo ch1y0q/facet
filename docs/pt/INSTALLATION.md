@@ -212,6 +212,8 @@ configuração.
 `\\NAS\Photos` e o mesmo compartilhamento mapeado como `Z:\` são, para ele, duas pastas
 diferentes, e varrer as duas adiciona cada foto duas vezes. Escolha uma e mantenha.
 
+**Computadores gerenciados.** Os atalhos executam os scripts PowerShell não assinados do Facet com `-ExecutionPolicy Bypass`. Uma política de execução definida por Política de Grupo tem prioridade, então em um PC gerenciado os scripts podem não rodar; peça ao administrador para permiti-los.
+
 **Desinstalar** (Configurações, Aplicativos) para o Facet e remove o programa, os atalhos, o
 ambiente Python e o ExifTool (também sob um `FACET_HOME` próprio), e mantém `data` e `config`. O
 que ele não conseguir apagar fica listado em `data\logs\uninstall.log`. O cache de download do uv

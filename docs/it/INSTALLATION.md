@@ -212,6 +212,8 @@ configurazione.
 scansionata: `\\NAS\Photos` e la stessa condivisione collegata come `Z:\` sono per lui due
 cartelle diverse, e scansionarle entrambe aggiunge ogni foto due volte. Scegline una e tienila.
 
+**Computer gestiti.** I collegamenti eseguono gli script PowerShell non firmati di Facet con `-ExecutionPolicy Bypass`. Un criterio di esecuzione impostato tramite Criteri di gruppo ha la precedenza, quindi su un PC gestito gli script potrebbero non avviarsi; chiedi al suo amministratore di consentirli.
+
 **La disinstallazione** (Impostazioni, App) ferma Facet e rimuove il programma, i collegamenti,
 l'ambiente Python ed ExifTool (anche sotto un `FACET_HOME` personalizzato), e conserva `data` e
 `config`. Quello che non riesce a cancellare è elencato in `data\logs\uninstall.log`. La cache di

@@ -212,6 +212,8 @@ configuración.
 escaneó: `\\NAS\Photos` y la misma carpeta compartida conectada como `Z:\` son para él dos
 carpetas distintas, y escanear las dos añade cada foto dos veces. Elige una y mantenla.
 
+**Equipos administrados.** Los accesos directos ejecutan los scripts de PowerShell sin firmar de Facet con `-ExecutionPolicy Bypass`. Una directiva de ejecución fijada por directiva de grupo tiene prioridad, así que en un PC administrado puede que los scripts no se ejecuten; pide a su administrador que los permita.
+
 **Desinstalar** (Configuración, Aplicaciones) detiene Facet y quita el programa, los accesos
 directos, el entorno Python y ExifTool (también bajo un `FACET_HOME` propio), y conserva `data` y
 `config`. Lo que no pueda borrar queda anotado en `data\logs\uninstall.log`. La caché de

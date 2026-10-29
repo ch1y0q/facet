@@ -213,6 +213,8 @@ configuration.
 été scannée : `\\NAS\Photos` et le même partage monté en `Z:\` sont pour lui deux dossiers
 différents, et scanner les deux ajoute chaque photo deux fois. Choisissez-en un et gardez-le.
 
+**Ordinateurs gérés.** Les raccourcis lancent les scripts PowerShell non signés de Facet avec `-ExecutionPolicy Bypass`. Une stratégie d'exécution définie par stratégie de groupe l'emporte, si bien que sur un PC géré les scripts peuvent ne pas s'exécuter ; demandez à son administrateur de les autoriser.
+
 **La désinstallation** (Paramètres, Applications) arrête Facet et supprime le programme, les
 raccourcis, l'environnement Python et ExifTool (y compris sous un `FACET_HOME` personnalisé),
 et conserve `data` et `config`. Ce qu'elle ne peut pas supprimer est listé dans
