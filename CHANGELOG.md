@@ -15,6 +15,9 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Suggested stack progress survives live rating and favorite updates.** Stack, Skip and Edit members still advance the current proposal and retain Undo when its members are unchanged.
+- **Stack regrouping and Undo work with many directory grants on older SQLite.** Visibility checks reserve query parameters for the account scope while keeping hidden members unavailable.
+
 - **Header and phone layouts no longer crush their controls.** Below 1680 px the secondary destinations move into a More menu, so the gallery search and Type selector keep their width and the culling filters stop scrolling; on phones the nav and culling bars lose their scrollbars, person rename boxes fit their tiles, long camera names no longer cut off the stats legend, and the photo page keeps room for the filename
 - **Stack browsing keeps the image in place.** Moving between known stack members preserves the thumbnail strip's measured space while fresh membership loads, without retaining old navigation controls.
 

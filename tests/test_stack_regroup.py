@@ -319,11 +319,14 @@ def http_client(conn, monkeypatch):
     from api import config
     from api.routers import organization_history, stacks as stack_routes
     filename = conn.execute('PRAGMA database_list').fetchone()[2]
+    variable_limit = None
 
     @contextlib.contextmanager
     def temp_db():
         connection = sqlite3.connect(filename)
         connection.row_factory = sqlite3.Row
+        if variable_limit is not None:
+            connection.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, variable_limit)
         try:
             yield connection
         finally:
@@ -336,6 +339,9 @@ def http_client(conn, monkeypatch):
     monkeypatch.setitem(config.VIEWER_CONFIG, 'edition_password', 'test-regroup')
 
     def client(user):
+        nonlocal variable_limit
+        if hasattr(conn, 'getlimit'):
+            variable_limit = conn.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER)
         app = create_app()
         app.dependency_overrides[get_optional_user] = lambda: user
         return TestClient(app)
@@ -586,3 +592,74 @@ def test_http_excluded_sources_leave_identical_stack_unchanged(conn, http_client
     assert result['stack']['id'] == original['id'] and result['stack']['revision'] == original['revision']
     assert result['affected_paths'] == ['b', 'a']
     assert state(conn) == before
+
+
+@pytest.mark.skipif(not hasattr(sqlite3.Connection, 'setlimit'),
+                    reason='Python 3.10 cannot lower the SQLite connection variable limit')
+def test_regroup_http_reserves_legacy_bindings_through_preview_apply_and_undo(conn, http_client, monkeypatch):
+    from api import config, db_helpers
+    from api.routers import stacks as routes
+
+    paths = [f'/regroup-budget/visible/{i:04}.jpg' for i in range(598)]
+    hidden = '/regroup-budget/hidden/member.jpg'
+    with conn:
+        conn.executemany('INSERT INTO photos(path) VALUES (?)', [(p,) for p in [*paths, hidden]])
+        for index in range(0, len(paths), 2):
+            stacks.create_stack(conn, 'alice', paths[index:index + 2], paths[index])
+    monkeypatch.setattr(db_helpers, 'is_multi_user_enabled', lambda: True)
+    monkeypatch.setattr(db_helpers, '_CASE_INSENSITIVE_HOST', False)
+    monkeypatch.setattr(routes, 'is_multi_user_enabled', lambda: True)
+    monkeypatch.setitem(config._FULL_CONFIG, 'users', {'alice': {'directories': [
+        '/regroup-budget/visible/', *[f'/regroup-budget/unrelated-{i}/' for i in range(349)]]}})
+    clause, params = db_helpers.get_visibility_clause('alice')
+    assert len(params) == 700
+    conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999)
+    assert conn.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER) == 999
+    # Confirm that the test connection really enforces the legacy ceiling.
+    with pytest.raises(sqlite3.OperationalError, match='too many SQL variables'):
+        conn.execute('SELECT 1 WHERE 1 IN (' + ','.join('?' for _ in range(1000)) + ')', [1] * 1000)
+    client = http_client(CurrentUser(user_id='alice', role='admin', edition_authenticated=True))
+    selected = paths[::2]
+    assert len(selected) == 299
+    first = stacks.get_stack_by_photo(conn, 'alice', paths[0], visibility_sql=clause, visibility_params=params)
+    assert member_paths(first) == paths[:2]
+    before = state(conn)
+    response = client.post('/api/stacks/regroup/preview', json={'selected_paths': selected, 'mode': 'combine'})
+    assert response.status_code == 200, response.text
+    draft = response.json()
+    assert draft['paths'] == draft['affected_paths'] == paths
+    assert len(draft['source_stacks']) == 299
+    assert state(conn) == before
+    request = {key: draft[key] for key in ('selected_paths', 'mode', 'paths', 'cover_path', 'expected_state')}
+    response = client.post('/api/stacks/regroup/apply', json=request)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert member_paths(result['stack']) == paths
+    assert conn.execute('SELECT COUNT(*) FROM photo_stacks').fetchone()[0] == 1
+    # Shared ordinary GET and strict update must retain their authorization and conflict semantics.
+    stack_id = result['stack']['id']
+    assert member_paths(client.get('/api/stacks/' + stack_id).json()) == paths
+    listed = client.get('/api/organization_history')
+    assert listed.status_code == 200, listed.text
+    assert result['undo']['entry_id'] in [entry['id'] for entry in listed.json()['entries']]
+    assert client.post('/api/stacks', json={'paths': paths[:2], 'cover_path': paths[0]}).status_code == 409
+    assert client.put('/api/stacks/' + stack_id, json={
+        'paths': [*paths, hidden], 'cover_path': paths[0],
+        'expected_revision': result['stack']['revision']}).status_code == 409
+    response = client.post(f"/api/organization_history/{result['undo']['entry_id']}/revert?kind=stack")
+    assert response.status_code == 200, response.text
+    assert response.json()['changed'] == 598
+    assert state(conn)['photo_stack_members'] == before['photo_stack_members']
+    assert state(conn)['photos'] == before['photos']
+    assert conn.execute('SELECT COUNT(*) FROM photo_stacks').fetchone()[0] == 299
+    # A hidden expanded member is refused before writing, even when the selected members are visible.
+    source = stacks.get_stack_by_photo(conn, 'alice', paths[-2])
+    with conn:
+        conn.execute('BEGIN IMMEDIATE')
+        stacks.update_stack(conn, 'alice', source['id'], [paths[-2], hidden], paths[-2], source['revision'])
+    before_refusal = state(conn)
+    for route, body in [('preview', {'selected_paths': selected, 'mode': 'combine'}), ('apply', request)]:
+        response = client.post('/api/stacks/regroup/' + route, json=body)
+        assert response.status_code == 409, response.text
+        assert response.json()['detail'] == 'Stack unavailable'
+        assert state(conn) == before_refusal

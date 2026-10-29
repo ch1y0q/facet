@@ -34,8 +34,10 @@ def _resolve(conn, owner, selected_paths, mode, visibility_sql, visibility_param
     total_members = len(unstacked)
     # Check full authorization before revealing even a limit refusal. Counts
     # keep oversized source sets bounded without loading their member paths.
-    for start in range(0, len(source_ids), 300):
-        chunk = source_ids[start:start + 300]
+    # Reserve both directory visibility and the owner predicate under the legacy 999-variable ceiling.
+    count_chunk_size = max(1, min(300, 999 - len(visibility_params) - 1))
+    for start in range(0, len(source_ids), count_chunk_size):
+        chunk = source_ids[start:start + count_chunk_size]
         marks = ','.join('?' for _ in chunk)
         count, permitted = conn.execute(f'''SELECT COUNT(*),
             COALESCE(SUM(CASE WHEN photos.path IS NOT NULL AND ({visibility_sql}) THEN 1 ELSE 0 END),0)

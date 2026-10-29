@@ -5,7 +5,6 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideNativeDateAdapter } from '@angular/material/core';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { StackDialogComponent } from './stack-dialog.component';
 import { MatDialog } from '@angular/material/dialog';
 import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { Subject } from 'rxjs';
@@ -14,7 +13,7 @@ import { CullingStore } from './culling.store';
 import { AuthService } from '../../core/services/auth.service';
 import { GalleryStore } from './gallery.store';
 import { I18nService } from '../../core/services/i18n.service';
-import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
+import { AssistantChangeBatch, AssistantChangesService } from '../../core/agent/assistant-changes.service';
 import { AssistantCullPlanService } from '../../core/agent/assistant-cull-plan.service';
 import { PageContextService } from '../../core/agent/page-context.service';
 import { UndoService, UndoableCommand } from '../../core/services/undo.service';
@@ -27,6 +26,7 @@ describe('Suggested stacks routed darkroom', () => {
   let page: BurstCullingComponent;
   let cull: CullingStore;
   let commands: UndoableCommand[];
+  let changes: Subject<AssistantChangeBatch>;
   const identity = signal('owner');
   const edition = signal(true);
   const filters = { album_id: '42', camera: 'Camera & Lens', hide_blinks: 'false' };
@@ -55,7 +55,7 @@ describe('Suggested stacks routed darkroom', () => {
   }
   beforeEach(async () => {
     Element.prototype.scrollIntoView = vi.fn();
-    localStorage.clear(); identity.set('owner'); edition.set(true); commands = [];
+    localStorage.clear(); identity.set('owner'); edition.set(true); commands = []; changes = new Subject();
     TestBed.configureTestingModule({ providers: [
       provideHttpClient(), provideHttpClientTesting(), provideNativeDateAdapter(),
       provideRouter([{ path: 'culling', component: BurstCullingComponent },
@@ -65,7 +65,7 @@ describe('Suggested stacks routed darkroom', () => {
       { provide: AuthService, useValue: { identity, isEdition: edition } },
       { provide: GalleryStore, useValue: { config: () => null, refreshPaths: async () => undefined } },
       { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
-      { provide: AssistantChangesService, useValue: { batch$: new Subject() } },
+      { provide: AssistantChangesService, useValue: { batch$: changes } },
       { provide: UndoService, useValue: { register: (command: UndoableCommand) => commands.push(command) } },
     ] });
     http = TestBed.inject(HttpTestingController);
@@ -462,6 +462,24 @@ describe('Suggested stacks routed darkroom', () => {
     expect(http.match('/api/stacks/suggestions')).toHaveLength(0);
   });
 
+  it.each(['stack', 'skip'])('advances the actual darkroom after %s and a subscribed assistant mark refresh', async action => {
+    await enter(); batch(); await settle(); key('Enter'); await settle();
+    key(action === 'stack' ? 's' : 'x');
+    const write = http.expectOne(action === 'stack' ? '/api/stacks' : '/api/stacks/suggestions/dismissals');
+    changes.next({ paths: ['/a.jpg'], count: 1 }); await settle();
+    http.expectOne('/api/photos/by_paths').flush({ photos: [{ path: '/a.jpg', star_rating: 4, is_favorite: 1 }] });
+    await settle();
+    expect(cull.groups()[0].photos[1].star_rating).toBe(4);
+    write.flush(action === 'stack' ? { undo: { entry_id: 90 } } : null);
+    await vi.waitFor(() => expect(cull.groups().map(item => item.group_id)).toEqual([2]));
+    await settle(); expect(page['lightboxGroup']()?.group_id).toBe(2); expect(commands).toHaveLength(1);
+    const undoing = commands[0].undo();
+    http.expectOne(action === 'stack' ? '/api/organization_history/90/revert' : '/api/stacks/suggestions/dismissals/membership-1').flush({});
+    await undoing; await settle();
+    expect(cull.groups().map(item => item.group_id)).toEqual([1, 2]);
+    expect(cull.groups()[0].photos[1].star_rating).toBe(4);
+  });
+
   it('routes real secondary-dialog close results and captures Undo before Material clears componentInstance', async () => {
     await enter(); batch(); await settle();
     const captured = cull.groups()[1];
@@ -474,19 +492,26 @@ describe('Suggested stacks routed darkroom', () => {
     const data = ref.componentInstance.editor().data;
     expect(data.paths).toEqual(['/d.jpg', '/c.jpg']);
     expect(data.activePath).toBe('/d.jpg'); expect(data.skippable).toBe(true);
-    const editor = (ref.componentInstance as StackDialogComponent).editor();
     const members = http.expectOne('/api/photos/by_paths');
     members.flush({ photos: ['/d.jpg', '/c.jpg'].map(path => ({ path, filename: path.slice(1), date_taken: null })), missing: [] });
     await settle();
-    const saving = editor.save();
-    http.expectOne('/api/stacks').flush({ undo: { entry_id: 24 } });
-    await saving; await opening; await settle();
+    const save = document.querySelector('mat-dialog-container [data-stack-save]') as HTMLButtonElement;
+    expect(save).toBeDefined(); save.click();
+    const write = http.expectOne('/api/stacks');
+    changes.next({ paths: ['/d.jpg'], count: 1 }); await settle();
+    http.expectOne('/api/photos/by_paths').flush({ photos: [{ path: '/d.jpg', star_rating: 5, is_favorite: 1 }] });
+    await settle();
+    expect(cull.groups()[1]).not.toBe(captured);
+    write.flush({ undo: { entry_id: 24 } });
+    await opening; await settle();
     expect(ref.componentInstance).toBeNull();
     expect(cull.groups().map(item => item.group_id)).toEqual([1]);
     const undoing = commands[0].undo();
     http.expectOne('/api/organization_history/24/revert').flush({});
     await undoing; await settle();
     expect(cull.groups().map(item => item.group_id).sort()).toEqual([1, 2]);
+    expect(cull.groups().find(item => item.group_id === 2)?.photos[0].star_rating).toBe(5);
+    expect(commands).toHaveLength(1);
     cull.completeStackSuggestion(captured);
     identity.set('other'); data.onUndone();
     expect(cull.groups().filter(item => item.group_id === 2)).toHaveLength(0);

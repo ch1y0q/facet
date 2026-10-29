@@ -95,8 +95,10 @@ def _transaction(conn: sqlite3.Connection) -> None:
 def visible_paths(conn: sqlite3.Connection, paths: list[str], visibility_sql: str,
                   visibility_params: tuple | list) -> set[str]:
     result: set[str] = set()
-    for start in range(0, len(paths), 300):
-        chunk = paths[start:start + 300]
+    # The supported SQLite floor allows 999 variables, shared with directory visibility.
+    chunk_size = max(1, min(300, 999 - len(visibility_params)))
+    for start in range(0, len(paths), chunk_size):
+        chunk = paths[start:start + chunk_size]
         marks = ','.join('?' for _ in chunk)
         result.update(r[0] for r in conn.execute(
             f'SELECT photos.path FROM photos WHERE photos.path IN ({marks}) AND ({visibility_sql})',

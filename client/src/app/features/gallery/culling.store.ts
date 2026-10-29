@@ -17,6 +17,12 @@ import {
 import type { components } from '../../core/api/schema';
 import type { Photo } from '../../shared/models/photo.model';
 
+/** Private provenance shared only by rows loaded in this visit and their mark-only replacements. */
+interface LoadedStackSuggestion {
+  epoch: number;
+  membership: string;
+}
+
 export interface CullingGroupsResponse {
   groups: CullingGroup[];
   total_groups: number;
@@ -228,7 +234,8 @@ export class CullingStore {
   /** Exhaustion decisions newer than a pending snapshot still require a fresh batch when it lands empty. */
   private stackRefillVersion = 0;
   private readonly stackDecisions = new Set<string>();
-  private readonly completedSuggestions = new Map<CullingGroup, number>();
+  private readonly suggestionProvenance = new WeakMap<CullingGroup, LoadedStackSuggestion>();
+  private readonly completedSuggestions = new Map<LoadedStackSuggestion, CullingGroup>();
 
   /** Set before the page starts any cull effects. A held global assistant pin belongs to its owner. */
   enterStackMode(filters: Record<string, string>): void {
@@ -277,9 +284,16 @@ export class CullingStore {
     return `${this.groupKey(group)}:${group.suggestionKey ?? ''}`;
   }
 
+  private suggestionMembership(group: CullingGroup): string {
+    return JSON.stringify([group.type, group.group_id, group.suggestionKey, group.photos.map(photo => photo.path)]);
+  }
+
   private loadedSuggestion(group: CullingGroup): CullingGroup | undefined {
     if (!group.suggestionKey || (group.type !== 'burst' && group.type !== 'duplicate')) return;
-    return this.groups().find(item => item === group && this.suggestionIdentity(item) === this.suggestionIdentity(group));
+    const provenance = this.suggestionProvenance.get(group);
+    if (!provenance || provenance.epoch !== this.visitEpoch || provenance.membership !== this.suggestionMembership(group)) return;
+    return this.groups().find(item => this.suggestionProvenance.get(item) === provenance
+      && this.suggestionMembership(item) === provenance.membership);
   }
 
   private loadStackBatch(): Promise<void> {
@@ -297,15 +311,17 @@ export class CullingStore {
         if (!this.stackVisitCurrent(epoch) || generation !== this.loadGenerationId) return;
         const incoming: CullingGroup[] = result.suggestions.map(group => {
           if (!group.photos) throw new Error('Stack suggestion photos missing');
-          return {
+          const row: CullingGroup = {
             group_id: group.group_id, type: group.kind, best_path: group.cover_path,
             count: group.paths.length, reason: '', suggestionKey: group.key, photos: group.photos,
           };
+          this.suggestionProvenance.set(row, { epoch, membership: this.suggestionMembership(row) });
+          return row;
         });
         // Undo can restore an earlier batch while this request is running. Retain it and dedupe by both identities.
         this.groups.update(retained => {
           const keys = new Set(retained.map(group => this.suggestionIdentity(group)));
-          const completed = new Set([...this.completedSuggestions.keys()].map(group => this.suggestionIdentity(group)));
+          const completed = new Set([...this.completedSuggestions.values()].map(group => this.suggestionIdentity(group)));
           return [...retained, ...incoming.filter(group => {
             const key = this.suggestionIdentity(group);
             if (keys.has(key) || completed.has(key)) return false;
@@ -393,7 +409,7 @@ export class CullingStore {
     if (!this.stackVisitCurrent()) return false;
     const loaded = this.loadedSuggestion(group);
     if (!loaded) return false;
-    this.completedSuggestions.set(loaded, this.visitEpoch);
+    this.completedSuggestions.set(this.suggestionProvenance.get(loaded)!, loaded);
     this.groups.update(groups => groups.filter(item => item !== loaded));
     this.totalGroups.set(this.groups().length);
     if (this.groups().length === 0) {
@@ -405,12 +421,16 @@ export class CullingStore {
 
   /** Undo remains valid across batch requests, but never across visits or accounts. */
   restoreStackSuggestion(group: CullingGroup): void {
-    if (!this.stackVisitCurrent() || this.completedSuggestions.get(group) !== this.visitEpoch) return;
-    if (!this.groups().some(item => this.suggestionIdentity(item) === this.suggestionIdentity(group))) {
-      this.groups.update(groups => [group, ...groups]);
+    const provenance = this.suggestionProvenance.get(group);
+    if (!this.stackVisitCurrent() || !provenance || provenance.epoch !== this.visitEpoch
+      || provenance.membership !== this.suggestionMembership(group)) return;
+    const completed = this.completedSuggestions.get(provenance);
+    if (!completed || this.suggestionMembership(completed) !== provenance.membership) return;
+    if (!this.groups().some(item => this.suggestionIdentity(item) === this.suggestionIdentity(completed))) {
+      this.groups.update(groups => [completed, ...groups]);
     }
     this.totalGroups.set(this.groups().length);
-    this.completedSuggestions.delete(group);
+    this.completedSuggestions.delete(provenance);
   }
 
   constructor() {
@@ -1530,7 +1550,13 @@ export class CullingStore {
         selectionsChanged = true;
       }
       if (photos.length === 0) emptied.push(this.groupKey(group));
-      return { ...group, photos, count: photos.length };
+      const updated = { ...group, photos, count: photos.length };
+      const provenance = this.suggestionProvenance.get(group);
+      // Mark refreshes may replace display rows, but only unchanged membership keeps a captured decision valid.
+      if (provenance && provenance.membership === this.suggestionMembership(updated)) {
+        this.suggestionProvenance.set(updated, provenance);
+      }
+      return updated;
     });
     this.groups.set(next);
     if (selectionsChanged) this.selectionsMap.set(selections);
