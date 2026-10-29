@@ -17,15 +17,8 @@ import { CardActionsService } from './card-actions.service';
   standalone: true,
   imports: [MatButtonModule, MatCheckboxModule, MatIconModule, MatDialogModule, MatTooltipModule, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.Eager,
-  // Same title-row phantom flex item as the shortcuts/help dialogs: the
-  // Material title's content:"" ::before would eat the row gap.
-  styles: `
-    h2[mat-dialog-title]::before {
-      content: none;
-    }
-  `,
   template: `
-    <h2 mat-dialog-title class="!flex !items-center !gap-3 !m-0 !px-6 !pt-5 !pb-4 before:content-none">
+    <h2 mat-dialog-title class="!flex !items-center !gap-3 !m-0 !px-6 !pt-5 !pb-4 before:!content-none">
       <span class="w-9 h-9 rounded-lg bg-[var(--mat-sys-primary-container)] flex items-center justify-center shrink-0">
         <mat-icon aria-hidden="true" class="!text-xl !leading-none !w-5 !h-5 text-[var(--mat-sys-on-primary-container)]">tune</mat-icon>
       </span>
