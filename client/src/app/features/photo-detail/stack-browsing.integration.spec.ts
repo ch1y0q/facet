@@ -40,6 +40,8 @@ describe('manual stack browsing through rendered viewer, Router and HTTP', () =>
     http.match('/api/filter_options/metric_ranges').forEach(request => request.flush({ ranges: {} }));
     http.match('/api/photos/keeper_hints').forEach(request => request.flush({}));
     http.match(request => request.url === '/api/photo/set').forEach(request => request.flush({ kind: null, members: [] }));
+    // local/test's face layer asks for each photo's faces; this branch-only line keeps verify() strict about the rest.
+    http.match(request => request.url === '/api/photo/faces').forEach(request => request.flush({ faces: [] }));
   };
   const render = async () => {
     harness.detectChanges();

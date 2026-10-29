@@ -638,6 +638,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                 <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility_off</mat-icon>
                 <span id="notice-text-hidden" class="flex-1">
                   {{ I18N.gallery.hidden_banner.message | translate:{ n: store.hiddenSummary().total } }}
+                  @if (hiddenReasons()) { ({{ hiddenReasons() }}) }
                 </span>
                 <button mat-button class="!min-w-0" (click)="store.showAllHidden()">
                   {{ I18N.gallery.hidden_banner.show_all | translate }}
@@ -1201,6 +1202,20 @@ export class GalleryComponent implements OnInit, OnDestroy {
     });
   });
 
+  /** Why photos are hidden, in words: "287 burst repeat(s), 23 blink(s)...". */
+  protected readonly hiddenReasons = computed(() => {
+    this.i18n.translations();
+    const h = this.store.hiddenSummary();
+    const reasons: [number, string][] = [
+      [h.bursts, I18N.gallery.hidden_banner.reason_bursts],
+      [h.blinks, I18N.gallery.hidden_banner.reason_blinks],
+      [h.duplicates, I18N.gallery.hidden_banner.reason_duplicates],
+      [h.brackets, I18N.gallery.hidden_banner.reason_brackets],
+      [h.panoramas, I18N.gallery.hidden_banner.reason_panoramas],
+    ];
+    return reasons.filter(([n]) => n > 0).map(([n, key]) => this.i18n.t(key, { n })).join(', ');
+  });
+
   /** Show the hidden-photos banner when filters are hiding rows and at least one is on. */
   readonly showHiddenBanner = computed(() => {
     const f = this.store.filters();
@@ -1257,8 +1272,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
   }
 
   /** The review-progress card: on in the user menu, counts loaded, and not closed in this tab. */
+  /** An empty scope has nothing to review, so it gets no "0 of 0" card. */
   protected readonly reviewProgressShown = computed(() =>
-    this.store.reviewProgressVisible() && !!this.store.reviewProgress() && !this.noticeClosed('review_progress'));
+    this.store.reviewProgressVisible() && !!this.store.reviewProgress()?.total && !this.noticeClosed('review_progress'));
   protected readonly reviewBookmarkShown = computed(() => !!this.store.reviewBookmark() && !this.noticeClosed('review_bookmark'));
   protected readonly hiddenNoticeShown = computed(() => this.showHiddenBanner() && !this.noticeClosed('hidden'));
   protected readonly restoreNoticeShown = computed(() => this.canRestoreHidden() && !this.noticeClosed('restore_hidden'));

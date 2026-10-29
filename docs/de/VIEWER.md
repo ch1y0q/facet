@@ -68,7 +68,7 @@ Zwei Passwörter steuern den Zugriff:
 - **`viewer.password`** entscheidet, wer *stöbern* darf. Leer heißt: Jeder kann die gesamte Bibliothek durchsuchen. Ist es gesetzt, müssen sich Benutzer zuerst anmelden.
 - **`viewer.edition_password`** ist für jede Bearbeitung erforderlich: Bewertungen, Favoriten und Ablehnungen, Aussortieren, Alben, Personen- und Gesichtsverwaltung, Vergleichsmodus, Gewichts- und Prioritätsänderungen sowie Exporte. Leer (der ausgelieferte Standard) macht die Installation **schreibgeschützt**: Bearbeitungen werden mit `403` abgelehnt („Set viewer.edition_password to enable editing“).
 
-KI-Erzeugung auf Anfrage (Bildbeschreibungen, VLM-Kritiken) braucht ebenfalls das Bearbeitungspasswort. Ohne es erhalten Sie nur, was bereits im Cache liegt (`source: "edition_required"` oder `vlm_available: false`). Ohne Bearbeitungspasswort blendet die Galerie zudem vorhandene Sterne-, Favoriten- und Ablehnungs-Badges aus, wie bei Betrachtern ohne Edition auf einer passwortgeschützten Installation.
+KI-Erzeugung auf Anfrage (Bildbeschreibungen, VLM-Kritiken) braucht ebenfalls das Bearbeitungspasswort. Ohne es erhalten Sie nur, was bereits im Cache liegt (`source: "none"` oder `vlm_available: false`). Ohne Bearbeitungspasswort blendet die Galerie zudem vorhandene Sterne-, Favoriten- und Ablehnungs-Badges aus, wie bei Betrachtern ohne Edition auf einer passwortgeschützten Installation.
 
 Starten Sie den Viewer nach dem Setzen von `viewer.edition_password` neu: Die Konfiguration wird nicht im laufenden Betrieb neu geladen.
 
@@ -139,8 +139,26 @@ python database.py --migrate-user-preferences --user alice
 
 Die Textsuche der Galerie behält Unicode-Wörter bei und behandelt Satzzeichen in Dateinamen als Wortgrenzen. So sucht `IMG_0042.JPG` gemeinsam nach den Präfixen `IMG`, `0042` und `JPG`. Kyrillische und CJK-Begriffe funktionieren. FTS-Operatoren wie `OR` werden als wörtliche Begriffe behandelt.
 
+### Tabs der Seitenleiste
+
+Die Filter-Seitenleiste gruppiert ihre Abschnitte in fünf Tabs, die als Symbole angezeigt werden (Name per Mouseover). Ein kleines Abzeichen am Symbol zählt die aktiven Filter im Tab, und der Tab behält seinen Namen für Screenreader („Durchsuchen, 2 aktiv“). Der zuletzt verwendete Tab wird in diesem Browser gespeichert (`facet_sidebar_tab`). Durchsuchen, Qualität und Motiv haben einklappbare Bereiche, die sich jeweils merken, ob sie geöffnet sind; Prüfen und Anzeige haben keine.
+
+| Tab | Abschnitte |
+|-----|-----------|
+| **Durchsuchen** | Semantische Suche, Personen, Zeitraum, Inhalt, Alben, Standort, Ordner, Ausrüstung |
+| **Prüfen** | Je eine Menüzeile für die Entscheidung, dann für Serien, Duplikate, Blinzler, Belichtungsreihen, Panoramen und Abgelehnte, eine Sternebewertung, die Schalter Favoriten und Monochrom und für Editoren *Manuelle Gesichter prüfen* und *Panorama-Korrekturen* |
+| **Qualität** | Qualität, Farbe & Qualität, Erweiterte Qualität, Technik, Belichtung & Bereich (wie gut das Bild ist) |
+| **Motiv** | Gesichtsmetriken, Komposition, Motiverkennung, Momente (was im Bild zu sehen ist) |
+| **Anzeige** | Ansicht (Kartengröße, Layout, schnelles Scrollen, Kartenaktionen) |
+
+Kopfzeile, **Filter suchen**, der Hinweis für Smart-Alben und die Dateinamensuche bleiben auf jedem Tab über den Tabs, daher funktioniert `/` von jedem aus. Eine Eingabe in **Filter suchen** blendet die Tabs aus und listet die passenden Regler aus allen Tabs.
+
+Die Zahl neben **Filter** ist die Summe aller aktiven Filter. Ein Min/Max-Bereich zählt einmal, ebenso der Ortsfilter. Die Dateinamensuche und *Ähnlich zu* haben keinen Abschnitt und werden nur in dieser Summe gezählt, ebenso ein Filter auf eine Metrik, die diese Installation ausblendet, damit **Filter zurücksetzen** ihn trotzdem löschen kann. **Filter zurücksetzen** (mit Tooltip) erscheint neben der Zahl, solange mindestens ein Filter aktiv ist; das schlichte **X** ganz rechts schließt die Seitenleiste nur auf schmalen Bildschirmen.
+
+Im Tab Prüfen sind die Entscheidung und jede Gruppe (zum Beispiel Duplikate) eine Zeile mit ihrem aktuellen Wert (etwa Ausgeblendet, Eingeblendet oder Nur diese), die ein Menü mit Auswahlmöglichkeiten samt einzeiliger Erklärung öffnet. Eine Zeile mit ihrem Standardwert zählt nicht zum Abzeichen des Tabs oder der Kopfzeile. *Nur* und *Ausgeblendet* schließen sich gegenseitig aus. Solange eine Entscheidung gewählt ist, ist Abgelehnt gesperrt, und sein Tooltip nennt den Grund. Die Sterne-Schaltfläche setzt eine Mindestbewertung: Jeder Klick erhöht sie um eins, und der Klick nach 5 oder nach einem aus einem Link übernommenen Maximum löscht sie. Sie teilt sich eine Zeile mit den reinen Symbol-Schaltern Favoriten und Monochrom, die Tooltips haben. In den Tabs Qualität und Motiv erklärt das Überfahren des Namens einer Einstellung, was bewertet wird und von welchem Modell, und auch die Steuerelemente im Tab Prüfen haben Tooltips.
+
 <details><summary>Filter-Seitenleiste — alle Abschnitte aufgeklappt (zum Anzeigen klicken)</summary>
-<p align="center"><img src="screenshots/filter-sidebar-full.jpg" alt="Filter-Seitenleiste mit allen aufgeklappten Abschnitten" width="360"></p>
+<p align="center"><img src="../screenshots/filter-sidebar-full.jpg" alt="Die fünf Tabs der Filter-Seitenleiste nebeneinander: Durchsuchen, Prüfen, Qualität, Motiv und Anzeige" width="900"></p>
 </details>
 
 ### Primärfilter
@@ -390,7 +408,7 @@ Antwortfelder und Statuscodes: [API.md](../API.md).
 - **Beste der Belichtungsreihe** — Nur die Basisbelichtung jeder Belichtungsreihe anzeigen. **Standardmäßig an.** Unabhängig von „Beste aus Serie“, da das Serien-Leitfoto einer Reihe nicht immer ihre Basisbelichtung ist.
 - **Beste des Panoramas** — Nur das mittlere Bild jedes Panoramas oder HDR-Panoramas anzeigen. **Standardmäßig an.**
 - **Endloses Scrollen** — Fotos werden beim Scrollen geladen
-- **Schnelles Scrollen (virtualisiert)** — Rendert nur Zeilen nahe dem Sichtbereich, sodass tiefes Scrollen schnell bleibt. Standardmäßig an. Schalten Sie es im Anzeige-Abschnitt der Seitenleiste aus, falls Layoutprobleme auftreten. Der Rastermodus mit angezeigten Details rendert stets vollständig. In localStorage gespeichert (`facet_virtual_scroll`).
+- **Schnelles Scrollen (virtualisiert)** — Rendert nur Zeilen nahe dem Sichtbereich, sodass tiefes Scrollen schnell bleibt. Standardmäßig an. Schalten Sie es im Tab „Anzeige“ der Seitenleiste aus, falls Layoutprobleme auftreten. Der Rastermodus mit angezeigten Details rendert stets vollständig. In localStorage gespeichert (`facet_virtual_scroll`).
 
 ### Ähnliche Fotos
 
@@ -446,7 +464,7 @@ Die Aufnahmen eines Panoramas sollen zusammengefügt und die einer Belichtungsre
 - Verschwindet eine markierte Aufnahme oder verliert ihre Belichtungs- oder Datumsdaten, wartet das ganze Set, bis jedes Mitglied wieder die Voraussetzungen erfüllt.
 - **Markieren hat Vorrang vor der Panorama-Erkennung**: Ein erkanntes Panorama, das markierte Aufnahmen enthält, wird beim nächsten Lauf verworfen.
 
-**Korrekturen gelten beim nächsten Erkennungslauf.** Eine Korrektur wird sofort gespeichert und als ausstehend angezeigt: ein Uhr-Abzeichen auf der Galeriekachel, ein Chip *Korrektur ausstehend* im Aussortieren. Die Auswahlseite zeigt ein Banner mit der Schaltfläche **Erkennung erneut ausführen**. Der Filter *Panorama-Korrekturen* der Seitenleiste (nur Edition, unter Verfeinern) listet ausstehende Korrekturen bibliotheksweit auf. *Korrektur verwerfen* entfernt eine später wieder.
+**Korrekturen gelten beim nächsten Erkennungslauf.** Eine Korrektur wird sofort gespeichert und als ausstehend angezeigt: ein Uhr-Abzeichen auf der Galeriekachel, ein Chip *Korrektur ausstehend* im Aussortieren. Die Auswahlseite zeigt ein Banner mit der Schaltfläche **Erkennung erneut ausführen**. Der Filter *Panorama-Korrekturen* der Seitenleiste (nur Edition, im Tab Prüfen) listet ausstehende Korrekturen bibliotheksweit auf. *Korrektur verwerfen* entfernt eine später wieder.
 
 **Einstellen.** Der Tab Panoramen unter Vergleichen enthält die kalibrierten Schwellenwerte: Mindestanzahl Aufnahmen, minimaler Schwenk, längste Lücke und HDR-Belichtungsspanne. Das Speichern ändert nichts, bis Sie die Erkennung erneut ausführen (die Schaltfläche steht neben Speichern). Siehe [CONFIGURATION.md](CONFIGURATION.md#panorama-erkennung).
 
@@ -460,9 +478,13 @@ Die Auswahlliste zeigt Personen mit Gesichts-Thumbnails. Ein Klick filtert die G
 
 ### Personengalerie
 
-Klicken Sie auf den Namen einer Person, um alle ihre Fotos unter `/person/<id>` zu sehen.
+Klicken Sie auf den Namen einer Person, um alle ihre Fotos unter `/person/<id>` zu sehen. Auf der Seite „Personen verwalten“ öffnet ein Doppelklick auf eine Personenkarte (benannt, unbenannt in „Zu benennen“ oder ignoriert) die Galerie mit den Fotos dieser Person; Doppelklicks auf Namensfeld, Kontrollkästchen und Schaltflächen bleiben diesen vorbehalten.
+
+**Aus der Galerie benennen.** Ist die Galerie nach einer Person gefiltert (`?person_id=95`), zeigt deren Chip in der Zeile der aktiven Filter ihr Gesicht und ihren Namen, oder **Unbenannt**, als Hinweis umrandet; sein × (**Aus dem Filter entfernen**) nimmt die Person aus dem Filter. Für Bearbeitungsbenutzer stehen vor dem × zwei Schaltflächen. **Umbenennen** (der Stift) benennt die Person direkt um: Das Namensfeld zeigt „Wer ist das? Namen eingeben oder wählen“ bei einer unbenannten und „Umbenennen oder zusammenführen mit…“ bei einer benannten Person, seine Vorschläge zeigen zu jeder Person Gesicht, Namen und Fotoanzahl, und **Speichern** oder **Abbrechen** schließt es (Escape bricht ebenfalls ab). Der Name wird immer zuerst gespeichert (`POST /api/persons/{id}/rename`); tragen andere Gruppen ihn bereits (Groß-/Kleinschreibung und Leerzeichen werden ignoriert, ob sie unter den Vorschlägen sind oder nicht), bietet der Chip anschließend dieselbe Zusammenführung an wie die Seite „Personen verwalten“ (siehe **Umbenennen** unten), und nach einer Zusammenführung wechselt die Galerie zur verbleibenden Person. **Mehr** (⋮) öffnet das Personenmenü: **Alle Fotos von {name} ansehen**, **Weitere Gesichter von {name} finden** und **Ignorieren** (**Wiederherstellen** bei einer ignorierten Person). Halten die Ausblendoptionen der Galerie einige Fotos der Person verborgen, nennen die Hinweise der Galerie deren Zahl, aufgeschlüsselt nach Serienbild-, Blinzel-, Duplikat-, Belichtungsreihen- und Panoramafotos, damit Sie sie vor dem Benennen einblenden.
 
 ### Seite „Personen verwalten“
+
+Im Bearbeitungsmodus hat die Seite zwei Reiter, **Benannt (N)** und **Zu benennen (N)**, und öffnet immer auf **Benannt**. **Zu benennen** listet die unbenannten Cluster, jeweils mit einem Namensfeld; **Benannt** enthält die benannten Personen, mit den ignorierten in einem einklappbaren Abschnitt **Ignoriert** am Ende. Schreibgeschützte Benutzer sehen nur das Raster der benannten Personen. Namensvorschläge zeigen hier wie am Personen-Chip der Galerie und im Gesichtsmenü des Fotos zu jeder Person Gesicht, Namen und Fotoanzahl. Auf **Zu benennen** bietet das Sortiermenü **Gesichteranzahl** und **Neueste**. Ist niemand mehr zu benennen, zeigt der Reiter „Alle sind benannt. Neue Gesichter, die einen Namen brauchen, erscheinen hier.“
 
 Öffnen Sie sie über die Schaltfläche in der Kopfzeile oder `/persons`:
 
@@ -470,9 +492,14 @@ Klicken Sie auf den Namen einer Person, um alle ihre Fotos unter `/person/<id>` 
 |--------|--------|
 | **Zusammenführen** | Quellperson wählen, Zielperson anklicken, bestätigen |
 | **Löschen** | Auf die Löschen-Schaltfläche der Personenkarte klicken |
-| **Umbenennen** | Auf den Namen der Person klicken, um ihn direkt zu bearbeiten |
+| **Umbenennen** | Auf den Namen der Person klicken, um ihn direkt zu bearbeiten. Tragen andere Gruppen den Namen bereits (Groß-/Kleinschreibung und umgebende Leerzeichen ignoriert), zeigt eine Bestätigung je Person eine Kachel (Gesicht, Name, Gesichterzahl), alle ausgewählt, und markiert die Person, die bestehen bleibt: die größte der ausgewählten, die ihre Schreibweise behält. Heben Sie die Auswahl eines Namensvetters auf oder brechen Sie ab, um ihn getrennt zu halten. Eine Zusammenführung lässt sich nicht rückgängig machen |
 | **Aufteilen** | Die Gesichter einer Person öffnen, eine Teilmenge wählen und als neue Person abspalten |
-| **Ausblenden** | Ein Cluster aus der Personenliste, den Filtern und den Zusammenführungsvorschlägen ausblenden (umkehrbar) |
+| **Weitere Gesichter finden** | Die Suchschaltfläche auf einer Personenkarte oder **Weitere Gesichter von {name} finden** in einem Personenmenü listet Gesichter, die dieser Person ähneln, beste Treffer zuerst, verglichen mit dem Zentroid der Person (`GET /api/person/{id}/possible_faces`). Unter **Welche Gesichter einbeziehen** zeigen drei Chips jeweils ihre Anzahl: **Ohne Gruppe** und **Unbenannte Gruppen**, standardmäßig an, und **Benannte Personen**, aus. Ein Gesicht, das einer benannten Person gehört, trägt ein Abzeichen **von {name}**, und wird eines angehakt, warnt der Dialog, dass Hinzufügen es zu dieser Person verschiebt. Über den Gesichtern listet **Ähnliche Gruppen** andere Cluster, deren Zentroid dem dieser Person ähnelt (die unbenannten, dazu die benannten, solange **Benannte Personen** an ist); jede zeigt ihr Bild, ihren Namen oder **Unbenannte Gruppe**, ihre Gesichterzahl und **{percent} % ähnlich**, mit **Alle zusammenführen**, um die ganze Gruppe in diese Person zu übernehmen. Bei einer benannten Gruppe wird zuerst nachgefragt, und eine Zusammenführung lässt sich nicht rückgängig machen. Jedes Gesicht trägt **Stark** (ab 50 % Ähnlichkeit) oder **Möglich** samt Prozentwert, und **Wie ähnlich** setzt die Schwelle: eine Signalbalken-Schaltfläche mit `≥NN%`, die das Stufenmenü öffnet, mit fünf Stufen, **Sehr streng** 60 %, **Streng** 50 %, **Normal** 35 % (Standard), **Locker** 25 % und **Sehr locker** 20 %. Erfüllt kein Gesicht die Schwelle, zeigt der Dialog „Keine Gesichter ähneln {name} (am nächsten: N %).“ und bietet **Locker versuchen** oder **Benannte Personen einbeziehen** an. Müsste eine Suche zu viele Gesichter vergleichen, durchsucht sie nur Gesichter ohne Gruppe; sind es dann noch zu viele, fragt sie nach einem **Jahr** für die Suche. **Alle starken auswählen**, Umschalt-Klick für einen Bereich und die Leertaste auf einem fokussierten Gesicht beschleunigen das Anhaken; die Schaltfläche Hinzufügen zeigt, wie viele angehakt sind. Das Hinzufügen berechnet den Zentroid neu, sodass die nächste Runde nach dem gerade Bestätigten sortiert wird; nicht angehakte Gesichter werden nicht erneut angeboten, solange der Dialog offen ist |
+| **Ignorieren** | Ein Cluster ignorieren (Personal, Fremde): die ⊘-Schaltfläche einer Karte, auch auf „Zu benennen“-Karten. Ignorierte Personen verschwinden aus Liste, „Zu benennen“, Filtern, Zusammenführungsvorschlägen und Gesichtersuche und stehen im einklappbaren Abschnitt **Ignoriert** am Ende des Reiters **Benannt**, mit **Wiederherstellen** (`GET /api/persons?hidden_only=true`). Es nutzt dasselbe `is_hidden`-Flag wie bisher. Ignorieren wirkt sofort und zeigt 10 Sekunden lang eine Benachrichtigung mit **Rückgängig**, hier und in jedem Personenmenü. |
+
+### Gesichter auf dem Foto
+
+In der Fotoansicht erscheint ein Rahmen um jedes erkannte Gesicht, solange der Zeiger über dem Foto ist; beim Überfahren eines Gesichts erscheint dessen Name (roter Rahmen: noch unbenannt). Die Rahmen folgen Zoom und Verschieben, und Ziehen oder Doppelklicken auf einem Gesicht verschiebt weiterhin bzw. setzt den Zoom zurück. Der Rahmen eines unbenannten Gesichts ist zusätzlich gestrichelt, damit er nicht allein über die Farbe erkennbar ist, und jeder Rahmen hat eine dunkle Kontur, damit er auf jedem Hintergrund sichtbar bleibt. Sofern die Rahmen nicht auf **Aus** stehen, wechseln Sie mit der Tastatur per Tab zwischen den Gesichtern, die jeweils mit ihrem Namen (oder als unbekanntes Gesicht) angesagt werden, und öffnen mit Eingabe oder Leertaste deren Menü. Auf einem Touchscreen öffnet ein Tippen das Menü eines Gesichts nur, während die Rahmen angezeigt werden (die Rahmen stehen auf **Immer**, oder, sofern sie nicht auf **Aus** stehen, das Gesicht gehört der Person, auf die die Galerie gefiltert ist); sonst bewirkt ein Tippen auf das Foto beim Gesicht nichts. Im Bearbeitungsmodus öffnet ein Klick auf ein Gesicht ein Menü: **Person ändern…** (oder **Dieses Gesicht benennen…**), um eine vorhandene Person zu wählen oder einen neuen Namen einzugeben, **Weitere Gesichter von … finden** für diese Person und **Nicht …**, um genau dieses Gesicht von der Person zu lösen (`POST /api/face/{id}/unassign`); ihre übrigen Gesichter im Foto bleiben ihr zugeordnet. Gesichter, deren gespeicherte Abmessungen nicht vertrauenswürdig sind, werden nicht gezeichnet. Die Rahmen stammen aus `GET /api/photo/faces`, das für jedes Gesicht ein auf das Bild normiertes `box` liefert. Jedes Gesicht, das zu einer Person gehört, ob benannt oder nicht, bietet außerdem **Alle Fotos von … ansehen** (oder **Alle Fotos dieser Gruppe ansehen**), das die Galerie auf diese Person gefiltert öffnet; das funktioniert auch schreibgeschützt. Eine Schaltfläche in der Werkzeugleiste schaltet die Gesichtsrahmen reihum durch drei Zustände, pro Browser gespeichert: **Aus** (keine Rahmen, Gesichter lassen sich weder anklicken noch fokussieren), **Beim Überfahren** (die Voreinstellung, wie oben beschrieben) und **Immer** (alle Rahmen und Namen bleiben sichtbar). Ist die Galerie auf eine Person gefiltert, bleiben deren Gesichter mit dickerer Linie umrahmt, außer die Rahmen stehen auf **Aus**. **Als Bild von … verwenden** macht das angeklickte Gesicht zum Kartenbild; eine Person, die Gesichter ohne Bild erhält, bekommt automatisch das sicherste. Ist die Galerie auf eine Person gefiltert, umrahmt jedes Vorschaubild deren Gesicht rot, damit vor dem Benennen klar ist, welches Gesicht ein Cluster meint. Ein Klick auf den Avatar einer Person in der Liste **Personen** der rechten Leiste öffnet dasselbe Menü wie ein Klick auf den Rahmen dieses Gesichts, auch wenn die Rahmen auf **Aus** stehen; **Alle Fotos von … ansehen** in diesem Menü öffnet die Galerie.
 
 ### Ein übersehenes Gesicht markieren
 
@@ -616,17 +643,17 @@ Der Dialog unterscheidet außerdem ein Foto, das *noch nicht bewertet* ist, von 
 
 ### VLM-Kritik `[GPU]` `[16gb/24gb]`
 
-Nutzt das konfigurierte VLM (Qwen3.5-2B oder Qwen3.5-4B) für eine kontextbezogene Kritik. Erfordert das Profil 16gb oder 24gb, `viewer.features.show_vlm_critique` auf `true` (der Standard) und eine Bearbeitungssitzung zum Erzeugen. Ohne Edition wird nur eine zwischengespeicherte Kritik gezeigt, und `vlm_available` ist `false`.
+Nutzt das konfigurierte VLM (Qwen3.5-2B oder Qwen3.5-4B) für eine kontextbezogene Kritik. Erfordert das Profil 16gb oder 24gb, `viewer.features.show_vlm_critique` auf `true` (der Standard) und eine Bearbeitungssitzung zum Erzeugen. Ohne Edition wird nur eine zwischengespeicherte Kritik gezeigt, und `vlm_available` ist `false`. Der Dialog erzeugt über `POST /api/critique/vlm` (nur Edition; gleichzeitige Anfragen für ein Foto teilen sich eine einzige Erzeugung); `GET /api/critique` liest nur den Cache und erzeugt, übersetzt oder schreibt nie.
 
 - Der Prompt (`critique.vlm`) enthält die Wertungsaufschlüsselung, gespeicherte und neu berechnete Wertungen, erkannte Bedingungen und EXIF.
-- Die Antwort lautet **Beobachtung / Bewertung / Vorschläge**. Sie wird pro Foto zwischengespeichert (`photos.vlm_critique`), bei Bedarf übersetzt, und **Neu erzeugen** berechnet sie neu.
+- Die Antwort lautet **Beobachtung / Bewertung / Vorschläge**. Sie wird pro Foto zwischengespeichert (`photos.vlm_critique`), übersetzt, wenn eine Bearbeitungssitzung sie in der Zielsprache öffnet (dann gespeichert und danach unverändert ausgeliefert), und **Neu erzeugen** berechnet sie neu. Ohne Bearbeitungssitzung sehen Sie den unübersetzten Text, es sei denn, es liegt bereits eine gespeicherte Übersetzung vor.
 - Sie läuft auf dem gespeicherten Vorschaubild, daher funktionieren RAW-Dateien.
 
 **Visuelles „Warum diese Bewertung“-Overlay.** Ist `viewer.features.show_saliency_overlay` an (Standard `true`), hat der Kritikdialog **Overlay anzeigen**. Es zeichnet die BiRefNet-Salienzkarte als Heatmap (`GET /api/saliency_overlay`) sowie Gesichtsrahmen und Augenmarker aus gespeicherten Landmarken (`GET /api/photo/face_markers`). Rahmen sind grün bei offenen Augen, bernsteinfarben bei einem Blinzeln. Die Heatmap hat Vorschaubild-Auflösung und ist daher ungefähr. Der Schalter ist bei Profilen ausgeblendet, die keine Salienzmaske erzeugen können.
 
 ## KI-Bildbeschreibung `[GPU]` `[16gb/24gb]` `[Edition]`
 
-Erhalten Sie für jedes Foto eine Bildunterschrift in natürlicher Sprache. Eine Bearbeitungssitzung erzeugt sie bei der ersten Anfrage; danach liegt sie in der Spalte `caption` im Cache. Bearbeiten Sie Bildunterschriften in der Fotodetailansicht (Bearbeitungsmodus). Eine offene, schreibgeschützte Installation erzeugt nie eine.
+Erhalten Sie für jedes Foto eine Bildunterschrift in natürlicher Sprache. Eine Bearbeitungssitzung erzeugt sie bei der ersten Anfrage; danach liegt sie in der Spalte `caption` im Cache. Bearbeiten Sie Bildunterschriften in der Fotodetailansicht (Bearbeitungsmodus). Eine offene, schreibgeschützte Installation erzeugt nie eine. `POST /api/caption` erzeugt (und übersetzt) sie; `GET /api/caption` liefert nur die gespeicherte Bildunterschrift oder Übersetzung und erzeugt, übersetzt oder schreibt nie.
 
 Massenerzeugung und Übersetzung über die CLI:
 
@@ -1391,7 +1418,7 @@ Facet scannt JPEG XL (`.jxl`) mit der Kernabhängigkeit `imagecodecs`, die in St
 
 ### Gespeicherte manuelle Gesichtsmarkierungen prüfen
 
-Finden Sie Fotos, deren gespeicherte Gesichtsrechtecke eine Prüfung brauchen. Aktivieren Sie in den Verfeinern-Filtern der Galerie **Manuelle Gesichter brauchen Prüfung** (Editoren). Öffnen Sie den Gesichtseditor eines Fotos und passen Sie jedes markierte Rechteck an und speichern Sie es, oder löschen Sie es. Das Foto verlässt dann die Liste. Der Filter funktioniert in intelligenten Alben und bei Auswahlen der ganzen Ansicht und erscheint als entfernbarer Chip.
+Finden Sie Fotos, deren gespeicherte Gesichtsrechtecke eine Prüfung brauchen. Aktivieren Sie im Tab Prüfen der Galerie-Seitenleiste **Manuelle Gesichter prüfen** (Editoren). Öffnen Sie den Gesichtseditor eines Fotos und passen Sie jedes markierte Rechteck an und speichern Sie es, oder löschen Sie es. Das Foto verlässt dann die Liste. Der Filter funktioniert in intelligenten Alben und bei Auswahlen der ganzen Ansicht und erscheint als entfernbarer Chip.
 
 - Die Liste spiegelt den letzten Scan oder die letzte Editor-Prüfung, keine Live-Dateiüberwachung. Scans prüfen Fotos mit manuellen Markierungen auch bei ausgeschalteter Gesichtserkennung.
 - Das Öffnen des Editors prüft das Original erneut und ist maßgeblich.

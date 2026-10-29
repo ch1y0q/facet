@@ -1533,6 +1533,16 @@ describe('GalleryComponent', () => {
       expect(mockStore.showAllHidden).toHaveBeenCalled();
     });
 
+    it('the hidden-photos notice lists only the reasons with a non-zero count', () => {
+      const text = stack(render())!.querySelector('[role="status"]')!.textContent!;
+      const reasons = I18N.gallery.hidden_banner;
+      expect(text).toContain(reasons.reason_bursts);
+      expect(text).toContain(reasons.reason_brackets);
+      expect(text).not.toContain(reasons.reason_blinks);
+      expect(text).not.toContain(reasons.reason_duplicates);
+      expect(text).not.toContain(reasons.reason_panoramas);
+    });
+
     it('renders the restore twin once Show all has been used', () => {
       mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
       mockStore.hiddenFiltersStash.set({
@@ -4973,6 +4983,11 @@ describe('GalleryComponent', () => {
     it('renders nothing while there is no progress snapshot', () => {
       const host = render();
       expect(host.querySelector('section progress')).toBeNull();
+    });
+
+    it('shows no review notice when the scope holds no photos', () => {
+      mockStore.reviewProgress.set({ total: 0, undecided: 0, kept: 0, rejected: 0 });
+      expect(render().querySelector('[data-review-progress]')).toBeNull();
     });
 
     it('renders the decision counts and completion for the scope', () => {

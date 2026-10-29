@@ -33,7 +33,8 @@ Developers: `cd client && npm run gen:api` regenerates the client types in `clie
 | `GET /api/type_counts?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Photo counts per type for the sidebar chips (`hide_*` fallback applies) |
 | `GET /api/similar_photos/{path}` | Similar photos (modes: `visual`, `color`, `person`). Errors: `422` for `limit` outside 1–500, negative `offset`, or `min_similarity` outside 0–1 |
 | `GET /api/search?q=&limit=&threshold=&scope=` | Semantic text-to-image search; `scope=text` = OCR/caption text only. Omitted `threshold` uses the active encoder's `models.*.search_threshold_percent` (`/api/config`'s `search_threshold_default`); an explicit value, including `0.0`, overrides it. Only used when an embedding search runs (`scope != 'text'`) |
-| `GET /api/critique?path=&mode=&refresh=` | AI critique (rule-based or VLM). `refresh=true` regenerates the cached VLM critique (edition session only; otherwise `vlm_available: false`) |
+| `GET /api/critique?path=&mode=&lang=` | AI critique (rule-based, or with `mode=vlm` plus the cached VLM critique). Read-only: never generates, translates or writes; `vlm_available` says whether `POST /api/critique/vlm` can produce one for this caller |
+| `POST /api/critique/vlm` | Generate and store the VLM critique (edition mode). Body: `path`, `lang`, `refresh` (regenerate a cached one). Concurrent requests for one photo share a single generation |
 | `GET /api/ranker/status` | Personal-ranker status for the "My Taste" sort (learned coverage %, held-out accuracy) |
 | `GET /api/config` | Viewer configuration |
 
@@ -88,10 +89,10 @@ All endpoints here use the [batch target contract](#conventions).
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/persons` | List all persons. Search also matches ASCII decimal IDs; non-ASCII digits such as `١` or `１２` match names literally |
+| `GET /api/persons` | List all persons. Search also matches ASCII decimal IDs; non-ASCII digits such as `١` or `１２` match names literally. `named_only=true` leaves out unnamed persons (the persons page does this while Needs naming is shown); `hidden_only=true` lists only the ignored (hidden) ones, except under `sort=assignment`, where it is ignored: hidden persons are never assignment candidates |
 | `POST /api/persons` | Create a person, optionally attaching faces (edition-gated). Body `{name, face_ids}` |
-| `GET /api/persons/needs_naming?min_faces=N` | Unnamed auto-clustered persons with `face_count >= N` (default `viewer.persons.needs_naming_min_faces`) |
-| `POST /api/persons/{id}/rename` | Rename a person |
+| `GET /api/persons/needs_naming?min_faces=N` | Unnamed (no or blank name), non-hidden persons with `face_count >= N`, from clustering or a split (default `viewer.persons.needs_naming_min_faces`), largest first and unpaginated |
+| `POST /api/persons/{id}/rename` | Rename a person (edition-gated). Body `{name}`; an empty name clears it. Response `{success, name, face_count, same_name_persons}`, where `face_count` is the renamed person's own stored count (the same measure as each namesake's, so the largest merge target is picked like with like) and `same_name_persons` lists `{id, name, face_count}` for the other visible, non-hidden persons with the same name ignoring case and surrounding spaces, largest first, so the viewer can offer a merge. Nothing is merged |
 | `POST /api/persons/{id}/assign_faces` | Bulk-attach faces; emptied old persons are auto-deleted (edition-gated). Body `{face_ids, tolerant?, only_unassigned?}`. `tolerant: true` assigns what it can and reports `missing`, `already`, `skipped_model`, `skipped_hidden`, `skipped_assigned`, `assigned_count`. `only_unassigned: true` skips faces owned by another person and requires `tolerant: true` (else `422`) |
 | `POST /api/persons/{id}/split` | Split some faces into a new person (edition-gated). Body `{face_ids, name}` |
 | `POST /api/persons/{id}/hide` | Hide a person from the list, filters and merge suggestions |
@@ -132,7 +133,8 @@ All endpoints here use the [batch target contract](#conventions).
 |----------|-------------|
 | `GET /api/memories?date=` | Photos taken on this date in previous years |
 | `GET /api/memories/check` | Check if memories exist for a date |
-| `GET /api/caption?path=` | Get the AI caption; an edition session generates it on first request (otherwise `source: "edition_required"`) |
+| `GET /api/caption?path=&lang=` | Get the stored AI caption (or stored translation). Read-only: never generates, translates or writes; `source: "none"` when nothing is stored |
+| `POST /api/caption` | Generate, translate and store the AI caption (edition mode). Body: `path`, `lang`. Concurrent requests for one photo share a single generation |
 | `PUT /api/caption` | Update photo caption (edition mode) |
 | `GET /api/timeline?cursor=&limit=&direction=&hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Paginated timeline photos (`hide_*` fallback applies) |
 | `GET /api/timeline/dates?year=&month=&hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Available dates for navigation |
@@ -251,12 +253,14 @@ All endpoints here use the [batch target contract](#conventions).
 | Endpoint | Description |
 |----------|-------------|
 | `GET /api/person/{id}/faces` | List faces for a person |
-| `GET /api/person/{id}/possible_faces` | Faces closest to the person's centroid, best first (same embedding model only). Query: `scope` (`unassigned`, `other_persons`, `all`), `min_similarity`, `limit` (≤ 100), `path_prefix`, `date_from`, `date_to`. Response `{faces, faces_scanned, candidates}`. Errors: `404` unknown/invisible person; `412` no usable centroid, or scan over the server's face ceiling (narrow with `scope`, `path_prefix` or dates) |
+| `GET /api/person/{id}/possible_faces` | Faces closest to the person's centroid, best first (same embedding model only). Query: `scope` (`unassigned` (default), `unnamed`, `other_persons`, `all`; `unnamed` adds faces in clusters nobody has named yet to the unassigned ones, and only `unassigned` is answered from an index), `owners` (optional comma list drawn from `ungrouped`, `unnamed_group`, `named`: keep only faces with such an owner, applied before `limit`; any other token is `422`), `min_similarity`, `limit` (≤ 100), `per_owner` (default `false`; when `true`, `limit` applies to each owner class separately, so up to `limit` faces of each of `ungrouped`, `unnamed_group` and `named`, and `faces` is all of them sorted by similarity, descending; `owners` still selects the classes; `counts`, `best_similarity` and `similar_groups` are unchanged), `path_prefix`, `date_from`, `date_to`. Response `{faces, faces_scanned, candidates, counts, best_similarity, similar_groups}`: each face carries `owner` (`ungrouped` in no person, `unnamed_group` in a person with no or a blank name, `named` otherwise); `counts` is `{ungrouped, unnamed_group, named}`, the scanned faces at or above `min_similarity` per owner, whatever `owners` and `limit` say; `best_similarity` is the highest similarity of every scanned face, the ones below the threshold included (`null` when nothing was scanned), so an empty list can say how close the closest face came; `similar_groups` lists up to 10 `{person_id, name, face_count, similarity}`: other visible, non-hidden persons whose centroid, of the same embedding model, is at least `min_similarity` alike, best first (`name` is `null` for an unnamed group; computed from `persons` alone, for every scope). Errors: `404` unknown/invisible person; `412` no usable centroid, or scan over the server's face ceiling (narrow with `scope`, `path_prefix` or dates; `owners` filters the results, not the scan); `422` bad `owners` |
 | `POST /api/person/{id}/avatar` | Set person avatar face |
-| `GET /api/photo/faces` | List faces detected in a photo |
+| `POST /api/person/{id}/face_boxes` | The person's face boxes for a batch of photos, so a gallery filtered to one person outlines every tile in one call. Body `{paths}` (1 to 200, else `422`). Response `{boxes: {path: [[x1, y1, x2, y2], ...]}}`, each box normalised to the frame (0..1). Only faces assigned to that person; a path the caller cannot see, an unknown one, and a photo with no trustworthy box are all omitted |
+| `GET /api/photo/faces` | List faces detected in a photo, each with `box` normalised to the frame (0..1), or `null` when the stored dimensions cannot be trusted for it |
 | `POST /api/face/{id}/assign` | Assign a face to a person |
+| `POST /api/face/{id}/unassign` | Detach that one face from its person (edition-gated); other faces of the person in the same photo are kept. The person's face count and picture are repaired, and a person left with no face is deleted, as `unassign_person` does. Response `{success, face_id, person_id}`, `person_id` being the former owner (even when deleted) or `null`. `404` for an unknown or invisible face |
 | `POST /api/photo/assign_all_faces` | Assign all faces in a photo to a person |
-| `POST /api/photo/unassign_person` | Unassign a person from a photo |
+| `POST /api/photo/unassign_person` | Unassign a person from every face in a photo; a person left with no face is deleted |
 
 ## Photo Actions
 
