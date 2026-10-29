@@ -17,8 +17,6 @@ export interface StackEditorData {
   /** Explicit selection only; never materialize a whole-view selection. */
   selectedPaths?: string[];
   skippable?: boolean;
-  /** Captured by the commit, independent of the editor view's lifetime. */
-  onUndone?: () => void;
 }
 export const SKIP_SUGGESTION = 'skip';
 export interface StackEditorHost {
@@ -26,6 +24,7 @@ export interface StackEditorHost {
   readonly presentation: 'dialog' | 'page';
   readonly keydown$: Observable<KeyboardEvent>;
   readonly closing$: Observable<unknown>;
+  /** Captured by the commit, independent of the editor view's lifetime. */
   readonly onUndone?: () => void;
   setBusy(busy: boolean): void;
   finish(result: 'saved' | 'skip' | 'close'): void;

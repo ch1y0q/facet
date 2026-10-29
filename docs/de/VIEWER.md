@@ -139,8 +139,26 @@ python database.py --migrate-user-preferences --user alice
 
 Die Textsuche der Galerie behält Unicode-Wörter bei und behandelt Satzzeichen in Dateinamen als Wortgrenzen. So sucht `IMG_0042.JPG` gemeinsam nach den Präfixen `IMG`, `0042` und `JPG`. Kyrillische und CJK-Begriffe funktionieren. FTS-Operatoren wie `OR` werden als wörtliche Begriffe behandelt.
 
+### Tabs der Seitenleiste
+
+Die Filter-Seitenleiste gruppiert ihre Abschnitte in fünf Tabs, die als Symbole angezeigt werden (Name per Mouseover). Ein kleines Abzeichen am Symbol zählt die aktiven Filter im Tab, und der Tab behält seinen Namen für Screenreader („Durchsuchen, 2 aktiv“). Der zuletzt verwendete Tab wird in diesem Browser gespeichert (`facet_sidebar_tab`). Durchsuchen, Qualität und Motiv haben einklappbare Bereiche, die sich jeweils merken, ob sie geöffnet sind; Prüfen und Anzeige haben keine.
+
+| Tab | Abschnitte |
+|-----|-----------|
+| **Durchsuchen** | Semantische Suche, Personen, Zeitraum, Inhalt, Alben, Standort, Ordner, Ausrüstung |
+| **Prüfen** | Je eine Menüzeile für die Entscheidung, dann für Serien, Duplikate, Blinzler, Belichtungsreihen, Panoramen und Abgelehnte, eine Sternebewertung, die Schalter Favoriten und Monochrom und für Editoren *Manuelle Gesichter prüfen* und *Panorama-Korrekturen* |
+| **Qualität** | Qualität, Farbe & Qualität, Erweiterte Qualität, Technik, Belichtung & Bereich (wie gut das Bild ist) |
+| **Motiv** | Gesichtsmetriken, Komposition, Motiverkennung, Momente (was im Bild zu sehen ist) |
+| **Anzeige** | Ansicht (Kartengröße, Layout, schnelles Scrollen, Kartenaktionen) |
+
+Kopfzeile, **Filter suchen**, der Hinweis für Smart-Alben und die Dateinamensuche bleiben auf jedem Tab über den Tabs, daher funktioniert `/` von jedem aus. Eine Eingabe in **Filter suchen** blendet die Tabs aus und listet die passenden Regler aus allen Tabs.
+
+Die Zahl neben **Filter** ist die Summe aller aktiven Filter. Ein Min/Max-Bereich zählt einmal, ebenso der Ortsfilter. Die Dateinamensuche und *Ähnlich zu* haben keinen Abschnitt und werden nur in dieser Summe gezählt, ebenso ein Filter auf eine Metrik, die diese Installation ausblendet, damit **Filter zurücksetzen** ihn trotzdem löschen kann. **Filter zurücksetzen** (mit Tooltip) erscheint neben der Zahl, solange mindestens ein Filter aktiv ist; das schlichte **X** ganz rechts schließt die Seitenleiste nur auf schmalen Bildschirmen.
+
+Im Tab Prüfen sind die Entscheidung und jede Gruppe (zum Beispiel Duplikate) eine Zeile mit ihrem aktuellen Wert (etwa Ausgeblendet, Eingeblendet oder Nur diese), die ein Menü mit Auswahlmöglichkeiten samt einzeiliger Erklärung öffnet. Eine Zeile mit ihrem Standardwert zählt nicht zum Abzeichen des Tabs oder der Kopfzeile. *Nur* und *Ausgeblendet* schließen sich gegenseitig aus. Solange eine Entscheidung gewählt ist, ist Abgelehnt gesperrt, und sein Tooltip nennt den Grund. Die Sterne-Schaltfläche setzt eine Mindestbewertung: Jeder Klick erhöht sie um eins, und der Klick nach 5 oder nach einem aus einem Link übernommenen Maximum löscht sie. Sie teilt sich eine Zeile mit den reinen Symbol-Schaltern Favoriten und Monochrom, die Tooltips haben. In den Tabs Qualität und Motiv erklärt das Überfahren des Namens einer Einstellung, was bewertet wird und von welchem Modell, und auch die Steuerelemente im Tab Prüfen haben Tooltips.
+
 <details><summary>Filter-Seitenleiste — alle Abschnitte aufgeklappt (zum Anzeigen klicken)</summary>
-<p align="center"><img src="screenshots/filter-sidebar-full.jpg" alt="Filter-Seitenleiste mit allen aufgeklappten Abschnitten" width="360"></p>
+<p align="center"><img src="../screenshots/filter-sidebar-full.jpg" alt="Die fünf Tabs der Filter-Seitenleiste nebeneinander: Durchsuchen, Prüfen, Qualität, Motiv und Anzeige" width="900"></p>
 </details>
 
 ### Primärfilter
@@ -393,7 +411,7 @@ Antwortfelder und Statuscodes: [API.md](../API.md).
 - **Beste der Belichtungsreihe** — Nur die Basisbelichtung jeder Belichtungsreihe anzeigen. **Standardmäßig an.** Unabhängig von „Beste aus Serie“, da das Serien-Leitfoto einer Reihe nicht immer ihre Basisbelichtung ist.
 - **Beste des Panoramas** — Nur das mittlere Bild jedes Panoramas oder HDR-Panoramas anzeigen. **Standardmäßig an.**
 - **Endloses Scrollen** — Fotos werden beim Scrollen geladen
-- **Schnelles Scrollen (virtualisiert)** — Rendert nur Zeilen nahe dem Sichtbereich, sodass tiefes Scrollen schnell bleibt. Standardmäßig an. Schalten Sie es im Anzeige-Abschnitt der Seitenleiste aus, falls Layoutprobleme auftreten. Der Rastermodus mit angezeigten Details rendert stets vollständig. In localStorage gespeichert (`facet_virtual_scroll`).
+- **Schnelles Scrollen (virtualisiert)** — Rendert nur Zeilen nahe dem Sichtbereich, sodass tiefes Scrollen schnell bleibt. Standardmäßig an. Schalten Sie es im Tab „Anzeige“ der Seitenleiste aus, falls Layoutprobleme auftreten. Der Rastermodus mit angezeigten Details rendert stets vollständig. In localStorage gespeichert (`facet_virtual_scroll`).
 
 ### Ähnliche Fotos
 
@@ -449,7 +467,7 @@ Die Aufnahmen eines Panoramas sollen zusammengefügt und die einer Belichtungsre
 - Verschwindet eine markierte Aufnahme oder verliert ihre Belichtungs- oder Datumsdaten, wartet das ganze Set, bis jedes Mitglied wieder die Voraussetzungen erfüllt.
 - **Markieren hat Vorrang vor der Panorama-Erkennung**: Ein erkanntes Panorama, das markierte Aufnahmen enthält, wird beim nächsten Lauf verworfen.
 
-**Korrekturen gelten beim nächsten Erkennungslauf.** Eine Korrektur wird sofort gespeichert und als ausstehend angezeigt: ein Uhr-Abzeichen auf der Galeriekachel, ein Chip *Korrektur ausstehend* im Aussortieren. Die Auswahlseite zeigt ein Banner mit der Schaltfläche **Erkennung erneut ausführen**. Der Filter *Panorama-Korrekturen* der Seitenleiste (nur Edition, unter Verfeinern) listet ausstehende Korrekturen bibliotheksweit auf. *Korrektur verwerfen* entfernt eine später wieder.
+**Korrekturen gelten beim nächsten Erkennungslauf.** Eine Korrektur wird sofort gespeichert und als ausstehend angezeigt: ein Uhr-Abzeichen auf der Galeriekachel, ein Chip *Korrektur ausstehend* im Aussortieren. Die Auswahlseite zeigt ein Banner mit der Schaltfläche **Erkennung erneut ausführen**. Der Filter *Panorama-Korrekturen* der Seitenleiste (nur Edition, im Tab Prüfen) listet ausstehende Korrekturen bibliotheksweit auf. *Korrektur verwerfen* entfernt eine später wieder.
 
 **Einstellen.** Der Tab Panoramen unter Vergleichen enthält die kalibrierten Schwellenwerte: Mindestanzahl Aufnahmen, minimaler Schwenk, längste Lücke und HDR-Belichtungsspanne. Das Speichern ändert nichts, bis Sie die Erkennung erneut ausführen (die Schaltfläche steht neben Speichern). Siehe [CONFIGURATION.md](CONFIGURATION.md#panorama-erkennung).
 
@@ -1109,11 +1127,12 @@ Einzeltasten-Kürzel sind inaktiv, solange der Fokus in einem Textfeld, Menü od
 | `F` | Das fokussierte Foto favorisieren / Favorit aufheben (Bearbeitungsmodus) |
 | `X` oder `0` | Das fokussierte Foto ablehnen / Ablehnung aufheben (Bearbeitungsmodus; springt automatisch weiter) |
 | `/` | Die Suche der Symbolleiste fokussieren (ab 1360 px Breite sichtbar); schmaler öffnet es die Suche der Filter-Seitenleiste |
+| `S` | Den Stapel-Editor für die ausdrückliche Auswahl öffnen (Bearbeitungsmodus; umbelegbar, kann unbelegt bleiben) |
 | `B` | Die Filter-Seitenleiste ein-/ausblenden |
 | `V` | Zwischen Raster- und Mosaiklayout wechseln |
 | `?` | Die Tastenkürzel-Referenz anzeigen (auf jeder Seite; auch unter Benutzermenü → Hilfe) |
 
-**Tasten umbelegen.** `K`, `F`, `X`, `/`, `B` und `V` sind Standardwerte. Unter Benutzermenü → **Tastenkürzel anpassen** klicken Sie eine Aktion an und drücken eine neue Taste (`Esc` oder `Tab` bricht ab). Ziffern, `Space` und `?` sind reserviert, und eine bereits verwendete Taste wird abgelehnt. **Alle zurücksetzen** stellt die Standardwerte wieder her. Die Belegung wird pro Browser gespeichert (`localStorage`). Die Fotoseite verwendet dieselben Tasten, und die Referenz unter `?` zeigt immer die geltenden Tasten.
+**Tasten umbelegen.** `K`, `F`, `X`, `/`, `B`, `V` und `S` sind Standardwerte. Unter Benutzermenü → **Tastenkürzel anpassen** klicken Sie eine Aktion an und drücken eine neue Taste (`Esc` oder `Tab` bricht ab). Ziffern, `Space` und `?` sind reserviert, und eine bereits verwendete Taste wird abgelehnt. **Alle zurücksetzen** stellt die Standardwerte wieder her. Die Belegung wird pro Browser gespeichert (`localStorage`). Die Fotoseite verwendet dieselben Tasten, und die Referenz unter `?` zeigt immer die geltenden Tasten.
 
 **Aktuelles Foto.** Das Foto, auf das die Tasten für Bewertung, Favorit und Ablehnung wirken, hat eine 4px-Kontur; andere Karten werden auf 50 % abgedunkelt. Nichts ist markiert, bis Sie sich auf ein Foto bewegen. Ein Klick auf ein Foto verschiebt die Markierung darauf. Die Rückkehr von einem Foto lässt die Markierung auf dem zuletzt betrachteten. Der Hinweis zur fokussierten Karte erscheint nur im Bearbeitungsmodus bei aktivem `viewer.features.show_rating_controls`.
 
@@ -1403,7 +1422,7 @@ Facet scannt JPEG XL (`.jxl`) mit der Kernabhängigkeit `imagecodecs`, die in St
 
 ### Gespeicherte manuelle Gesichtsmarkierungen prüfen
 
-Finden Sie Fotos, deren gespeicherte Gesichtsrechtecke eine Prüfung brauchen. Aktivieren Sie in den Verfeinern-Filtern der Galerie **Manuelle Gesichter brauchen Prüfung** (Editoren). Öffnen Sie den Gesichtseditor eines Fotos und passen Sie jedes markierte Rechteck an und speichern Sie es, oder löschen Sie es. Das Foto verlässt dann die Liste. Der Filter funktioniert in intelligenten Alben und bei Auswahlen der ganzen Ansicht und erscheint als entfernbarer Chip.
+Finden Sie Fotos, deren gespeicherte Gesichtsrechtecke eine Prüfung brauchen. Aktivieren Sie im Tab Prüfen der Galerie-Seitenleiste **Manuelle Gesichter prüfen** (Editoren). Öffnen Sie den Gesichtseditor eines Fotos und passen Sie jedes markierte Rechteck an und speichern Sie es, oder löschen Sie es. Das Foto verlässt dann die Liste. Der Filter funktioniert in intelligenten Alben und bei Auswahlen der ganzen Ansicht und erscheint als entfernbarer Chip.
 
 - Die Liste spiegelt den letzten Scan oder die letzte Editor-Prüfung, keine Live-Dateiüberwachung. Scans prüfen Fotos mit manuellen Markierungen auch bei ausgeschalteter Gesichtserkennung.
 - Das Öffnen des Editors prüft das Original erneut und ist maßgeblich.

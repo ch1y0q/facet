@@ -139,8 +139,26 @@ python database.py --migrate-user-preferences --user alice
 
 A pesquisa de texto da galeria preserva palavras Unicode e trata a pontuação dos nomes de arquivo como abas de palavras. `IMG_0042.JPG` pesquisa os prefixos `IMG`, `0042` e `JPG` em conjunto. Termos em cirílico e CJK funcionam. Operadores FTS como `OR` são tratados como palavras literais.
 
+### Abas da barra lateral
+
+A barra lateral de filtros agrupa as suas seções em cinco abas, mostradas como ícones (passe o mouse para ver o nome). Um pequeno emblema num ícone conta os filtros ativos da aba, e a aba mantém o nome para leitores de tela (“Explorar, 2 ativos”). A última aba usada fica guardada neste navegador (`facet_sidebar_tab`). Explorar, Qualidade e Assunto têm painéis recolhíveis, e cada um lembra se está aberto; Revisão e Visualização não os têm.
+
+| Aba | Seções |
+|-----|--------|
+| **Explorar** | Busca semântica, Pessoas, Período, Conteúdo, Álbuns, Localização, Pasta, Equipamento |
+| **Revisão** | Uma linha de menu cada para a decisão e depois para rajadas, duplicatas, piscadas, brackets, panorâmicas e rejeitadas, uma avaliação por estrelas, os interruptores Favoritos e Monocromático e, para editores, *Rostos manuais a rever* e *Correções de panorama* |
+| **Qualidade** | Qualidade, Cor e qualidade, Qualidade estendida, Técnico, Exposição e amplitude (quão boa é a imagem) |
+| **Assunto** | Métricas de rosto, Composição, Saliência do sujeito, Momentos (o que está no enquadramento) |
+| **Visualização** | Vista (tamanho dos cartões, layout, rolagem rápida, ações dos cartões) |
+
+O cabeçalho, **Encontrar um filtro**, o aviso de álbum inteligente e a busca por nome de arquivo ficam acima das abas em todas elas, por isso `/` funciona a partir de qualquer uma. Digitar em **Encontrar um filtro** oculta as abas e lista os controles correspondentes de todas.
+
+O número junto a **Filtros** é o total de todos os filtros ativos. Um intervalo mín./máx. conta uma vez, assim como o filtro de localização. A busca por nome de arquivo e *Semelhante a* não têm seção e são contados apenas neste total, assim como um filtro sobre uma métrica que esta instalação oculta, para que **Redefinir filtros** ainda possa limpá-lo. **Redefinir filtros** (com dica) aparece junto ao número enquanto houver pelo menos um filtro ativo; o simples **X** no extremo direito apenas fecha a barra lateral em telas estreitas.
+
+Na aba Revisão, a decisão e cada grupo (por exemplo Duplicatas) é uma linha que mostra o valor atual (como Ocultos, Mostrados ou Só estes) e abre um menu de opções, cada uma com uma explicação de uma linha. Uma linha deixada no valor padrão não conta no emblema da aba nem do cabeçalho. *Só* e *Ocultos* excluem-se mutuamente. Enquanto uma decisão está escolhida, Rejeitadas fica bloqueada, e a dica explica o motivo. O botão de estrela define uma avaliação mínima: cada clique a aumenta em um, e o clique depois de 5, ou depois de um máximo vindo de um link, a limpa. Ele divide uma linha com os interruptores Favoritos e Monocromático, só com ícone e com dicas. Nas abas Qualidade e Assunto, passar o mouse sobre o nome de uma configuração explica o que é pontuado e por qual modelo, e os controles de Revisão também têm dicas.
+
 <details><summary>Barra lateral de filtros completa — todas as seções expandidas (clique para ver)</summary>
-<p align="center"><img src="screenshots/filter-sidebar-full.jpg" alt="Filter sidebar with every section expanded" width="360"></p>
+<p align="center"><img src="../screenshots/filter-sidebar-full.jpg" alt="As cinco abas da barra lateral de filtros lado a lado: Explorar, Revisão, Qualidade, Assunto e Visualização" width="900"></p>
 </details>
 
 ### Filtros Primários
@@ -393,7 +411,7 @@ Campos de resposta e códigos de status: [API.md](../API.md).
 - **Melhor do bracketing** — mostra apenas a exposição base de cada bracketing. **Ligado por padrão.** Independente de Melhor da rajada, porque o líder de rajada de um bracketing nem sempre é a sua exposição base.
 - **Melhor do panorama** — mostra apenas o quadro central de cada conjunto de panorâmica ou panorâmica HDR. **Ligado por padrão.**
 - **Rolagem Infinita** — as fotos carregam conforme você rola
-- **Rolagem Rápida (virtualizada)** — renderiza apenas as linhas próximas à janela de visualização, então a rolagem profunda continua rápida. Ligada por padrão. Desligue-a na seção Exibição da barra lateral se tiver problemas de layout. O modo grade com detalhes visíveis sempre renderiza tudo. Salvo no localStorage (`facet_virtual_scroll`).
+- **Rolagem Rápida (virtualizada)** — renderiza apenas as linhas próximas à janela de visualização, então a rolagem profunda continua rápida. Ligada por padrão. Desligue-a na aba Exibição da barra lateral se tiver problemas de layout. O modo grade com detalhes visíveis sempre renderiza tudo. Salvo no localStorage (`facet_virtual_scroll`).
 
 ### Fotos Semelhantes
 
@@ -449,7 +467,7 @@ Os quadros de uma panorâmica se destinam a ser unidos e os de um bracketing a s
 - Se um quadro marcado desaparece ou perde os dados de exposição ou de data, toda a série espera até que todos os membros voltem a qualificar.
 - **A marcação prevalece sobre a detecção de panorâmica**: uma panorâmica detectada que contém quadros marcados é descartada na próxima execução.
 
-**As correções se aplicam na próxima execução de detecção.** Uma correção é salva na hora e mostrada como pendente: um emblema de relógio no cartão da galeria, um chip *Correção pendente* na triagem. A página de triagem mostra um banner com o botão **Executar a detecção de novo**. O filtro *Correções de panorâmica* da barra lateral (só edição, em Refinar) lista as correções pendentes em toda a biblioteca. *Descartar a correção* remove uma depois.
+**As correções se aplicam na próxima execução de detecção.** Uma correção é salva na hora e mostrada como pendente: um emblema de relógio no cartão da galeria, um chip *Correção pendente* na triagem. A página de triagem mostra um banner com o botão **Executar a detecção de novo**. O filtro *Correções de panorâmica* da barra lateral (só edição, na aba Revisão) lista as correções pendentes em toda a biblioteca. *Descartar a correção* remove uma depois.
 
 **Ajuste.** A aba Panorâmicas em Comparar salva os limiares calibrados: mínimo de quadros, varredura mínima, maior intervalo e dispersão de exposição HDR. Salvá-los não muda nada até você executar a detecção de novo (o botão fica ao lado de Salvar). Veja [CONFIGURATION.md](CONFIGURATION.md#detecção-de-panorâmicas).
 
@@ -1107,11 +1125,12 @@ Os atalhos de uma tecla ficam inativos enquanto o foco está em um campo de text
 | `F` | Favorita / desfavorita a foto em foco (modo de edição) |
 | `X` ou `0` | Rejeita / desfaz a rejeição da foto em foco (modo de edição; avança sozinho) |
 | `/` | Foca a busca da barra de ferramentas (mostrada a partir de 1360 px de largura); em larguras menores, abre a busca da barra lateral de filtros |
+| `S` | Abre o editor de pilhas para a seleção explícita (modo de edição; remapeável, pode ficar sem atribuição) |
 | `B` | Mostra / oculta a barra lateral de filtros |
 | `V` | Alterna entre o layout em grade e em mosaico |
 | `?` | Mostra a referência de atalhos de teclado (em todas as páginas; também no menu do usuário → Ajuda) |
 
-**Remapear teclas.** `K`, `F`, `X`, `/`, `B` e `V` são padrões. Menu do usuário → **Personalizar atalhos** permite clicar em uma ação e pressionar uma nova tecla (`Esc` ou `Tab` cancela). Dígitos, `Space` e `?` são reservados, e uma tecla já em uso é recusada. **Restaurar tudo** restaura os padrões. O mapeamento é salvo por navegador (`localStorage`). A página da foto usa as mesmas teclas, e a referência `?` sempre mostra as teclas em vigor.
+**Remapear teclas.** `K`, `F`, `X`, `/`, `B`, `V` e `S` são padrões. Menu do usuário → **Personalizar atalhos** permite clicar em uma ação e pressionar uma nova tecla (`Esc` ou `Tab` cancela). Dígitos, `Space` e `?` são reservados, e uma tecla já em uso é recusada. **Restaurar tudo** restaura os padrões. O mapeamento é salvo por navegador (`localStorage`). A página da foto usa as mesmas teclas, e a referência `?` sempre mostra as teclas em vigor.
 
 **Foto atual.** A foto sobre a qual agem as teclas de avaliação, favorito e rejeição tem um contorno de 4px; os outros cartões esmaecem para 50%. Nada é marcado até você passar para uma foto. Clicar em uma foto leva o marcador até ela. Voltar de uma foto deixa o marcador na última que você viu. A dica do cartão em foco aparece apenas no modo de edição com `viewer.features.show_rating_controls` ligado.
 
@@ -1401,7 +1420,7 @@ O Facet varre JPEG XL (`.jxl`) com a dependência principal `imagecodecs`, inclu
 
 ### Revisar rostos manuais salvos
 
-Encontre fotos cujos retângulos de rosto salvos precisam de verificação. Nos filtros Refinar da galeria, ative **Rostos manuais precisam de revisão** (editores). Abra o editor de rostos de uma foto e ajuste e salve, ou exclua, cada retângulo sinalizado. A foto então sai da lista. O filtro funciona em álbuns inteligentes e em seleções de toda a visualização, e aparece como um chip removível.
+Encontre fotos cujos retângulos de rosto salvos precisam de verificação. Na aba Revisão da barra lateral da galeria, ative **Rostos manuais a rever** (editores). Abra o editor de rostos de uma foto e ajuste e salve, ou exclua, cada retângulo sinalizado. A foto então sai da lista. O filtro funciona em álbuns inteligentes e em seleções de toda a visualização, e aparece como um chip removível.
 
 - A lista reflete a última varredura ou verificação do editor, não uma observação ao vivo de arquivos. As varreduras verificam fotos com marcas manuais mesmo com a detecção de rostos desligada.
 - Abrir o editor reverifica o original e é a palavra final.

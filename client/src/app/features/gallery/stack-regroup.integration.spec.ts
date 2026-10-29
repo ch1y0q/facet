@@ -275,16 +275,16 @@ describe('shared regroup editor through Material, Router and HTTP', () => {
     http.expectOne('/api/organization_history/42/revert').flush({ changed: 3 }); await undo;
     expect(refresh).toHaveBeenCalledTimes(2);
   });
-  it('renders a visible check for the selected policy while reserving the other icon slot', async () => {
+  it('marks the selected policy as pressed and keeps the check icon on the pressed button', async () => {
     await open();
     const combine = button('[data-stack-mode="combine"]'); const selected = button('[data-stack-mode="selected"]');
     expect(combine.querySelector('mat-icon')?.textContent?.trim()).toBe('check');
-    expect(combine.querySelector('mat-icon')?.classList.contains('invisible')).toBe(false);
-    expect(selected.querySelector('mat-icon')?.classList.contains('invisible')).toBe(true);
+    expect(combine.getAttribute('aria-pressed')).toBe('true');
+    expect(selected.getAttribute('aria-pressed')).toBe('false');
     selected.click(); http.expectOne('/api/stacks/regroup/preview').flush({ ...preview, mode: 'selected', paths: preview.selected_paths }); await render();
     expect(selected.querySelector('mat-icon')?.textContent?.trim()).toBe('check');
-    expect(selected.querySelector('mat-icon')?.classList.contains('invisible')).toBe(false);
-    expect(combine.querySelector('mat-icon')?.classList.contains('invisible')).toBe(true);
+    expect(selected.getAttribute('aria-pressed')).toBe('true');
+    expect(combine.getAttribute('aria-pressed')).toBe('false');
     expect(button('[data-stack-mode="selected"]')).toBe(selected);
   });
   it('shows a concise source-effects summary before the large preview with details collapsed', async () => {
@@ -296,8 +296,6 @@ describe('shared regroup editor through Material, Router and HTTP', () => {
     expect(root().querySelector('details')?.open).toBe(false);
     root().querySelector('summary')!.click(); await render();
     expect(root().querySelector('details')?.open).toBe(true);
-    expect(root().querySelector('details > div')?.classList.contains('max-h-36')).toBe(true);
-    expect(root().querySelector('details > div')?.classList.contains('overflow-y-auto')).toBe(true);
     expect(root().querySelector('[data-stack-source]')?.textContent).toContain('stacks.regroup_absorbed');
   });
 

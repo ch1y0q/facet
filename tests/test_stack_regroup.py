@@ -240,6 +240,34 @@ def test_invalid_explicit_selections_refuse_without_writes(conn, selection):
     assert state(conn) == before
 
 
+def test_unknown_mode_refuses_with_422_and_no_writes(conn):
+    before = state(conn)
+    with pytest.raises(stacks.StackError) as error:
+        preview(conn, ['a', 'b'], 'bogus')
+    assert error.value.status == 422
+    assert state(conn) == before
+
+
+@pytest.mark.parametrize('digest', ['zz' * 32, None])
+def test_malformed_expected_state_refuses_with_422_and_no_writes(conn, digest):
+    from db.stack_regroup import apply_regroup
+    create(conn, ['a', 'b', 'c'])
+    before = state(conn)
+    with conn:
+        conn.execute('BEGIN IMMEDIATE')
+        with pytest.raises(stacks.StackError) as error:
+            apply_regroup(conn, 'alice', ['a', 'd'], 'selected', ['a', 'd'], 'a', digest)
+    assert error.value.status == 422
+    assert state(conn) == before
+
+
+def test_apply_accepts_an_upper_case_expected_state(conn):
+    create(conn, ['a', 'b', 'c'])
+    draft = preview(conn, ['a', 'd'], 'selected')
+    draft['expected_state'] = draft['expected_state'].upper()
+    assert apply(conn, draft)['changed']
+
+
 @pytest.mark.parametrize('paths,cover', [(['a'], 'a'), (['a', 'a'], 'a'), (['a', 'f'], 'a'),
                                        (['a', 'b'], 'f'), (['a', 'c'], 'a')])
 def test_final_membership_is_a_valid_ordered_subset_of_mode(conn, paths, cover):
@@ -389,6 +417,18 @@ def test_regroup_endpoints_auth_and_wire_contract(conn, http_client):
         'paths': ['e', 'a'], 'cover_path': 'e', 'expected_revision': other['revision']})
     assert refused.status_code == 409
     assert client.get('/api/stacks/' + other['id']).json() == other
+
+
+@pytest.mark.parametrize('field,value', [('mode', 'bogus'), ('expected_state', 'ab' * 16)])
+def test_http_rejects_a_bad_mode_and_a_short_digest_with_422(conn, http_client, field, value):
+    client = http_client(CurrentUser(user_id='alice', edition_authenticated=True))
+    request = dict(selected_paths=['a', 'd'], mode='selected', paths=['a', 'd'], cover_path='a',
+                   expected_state='0' * 64)
+    request[field] = value
+    before = state(conn)
+    response = client.post('/api/stacks/regroup/apply', json=request)
+    assert response.status_code == 422, response.text
+    assert state(conn) == before
 
 
 def test_regroup_response_schema_requires_authoritative_fields(http_client):

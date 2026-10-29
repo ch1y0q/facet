@@ -124,7 +124,7 @@ def snapshot(conn: sqlite3.Connection, kind: str, scope: str, paths: list[str]) 
     return result
 
 
-def _encode(value: Any) -> str:
+def encode(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True, separators=(',', ':'), allow_nan=False)
 
 
@@ -142,14 +142,14 @@ def record(conn: sqlite3.Connection, owner: str, kind: str, scope: str,
     # that cannot be represented is rejected; the enclosing edit rolls back.
     parts: list[list[dict[str, Any]]] = []
     if kind == 'stack':
-        if len(_encode(changes).encode()) > MAX_BYTES:
+        if len(encode(changes).encode()) > MAX_BYTES:
             raise ValueError('Organization history entry is too large')
         parts.append(changes)
     else:
         part: list[dict[str, Any]] = []
         size = 2
         for change in changes:
-            encoded_size = len(_encode(change).encode())
+            encoded_size = len(encode(change).encode())
             if encoded_size + 2 > MAX_BYTES:
                 raise ValueError('Organization history entry is too large')
             if part and (len(part) == MAX_PHOTOS or size + encoded_size + 1 > MAX_BYTES):
@@ -161,7 +161,7 @@ def record(conn: sqlite3.Connection, owner: str, kind: str, scope: str,
     entries: list[int] = []
     for index, part in enumerate(parts, 1):
         cursor = conn.execute('INSERT INTO organization_history(owner,kind,scope,payload,part,parts) VALUES (?,?,?,?,?,?)',
-                     (owner, kind, scope, _encode(part), index, len(parts)))
+                     (owner, kind, scope, encode(part), index, len(parts)))
         entry_id = cursor.lastrowid
         if entry_id is None:
             raise ValueError('Organization history entry ID is unavailable')

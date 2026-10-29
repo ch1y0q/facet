@@ -41,6 +41,7 @@ import { SequenceOverrideService, SequenceKind } from '../../core/services/seque
 import { UndoService } from '../../core/services/undo.service';
 import { StackActionsService } from './stack-actions.service';
 import { stackEditorReturnUrl } from './stack-editor-history';
+import { stackDialogConfig } from './stack-dialog.config';
 import { SequenceKindLabelPipe, SUPPRESSED_OVERRIDE } from '../../shared/pipes/sequence-kind.pipe';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
@@ -669,30 +670,32 @@ interface SceneSummary {
                        [attr.aria-pressed]="stacksMode() ? null : (photo.path | isKept:cull.selectionsMap():groupKey)"
                        (click)="stacksMode() ? openLightbox(group, pIdx) : cull.tileClick(photo.path, group)"
                        (keydown.enter)="stacksMode() ? openLightbox(group, pIdx) : cull.toggleSelection(photo.path, group); $event.stopPropagation()"
-                       (keydown.space)="stacksMode() ? $event.preventDefault() : cull.toggleSelection(photo.path, group); $event.stopPropagation(); $event.preventDefault()"
+                       (keydown.space)="stacksMode() ? openLightbox(group, pIdx) : cull.toggleSelection(photo.path, group); $event.stopPropagation(); $event.preventDefault()"
                        (dblclick)="stacksMode() ? openLightbox(group, pIdx) : cull.tileDoubleClick(photo.path, group); $event.stopPropagation()">
                     <img [src]="photo.path | thumbnailUrl:storedEdge:photo.preview_revision"
                          [appLoupe]="photo.path | imageUrl:true:photo.preview_revision"
                          [loupeActive]="loupeActive()"
                          [loupeZoom]="loupeZoom()"
                          class="block h-72 md:h-96 w-auto object-cover" [alt]="photo.filename" loading="lazy" />
-                    @if (!stacksMode() && photo.path === group.best_path) {
-                      <div class="absolute top-2 left-2 px-2 py-0.5 rounded bg-green-600 text-white text-xs font-bold">
-                        {{ I18N.culling.auto_best | translate }}
-                      </div>
-                    } @else if (!stacksMode() && photo.cull_reason; as reason) {
-                      <div class="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/70 text-white text-xs font-medium max-w-[160px] truncate">
-                        {{ reason | cullReason }}
-                      </div>
-                    }
-                    @if (!stacksMode() && (photo.path | isKept:cull.selectionsMap():groupKey)) {
-                      <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-green-600 inline-flex items-center justify-center">
-                        <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">check</mat-icon>
-                      </div>
-                    } @else if (!stacksMode() && (photo.path | isDecided:cull.selectionsMap():groupKey)) {
-                      <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-600 inline-flex items-center justify-center">
-                        <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">close</mat-icon>
-                      </div>
+                    @if (!stacksMode()) {
+                      @if (photo.path === group.best_path) {
+                        <div class="absolute top-2 left-2 px-2 py-0.5 rounded bg-green-600 text-white text-xs font-bold">
+                          {{ I18N.culling.auto_best | translate }}
+                        </div>
+                      } @else if (photo.cull_reason; as reason) {
+                        <div class="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/70 text-white text-xs font-medium max-w-[160px] truncate">
+                          {{ reason | cullReason }}
+                        </div>
+                      }
+                      @if (photo.path | isKept:cull.selectionsMap():groupKey) {
+                        <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-green-600 inline-flex items-center justify-center">
+                          <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">check</mat-icon>
+                        </div>
+                      } @else if (photo.path | isDecided:cull.selectionsMap():groupKey) {
+                        <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-600 inline-flex items-center justify-center">
+                          <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">close</mat-icon>
+                        </div>
+                      }
                     }
                     @if (photo.path | planDiffers:group:cull.selectionsMap()) {
                       @let accepted = photo.path | planAccepted:group:cull.selectionsMap():cull.suggestions().photos;
@@ -723,15 +726,16 @@ interface SceneSummary {
                       <span class="px-2 py-0.5 rounded bg-black/60 text-white text-xs font-medium">
                         {{ photo.aggregate | number:'1.1-1' }}
                       </span>
-                      @if (!stacksMode() && photo.is_rejected) {
-                        <span data-testid="reject-marker" class="px-2 py-0.5 rounded bg-red-700 text-white text-xs font-bold">
-                          {{ I18N.rating.rejected_badge | translate }}
-                        </span>
-                      }
-                      @if (!stacksMode() && photo.is_kept && !photo.is_rejected) {
-                        <span data-testid="kept-marker" class="px-2 py-0.5 rounded bg-green-700 text-white text-xs font-bold">
-                          {{ I18N.review.kept | translate }}
-                        </span>
+                      @if (!stacksMode()) {
+                        @if (photo.is_rejected) {
+                          <span data-testid="reject-marker" class="px-2 py-0.5 rounded bg-red-700 text-white text-xs font-bold">
+                            {{ I18N.rating.rejected_badge | translate }}
+                          </span>
+                        } @else if (photo.is_kept) {
+                          <span data-testid="kept-marker" class="px-2 py-0.5 rounded bg-green-700 text-white text-xs font-bold">
+                            {{ I18N.review.kept | translate }}
+                          </span>
+                        }
                       }
                       @if (photo.sequence_kind === 'bracket') {
                         <span class="px-2 py-0.5 rounded bg-amber-600 text-white text-xs font-bold">
@@ -1073,16 +1077,18 @@ interface SceneSummary {
              white glyph, which survives any frame under it. The bare tinted icon
              this replaced was unreadable over a busy photo. -->
         <ng-template #frameState let-kept="kept" let-decided="decided">
-          @if (!stacksMode() && kept) {
-            <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-green-600 inline-flex items-center justify-center shadow"
-                 [attr.aria-label]="I18N.culling.lightbox.kept | translate">
-              <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">check</mat-icon>
-            </div>
-          } @else if (!stacksMode() && decided) {
-            <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-600 inline-flex items-center justify-center shadow"
-                 [attr.aria-label]="I18N.culling.lightbox.rejected | translate">
-              <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">close</mat-icon>
-            </div>
+          @if (!stacksMode()) {
+            @if (kept) {
+              <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-green-600 inline-flex items-center justify-center shadow"
+                   [attr.aria-label]="I18N.culling.lightbox.kept | translate">
+                <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">check</mat-icon>
+              </div>
+            } @else if (decided) {
+              <div class="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-600 inline-flex items-center justify-center shadow"
+                   [attr.aria-label]="I18N.culling.lightbox.rejected | translate">
+                <mat-icon class="!text-base !w-4 !h-4 !leading-4 !text-white">close</mat-icon>
+              </div>
+            }
           }
         </ng-template>
         <!-- Image -->
@@ -1244,8 +1250,7 @@ interface SceneSummary {
                 </button>
               }
             </div>
-          }
-          @if (!stacksMode()) {
+          } @else {
           <!-- Footer status -->
           <div class="px-4 py-3 text-center"
                role="presentation"
@@ -3217,9 +3222,9 @@ export class BurstCullingComponent implements OnDestroy {
     const focused = this.lightboxGroupId() === this.cull.groupKey(group)
       ? group.photos[this.lightboxIndex()]?.path : group.photos[this.selectedPhotoIndex()]?.path;
     const onUndone = () => { if (current()) this.cull.restoreStackSuggestion(group); };
-    const ref = this.dialog.open(StackDialogComponent, { width: '96vw', maxWidth: '1100px', data: {
+    const ref = this.dialog.open(StackDialogComponent, stackDialogConfig({
       paths: group.photos.map(photo => photo.path), reviewDraft: this.cull.reviewDraft(group), activePath: focused, skippable: true, onUndone,
-    } });
+    }));
     this.secondaryEditor = ref;
     const result = await firstValueFrom(ref.afterClosed());
     if (this.secondaryEditor === ref) this.secondaryEditor = null;
@@ -3264,7 +3269,6 @@ export class BurstCullingComponent implements OnDestroy {
       if (this.stacksMode()) this.onStackKey(event);
       return;
     }
-    if (isTypingContext(event) || isControlActivation(event)) return;
     const group = this.visibleGroups()[this.selectedGroupIndex()];
     if (!group) return;
     event.preventDefault();

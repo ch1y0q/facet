@@ -24,9 +24,9 @@ import { STACK_EDITOR_HISTORY, StackEditorHistory, readStackEditorHistory } from
     @for (visit of visits(); track visit.id) {
       <app-stack-editor class="flex-1 min-h-0" />
     } @empty {
-      <section class="p-4" role="status">
+      <section class="p-4">
         <h1 class="text-xl mb-2">{{ I18N.stacks.create | translate }}</h1>
-        <p>{{ I18N.stacks.manual_empty | translate }}</p>
+        <p role="status">{{ I18N.stacks.manual_empty | translate }}</p>
         <button mat-button data-stack-back (click)="back()">{{ I18N.stacks.back_gallery | translate }}</button>
       </section>
     }
@@ -74,9 +74,11 @@ export class StackEditorPageComponent implements StackEditorHost {
         if (this.router.url.split(/[?#]/)[0] !== '/stacks/edit') { this.source = null; return; }
         // A cancelled/failed navigation has a fresh root context. Never revive old Undo.
         const historyState = this.location.getState() as Record<string, unknown>;
-        const state = event instanceof NavigationEnd
-          ? (Object.hasOwn(historyState, STACK_EDITOR_HISTORY) ? historyState[STACK_EDITOR_HISTORY]
-            : this.navigationTrigger === 'imperative' ? this.source : undefined) : this.source;
+        let state: unknown = this.source;
+        if (event instanceof NavigationEnd) {
+          if (Object.hasOwn(historyState, STACK_EDITOR_HISTORY)) state = historyState[STACK_EDITOR_HISTORY];
+          else if (this.navigationTrigger !== 'imperative') state = undefined;
+        }
         this.restore(state);
       }
     });

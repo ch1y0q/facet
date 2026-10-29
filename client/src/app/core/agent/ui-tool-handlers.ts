@@ -578,7 +578,7 @@ export function createUiToolHandlers(deps: UiToolDeps): Record<string, UiToolHan
         gallery: inGallery
           ? { total: gallery.total(), photo_total: gallery.photoTotal(), loaded: gallery.photos().length, has_more: gallery.hasMore(), pinned }
           : null,
-        culling: pageContext.snapshot()?.['mode'] === 'stacks' ? { mode: 'stacks' } : capCullingSnapshot(plan.snapshot()),
+        culling: pageContext.snapshot()?.['mode'] === 'stacks' ? null : capCullingSnapshot(plan.snapshot()),
         // A stored preset without a stored slider value reports no strictness: the preset's own applies.
         culling_defaults: {
           profile: storedProfile,

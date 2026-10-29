@@ -106,13 +106,51 @@ describe('manual stack workspace with Router, HTTP and Material', () => {
     button('[data-stack-back]').click(); await TestBed.inject(ApplicationRef).whenStable(); await render();
     expect(TestBed.inject(Router).url).toBe('/album/17?sort=date#position');
   });
-  for (const state of [undefined, input({ identity: 'bob' }), input({ paths: [paths[0], paths[0]] }), input({ activePath: '/secret.jpg' }), input({ version: 2 })]) {
-    it('refuses malformed, absent or foreign history without a preview or filename', async () => {
-      await open(state === undefined ? null : state); await render();
-      http.expectNone('/api/stacks/regroup/preview'); expect(root().textContent).not.toContain('a.jpg');
+  it.each([
+    ['absent', undefined],
+    ['foreign identity', input({ identity: 'bob' })],
+    ['duplicate paths', input({ paths: [paths[0], paths[0]] })],
+    ['an active path outside the set', input({ activePath: '/secret.jpg' })],
+    ['an unknown version', input({ version: 2 })],
+  ])('refuses %s history without a preview or filename', async (_name, state) => {
+    await open(state === undefined ? null : state); await render();
+    http.expectNone('/api/stacks/regroup/preview'); expect(root().textContent).not.toContain('a.jpg');
+    expect(root().querySelector('[data-stack-back]')).not.toBeNull();
+  });
+  describe('browser history traversal', () => {
+    // The testing platform swaps in a mock history, so push entries through Location and step back onto the wanted one.
+    async function traverseBackOnto(state: unknown) {
+      const location = TestBed.inject(Location);
+      location.go('/stacks/edit?from=history', '', state);
+      location.go('/stacks/edit?away=1', '', {});
+      // Tests never bootstrap, so nothing has subscribed the router to popstate yet.
+      TestBed.inject(Router).setUpLocationChangeListener();
+      location.back();
+      await new Promise(resolve => setTimeout(resolve));
+      await render();
+    }
+    it('refuses a popstate onto a stateless entry: no preview, no filename, no image, Back offered', async () => {
+      await ready();
+      await traverseBackOnto({});
+      http.expectNone('/api/stacks/regroup/preview');
+      expect(TestBed.inject(Router).url).toBe('/stacks/edit?from=history');
+      expect(root().textContent).not.toContain('a.jpg'); expect(root().querySelector('img')).toBeNull();
       expect(root().querySelector('[data-stack-back]')).not.toBeNull();
     });
-  }
+    it('requests a fresh preview for a popstate onto an entry that carries state', async () => {
+      await ready();
+      await traverseBackOnto({ [STACK_EDITOR_HISTORY]: input() });
+      http.expectOne('/api/stacks/regroup/preview').flush(preview); await render();
+      expect(button('[data-stack-save]').disabled).toBe(false);
+    });
+  });
+  it('does not navigate from Back while a mutation is in flight', async () => {
+    await ready(); button('[data-stack-save]').click(); const apply = http.expectOne('/api/stacks/regroup/apply');
+    TestBed.inject(Router).navigateByUrl = vi.fn(async () => true);
+    harness.routeDebugElement!.componentInstance.back();
+    expect(TestBed.inject(Router).navigateByUrl).not.toHaveBeenCalled();
+    apply.flush({ changed: false }); await render();
+  });
   it('refuses a server visibility failure before rendering images', async () => {
     await open(); http.expectOne('/api/stacks/regroup/preview').flush({}, { status: 403, statusText: 'Forbidden' }); await render();
     expect(root().querySelector('img')).toBeNull(); expect(root().textContent).not.toContain('private');
