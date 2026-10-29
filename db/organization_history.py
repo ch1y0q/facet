@@ -162,6 +162,9 @@ def record(conn: sqlite3.Connection, owner: str, kind: str, scope: str,
     for index, part in enumerate(parts, 1):
         cursor = conn.execute('INSERT INTO organization_history(owner,kind,scope,payload,part,parts) VALUES (?,?,?,?,?,?)',
                      (owner, kind, scope, _encode(part), index, len(parts)))
-        entries.append(cursor.lastrowid)
+        entry_id = cursor.lastrowid
+        if entry_id is None:
+            raise ValueError('Organization history entry ID is unavailable')
+        entries.append(entry_id)
     conn.execute('DELETE FROM organization_history WHERE owner=? AND id NOT IN (SELECT id FROM organization_history WHERE owner=? ORDER BY id DESC LIMIT ?)', (owner, owner, MAX_ENTRIES))
     return entries
