@@ -100,7 +100,7 @@ function captureDateKey(date: string | null | undefined): string {
             <img data-stack-preview [src]="path | thumbnailUrl:1920" [alt]="path | filename" decoding="async" class="w-full h-full object-contain" />
             }
             @if (page) {
-              <button mat-icon-button data-stack-zoom class="!absolute top-2 right-2 !bg-black/75 !text-white" (click)="toggleZoom()" [disabled]="saving() || loading()" [attr.aria-pressed]="zoom().scale > 1" [attr.aria-label]="I18N.culling.shortcuts.zoom | translate"><mat-icon>{{ zoom().scale > 1 ? 'zoom_out' : 'zoom_in' }}</mat-icon></button>
+              <button mat-icon-button data-stack-zoom class="!absolute top-2 right-2 !bg-black/75 !text-white" (click)="toggleZoom()" [disabled]="saving() || loading()" [attr.aria-pressed]="zoom().scale > 1" [attr.aria-label]="I18N.culling.shortcuts.zoom | translate" [matTooltip]="I18N.culling.shortcuts.zoom | translate"><mat-icon aria-hidden="true">{{ zoom().scale > 1 ? 'zoom_out' : 'zoom_in' }}</mat-icon></button>
             }
             @if (path === cover()) { <span class="absolute top-2 left-2 rounded-full bg-black/75 text-white px-3 py-1 text-xs flex items-center gap-1"><mat-icon aria-hidden="true">star</mat-icon>{{ I18N.stacks.cover | translate }}</span> }
           </div>
@@ -108,13 +108,13 @@ function captureDateKey(date: string | null | undefined): string {
             <span class="text-sm truncate" [title]="path">{{ path | filename }}</span>
             @if (page && editable() && !saved()) {
               <div class="flex shrink-0">
-                <button mat-icon-button [attr.data-stack-cover]="path" (click)="setCover(path)" [disabled]="saving() || loading()" [attr.aria-label]="I18N.stacks.cover_for | translate:{ path }"><mat-icon>{{ path === cover() ? 'star' : 'star_outline' }}</mat-icon></button>
-                <button mat-icon-button (click)="move(focusedIndex(), -1)" [disabled]="saving() || loading() || focusedIndex() === 0" [attr.aria-label]="I18N.stacks.move_up | translate:{ path }"><mat-icon>arrow_back</mat-icon></button>
-                <button mat-icon-button (click)="move(focusedIndex(), 1)" [disabled]="saving() || loading() || focusedIndex() === paths().length - 1" [attr.aria-label]="I18N.stacks.move_down | translate:{ path }"><mat-icon>arrow_forward</mat-icon></button>
-                <button mat-icon-button [attr.data-stack-remove]="path" (click)="remove(path)" [disabled]="saving() || loading()" [attr.aria-label]="I18N.stacks.remove | translate:{ path }"><mat-icon>remove_circle_outline</mat-icon></button>
+                <button mat-icon-button [attr.data-stack-cover]="path" (click)="setCover(path)" [disabled]="saving() || loading()" [attr.aria-label]="I18N.stacks.cover_for | translate:{ path }" [matTooltip]="I18N.stacks.cover_for | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">{{ path === cover() ? 'star' : 'star_outline' }}</mat-icon></button>
+                <button mat-icon-button (click)="move(focusedIndex(), -1)" [disabled]="saving() || loading() || focusedIndex() === 0" [attr.aria-label]="I18N.stacks.move_up | translate:{ path }" [matTooltip]="I18N.stacks.move_up | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">arrow_back</mat-icon></button>
+                <button mat-icon-button (click)="move(focusedIndex(), 1)" [disabled]="saving() || loading() || focusedIndex() === paths().length - 1" [attr.aria-label]="I18N.stacks.move_down | translate:{ path }" [matTooltip]="I18N.stacks.move_down | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">arrow_forward</mat-icon></button>
+                <button mat-icon-button [attr.data-stack-remove]="path" (click)="remove(path)" [disabled]="saving() || loading()" [attr.aria-label]="I18N.stacks.remove | translate:{ path }" [matTooltip]="I18N.stacks.remove | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">remove_circle_outline</mat-icon></button>
               </div>
             }
-            @if (!page) { <button mat-icon-button (click)="openMember(path)" [disabled]="saving()" [attr.aria-label]="I18N.stacks.open_member | translate:{ path }"><mat-icon>open_in_new</mat-icon></button> }
+            @if (!page) { <button mat-icon-button (click)="openMember(path)" [disabled]="saving()" [attr.aria-label]="I18N.stacks.open_member | translate:{ path }" [matTooltip]="I18N.stacks.open_member | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">open_in_new</mat-icon></button> }
           </div>
         }
         @if (paths().length < 2) { <p role="status" class="my-3">{{ (regrouping() ? I18N.stacks.regroup_minimum : I18N.stacks.dissolve_hint) | translate }}</p> }
@@ -128,13 +128,13 @@ function captureDateKey(date: string | null | undefined): string {
               </button>
               <span data-stack-filename class="block text-xs truncate px-2 pt-2" tabindex="0" [matTooltip]="path" [title]="path" [attr.aria-label]="path">{{ path | filename }}</span>
               @if (editable() && !page) {
-                <button mat-button class="!w-full" [attr.data-stack-cover]="path" (click)="setCover(path)" [disabled]="saving()" [attr.aria-pressed]="path === cover()" [attr.aria-label]="I18N.stacks.cover_for | translate:{ path }">
-                  <mat-icon>{{ path === cover() ? 'star' : 'star_outline' }}</mat-icon>{{ I18N.stacks.cover | translate }}
+                <button mat-button class="!w-full" [attr.data-stack-cover]="path" (click)="setCover(path)" [disabled]="saving()" [attr.aria-pressed]="path === cover()" [attr.aria-label]="I18N.stacks.cover_for | translate:{ path }" [matTooltip]="I18N.stacks.cover_for | translate:{ path: (path | filename) }">
+                  <mat-icon aria-hidden="true">{{ path === cover() ? 'star' : 'star_outline' }}</mat-icon>{{ I18N.stacks.cover | translate }}
                 </button>
                 <div class="flex justify-center">
-                  <button mat-icon-button class="!w-9 !h-10 !p-2" (click)="move(index, -1)" [disabled]="saving() || first" [attr.aria-label]="I18N.stacks.move_up | translate:{ path }"><mat-icon>arrow_back</mat-icon></button>
-                  <button mat-icon-button class="!w-9 !h-10 !p-2" (click)="move(index, 1)" [disabled]="saving() || last" [attr.aria-label]="I18N.stacks.move_down | translate:{ path }"><mat-icon>arrow_forward</mat-icon></button>
-                  <button mat-icon-button class="!w-9 !h-10 !p-2" [attr.data-stack-remove]="path" (click)="remove(path)" [disabled]="saving()" [attr.aria-label]="I18N.stacks.remove | translate:{ path }"><mat-icon>remove_circle_outline</mat-icon></button>
+                  <button mat-icon-button class="!w-9 !h-10 !p-2" (click)="move(index, -1)" [disabled]="saving() || first" [attr.aria-label]="I18N.stacks.move_up | translate:{ path }" [matTooltip]="I18N.stacks.move_up | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">arrow_back</mat-icon></button>
+                  <button mat-icon-button class="!w-9 !h-10 !p-2" (click)="move(index, 1)" [disabled]="saving() || last" [attr.aria-label]="I18N.stacks.move_down | translate:{ path }" [matTooltip]="I18N.stacks.move_down | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">arrow_forward</mat-icon></button>
+                  <button mat-icon-button class="!w-9 !h-10 !p-2" [attr.data-stack-remove]="path" (click)="remove(path)" [disabled]="saving()" [attr.aria-label]="I18N.stacks.remove | translate:{ path }" [matTooltip]="I18N.stacks.remove | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">remove_circle_outline</mat-icon></button>
                 </div>
               }
             </li>
