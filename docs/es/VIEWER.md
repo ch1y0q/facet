@@ -139,6 +139,24 @@ python database.py --migrate-user-preferences --user alice
 
 La búsqueda de texto de la galería conserva las palabras Unicode y trata la puntuación de los nombres de archivo como separadores de palabras. `IMG_0042.JPG` busca a la vez los prefijos `IMG`, `0042` y `JPG`. Los términos en cirílico y CJK funcionan. Los operadores FTS como `OR` se tratan como palabras literales.
 
+### Pestañas de la barra lateral
+
+La barra lateral de filtros agrupa sus secciones en cinco pestañas, mostradas como iconos (pasa el ratón para ver el nombre). Una pequeña insignia en un icono cuenta los filtros activos de la pestaña, y la pestaña conserva su nombre para los lectores de pantalla («Explorar, 2 activos»). La última pestaña usada se recuerda en este navegador (`facet_sidebar_tab`). Explorar, Calidad y Sujeto tienen paneles plegables, cada uno recuerda si está abierto; Revisión y Visualización no los tienen.
+
+| Pestaña | Secciones |
+|---------|-----------|
+| **Explorar** | Búsqueda semántica, Personas, Rango de fechas, Contenido, Álbumes, Ubicación, Carpeta, Equipo |
+| **Revisión** | Una fila con menú cada una para la decisión, y después para ráfagas, duplicados, parpadeos, horquillados, panorámicas y rechazadas, una valoración por estrellas, los interruptores Favoritos y Monocromo y, para editores, *Rostros manuales por revisar* y *Correcciones de panorama* |
+| **Calidad** | Calidad, Color y calidad, Calidad extendida, Técnica, Exposición & Rango (qué tan buena es la imagen) |
+| **Sujeto** | Métricas faciales, Composición, Saliencia del sujeto, Momentos (qué hay en el encuadre) |
+| **Visualización** | Vista (tamaño de las tarjetas, diseño, desplazamiento rápido, acciones de las tarjetas) |
+
+La cabecera, **Buscar un filtro**, el aviso de álbum inteligente y la búsqueda por nombre de archivo permanecen sobre las pestañas en todas ellas, así que `/` funciona desde cualquiera. Escribir en **Buscar un filtro** oculta las pestañas y lista los controles coincidentes de todas.
+
+El número junto a **Filtros** es el total de todos los filtros activos. Un rango mín./máx. cuenta una vez, igual que el filtro de ubicación. La búsqueda por nombre de archivo y *Similar a* no tienen sección y solo se cuentan en este total, igual que un filtro sobre una métrica que esta instalación oculta, para que **Restablecer filtros** aún pueda borrarlo. **Restablecer filtros** (con información emergente) aparece junto al número mientras haya al menos un filtro activo; la simple **X** del extremo derecho solo cierra la barra lateral en pantallas estrechas.
+
+En la pestaña Revisión, la decisión y cada grupo (por ejemplo Duplicados) es una fila que muestra su valor actual (como Ocultos, Mostrados o Solo estos) y abre un menú de opciones, cada una con una explicación de una línea. Una fila que se deja en su valor por defecto no cuenta en la insignia de la pestaña ni de la cabecera. *Solo* y *Ocultos* se excluyen entre sí. Mientras hay una decisión elegida, Rechazadas queda bloqueada, y su información emergente explica por qué. El botón de estrella fija una valoración mínima: cada clic la sube en uno, y el clic después de 5, o después de un máximo llegado desde un enlace, la borra. Comparte fila con los interruptores Favoritos y Monocromo, solo con icono y con información emergente. En las pestañas Calidad y Sujeto, pasar el cursor sobre el nombre de un ajuste explica qué se puntúa y con qué modelo, y los controles de Revisión también tienen información emergente.
+
 <details><summary>Barra lateral de filtros completa: todas las secciones expandidas (haz clic para ver)</summary>
 <p align="center"><img src="../screenshots/filter-sidebar-full.jpg" alt="Filter sidebar with every section expanded" width="360"></p>
 </details>
@@ -390,7 +408,7 @@ Campos de respuesta y códigos de estado: [API.md](../API.md).
 - **Mejor del horquillado**: muestra solo la exposición base de cada bracketing. **Activado por defecto.** Independiente de Mejor de ráfaga, porque la principal de la ráfaga de un bracketing no siempre es su exposición base.
 - **Mejor del panorama**: muestra solo el fotograma central de cada conjunto de panorámica o panorámica HDR. **Activado por defecto.**
 - **Desplazamiento infinito**: las fotos se cargan al desplazarte
-- **Desplazamiento rápido (virtualizado)**: renderiza solo las filas cercanas a la ventana, de modo que el desplazamiento profundo sigue siendo rápido. Activado por defecto. Desactívalo en la sección Visualización de la barra lateral si tienes problemas de diseño. El modo cuadrícula con detalles visibles siempre se renderiza por completo. Se guarda en localStorage (`facet_virtual_scroll`).
+- **Desplazamiento rápido (virtualizado)**: renderiza solo las filas cercanas a la ventana, de modo que el desplazamiento profundo sigue siendo rápido. Activado por defecto. Desactívalo en la pestaña Visualización de la barra lateral si tienes problemas de diseño. El modo cuadrícula con detalles visibles siempre se renderiza por completo. Se guarda en localStorage (`facet_virtual_scroll`).
 
 ### Fotos similares
 
@@ -446,7 +464,7 @@ Los fotogramas de una panorámica están pensados para coserse y los de un brack
 - Si un fotograma marcado desaparece o pierde sus datos de exposición o de fecha, todo el conjunto espera hasta que todos los miembros vuelvan a cumplir los requisitos.
 - **Marcar prevalece sobre la detección de panorámicas**: una panorámica detectada que contiene fotogramas marcados se descarta en la siguiente ejecución.
 
-**Las correcciones se aplican en la siguiente ejecución de detección.** Una corrección se guarda al instante y se muestra como pendiente: una insignia de reloj en la miniatura de la galería, un chip *Corrección pendiente* en el descarte. La página de descarte muestra un banner con un botón **Volver a ejecutar la detección**. El filtro *Correcciones de panorama* de la barra lateral (solo edición, bajo Refinar) lista las correcciones pendientes de toda la biblioteca. *Descartar la corrección* quita una más tarde.
+**Las correcciones se aplican en la siguiente ejecución de detección.** Una corrección se guarda al instante y se muestra como pendiente: una insignia de reloj en la miniatura de la galería, un chip *Corrección pendiente* en el descarte. La página de descarte muestra un banner con un botón **Volver a ejecutar la detección**. El filtro *Correcciones de panorama* de la barra lateral (solo edición, en la pestaña Revisión) lista las correcciones pendientes de toda la biblioteca. *Descartar la corrección* quita una más tarde.
 
 **Ajustarla.** La pestaña Panorámicas bajo Comparar contiene los umbrales calibrados: fotogramas mínimos, barrido mínimo, mayor intervalo y dispersión de exposición HDR. Guardarlos no cambia nada hasta que vuelvas a ejecutar la detección (el botón está junto a Guardar). Ver [CONFIGURATION.md](CONFIGURATION.md#detección-de-panorámicas).
 
@@ -1402,7 +1420,7 @@ Facet escanea JPEG XL (`.jxl`) con la dependencia principal `imagecodecs`, inclu
 
 ### Revisar las marcas manuales de rostros guardadas
 
-Encuentra las fotos cuyos rectángulos de rostro guardados necesitan comprobación. En los filtros Refinar de la galería, activa **Rostros manuales por revisar** (editores). Abre el editor de rostros de una foto y ajusta y guarda, o elimina, cada rectángulo marcado. La foto sale entonces de la lista. El filtro funciona en álbumes inteligentes y selecciones de toda la vista, y se muestra como un chip que se puede quitar.
+Encuentra las fotos cuyos rectángulos de rostro guardados necesitan comprobación. En la pestaña Revisión de la barra lateral de la galería, activa **Rostros manuales por revisar** (editores). Abre el editor de rostros de una foto y ajusta y guarda, o elimina, cada rectángulo marcado. La foto sale entonces de la lista. El filtro funciona en álbumes inteligentes y selecciones de toda la vista, y se muestra como un chip que se puede quitar.
 
 - La lista refleja el último escaneo o comprobación del editor, no una vigilancia de archivos en vivo. Los escaneos comprueban las fotos con marcas manuales incluso con la detección de rostros desactivada.
 - Abrir el editor vuelve a comprobar el original y es la referencia definitiva.

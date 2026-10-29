@@ -139,6 +139,24 @@ python database.py --migrate-user-preferences --user alice
 
 Gallery text search keeps Unicode words and treats filename punctuation as word boundaries. `IMG_0042.JPG` searches for the prefixes `IMG`, `0042` and `JPG` together. Cyrillic and CJK terms work. FTS operators such as `OR` are treated as literal words.
 
+### Sidebar Tabs
+
+The filter sidebar groups its sections into five tabs, shown as icons (hover for the name). A small badge on an icon counts the active filters inside that tab, and the tab keeps its name for screen readers ("Browse, 2 active"). The last tab you used is remembered in this browser (`facet_sidebar_tab`). Browse, Quality and Subject keep collapsible panels, each remembering whether it is open; Review and Display have none.
+
+| Tab | Sections |
+|-----|----------|
+| **Browse** | Semantic Search, Persons, Date Range, Content, Albums, Location, Folder, Equipment |
+| **Review** | One menu row each for the decision, then bursts, duplicates, blinks, brackets, panoramas and rejected, a star rating, Favorites and Monochrome toggles and, for editors, *Manual faces need review* and *Panorama corrections* |
+| **Quality** | Quality, Color & Quality, Extended Quality, Technical, Exposure & Range (how good the image is) |
+| **Subject** | Face Metrics, Composition, Subject Saliency, Moments (what is in the frame) |
+| **Display** | View (card size, layout, fast scrolling, card actions) |
+
+The header, **Find a filter**, the smart-album notice and the filename search stay above the tabs on every tab, so `/` works from any of them. Typing in **Find a filter** hides the tabs and lists the matching sliders from all of them.
+
+The count next to **Filters** is the total of all active filters. A min/max range counts once, and so does the location filter. The filename search and *Similar to* have no section, so they are counted in this total only, and so is a filter on a metric this install hides, so that **Reset Filters** can still clear it. **Reset Filters** (with a tooltip) appears next to the count while at least one filter is active; the plain **X** at the far right only closes the sidebar on narrow screens.
+
+On the Review tab, the decision and each set (for example Duplicates) is one row showing its current value (such as Hidden, Shown or Only these) that opens a menu of choices, each with a one-line explanation. A row left on its default value does not count toward the tab or header badge. *Only* and *Hidden* exclude each other. While a decision is chosen, Rejected is locked, and its tooltip says why. The star button sets a minimum rating: each click raises it by one, and the click after 5, or after a maximum that came in from a link, clears it. It shares a row with the icon-only Favorites and Monochrome toggles, which have tooltips. On the Quality and Subject tabs, hovering a setting's name explains what is scored and by which model, and the Review controls have tooltips too.
+
 <details><summary>Full filter sidebar — every section expanded (click to view)</summary>
 <p align="center"><img src="screenshots/filter-sidebar-full.jpg" alt="Filter sidebar with every section expanded" width="360"></p>
 </details>
@@ -390,7 +408,7 @@ Response fields and status codes: [API.md](API.md).
 - **Best of bracket** — show only each bracket's base exposure. **On by default.** Independent of Best of Burst, because a bracket's burst lead is not always its base exposure.
 - **Best of panorama** — show only the middle frame of each panorama or HDR-panorama set. **On by default.**
 - **Infinite Scroll** — photos load as you scroll
-- **Fast Scrolling (virtualized)** — renders only rows near the viewport, so deep scrolling stays fast. On by default. Turn it off in the sidebar's Display section if you hit layout issues. Grid mode with details shown always renders fully. Saved in localStorage (`facet_virtual_scroll`).
+- **Fast Scrolling (virtualized)** — renders only rows near the viewport, so deep scrolling stays fast. On by default. Turn it off in the sidebar's Display tab if you hit layout issues. Grid mode with details shown always renders fully. Saved in localStorage (`facet_virtual_scroll`).
 
 ### Similar Photos
 
@@ -446,7 +464,7 @@ A panorama's frames are meant to be stitched and a bracket's to be merged; they 
 - If a marked frame disappears or loses its exposure or date data, the whole set waits until every member qualifies again.
 - **Marking wins over panorama detection**: a detected panorama containing marked frames is dropped on the next run.
 
-**Corrections apply on the next detection run.** A correction is saved at once and shown as pending: a clock badge on the gallery tile, a *Correction pending* chip in culling. The culling page shows a banner with a **Re-run detection** button. The sidebar's *Panorama corrections* filter (edition only, under Refine) lists pending corrections library-wide. *Drop the correction* removes one later.
+**Corrections apply on the next detection run.** A correction is saved at once and shown as pending: a clock badge on the gallery tile, a *Correction pending* chip in culling. The culling page shows a banner with a **Re-run detection** button. The sidebar's *Panorama corrections* filter (edition only, on the Review tab) lists pending corrections library-wide. *Drop the correction* removes one later.
 
 **Tuning it.** The Panoramas tab under Compare holds the calibrated thresholds: minimum frames, minimum sweep, longest gap and HDR exposure spread. Saving them changes nothing until you re-run detection (the button is beside Save). See [CONFIGURATION.md](CONFIGURATION.md#panorama-detection).
 
@@ -1400,7 +1418,7 @@ Facet scans JPEG XL (`.jxl`) with the core `imagecodecs` dependency, included in
 
 ### Review saved manual faces
 
-Find photos whose saved face rectangles need checking. In the gallery's Refine filters, enable **Manual faces need review** (editors). Open a photo's face editor and adjust and save, or delete, each flagged rectangle. The photo then leaves the list. The filter works in smart albums and whole-view selections, and shows as a removable chip.
+Find photos whose saved face rectangles need checking. On the gallery sidebar's Review tab, enable **Manual faces need review** (editors). Open a photo's face editor and adjust and save, or delete, each flagged rectangle. The photo then leaves the list. The filter works in smart albums and whole-view selections, and shows as a removable chip.
 
 - The list reflects the last scan or editor check, not live file watching. Scans check photos with manual marks even with face detection off.
 - Opening the editor rechecks the original and is authoritative.

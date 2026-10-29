@@ -139,6 +139,24 @@ python database.py --migrate-user-preferences --user alice
 
 La ricerca testuale della galleria conserva le parole Unicode e tratta la punteggiatura dei nomi file come confine di parola. `IMG_0042.JPG` cerca insieme i prefissi `IMG`, `0042` e `JPG`. I termini cirillici e CJK funzionano. Gli operatori FTS come `OR` sono trattati come parole letterali.
 
+### Schede della barra laterale
+
+La barra laterale dei filtri raggruppa le sue sezioni in cinque schede, mostrate come icone (passa il mouse per vedere il nome). Un piccolo badge su un'icona conta i filtri attivi della scheda, e la scheda mantiene il suo nome per gli screen reader («Sfoglia, 2 attivi»). L'ultima scheda usata viene ricordata in questo browser (`facet_sidebar_tab`). Sfoglia, Qualità e Soggetto hanno pannelli comprimibili, ciascuno dei quali ricorda se è aperto; Revisione e Visualizzazione non ne hanno.
+
+| Scheda | Sezioni |
+|--------|---------|
+| **Sfoglia** | Ricerca semantica, Persone, Intervallo date, Contenuto, Album, Posizione, Cartella, Attrezzatura |
+| **Revisione** | Una riga con menu ciascuna per la decisione, poi per raffiche, duplicati, occhi chiusi, bracketing, panorami e scartate, una valutazione a stelle, gli interruttori Preferiti e Monocromo e, per gli editor, *Volti manuali da verificare* e *Correzioni panorama* |
+| **Qualità** | Qualità, Colore e qualità, Qualità estesa, Tecnica, Esposizione & Gamma (quanto è buona l'immagine) |
+| **Soggetto** | Metriche volti, Composizione, Salienza del soggetto, Momenti (cosa c'è nell'inquadratura) |
+| **Visualizzazione** | Vista (dimensione delle schede, layout, scorrimento rapido, azioni delle schede) |
+
+L'intestazione, **Cerca un filtro**, l'avviso dell'album intelligente e la ricerca per nome file restano sopra le schede in ogni scheda, quindi `/` funziona da tutte. Digitare in **Cerca un filtro** nasconde le schede ed elenca i cursori corrispondenti di tutte.
+
+Il numero accanto a **Filtri** è il totale di tutti i filtri attivi. Un intervallo min/max conta una volta, come il filtro di posizione. La ricerca per nome file e *Simile a* non hanno una sezione e sono contati solo in questo totale, come un filtro su una metrica che questa installazione nasconde, così che **Ripristina filtri** possa comunque cancellarlo. **Ripristina filtri** (con descrizione al passaggio) compare accanto al numero finché almeno un filtro è attivo; la semplice **X** all'estrema destra chiude soltanto la barra laterale sugli schermi stretti.
+
+Nella scheda Revisione, la decisione e ogni gruppo (ad esempio Duplicati) è una riga che mostra il valore attuale (come Nascoste, Mostrate o Solo queste) e apre un menu di scelte, ciascuna con una spiegazione di una riga. Una riga lasciata sul valore predefinito non conta nel badge della scheda né dell'intestazione. *Solo* e *Nascoste* si escludono a vicenda. Finché è scelta una decisione, Scartate è bloccata e la sua descrizione ne spiega il motivo. Il pulsante a stella imposta una valutazione minima: ogni clic la aumenta di uno, e il clic dopo 5, o dopo un massimo arrivato da un link, la cancella. Condivide una riga con gli interruttori Preferiti e Monocromo, solo icona e con descrizioni al passaggio. Nelle schede Qualità e Soggetto, passare sul nome di un'impostazione spiega cosa viene valutato e da quale modello, e anche i controlli di Revisione hanno descrizioni al passaggio.
+
 <details><summary>Barra laterale dei filtri completa — tutte le sezioni espanse (clicca per vedere)</summary>
 <p align="center"><img src="screenshots/filter-sidebar-full.jpg" alt="Barra laterale dei filtri con tutte le sezioni espanse" width="360"></p>
 </details>
@@ -390,7 +408,7 @@ Campi della risposta e codici di stato: [API.md](../API.md).
 - **Migliore del bracketing** — mostra solo l'esposizione di base di ogni bracket. **Attivo per impostazione predefinita.** Indipendente da Migliore della raffica, perché il capofila di raffica di un bracket non è sempre la sua esposizione di base.
 - **Migliore del panorama** — mostra solo il fotogramma centrale di ogni serie panorama o panorama HDR. **Attivo per impostazione predefinita.**
 - **Scorrimento infinito** — le foto si caricano mentre scorri
-- **Scorrimento rapido (virtualizzato)** — disegna solo le righe vicine all'area visibile, così lo scorrimento in profondità resta veloce. Attivo per impostazione predefinita. Disattivalo nella sezione Visualizzazione della barra laterale se incontri problemi di layout. La modalità griglia con dettagli mostrati si disegna sempre per intero. Salvato in localStorage (`facet_virtual_scroll`).
+- **Scorrimento rapido (virtualizzato)** — disegna solo le righe vicine all'area visibile, così lo scorrimento in profondità resta veloce. Attivo per impostazione predefinita. Disattivalo nella scheda Visualizzazione della barra laterale se incontri problemi di layout. La modalità griglia con dettagli mostrati si disegna sempre per intero. Salvato in localStorage (`facet_virtual_scroll`).
 
 ### Foto simili
 
@@ -446,7 +464,7 @@ I fotogrammi di un panorama sono pensati per essere uniti in un'unica immagine e
 - Se un fotogramma segnato sparisce o perde i dati di esposizione o di data, l'intera serie attende finché ogni membro non è di nuovo idoneo.
 - **Segnare prevale sul rilevamento del panorama**: un panorama rilevato che contiene fotogrammi segnati viene scartato alla successiva esecuzione.
 
-**Le correzioni si applicano alla successiva esecuzione del rilevamento.** Una correzione viene salvata subito e mostrata come in sospeso: un badge a orologio sulla tessera della galleria, un chip *Correzione in sospeso* in Selezione. La pagina di selezione mostra un banner con un pulsante **Rilancia il rilevamento**. Il filtro *Correzioni dei panorami* della barra laterale (solo modifica, sotto Affina) elenca le correzioni in sospeso in tutta la libreria. *Rimuovi la correzione* ne rimuove una in seguito.
+**Le correzioni si applicano alla successiva esecuzione del rilevamento.** Una correzione viene salvata subito e mostrata come in sospeso: un badge a orologio sulla tessera della galleria, un chip *Correzione in sospeso* in Selezione. La pagina di selezione mostra un banner con un pulsante **Rilancia il rilevamento**. Il filtro *Correzioni dei panorami* della barra laterale (solo modifica, nella scheda Revisione) elenca le correzioni in sospeso in tutta la libreria. *Rimuovi la correzione* ne rimuove una in seguito.
 
 **Regolare il rilevamento.** La scheda Panorami sotto Confronta contiene le soglie calibrate: fotogrammi minimi, ampiezza minima della panoramica, intervallo più lungo e dispersione di esposizione HDR. Salvarle non cambia nulla finché non rilanci il rilevamento (il pulsante è accanto a Salva). Vedi [CONFIGURATION.md](CONFIGURATION.md#rilevamento-dei-panorami).
 
@@ -1400,7 +1418,7 @@ Facet scansiona JPEG XL (`.jxl`) con la dipendenza principale `imagecodecs`, inc
 
 ### Verificare i riquadri manuali dei volti salvati
 
-Trova le foto i cui rettangoli di volto salvati vanno controllati. Nei filtri Affina della galleria, attiva **Volti manuali da verificare** (editor). Apri l'editor dei volti di una foto e regola e salva, o elimina, ogni rettangolo segnalato. La foto esce poi dall'elenco. Il filtro funziona negli album intelligenti e nelle selezioni dell'intera vista, e compare come chip rimovibile.
+Trova le foto i cui rettangoli di volto salvati vanno controllati. Nella scheda Revisione della barra laterale della galleria, attiva **Volti manuali da verificare** (editor). Apri l'editor dei volti di una foto e regola e salva, o elimina, ogni rettangolo segnalato. La foto esce poi dall'elenco. Il filtro funziona negli album intelligenti e nelle selezioni dell'intera vista, e compare come chip rimovibile.
 
 - L'elenco riflette l'ultima scansione o il controllo dell'editor, non un monitoraggio dei file in tempo reale. Le scansioni controllano le foto con marcature manuali anche con il rilevamento dei volti disattivato.
 - Aprire l'editor ricontrolla l'originale ed è autorevole.

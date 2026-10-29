@@ -469,7 +469,7 @@ describe('GalleryStore', () => {
       expect(store.activeFilterCount()).toBe(6);
     });
 
-    it('should count all 13 possible filter fields', () => {
+    it('should count 13 filter keys as 9 controls: each min/max range counts once', () => {
       store.filters.set({
         ...DEFAULT_FILTERS,
         camera: 'Canon',
@@ -486,7 +486,7 @@ describe('GalleryStore', () => {
         max_composition: '10',
         search: 'sunset',
       });
-      expect(store.activeFilterCount()).toBe(13);
+      expect(store.activeFilterCount()).toBe(9);
     });
 
     it('should not count non-filter fields like sort', () => {
