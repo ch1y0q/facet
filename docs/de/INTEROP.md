@@ -2,69 +2,108 @@
 
 > 🌐 [English](../INTEROP.md) · [Français](../fr/INTEROP.md) · **Deutsch** · [Italiano](../it/INTEROP.md) · [Español](../es/INTEROP.md) · [Português](../pt/INTEROP.md) · [简体中文](../zh/INTEROP.md)
 
-Praktische Schritt-für-Schritt-Rezepte, um Facets Bewertungen, Labels und Tags mit den externen Editoren und DAM-Tools auszutauschen, die tatsächlich verwendet werden. Diese Seite setzt voraus, dass Sie bereits wissen, *dass* Facet XMP schreibt — siehe [Befehle — Vorschau & Export](COMMANDS.md#preview--export) für die vollständige Referenz der Optionen `--export-sidecars` / `--import-sidecars` und die Feldzuordnung (`xmp:Rating`, `xmp:Label`, `dc:subject`).
+Schritt-für-Schritt-Rezepte, um Facets Bewertungen, Labels und Tags mit Lightroom, Capture One, digiKam und darktable auszutauschen. Die vollständige Referenz der Optionen `--export-sidecars` / `--import-sidecars` und die Feldzuordnung (`xmp:Rating`, `xmp:Label`, `dc:subject`) finden Sie unter [Befehle — Vorschau & Export](COMMANDS.md#vorschau--export).
 
-Manuelle Orte und Entscheidungen werden nur beim ausdrücklichen Metadatenexport im Viewer oder mit `--export-sidecars` übertragen. GPS verwendet `exif:GPSLatitude` / `exif:GPSLongitude`; alte gescannte Koordinaten überschreiben keine Datei-Koordinaten. `--embed-originals` schreibt auch EXIF-GPS in unterstützte Originale. Ein korrigiertes Aufnahmedatum wird als `exif:DateTimeOriginal` exportiert (mit `--embed-originals` zusätzlich als EXIF-`DateTimeOriginal` in unterstützte Originale); nach **Dateidatum verwenden** entfernt der nächste Export es aus dem Sidecar, ohne ein von einem anderen Editor geschriebenes Datum anzutasten.
+Originale werden nie verändert, es sei denn, Sie verlangen das Einbetten: `--embed-originals` auf der Kommandozeile oder **Metadaten in Datei schreiben** im Viewer.
 
-Der Namensraum `https://github.com/ncoevoet/facet/ns/1.0/` definiert `facet:ReviewDecision` (`kept`, `rejected`, `undecided`) und `facet:GPSState` (`set`, `cleared`) sowie `facet:DateState` (`set`), das ein von Facet exportiertes Aufnahmedatum im Sidecar kennzeichnet. `facet:KeywordState` ist ein JSON-Eintrag (`version` 1 mit den Namenslisten `owned`, `deleted`, `ai` und `manual`) darüber, welche flachen Stichwörter Facet geschrieben hat: `--reconcile-keywords` entfernt nur Namen, die Facet gehören, und ein Import macht aus einem alten KI-Label keinen manuellen Tag. `facet:RegionOwner` (`Facet`) markiert die von Facet geschriebenen MWG-Gesichtsregionen, sodass ExifTool nur diese ersetzt. Behalten bleibt unabhängig von Sternen und Favoriten; Ablehnen löscht Behalten, Sterne und Favorit. `--import-sidecars` übernimmt Entscheidungen, wenn Standardfelder übereinstimmen oder fehlen. Weicht der Ablehnungsstatus ab, gilt die private Entscheidung als vom Editor unverändert übernommen und wird ignoriert; die Standardfelder folgen dem bisherigen Vergleich mit dem Scanzeitpunkt. Ein Import nur der Entscheidung bleibt ausdrücklich möglich, ohne Zeitvergleich. Eine zusammen mit Standard-Bewertungsfeldern exportierte Entscheidung nutzt dieselbe „neueste gewinnt“-Prüfung, außer bei einem Foto ohne Bewertungsstatus (keine Sterne, kein Favorit, kein Behalten, keine Ablehnung): So stellt eine neu gescannte Bibliothek ihre Entscheidungen wieder her, während ein älterer Export eine seitdem getroffene Entscheidung nicht zurücksetzen kann. Manuelles GPS bleibt erhalten, außer mit `--overwrite-manual-gps`. Explizites Löschen wird übertragen; fehlende Felder oder ungültige Koordinaten löschen nichts. `--user alice` berücksichtigt sichtbare Ordner und private Entscheidungen; GPS bleibt gemeinsam. Ohne Benutzer gilt der globale Zustand. ExifTool erhält fremde Metadaten; ohne ExifTool bleibt das vorhandene Sidecar erhalten und der Export nutzt `.facet.xmp`. Originale ändern sich nur bei ausdrücklich angeforderter Einbettung.
+## Was übertragen wird
 
-Globale Importe (ohne `--user`), auch Vorschauen mit `--dry-run`, benötigen keinen Zugriff auf den Anmeldeschlüssel des Viewers.
+Manuelle Orte und Bewertungsentscheidungen werden nur übertragen, wenn Sie Metadaten im Viewer exportieren oder `--export-sidecars` ausführen.
 
-ExifTool-Exporte benötigen die mitgelieferten Facet-Tagdefinitionen. Sind sie nicht verfügbar, stoppt der Export vor Änderungen am Foto oder an der Begleitdatei; installieren Sie Facet neu, um sie wiederherzustellen.
+- **GPS** verwendet `exif:GPSLatitude` / `exif:GPSLongitude`. Es werden nur manuell gesetzte Orte exportiert, sodass gescanntes GPS nie das GPS der Datei ersetzt. `--embed-originals` schreibt außerdem EXIF-GPS in unterstützte Originale. Das Löschen eines Orts exportiert ein ausdrückliches Löschen; ein fehlendes Feld löscht beim Import nie einen Ort.
+- **Aufnahmedatum.** Ein korrigiertes Datum wird als `exif:DateTimeOriginal` exportiert (mit `--embed-originals` auch als EXIF-`DateTimeOriginal`). Nach **Dateidatum verwenden** entfernt der nächste Export es aus dem Sidecar, lässt aber ein von einem anderen Editor geschriebenes Datum unangetastet.
+- **Behalten und Ablehnen.** Behalten ist unabhängig von Sternen und Favoriten. Ablehnen löscht Behalten, Sterne und Favorit.
+
+Facets eigener XMP-Namensraum `https://github.com/ncoevoet/facet/ns/1.0/` ergänzt:
+
+| Tag | Werte | Zweck |
+|---|---|---|
+| `facet:ReviewDecision` | `kept`, `rejected`, `undecided` | Facets Bewertungsentscheidung |
+| `facet:GPSState` | `set`, `cleared` | Ob Facet den Ort gesetzt oder gelöscht hat |
+| `facet:DateState` | `set` | Das Aufnahmedatum im Sidecar stammt von Facet |
+| `facet:KeywordState` | JSON (`version` 1; Listen `owned`, `deleted`, `ai`, `manual`) | Welche Stichwörter Facet geschrieben hat |
+| `facet:RegionOwner` | `Facet` | Die von Facet geschriebenen MWG-Gesichtsregionen |
+
+Mit `facet:KeywordState` entfernt `--reconcile-keywords` nur Namen, die Facet gehören, und ein alter KI-Label wird beim Import nicht zu einem manuellen Tag. Mit `facet:RegionOwner` ersetzt ExifTool nur Facets Gesichtsregionen.
+
+So wendet `--import-sidecars` eine Facet-Entscheidung an:
+
+- Es wendet eine Entscheidung an, wenn die Standard-Bewertungsfelder mit ihr übereinstimmen oder fehlen.
+- Weicht der Standard-Ablehnungsstatus ab, hat ein anderer Editor die Standardfelder geändert. Facet ignoriert seine private Entscheidung und nutzt für die Standardfelder die „neueste gewinnt“-Prüfung mit dem Scanzeitpunkt.
+- Eine zusammen mit Standard-Bewertungsfeldern exportierte Entscheidung nutzt ebenfalls die „neueste gewinnt“-Prüfung, sodass ein älterer Export eine neuere Entscheidung nicht zurücksetzen kann. Ausnahme ist ein Foto ohne Bewertungsstatus (keine Sterne, kein Favorit, kein Behalten, keine Ablehnung): Eine neu gescannte Bibliothek bekommt ihre Entscheidungen zurück.
+- Importe nur der Entscheidung bleiben ausdrücklich (Sie verlangen sie) und werden ohne die Scanzeit-Prüfung angewendet.
+
+Weitere Regeln:
+
+- Manuelles GPS, das bereits in Facet vorhanden ist, bleibt erhalten, außer Sie fügen `--overwrite-manual-gps` hinzu. Ungültige oder unvollständige Koordinaten werden ignoriert.
+- `--user alice` beschränkt Importe und Exporte auf die sichtbaren Ordner und privaten Entscheidungen dieses Benutzers. GPS bleibt gemeinsam. Ohne `--user` arbeitet die CLI mit dem globalen Zustand.
+- Globale Importe (ohne `--user`), auch Vorschauen mit `--dry-run`, benötigen den Anmeldeschlüssel des Viewers nicht.
+- Mit ExifTool wird der Export in vorhandene Sidecars zusammengeführt. Ohne ExifTool lässt der Export ein vorhandenes Editor-Sidecar unangetastet und schreibt eine Ersatzdatei.
+- ExifTool-Exporte benötigen die mitgelieferten Facet-Tagdefinitionen. Fehlen sie, stoppt der Export vor jeder Änderung; installieren Sie Facet neu.
 
 ## Die RAW-Sidecar-Namensfalle
 
-Facet exportiert `IMG_1234.CR2.xmp` neben `IMG_1234.CR2` und behält damit darktables vollständigen Dateinamen bei. Lightroom Classic und Capture One verwenden für proprietäres RAW gewöhnlich `IMG_1234.xmp`. Die Importregel ändert keine Exportnamen. Für JPEG/HEIC/TIFF/PNG/DNG bietet `--embed-originals` einen separaten Kanal in der Datei; GIF/WebP/BMP/AVIF/JPEG XL und proprietäres RAW benötigen passende Sidecar-Namen.
+Facet exportiert `IMG_1234.CR2.xmp` neben `IMG_1234.CR2` (darktables Konvention mit vollständigem Dateinamen). Lightroom Classic und Capture One verwenden für proprietäres RAW gewöhnlich `IMG_1234.xmp`. Exportnamen ändern sich nie.
 
-Die Suche wählen Sie mit `--import-sidecars --sidecar-naming full|basename|auto`:
+Für JPEG/HEIC/TIFF/PNG/DNG schreibt `--embed-originals` stattdessen in die Datei. GIF/WebP/BMP/AVIF/JPEG XL und proprietäres RAW benötigen weiterhin ein Sidecar mit passender Benennung.
 
-- `full` (Standard): `<image.ext>.xmp` oder `<image.ext>.facet.xmp`, je nach neuerer Dateiänderungszeit; bei Gleichstand gewinnt die primäre Datei.
-- `basename`: `<image>.xmp`, wobei nur die letzte Bildendung entfällt. Vollständige Namen und deren Fallback werden ignoriert.
-- `auto`: akzeptiert eine der beiden Namensfamilien, sofern nur eine vorhanden ist. Sind beide vorhanden, wird das Foto mit einer Mehrdeutigkeitsmeldung übersprungen. Änderungszeiten entscheiden diesen Konflikt nicht; wählen Sie bewusst `full` oder `basename`.
+Beim Import wählen Sie die Benennung mit `--import-sidecars --sidecar-naming full|basename|auto`:
 
-Ein von indexierten Fotos oder benachbarten Bilddateien geteilter Basisname, etwa `same.CR3` und `same.jpg`, wird bei `basename` und `auto` abgelehnt, auch wenn nur ein Foto im gewählten Ordner-/Benutzerbereich liegt. Verwenden Sie unabhängige vollständige Sidecar-Namen. `same_v1.jpg` hat einen anderen Basisnamen. Namensabweichungen sowie mehrdeutige, unlesbare oder ungültige Pakete werden gemeldet. Ein Parsefehler führt nicht zum Versuch der anderen Namensfamilie. Die CLI zählt Mehrdeutigkeiten unter übersprungenen Fotos und Namensabweichungen unter Fotos ohne ausgewähltes Sidecar. Außerdem zählt sie Sidecars mit vollständigem Namen, die unter `basename` ignoriert werden, und Basisnamen-Sidecars, die unter `full` ignoriert werden.
+- `full` (Standard): liest `<image.ext>.xmp` oder `<image.ext>.facet.xmp`, je nachdem, welche zuletzt geändert wurde. Bei Gleichstand gewinnt die primäre Datei.
+- `basename`: liest `<image>.xmp` (nur die letzte Endung entfällt). Sidecars mit vollständigem Namen werden ignoriert.
+- `auto`: akzeptiert, was vorhanden ist. Existieren beide, wird das Foto als mehrdeutig übersprungen; wählen Sie stattdessen `full` oder `basename`.
 
-Ableitungen mit doppelter Endung wie `IMG.CR2.jpg` dürfen das zu `IMG.CR2` gehörende `IMG.CR2.xmp` nicht lesen; der Schutz gilt auch für den `.facet.xmp`-Fallback eines anderen Bildes. Namenshinweise zeigen bei jeder Strategie nur ein Beispiel je Art und Import; die Zusammenfassung zählt weiterhin jedes betroffene Foto.
+Bei `basename` und `auto` wird ein Basisname, den mehrere Bilder teilen (z. B. `same.CR3` und `same.jpg`), abgelehnt, auch wenn nur eines davon im Umfang liegt. Verwenden Sie dafür Sidecars mit vollständigem Namen. `same_v1.jpg` hat einen anderen Basisnamen und ist unproblematisch.
 
-Der Import benötigt kein ExifTool. Exportzusammenführung, Einbettung und MWG-Gesichtsrechtecke benötigen ExifTool. Ohne ExifTool bleibt ein vorhandenes Editor-Sidecar erhalten; der XML-Fallback schreibt `<image.ext>.facet.xmp` ohne MWG-Rechtecke. Dieser Fallback benötigt eine bewusste Übergabe an andere Editoren und wird nicht universell gefunden. Die Regeln benennen keine Dateien um.
+- Eine Datei mit doppelter Endung wie `IMG.CR2.jpg` liest nie `IMG.CR2.xmp`, das zu `IMG.CR2` gehört. Dasselbe gilt für den `.facet.xmp`-Fallback eines anderen Bildes.
+- Abweichungen, Mehrdeutigkeiten und unlesbare Sidecars werden gemeldet. Nach einem Parsefehler probiert Facet keine andere Benennung aus.
+- Die Zusammenfassung zählt jedes betroffene Foto, auch Sidecars, die wegen der gewählten Benennung ignoriert wurden. Hinweise zeigen ein Beispiel je Art.
+- Es werden keine Dateien umbenannt.
+
+Der Import benötigt kein ExifTool. Exportzusammenführung, Einbettung und MWG-Gesichtsrechtecke benötigen ExifTool. Ohne ExifTool lässt Facet ein vorhandenes Editor-Sidecar in Ruhe und schreibt `<image.ext>.facet.xmp` ohne Gesichtsrechtecke. Andere Editoren suchen nicht nach diesem Namen, geben Sie die Datei also bewusst weiter.
 
 ## Lightroom Classic
 
 ### Facet → Lightroom
 
-1. `python facet.py --export-sidecars` (fügen Sie einen Pfad hinzu, um den Umfang einzugrenzen, z. B. `--export-sidecars /fotos/hochzeit-2026`). Fügen Sie `--embed-originals` hinzu, um zusätzlich direkt in JPEG-/HEIC-/TIFF-/PNG-/DNG-Dateien zu schreiben.
-2. Wählen Sie im Bibliotheksmodul von Lightroom Classic die Fotos aus (Strg/Cmd+A für alle) und wählen Sie **Metadaten → Metadaten aus Datei lesen**. Lightroom überschreibt Bewertung, Farblabel und Stichwörter seines Katalogs aus dem Sidecar (oder den eingebetteten Metadaten, für die oben genannten Formate).
+1. `python facet.py --export-sidecars` (fügen Sie einen Pfad hinzu, um den Umfang einzugrenzen, z. B. `--export-sidecars /photos/2026-wedding`). Fügen Sie `--embed-originals` hinzu, um zusätzlich direkt in JPEG-/HEIC-/TIFF-/PNG-/DNG-Dateien zu schreiben.
+2. Wählen Sie im Bibliotheksmodul von Lightroom Classic die Fotos aus (Strg/Cmd+A für alle) und wählen Sie **Metadaten → Metadaten aus Datei lesen**. Lightroom ersetzt Bewertung, Farblabel und Stichwörter durch die des Sidecars (oder der eingebetteten Metadaten).
 
-Facets Ablehnungsmarker (`xmp:Rating = -1`) wird beim Zurücklesen als Lightrooms Ablehnen-Flag interpretiert. Ein Facet-Favorit schreibt `xmp:Label = Yellow`, was Lightroom als **gelbes Farblabel** anzeigt — nicht als Pick-Flag. Wenn Ihr Lightroom-Workflow auf Pick-Flags statt auf Farblabels basiert, fügen Sie einen Umwandlungsschritt Farblabel → Pick hinzu, oder filtern Sie stattdessen nach dem gelben Label.
+Facets Ablehnungsmarker (`xmp:Rating = -1`) wird beim Zurücklesen als Lightrooms Ablehnen-Flag interpretiert. Ein Facet-Favorit schreibt `xmp:Label = Yellow`, was Lightroom als **gelbes Farblabel** anzeigt, nicht als Pick. Für Picks verwenden Sie das Zusatzmodul unten oder filtern nach dem gelben Label.
 
-Ein `python facet.py --export-manifest`-Feed (Pfad, Kategorie, alle Scores, Tags und dieselben Bewertungsspalten wie `--export-sidecars` — einschließlich benutzerbezogener Bewertungen über `--export-manifest --user alice` auf einer Mehrbenutzer-Installation) existiert jetzt für Werkzeuge, die Facets Daten ohne XMP-Parsing wollen — siehe [Befehle — Vorschau & Export](COMMANDS.md#preview--export). Genau diesen Feed liest das unten beschriebene Facet-Zusatzmodul.
+`python facet.py --export-manifest` schreibt Facets Daten ohne XMP: Pfad, Kategorie, alle Scores, Tags und dieselben Bewertungsspalten wie `--export-sidecars`. Verwenden Sie `--export-manifest --user alice` für benutzerbezogene Bewertungen. Siehe [Befehle — Vorschau & Export](COMMANDS.md#vorschau--export). Das Facet-Zusatzmodul unten liest es.
 
-**Manifest Version 2.** Das Manifest trägt jetzt zusätzlich `burst_group_id`, `sequence_kind`, `sequence_group_id`, `score_stars` und eine übergeordnete Zählung `pending_corrections` (manuelle Bracket-/Panorama-Korrekturen, die von einem Erkennungslauf noch nicht angewendet wurden — führen Sie `--detect-panoramas` erneut aus). Das Zusatzmodul nutzt die Felder pro Foto für die Serien-Auswahl/Ablehnungs- und Sterne-Ersatz-Optionen unten und zeigt `pending_corrections` als Warnzeile in seiner Vorschau, damit Sie wissen, dass ein erneuter Lauf der Erkennung noch ändern kann, welche Aufnahmen führend sind. Es gibt keinen abwärtskompatiblen Lesepfad: Ein für Version 2 gebautes Zusatzmodul weist ein Version-1-Manifest rundweg zurück, mit einem Dialog, der Sie zum erneuten Export aufruft, und ein älteres Zusatzmodul kann ein Version-2-Manifest ebenfalls nicht lesen. Sehen Sie diesen Dialog, führen Sie einfach `--export-manifest` erneut aus.
+**Manifest Version 2** ergänzt `burst_group_id`, `sequence_kind`, `sequence_group_id`, `score_stars` und eine übergeordnete Zählung `pending_corrections`. Sie gibt die Zahl der manuellen Bracket-/Panorama-Korrekturen an, die noch nicht angewendet wurden; führen Sie `--detect-panoramas` erneut aus, um sie anzuwenden. Das Zusatzmodul zeigt sie als Warnung in seiner Vorschau. Ein Zusatzmodul der Version 2 weist ein Version-1-Manifest zurück (und umgekehrt); führen Sie `--export-manifest` erneut aus, wenn dieser Dialog erscheint.
 
-Im Viewer bietet der Dialog **Export to editor** der Galerie dasselbe Manifest über einen Button **Download Lightroom manifest** an, eingegrenzt auf dieselbe Auswahl/denselben Filter wie der danebenliegende Sidecar-Export — siehe [Editor Export](VIEWER.md#editor-export). Er schreibt genau dieselbe `facet_manifest.json`-Form wie `--export-manifest`, sodass der Zusatzmodul-Dialog unten unabhängig davon funktioniert, welche Seite die Datei erzeugt hat.
+Im Viewer bietet der Dialog **Export to editor** der Galerie einen Button **Download Lightroom manifest** für dieselbe Auswahl oder denselben Filter — siehe [Editor Export](VIEWER.md#editor-export). Er erzeugt dieselbe `facet_manifest.json` wie `--export-manifest`.
 
 ### Das Facet-Zusatzmodul (Sternebewertungen, Pick-Flags, Metadatenfelder und Stichwörter)
 
-`facet.lrplugin/` im Facet-Repository ist ein Lightroom-Classic-Zusatzmodul (Plug-in), das Facets Sternebewertung und den Favorit-/Ablehnungs-Status **direkt in den Katalog** schreibt. Es existiert, weil zwei der oben genannten Punkte von der XMP-Seite aus nicht zu lösen sind: Lightroom findet für eine proprietäre RAW-Datei nie ein Facet-Sidecar, und XMP hat überhaupt keinen Kanal für Lightrooms Pick-Flag. Das Zusatzmodul liest eine Manifestdatei, spricht also nie mit dem Facet-Server, braucht kein Passwort und funktioniert auch, wenn Facet nicht läuft — und weil es Fotos über den Pfad statt über Sidecars zuordnet, **verhält sich eine reine RAW-Bibliothek genau wie eine JPEG-Bibliothek**.
+`facet.lrplugin/` im Facet-Repository ist ein Lightroom-Classic-Zusatzmodul (Plug-in). Es schreibt Facets Sternebewertungen und den Favorit-/Ablehnungs-Status **direkt in den Katalog**. Das löst zwei Dinge, die XMP nicht kann: Lightroom findet für proprietäres RAW nie ein Facet-Sidecar, und XMP kann Lightrooms Pick-Flag nicht transportieren.
 
-Das Zusatzmodul registriert zwei Einträge unter **Bibliothek → Zusatzmoduloptionen** (**Library → Plug-in Extras**): **Facet: Apply ratings and flags...** (die Richtung Manifest → Katalog, in diesem Abschnitt beschrieben) und **Facet: Export Lightroom State to Facet...** (die umgekehrte Richtung — siehe [Lightroom → Facet](#lightroom--facet) unten).
+Das Zusatzmodul liest eine Manifestdatei. Es kontaktiert nie den Facet-Server, braucht kein Passwort und funktioniert, während Facet gestoppt ist. Es ordnet Fotos über den Pfad zu, sodass **eine reine RAW-Bibliothek genau wie eine JPEG-Bibliothek funktioniert**.
+
+Es fügt zwei Einträge unter **Bibliothek → Zusatzmoduloptionen** (**Library → Plug-in Extras**) hinzu:
+
+- **Facet: Apply ratings and flags...** — Manifest → Katalog (dieser Abschnitt).
+- **Facet: Export Lightroom State to Facet...** — Katalog → Facet, siehe [Lightroom → Facet](#lightroom--facet).
 
 **Installation** (einmalig):
 
-1. Kopieren Sie den Ordner `facet.lrplugin` auf den Rechner, auf dem Lightroom läuft. Unter macOS vorher zippen — der Finder behandelt einen `.lrplugin`-Ordner als Paket.
+1. Kopieren Sie den Ordner `facet.lrplugin` auf den Rechner, auf dem Lightroom läuft. Unter macOS vorher zippen: Der Finder behandelt einen `.lrplugin`-Ordner als Paket.
 2. In Lightroom Classic: **Datei → Zusatzmodul-Manager → Hinzufügen**, den Ordner `facet.lrplugin` auswählen, dann **Fertig**.
 
-**Verwendung** (jedes Mal, wenn Facets Urteil in den Katalog soll):
+**Verwendung:**
 
-1. `python facet.py --export-manifest /fotos/hochzeit-2026` (der Pfad grenzt den Export ein; die Datei landet immer als `facet_manifest.json` im aktuellen Verzeichnis). Kopieren Sie sie auf den Lightroom-Rechner, falls Facet anderswo läuft.
-2. Wählen Sie im Bibliotheksmodul die Fotos aus und dann **Bibliothek → Zusatzmoduloptionen → Facet: Apply ratings and flags...** (die Oberfläche des Zusatzmoduls ist englisch).
-3. Verweisen Sie im Dialog auf `facet_manifest.json`. Der Pfad wird für das nächste Mal gemerkt.
-4. **Wenn Facet die Fotos von einem anderen Rechner aus gescannt hat, tragen Sie die beiden Pfad-Präfixe ein.** Das Manifest enthält die Pfade des scannenden Rechners (`/volume1/photos/...` auf einem NAS), Lightroom dagegen die des Arbeitsplatzes (`Z:\photos\...`). Geben Sie das Lightroom-Präfix und das Facet-Präfix an, die denselben Ordner bezeichnen; lassen Sie beide leer, wenn sie übereinstimmen. Das ist der einzige Fehler beim ersten Lauf, der wirklich zählt — er führt schlicht dazu, dass nichts zugeordnet wird.
-5. Wählen Sie den Umfang: die ausgewählten Fotos (Standard) oder alle Fotos des aktuellen Ordners.
-6. Klicken Sie auf **Preview...** (Vorschau). **Es wird noch nichts geschrieben.** Das Zusatzmodul meldet, wie viele Fotos es im Manifest gefunden hat, wie viele nicht, und wie viele Bewertungen und Flags es setzen würde. Steht die Trefferzahl auf 0, zeigt es einen Beispielpfad aus Lightroom neben einem Beispielpfad aus dem Manifest, damit Sie sehen, wie die Präfixe lauten müssen.
-7. Klicken Sie auf **Apply** (Anwenden). Der Fortschritt wird angezeigt und lässt sich abbrechen; ein Abschlussdialog meldet, was gesetzt, übersprungen und nicht gefunden wurde.
+1. `python facet.py --export-manifest /photos/2026-wedding` (der Pfad grenzt den Export ein; die Datei landet immer als `facet_manifest.json` im aktuellen Verzeichnis). Kopieren Sie sie bei Bedarf auf den Lightroom-Rechner.
+2. Wählen Sie im Bibliotheksmodul die Fotos aus und dann **Bibliothek → Zusatzmoduloptionen → Facet: Apply ratings and flags...**
+3. Verweisen Sie im Dialog auf `facet_manifest.json`. Der Pfad wird gemerkt.
+4. **Wenn Facet auf einem anderen Rechner gescannt hat, tragen Sie die beiden Pfad-Präfixe ein.** Das Manifest enthält die Pfade des scannenden Rechners (z. B. `/volume1/photos/...` auf einem NAS), Lightroom dagegen die des Arbeitsplatzes (z. B. `Z:\photos\...`). Geben Sie das Lightroom-Präfix und das Facet-Präfix für denselben Ordner an. Lassen Sie beide leer, wenn die Pfade übereinstimmen. Sind sie falsch, wird nichts zugeordnet.
+5. Wählen Sie den Umfang: die ausgewählten Fotos (Standard) oder den ganzen aktuellen Ordner.
+6. Klicken Sie auf **Preview...**. **Es wird noch nichts geschrieben.** Die Vorschau zeigt, wie viele Fotos zugeordnet wurden, wie viele nicht und was gesetzt würde. Wurde nichts zugeordnet, zeigt sie einen Beispielpfad aus Lightroom neben einem Beispielpfad aus dem Manifest, damit Sie die Präfixe korrigieren können.
+7. Klicken Sie auf **Apply**. Sie können während des Fortschritts abbrechen. Eine Zusammenfassung zeigt, was gesetzt, übersprungen und nicht gefunden wurde.
 
-**Was es schreibt** — und sonst nichts, und nie in Ihre Bilddateien:
+**Was es schreibt** (nie in Ihre Bilddateien):
 
 | Facet-Status | Lightroom-Feld |
 |---|---|
@@ -72,32 +111,44 @@ Das Zusatzmodul registriert zwei Einträge unter **Bibliothek → Zusatzmodulopt
 | Favorit | Pick-Flag |
 | abgelehnt | Ablehnen-Flag |
 
-Eine Facet-Bewertung von 0 bedeutet „keine Meinung" (siehe `xmp_export.score_to_rating`) und wird nie geschrieben.
+Eine Facet-Sternebewertung von 0 bedeutet „keine Meinung“ und wird nie geschrieben.
 
-**Überschreib-Semantik** — standardmäßig widerspricht das Zusatzmodul Ihnen nie: Es setzt eine Sternebewertung nur, wenn das Foto in Lightroom *unbewertet* ist, und ein Flag nur, wenn das Foto *ungeflaggt* ist. Alles, was Sie von Hand bewertet oder geflaggt haben, bleibt unangetastet und wird in der Vorschau als „kept as they are" (unverändert belassen) gezählt. Setzen Sie das Häkchen bei **Overwrite ratings and flags that are already set in Lightroom**, um sie doch zu ersetzen. Das entspricht `only_when_unrated` in `xmp_export.score_to_rating`, sodass Zusatzmodul und Sidecar-Weg Ihre manuellen Änderungen gleich behandeln.
+**Überschreibregel.** Standardmäßig setzt das Zusatzmodul eine Bewertung nur bei einem Foto, das in Lightroom *unbewertet* ist, und ein Flag nur bei einem *ungeflaggten*. Ihre eigenen Bewertungen und Flags bleiben erhalten und werden als „kept as they are“ gezählt. Setzen Sie das Häkchen bei **Overwrite ratings and flags that are already set in Lightroom**, um sie zu ersetzen. Der Sidecar-Export folgt derselben Regel (`xmp_export.score_to_rating.only_when_unrated`, Standard `true`).
 
-**Neue Dialogoptionen** (alle optional, jede wird für nächstes Mal gespeichert):
+**Dialogoptionen** (standardmäßig alle aus, werden zwischen Läufen gemerkt):
 
-- **Fill in star ratings from Facet scores for photos you have not rated** — wenn ein Foto im Manifest keine `star_rating` hat (oder sie 0 ist), Facets `aggregate`-Score aber auf eine Sternezahl abbildet, füllt diese abgeleitete Bewertung die Lücke. Da dies ein Ersatz für ein *unbewertetes* Foto ist und keine echte Manifest-Bewertung, **überschreibt sie nie eine bereits vorhandene Lightroom-Bewertung — selbst wenn Overwrite angehakt ist.** Eine echte Manifest-`star_rating` folgt weiterhin unverändert der normalen Überschreib-Regel oben.
-- **Pick the recommended frame of each burst** — für jede Serien-Gruppe mit mindestens 2 Mitgliedern im Manifest wird jedes Mitglied, das das Manifest als `is_burst_lead` markiert (eine Serie kann mehr als ein Bild behalten), auf Auswahl (Pick) gesetzt. Ein einzelnes Bild, das das Manifest nie mit Geschwistern gruppiert hat, wird von dieser Option nie berührt, und eine Serien-Gruppe ohne ein einziges `is_burst_lead`-Mitglied im gesamten Manifest wird komplett übersprungen (nichts, wovon abgeleitet werden könnte). Ein von Hand gesetztes Pick/Reject-Flag — oder ein Facet-Favorit/Ablehnung im Manifest — hat immer Vorrang vor dieser abgeleiteten Auswahl.
-- **Reject the other frames** (verschachtelt unter der obigen Option, nur zusammen mit ihr aktivierbar) — setzt jedes Serien-Mitglied, das *nicht* die Führungsaufnahme ist, auf Ablehnung (Reject), mit zwei Ausnahmen: Ein Mitglied eines Belichtungsbrackets, Panoramas oder HDR-Panoramas wird durch diese Regel nie abgelehnt, unabhängig davon, dass seine `burst_group_id` es auch mit Geschwistern gruppiert — diese Sets werden vollständig erhalten; und eine Gruppe ohne Führungsaufnahme irgendwo im Manifest (siehe oben) erhält ebenfalls keine Ablehnungen.
-- **Create Facet collections for bursts, brackets, panoramas and HDR panoramas** — legt für jede Gruppe mit mindestens 2 passenden Fotos im aktuellen Umfang eine Sammlung namens `<yyyy-mm-dd HH:MM:SS> – <filename>` an oder findet eine wieder (Aufnahmezeit und Dateiname des frühesten Mitglieds; `~ (no date) – <filename>`, wenn dieses Mitglied keine Aufnahmezeit hat), verschachtelt unter `Facet › Bursts`, `Facet › Brackets`, `Facet › Panoramas` bzw. `Facet › HDR panoramas`. Eine einfache Serien-Gruppe, deren Mitglieder *alle* bereits vollständig zu einem Bracket-/Panorama-/HDR-Panorama-Set gehören, erhält keine eigene Bursts-Sammlung, da das die Sammlung unter Brackets/Panoramas/HDR panoramas nur doppeln würde. **Erneutes Ausführen fügt nur hinzu** — Fotos werden zu einer wiedergefundenen Sammlung ergänzt, aber nie entfernt, sodass eine Sammlung gegenüber einem später neu gruppierten oder neu erkannten Set veralten kann (ein aus einem Bracket entferntes Foto bei einem späteren Scan wird nicht aus der Sammlung entfernt). Sammlungsnamen kollidieren auch, wenn die frühesten Mitglieder zweier verschiedener Gruppen dieselbe Aufnahmezeit auf die Sekunde genau und denselben Dateinamen teilen — zwei Kameras, die beide `IMG_0001` zum selben Zeitpunkt geschrieben haben, teilen sich am Ende eine Sammlung statt jeweils eine eigene zu bekommen. Das ist eine bekannte Einschränkung, kein zu meldender Fehler.
-  - **Rebuild (clear and refill) Facet collections fully covered by this run** (verschachtelt unter der obigen Option) — statt nur hinzuzufügen, leert und befüllt eine Sammlung neu, aber nur, wenn die Sammlung UND ihre gesamte Gruppe vollständig im Umfang dieses Laufs liegen; eine nur teilweise abgedeckte Sammlung (manche Mitglieder außerhalb der Auswahl) oder eine intelligente/nicht aufgelöste Sammlung bleibt unangetastet und wird als übersprungen gezählt, und die Zusammenfassung meldet, wie viele neu aufgebaut, gelöscht, übersprungen und fehlgeschlagen wurden. Sie erreicht auch eine Facet-Sammlung, deren Gruppe in diesem Lauf AUFGELÖST wurde (nicht mehr mindestens 2 Mitglieder im Umfang, also kein Planeintrag) — diese Sammlung wird ebenfalls geleert und gelöscht, aber nur, wenn jedes Foto darin von diesem Lauf gefunden wurde; eine Sammlung mit einem Foto außerhalb dieses Laufs bleibt unangetastet. Rebuild wird nur angeboten — und läuft nur — solange **Create Facet collections for bursts, brackets, panoramas and HDR panoramas** aktiviert ist; das Deaktivieren dieser Option schaltet auch Rebuild ab. Der Durchlauf für aufgelöste Sammlungen berührt nur eine Sammlung, deren Name genau der von Facet selbst erzeugten Form entspricht (eine ISO-Datum-Uhrzeit oder das undatierte `~ (no date)`, gefolgt von ` – <filename>`), sodass eine von Ihnen selbst benannte Sammlung unter einer Facet-Menge nie geleert oder gelöscht wird. Hat der Durchlauf etwas zu löschen, fügt die Preview eine Zeile `Facet collections to delete: N` hinzu, und der Durchlauf läuft auch dann, wenn er die einzige anstehende Änderung ist, statt als „nichts zu ändern“ gemeldet zu werden.
-- **Write Facet scores/category/set-kind as Lightroom plug-in metadata fields** — schreibt den `aggregate`-Score (z. B. `8.4`), eine ganze Punktebreite (`0`-`10`), die Kategorie und die Set-Art in Facets eigene Zusatzmodul-Metadatenfelder, sichtbar im Metadaten-Panel und nutzbar als Text-Kriterium (`sdktext:`) im Bibliotheksfilter/in intelligenten Sammlungen — etwa eine intelligente Sammlung, die die Punktebreite auf „eine von 8, 9, 10" abgleicht. Ein Feld, das nicht mehr auf ein Foto zutrifft (z. B. weil es einen Bracket verlassen hat und die Set-Art damit verschwunden ist), wird gelöscht statt veraltet stehen zu bleiben — sonst würde eine intelligente Sammlung oder ein Bibliotheksfilter-Kriterium auf Basis dieses Felds weiterhin ein Foto treffen, auf das es nicht mehr zutrifft. Adobes SDK lässt die eigenen Felder eines Zusatzmoduls nur als Text oder Enum ins Suchvokabular, nie als numerischen Bereich — es gibt also weiterhin keine intelligente Sammlung „aggregate > 8"; die Punktebreite ist der nächstliegende textbasierte Ersatz. Zwei weitere Buchhaltungs-Eigenschaften (die von diesem Lauf abgeleitete Bewertung/der Pick) werden gleich mitgeschrieben, bleiben aber außerhalb von Bibliotheksfilter und intelligenten Sammlungskriterien — siehe die Anmerkung zum Rück-Export unter [Lightroom → Facet](#lightroom--facet). **NICHT VERIFIZIERT an einem echten Katalog:** Ob ein titelloses Metadatenfeld im Metadaten-Panel und Bibliotheksfilter tatsächlich unsichtbar ist, ist allein aus der Lightroom-SDK-Dokumentation nicht bestätigt; die beiden Buchhaltungs-Eigenschaften sind deshalb als `searchable = false, browsable = false` markiert — der sicherere, bestätigte Ersatz statt eines unbestätigten Titel-Weglassungs-Verhaltens — sie könnten in manchen Lightroom-Classic-Versionen trotzdem sichtbar sein.
-- **Create "Facet" keywords from Facet tags (never included on export)** — legt ein Wurzel-Stichwort `Facet` mit einem Kind pro Facet-Tag Ihrer Fotos an und hält die `Facet ›`-Kind-Stichwörter jedes Fotos exakt in Übereinstimmung mit seinen Manifest-Tags (fügt hinzu und entfernt, wenn sich Tags zwischen Läufen ändern). Jedes Stichwort, das diese Option anlegt oder berührt, hat `Include on Export` deaktiviert, sodass Facets automatische Tags nie in einen JPEG-/TIFF-Export oder eine Kundengalerie durchsickern. Ihre eigenen Stichwörter außerhalb der `Facet`-Wurzel werden von dieser Option nie gelesen, hinzugefügt oder entfernt. Ihre [manuellen Tags](#manuelle-tags-und-xmp-stichwörter) erscheinen dort wie die KI-Tags als `Facet ›`-Kinder; das Entfernen eines manuellen Tags in Facet entfernt daher sein Kind-Stichwort beim nächsten Apply.
+- **Fill in star ratings from Facet scores for photos you have not rated** — hat das Manifest keine `star_rating` (oder 0), wird der `aggregate`-Score auf Sterne abgebildet. Dieser Ersatz **überschreibt nie eine vorhandene Lightroom-Bewertung, auch nicht mit angehaktem Overwrite.**
+- **Pick the recommended frame of each burst** — in jeder Serien-Gruppe mit mindestens 2 Mitgliedern wird jedes als `is_burst_lead` markierte Mitglied auf Pick gesetzt (eine Serie kann mehr als eines behalten). Einzelbilder und Gruppen ohne Führungsbild werden übersprungen. Ihre eigenen Pick-/Reject-Flags und Facet-Favoriten/-Ablehnungen haben immer Vorrang.
+- **Reject the other frames** (nur zusammen mit der Pick-Option) — lehnt jedes Serien-Mitglied ab, das nicht Führungsbild ist. Mitglieder eines Brackets, Panoramas oder HDR-Panoramas werden nie abgelehnt, und Gruppen ohne Führungsbild erhalten keine Ablehnungen.
+- **Create Facet collections for bursts, brackets, panoramas and HDR panoramas** — legt für jede Gruppe mit mindestens 2 zugeordneten Fotos im Umfang eine Sammlung unter `Facet › Bursts`, `Facet › Brackets`, `Facet › Panoramas` oder `Facet › HDR panoramas` an oder verwendet sie wieder.
+  - Name: `<yyyy-mm-dd HH:MM:SS> – <filename>` des frühesten Mitglieds, oder `~ (no date) – <filename>`, wenn es keine Aufnahmezeit hat.
+  - Eine Serie, deren Mitglieder alle zu einem Bracket- oder Panorama-Set gehören, erhält keine eigene Bursts-Sammlung.
+  - **Erneutes Ausführen fügt nur Fotos hinzu.** Ein Foto, das später ein Set verlässt, bleibt in seiner Sammlung.
+  - Bekannte Einschränkung: Zwei Gruppen, deren früheste Mitglieder dieselbe Aufnahmesekunde und denselben Dateinamen teilen (z. B. zwei Kameras, die `IMG_0001` schreiben), teilen sich eine Sammlung.
+  - **Rebuild (clear and refill) Facet collections fully covered by this run** (nur mit der obigen Option) — leert und befüllt eine Sammlung neu, aber nur, wenn die Sammlung und ihre ganze Gruppe im aktuellen Umfang liegen. Teilweise abgedeckte Sammlungen und intelligente Sammlungen werden übersprungen.
+    - Es leert und löscht auch die Sammlung einer Gruppe, die sich in diesem Lauf aufgelöst hat, aber nur, wenn jedes Foto darin von diesem Lauf zugeordnet wurde.
+    - Es berührt nur Sammlungen, deren Name Facets eigenes Format hat (Datum und Uhrzeit oder `~ (no date)`, dann ` – <filename>`). Von Ihnen selbst benannte Sammlungen bleiben unangetastet.
+    - Die Vorschau zeigt eine Zeile `Facet collections to delete: N`, wenn etwas zu löschen ist. Die Zusammenfassung meldet neu aufgebaute, gelöschte, übersprungene und fehlgeschlagene Sammlungen.
+- **Write Facet scores/category/set-kind as Lightroom plug-in metadata fields** — schreibt den Aggregat-Score (z. B. `8.4`), eine ganze Punktebreite (`0`-`10`), die Kategorie und die Set-Art in Facets eigene Metadatenfelder. Sie erscheinen im Metadaten-Panel und funktionieren als Text-Kriterien (`sdktext:`) im Bibliotheksfilter und in intelligenten Sammlungen, z. B. Punktebreite „eine von 8, 9, 10“. Ein Feld, das nicht mehr zutrifft, wird gelöscht. Zwei versteckte Buchhaltungsfelder (die von diesem Lauf abgeleitete Bewertung und der Pick) werden ebenfalls geschrieben; sie sind von der Suche ausgeschlossen, in manchen Lightroom-Classic-Versionen aber möglicherweise trotzdem sichtbar (nicht verifiziert).
+- **Create "Facet" keywords from Facet tags (never included on export)** — legt ein Wurzel-Stichwort `Facet` mit einem Kind pro Tag an (KI- und [manuelle Tags](#manuelle-tags-und-xmp-stichwörter)). Die `Facet ›`-Kinder jedes Fotos werden an seine Tags angepasst; ein in Facet entferntes Tag verschwindet daher beim nächsten Apply. `Include on Export` ist für alle deaktiviert, sodass sie nie in Exporte oder Kundengalerien gelangen. Ihre Stichwörter außerhalb der `Facet`-Wurzel werden nie geändert. Ein vorhandenes Stichwort `Facet` auf oberster Ebene wird als Wurzel übernommen, und jedes Kind, das Sie selbst darunter angelegt haben, wird entfernt.
 
-**Warum Sammlungen statt Stapel.** Lightrooms SDK hat keinen Aufruf, um einen Stapel (Stack) zu erstellen oder zu verwalten — `stackInFolder`/`stackPositionInFolder` sind auf `LrPhoto` nur lesbar. Eine Sammlung ist der nächstliegende schreibbare Ersatz, und `canReturnPrior` bewirkt, dass ein erneuter Lauf des Zusatzmoduls dieselbe Sammlung wiederfindet, statt sie zu duplizieren. Wenn Sie einen echten Lightroom-Stapel wollen, wählen Sie die Fotos einer Sammlung aus und nutzen Sie selbst **Foto → Stapeln → Zu Stapel gruppieren** (Strg/Cmd+G) — diesen Schritt kann das Zusatzmodul nicht für Sie übernehmen.
+**Warum Sammlungen statt Stapel.** Lightrooms SDK kann keine Stapel (Stacks) erstellen. Um die Fotos einer Sammlung zu stapeln, wählen Sie sie aus und nutzen **Foto → Stapeln → Zu Stapel gruppieren** (Strg/Cmd+G).
 
-**Grenzen**, ehrlich benannt:
+**Grenzen:**
 
-- **Pick-Flags existieren nur im Katalog.** Das ist Lightrooms Entwurf, nicht der des Zusatzmoduls: Lightroom schreibt das Pick-Flag nie ins XMP, es erreicht also keine andere Anwendung und geht verloren, wenn Sie den Katalog aus den Dateien neu aufbauen. Sternebewertungen überleben dagegen über **Metadaten → Metadaten in Datei speichern**.
-- **Der Metadatenfeld-Weg für intelligente Sammlungen bleibt textbasiert.** Adobes SDK lässt die eigenen Felder eines Zusatzmoduls nur als Text oder Enum (`sdktext:`) in das Suchvokabular; die numerischen Operatoren (`>`, `<`, „liegt im Bereich") bleiben Lightrooms eingebauten Kriterien vorbehalten. Das Punktebreite-Feld oben ist der nächstliegende textbasierte Ersatz für „aggregate > 8"; den rohen Score über die **Sternebewertung** (die Ersatz-Option oben) zu führen bleibt der einzige Kanal, den Lightroom selbst numerisch filtert und sortiert.
-- **Rückgängig** funktioniert stapelweise: Das Zusatzmodul schreibt in Blöcken von 200 Fotos, Strg/Cmd+Z nimmt also 200 Fotos auf einmal zurück.
-- Setzen Sie vor einem Lauf das Häkchen bei **Write facet-apply.log next to the manifest**, wenn Sie Zeile für Zeile sehen müssen, welche Pfade zugeordnet wurden und was geschrieben wurde.
+- **Pick-Flags bleiben im Katalog.** Lightroom schreibt sie nie ins XMP, daher sieht keine andere Anwendung sie, und ein Neuaufbau des Katalogs aus den Dateien verliert sie. Sternebewertungen überleben über **Metadaten → Metadaten in Datei speichern**.
+- **Keine numerischen intelligenten Sammlungen auf Facet-Feldern.** Zusatzmodul-Felder sind nur Text (`sdktext:`); die numerischen Operatoren (`>`, `<`, „liegt im Bereich“) funktionieren nur bei Lightrooms eingebauten Feldern. Nutzen Sie das Punktebreite-Feld oder die Ersatz-Option für Sternebewertungen, die Lightroom numerisch sortiert und filtert.
+- **Rückgängig** nimmt mit jedem Strg/Cmd+Z einen Block von 200 Fotos zurück.
+- Setzen Sie das Häkchen bei **Write facet-apply.log next to the manifest**, um zu protokollieren, welche Pfade zugeordnet wurden und was geschrieben wurde.
 
 ### Lightroom → Facet
 
-**Bewertungen, Picks und Ablehnungen — Lightroom gewinnt (über das Zusatzmodul).** **Library → Plug-in Extras → Facet: Export Lightroom State to Facet...** schreibt `facet_lightroom_state.json` (ein Datensatz pro Foto: `path`, sowie `rating`/`pick` nur, wenn sie noch reisen müssen — siehe unten) neben das Manifest. Spielen Sie es mit `python facet.py --import-lightroom facet_lightroom_state.json` zurück (fügen Sie `--user alice` bei einer Mehrbenutzer-Installation hinzu; dort erforderlich) oder, im Viewer, über den Button **Import Lightroom state…** im Dialog **Export to editor** der Galerie, der den Dateiinhalt direkt an den Server sendet. Lightrooms Wert gewinnt bedingungslos für jeden im Datensatz vorhandenen Schlüssel — CLI und Viewer teilen sich denselben Importer `processing/lightroom_sync.py`, der die Zählungen `matched`/`unmatched`/`changed` meldet:
+**Bewertungen, Picks und Ablehnungen — Lightroom gewinnt (über das Zusatzmodul).**
+
+1. **Library → Plug-in Extras → Facet: Export Lightroom State to Facet...** öffnet einen Speicherdialog. Die Datei enthält einen Datensatz pro Foto: `path`, sowie `rating`/`pick`, wenn sie übertragen werden müssen.
+2. Importieren Sie sie mit `python facet.py --import-lightroom facet_lightroom_state.json` (`--user alice` ist bei einer Mehrbenutzer-Installation erforderlich) oder über **Import Lightroom state…** im Dialog **Export to editor** der Galerie.
+
+Lightrooms Wert gewinnt für jedes Feld eines Datensatzes. Der Import meldet die Zählungen `matched`/`unmatched`/`changed`.
 
 | Lightroom-Status | Facet-Ergebnis |
 |---|---|
@@ -106,36 +157,45 @@ Eine Facet-Bewertung von 0 bedeutet „keine Meinung" (siehe `xmp_export.score_t
 | Pick-Flag = keins (`pick = 0`) | Favorit = aus, abgelehnt = aus |
 | Sternebewertung (`rating`, 0-5) | `star_rating` (`0` löscht sie) |
 
-Ein Datensatz, der `rating` oder `pick` ganz auslässt, lässt Facets entsprechenden Wert unberührt — der Export enthält einen Schlüssel nur, wenn Lightrooms aktueller Wert von dem abweicht, was die Apply-Richtung zuletzt selbst für dieses Foto abgeleitet hat (zwei versteckte, nicht durchsuchbare Zusatzmodul-Eigenschaften merken sich diese Grundlinie), sodass ein erneuter Export eines unberührten Fotos einen leeren Datensatz schreibt und nichts ändert. Ein erfolgreicher Import, der etwas ändert, baut außerdem dieselben bewertungsabgeleiteten Trainingspaare neu und stößt denselben leerlaufgetriggerten automatischen Neu-Trainingslauf an wie jede andere Bewertungs-Schreibung. Virtuelle Kopien werden vor dem Export nach Pfad auf ihr Original reduziert, wobei das Original bevorzugt wird, wenn beide für dieselbe Datei existieren.
+- Ein Datensatz ohne `rating` oder `pick` lässt den entsprechenden Facet-Wert unberührt. Der Export enthält ein Feld nur, wenn sich Lightrooms Wert von dem unterscheidet, was das letzte Apply gesetzt hat; ein unberührtes Foto ändert daher nichts.
+- Virtuelle Kopien werden vor dem Export in ihr Original zusammengeführt.
+- Ein erfolgreicher Import, der etwas ändert, aktualisiert die Trainingspaare und stößt wie jede Bewertungsänderung das automatische Neutrainieren an.
 
-**Bewertungen, Label und Stichwörter über XMP.** Getrennt davon, und weiterhin in dieser Richtung eine Einbahnstraße:
+> **Warnung:** Da Lightroom gewinnt, löscht ein Foto, das der Apply-Schritt nie berührt hat und das in Lightroom unbewertet und ungeflaggt ist (`pick = 0`, kein `rating`), beim Import seine Facet-Sternebewertung, seinen Favoriten und seine Ablehnung.
 
-1. Wählen Sie in Lightroom die Fotos aus und wählen Sie **Metadaten → Metadaten in Datei speichern** (Strg/Cmd+S). Dadurch werden Bewertung, Label und Stichwörter des Katalogs in das XMP-Sidecar (RAW) geschrieben oder direkt in die Datei eingebettet (DNG/JPEG/PSD/TIFF).
-2. `python facet.py --import-sidecars /path --sidecar-naming basename` liest gespeicherte RAW-Sidecars in Facet ein; geteilte RAW/JPEG-Basisnamen werden abgelehnt. Eingebettete Metadaten werden nicht ausgelesen. Fremde Stichwörter werden manuelle Tags.
+**Bewertungen, Labels und Stichwörter über XMP** (Einbahnstraße):
+
+1. Wählen Sie in Lightroom die Fotos aus und wählen Sie **Metadaten → Metadaten in Datei speichern** (Strg/Cmd+S). Dadurch werden Bewertung, Label und Stichwörter in das XMP-Sidecar (RAW) oder in die Datei (DNG/JPEG/PSD/TIFF) geschrieben.
+2. `python facet.py --import-sidecars /path --sidecar-naming basename` liest die RAW-Sidecars. Geteilte RAW/JPEG-Basisnamen werden abgelehnt. Dieser Befehl liest keine eingebetteten Metadaten. Importierte Stichwörter werden manuelle Tags.
 
 ### Konfliktregeln
 
-- **Tags und Stichwörter werden standardmäßig zusammengeführt.** Exporte ergänzen Facet-Stichwörter; `--reconcile-keywords` entfernt zusätzlich nur veraltete Facet-eigene Namen. Importe ergänzen manuelle Tags und ersetzen keine KI-Tags. [Manuelle Tags und XMP-Stichwörter](#manuelle-tags-und-xmp-stichwörter).
-- **Mehrbenutzerbetrieb** (`--export-sidecars --user alice` / `--import-sidecars --user alice`): Bewertungen werden in Alices `user_preferences`-Zeile statt in die globalen Spalten geleitet. Stichwörter bleiben unabhängig von `--user` global — manuelle Tags werden von allen Benutzern geteilt.
-- Importierte Stichwörter landen in der Tabelle `photo_manual_tags`, die die Tag-Filter direkt lesen; ein `python database.py --migrate-tags` ist nach `--import-sidecars` daher nicht mehr nötig.
+- **Tags und Stichwörter werden standardmäßig zusammengeführt.** Exporte ergänzen Facet-Stichwörter; `--reconcile-keywords` entfernt zusätzlich veraltete Facet-eigene Namen. Importe ergänzen manuelle Tags und ersetzen nie KI-Tags. Siehe [Manuelle Tags und XMP-Stichwörter](#manuelle-tags-und-xmp-stichwörter).
+- **Mehrbenutzerbetrieb** (`--export-sidecars --user alice` / `--import-sidecars --user alice`): Bewertungen gehen in Alices eigene Bewertungen (`user_preferences`) statt in die globalen. Stichwörter sind immer global: Manuelle Tags werden geteilt.
+- Importierte Stichwörter landen in `photo_manual_tags`, das die Tag-Filter direkt lesen. Nach `--import-sidecars` ist kein `python database.py --migrate-tags` nötig.
 
 ## Capture One
 
-Capture One schreibt nie in die Originaldatei oder in ein kontinuierlich synchronisiertes XMP-Sidecar, wie es Lightrooms automatisches Speichern tut — es hält seine eigenen Anpassungen in `.cos`-Einstellungsdateien (Sessions) oder seiner Katalogdatenbank, und seine Einstellung **Sync Metadata** hat einen bidirektionalen „Full Sync"-Modus, der stillschweigend überschreiben kann, welche Seite zuletzt geschrieben hat. Eine bidirektionale Schleife über diese Einstellung laufen zu lassen, riskiert den Verlust entweder von Facets oder von Capture Ones Änderungen. Das sichere Muster ist **Einbahnstraße, Facet → Capture One**:
+Capture One hält seine Einstellungen in `.cos`-Dateien (Sessions) oder in seinem Katalog. Sein Modus „Full Sync“ bei **Sync Metadata** kann die Seite überschreiben, die zuletzt geschrieben hat, sodass eine bidirektionale Schleife Änderungen verlieren kann. Verwenden Sie **Einbahnstraße, Facet → Capture One**:
 
-1. `python facet.py --export-sidecars /pfad/zur/session --embed-originals`.
-2. Belassen Sie in Capture One **Preferences → General → Sync Metadata** auf dem Standardwert (nicht „Full Sync").
-3. Wählen Sie die importierten Bilder aus, klicken Sie mit der rechten Maustaste, und wählen Sie **Load Metadata**, um Bewertung, Label und Stichwörter aus dem Sidecar (oder den eingebetteten Metadaten) einmalig in die Katalogfelder von Capture One zu übernehmen.
+1. `python facet.py --export-sidecars /path/to/shoot --embed-originals`.
+2. Belassen Sie in Capture One **Preferences → General → Sync Metadata** auf dem Standardwert (nicht „Full Sync“).
+3. Wählen Sie die Bilder aus, klicken Sie mit der rechten Maustaste und wählen Sie **Load Metadata**, um Bewertung, Label und Stichwörter einmalig zu übernehmen.
 
-Nutzen Sie Facet als Quelle für KI-Bewertungen und Tags: einmalig `Load Metadata` ausführen, danach ohne automatische bidirektionale Synchronisierung in Capture One weiterarbeiten. Gespeicherte RAW-Sidecars ohne Bildendung importieren Sie bewusst mit `--import-sidecars /path/to/shoot --sidecar-naming basename`, vollständige Namen mit `full`. Geteilte RAW/JPEG-Basisnamen werden abgelehnt. Der Befehl liest Sidecars, keine eingebetteten Metadaten.
+Arbeiten Sie danach ohne automatische Synchronisierung in Capture One weiter. Um gespeichertes XMP zurück in Facet zu holen, führen Sie `--import-sidecars /path/to/shoot --sidecar-naming basename` für RAW-Sidecars ohne Bildendung aus, oder `full` für vollständige Dateinamen. Geteilte RAW/JPEG-Basisnamen werden abgelehnt. Das liest Sidecars, keine eingebetteten Metadaten.
 
 ## digiKam
 
-Die [Sidecar-Einstellungen von digiKam](https://docs.digikam.org/en/setup_application/metadata_settings.html#sidecars-settings) wählen eine Namenskonvention: normalerweise `filename.ext.xmp`, bei aktiviertem **Sidecar file names are compatible with commercial programs** dagegen `filename.xmp`. Gehen Sie nicht davon aus, dass beide geprüft werden. Für Facet-Exporte wählen Sie vollständige Namen und aktivieren **Read from sidecar files**. Lesen Sie die Dateimetadaten ausdrücklich neu in die digiKam-Datenbank ein und prüfen Sie die gewünschten Felder. Für digiKam → Facet wählen Sie passend zur gespeicherten Einstellung `--sidecar-naming full` oder `basename`. Sterne, Farblabels und Pick-Flags haben unterschiedliche Bedeutungen; gleiche Namen beweisen keinen Anwendungs-Roundtrip.
+Die [Sidecar-Einstellungen von digiKam](https://docs.digikam.org/en/setup_application/metadata_settings.html#sidecars-settings) verwenden eine Benennung: standardmäßig `filename.ext.xmp`, oder `filename.xmp`, wenn **Sidecar file names are compatible with commercial programs** aktiviert ist. Beide werden nicht probiert.
+
+- **Facet → digiKam:** Verwenden Sie die Einstellung mit vollständigem Namen, aktivieren Sie **Read from sidecar files**, lesen Sie die Metadaten aus den Dateien neu ein und prüfen Sie die Felder.
+- **digiKam → Facet:** Übergeben Sie `--sidecar-naming full` oder `basename`, passend zu Ihrer digiKam-Einstellung.
+
+Sterne, Farblabels und Pick-Flags bedeuten in jeder Anwendung etwas anderes, prüfen Sie das Ergebnis also.
 
 ### Batch-Queue-Manager-Hook
 
-Ein Facet-Import lässt sich mit **Custom Script** im digiKam Batch Queue Manager (BQM) ausführen. Aktivieren Sie das Schreiben von Sidecars, speichern Sie die Namenseinstellung und übernehmen Sie ausstehende Metadatenänderungen vor dem Import; verzögerte Synchronisierung kann Schreibvorgänge aufschieben. Das folgende Beispiel setzt vollständige Namen voraus. Ersetzen Sie `full` nur bei einer eindeutigen Sammlung mit kommerzieller Namenskonvention durch `basename`:
+Sie können einen Facet-Import über das Werkzeug **Custom Script** im digiKam Batch Queue Manager (BQM) ausführen. Aktivieren Sie zuerst das Schreiben von Sidecars, speichern Sie die Namenseinstellung und übernehmen Sie ausstehende Metadatenänderungen (digiKam kann Schreibvorgänge verzögern). Das Beispiel setzt Sidecars mit vollständigem Namen voraus; verwenden Sie `basename` nur für eine Sammlung ohne geteilte Basisnamen:
 
 ```bash
 #!/bin/bash
@@ -143,29 +203,42 @@ python /path/to/facet.py --import-sidecars --sidecar-naming full "$(dirname "$IN
 cp "$INPUT" "$OUTPUT"
 ```
 
-`$INPUT` / `$OUTPUT` sind digiKams Platzhalter pro Datei (BQM führt das Skript unter Linux/macOS über `/bin/bash` aus und erwartet eine Ausgabedatei, daher die `cp`-Weiterleitung). Da `--import-sidecars` den gesamten Ordner durchsucht, ist die Ausführung einmal pro Foto in einer großen Charge redundant, wenn auch harmlos (sie ist idempotent — unveränderte Fotos werden übersprungen). Verzichten Sie bei großen Chargen auf den BQM-Hook und führen Sie stattdessen einfach einmal von Hand `python facet.py --import-sidecars /pfad/zum/ordner` aus, nachdem die Queue abgeschlossen ist.
+`$INPUT` / `$OUTPUT` sind digiKams Platzhalter pro Datei. BQM erwartet eine Ausgabedatei, daher das `cp`. `--import-sidecars` durchsucht den ganzen Ordner, daher ist die Ausführung pro Foto redundant, aber harmlos. Führen Sie bei großen Chargen einmal `python facet.py --import-sidecars /path/to/folder` aus, nachdem die Queue abgeschlossen ist.
 
 ## darktable
 
-darktable wird bereits erstklassig behandelt in [Konfiguration — Viewer](CONFIGURATION.md#viewer) (Export-Profile/-Stile `viewer.raw_processor.darktable`) und [Viewer — Download](VIEWER.md#api-endpunkte) (Konvertierungen `type=darktable`). Auf der XMP-Seite: darktable schreibt sein eigenes `<bild><ext>.xmp`, um seinen Bearbeitungsverlauf zu speichern, und Facets exiftool-gestützter Sidecar-Writer führt an derselben Datei eine In-Place-Zusammenführung durch — die Knoten `darktable:history`/Masken bleiben erhalten und werden nie überschrieben. Ein separates Rezept ist hier nicht nötig: Das oben für Lightroom beschriebene bidirektionale Sidecar-Verhalten (Export/Import, neueste gewinnt, Tag-Vereinigung) gilt hier genauso, ohne die RAW-Namensfalle, da sich darktable und Facet auf `<bild><ext>.xmp` einigen.
+Siehe [Konfiguration — Viewer](CONFIGURATION.md#viewer) (Export-Profile und -Stile `viewer.raw_processor.darktable`) und [Viewer — Download](VIEWER.md#download) (Konvertierungen `type=darktable`).
 
-**exiftool-Version.** Empfohlen wird ExifTool **13.28 oder neuer**. Gesichtsänderungen benötigen **12.65 oder neuer**; ältere oder unbekannte Versionen überspringen sie mit Warnung und exportieren die übrigen Metadaten. Die Versionen 13.23 bis 13.27 beschädigen XMP-Sidecars mit darktable-Bearbeitungsverlauf (ein Attributwert, der auf `=` endet und auf den ein weiteres Attribut folgt, wird falsch geparst, und exiftool beendet sich trotzdem mit 0). Facet weigert sich daher, mit ihnen zu schreiben, und meldet einen Fehler mit der Aufforderung zum Update. Das Docker-Image enthält ein fest gepinntes exiftool und ist nicht betroffen; ein Distributionspaket kann es sein (das Debian-trixie-Paket `libimage-exiftool-perl` ist 13.25).
+darktable speichert seinen Bearbeitungsverlauf in seinem eigenen `<bild><ext>.xmp`. Facets ExifTool-Writer führt in diese Datei zusammen und erhält `darktable:history` und die Masken-Knoten. Das oben beschriebene Sidecar-Verhalten für Lightroom (Export/Import, neueste gewinnt, Tag-Vereinigung) gilt unverändert, und es gibt keine RAW-Namensabweichung: Beide verwenden `<bild><ext>.xmp`.
 
-**Vorbehalt: darktables eigenes XMP-Neuladen ist unzuverlässig.** Unabhängig von Facets Schreibpfad kann ein erneuter Import eines von darktable bereits bearbeiteten Bildes dazu führen, dass darktable den Bearbeitungsverlauf des Sidecars mit einem leeren überschreibt, statt ihn zu laden — ein offener Upstream-Bug ([darktable#20537](https://github.com/darktable-org/darktable/issues/20537), gemeldet am 2026-03-15), vor dem die Einstellung „check for new/updated xmp files on start" nicht schützt. Facet ist nicht die Ursache (die exiftool-Zusammenführung oben erhält `darktable:history` bereits), aber das Risiko liegt genau in dem Rücklese-Schritt, auf den der Roundtrip dieser Seite angewiesen ist. Praktischer Workaround, nach demselben Einmal-Prinzip wie im Capture-One-Rezept oben: Importieren Sie nach `--export-sidecars` keinen bereits bearbeiteten Ordner pauschal neu — laden Sie Sidecars nur für die Bilder neu, die Facet gerade angefasst hat, und prüfen Sie, dass der Bearbeitungsverlauf noch vorhanden ist, bevor Sie dem Rest der Charge vertrauen.
+**ExifTool-Version:**
+
+- **13.28 oder neuer** wird empfohlen.
+- Gesichtsänderungen benötigen **12.65 oder neuer**. Ältere oder unbekannte Versionen überspringen sie mit Warnung und exportieren den Rest.
+- **13.23 bis 13.27** beschädigen Sidecars mit darktable-Verlauf, daher verweigert Facet das Schreiben mit ihnen und bittet um ein Upgrade. Das Docker-Image pinnt eine sichere Version. Distributionspakete tun das möglicherweise nicht (das Paket `libimage-exiftool-perl` von Debian trixie ist 13.25).
+
+> **Warnung:** darktable selbst kann den Bearbeitungsverlauf löschen, wenn ein bereits bearbeitetes Bild erneut importiert wird: Es kann den Verlauf des Sidecars mit einem leeren überschreiben. Das ist ein offener Upstream-Bug ([darktable#20537](https://github.com/darktable-org/darktable/issues/20537), gemeldet am 2026-03-15), und die Einstellung „check for new/updated xmp files on start“ verhindert ihn nicht. Importieren Sie nach `--export-sidecars` einen bearbeiteten Ordner nicht pauschal neu. Laden Sie nur die Bilder neu, die Facet angefasst hat, und prüfen Sie zuerst ihren Verlauf.
 
 ## Manuelle Tags und XMP-Stichwörter
 
-Facet hält die Tags, die Sie selbst eingeben (siehe [Web-Galerie — Manuelle Tags](VIEWER.md#manuelle-tags)), in einer Zusatztabelle, `photo_manual_tags`, getrennt von den KI-Tags in `photos.tags`. Diese Trennung lässt einen erneuten Scan oder ein erneutes Tagging sie unangetastet und bestimmt, wie Stichwörter durch XMP wandern:
+Facet hält die Tags, die Sie eingeben (siehe [Web-Galerie — Manuelle Tags](VIEWER.md#manuelle-tags)), in `photo_manual_tags`, getrennt von den KI-Tags in `photos.tags`. Ein erneuter Scan oder ein erneutes Tagging berührt sie nie.
 
-- **Export.** Jeder Stichwort-Schreiber gibt zuerst die KI-Tags aus, dann die manuellen Tags, dann Personennamen, ohne Beachtung der Groß-/Kleinschreibung dedupliziert: `--export-sidecars`, die XMP-Export- und „Metadaten in Datei schreiben"-Aktionen der Galerie sowie das Lightroom-Manifest (`--export-manifest`, `/api/lightroom/manifest`).
-- **Import.** `--import-sidecars` liest nur `dc:subject`. Jedes Stichwort wird wie ein eingegebenes Tag normalisiert (getrimmt, kleingeschrieben, höchstens 64 Zeichen, 50 manuelle Tags pro Foto). Es wird als manuelles Tag mit der Quelle `xmp` gespeichert, außer es ist bereits eines der aktuellen KI-Tags des Fotos, entspricht einem seiner Personennamen, ist ein hierarchischer Pfad `a|b`, enthält ein Komma oder ein Steuerzeichen oder würde die Obergrenze überschreiten. Importierte Stichwörter schreiben nie mehr in `photos.tags`, ein erneutes Tagging überschreibt sie also nicht mehr.
-- **Entfernen ist ausdrücklich.** Exporte bleiben standardmäßig additiv. Mit ExifTool entfernt `--export-sidecars /pfad --reconcile-keywords` nur zuvor von Facet beanspruchte Namen, die in den aktuellen Facet-Stichwörtern fehlen. Fremde Namen bleiben auch bei Namensgleichheit erhalten; alte Pakete ohne Markierung gewähren keinen Besitz. `facet:KeywordState` speichert Besitz und Löschmarker. Ein Marker verfällt, wenn der Name wieder in der Datei erscheint oder Facet ihn erneut schreibt. Ein extern erneut hinzugefügtes manuelles Stichwort kann wieder importiert werden und gilt bei späteren Exporten als fremd. Stichwörter bleiben auch mit `--user` gemeinsam.
-- **Facet bestimmt den Exportinhalt.** In beiden Modi wird ein weiterhin in Facet vorhandenes Stichwort nach externem Entfernen wieder in die Datei geschrieben. Zum Übernehmen der Löschung muss es auch in Facet entfernt werden; es gibt keine automatische bidirektionale Synchronisation oder Datenbanklöschung. Namen wie `2024`, `1.50`, `1e3`, `true`, `false` und `null` behalten ihre Schreibweise, auch bei numerischen oder booleschen JSON-Werten von ExifTool. Fehlgeschlagene oder fehlerhafte Lesevorgänge verweigern jeden Export vor dem Schreiben. Besitzlisten sind auf jeweils 10.000 Namen und 1.024 Zeichen pro Name begrenzt; Überschreiten verweigert das Schreiben und bewahrt Löschmarker. Ohne ExifTool wird die Abgleichoperation vor dem Schreiben verweigert.
-- **Das Lightroom-Manifest gibt Entfernungen dagegen weiter.** Die Stichwort-Option des Plug-ins schreibt beim Apply die `Facet ›`-Kinder jedes Fotos passend zum Manifest neu; ein in Facet entferntes Tag verschwindet daher beim nächsten Apply aus Lightroom.
-- **KI-Herkunft bleibt beim erneuten Tagging erhalten.** Neue Pakete unterscheiden KI- und manuelle Tags: Ein altes KI-Tag wird nach erneutem Tagging nicht zum manuellen Tag. Alte Pakete ohne Marker bleiben additiv. Ohne ExifTool wird der Abgleich vor dem Schreiben verweigert; hierarchische Stichwörter bleiben additiv.
-- **Von einer älteren Facet-Version importierte Stichwörter bleiben, wo sie sind.** Bevor es manuelle Tags gab, führten Importe Stichwörter direkt in `photos.tags` zusammen, wo sie von KI-Tags nicht zu unterscheiden sind, und keine Migration verschiebt sie. Ein solches Stichwort erscheint weiter als KI-Tag, bis `photos.tags` geleert oder das Foto neu getaggt wird, und da der Import ein Stichwort überspringt, das schon in `photos.tags` steht, taucht es auch nicht als manuelles Tag auf. Zum Umwandeln leeren oder taggen Sie zuerst `photos.tags` neu und führen dann `--import-sidecars` erneut aus; oder fügen Sie das Tag einfach von Hand hinzu.
-- **Eine verschobene oder umbenannte Datei verliert ihre manuellen Tags.** Sie hängen am Pfad des Fotos, der nach einem Verschieben oder Umbenennen ein anderes Foto bezeichnet.
-- **`--export-csv` und `--export-json` bleiben auf KI beschränkt.** Ihr `tags`-Wert ist die rohe KI-Spalte ohne manuelle Tags.
+- **Export.** Jeder Stichwort-Schreiber gibt zuerst die KI-Tags aus, dann die manuellen Tags, dann Personennamen, ohne Beachtung der Groß-/Kleinschreibung dedupliziert. Das gilt für `--export-sidecars`, die XMP-Export- und „Metadaten in Datei schreiben“-Aktionen der Galerie sowie das Lightroom-Manifest (`--export-manifest`, `/api/lightroom/manifest`).
+- **Import.** `--import-sidecars` liest nur `dc:subject`. Stichwörter werden wie eingegebene Tags normalisiert: getrimmt, kleingeschrieben, höchstens 64 Zeichen, 50 manuelle Tags pro Foto. Jedes wird zu einem manuellen Tag mit der Quelle `xmp`, außer es
+  - ist bereits eines der KI-Tags oder einer der Personennamen des Fotos,
+  - ist ein hierarchischer Pfad `a|b`,
+  - enthält ein Komma oder Steuerzeichen oder
+  - würde die Obergrenze überschreiten.
+- **Entfernen von Stichwörtern ist ausdrücklich.** Exporte ergänzen standardmäßig nur. `--export-sidecars /path --reconcile-keywords` (benötigt ExifTool) entfernt außerdem Namen, die Facet früher geschrieben hat und die in Facet nicht mehr vorkommen. Stichwörter, die Facet nie geschrieben hat, werden nie entfernt, auch bei gleichem Namen, und alte Sidecars ohne Markierung geben Facet keinen Besitz. Fügen Sie ein entferntes Stichwort in einem anderen Editor wieder hinzu, kann Facet es erneut importieren und behandelt es danach als fremd. Stichwörter bleiben auch mit `--user` gemeinsam.
+- **Facets Stichwörter gewinnen beim Export.** Ein weiterhin in Facet vorhandenes Stichwort wird zurückgeschrieben, auch wenn ein anderer Editor es aus der Datei entfernt hat. Um es dauerhaft zu entfernen, entfernen Sie das Tag in Facet. Der Abgleich löscht nie Tags aus Facet.
+- Namen wie `2024`, `1.50`, `1e3`, `true`, `false` und `null` behalten ihre Schreibweise.
+- Kann Facet die Metadaten einer vorhandenen Datei nicht lesen, stoppt der Export vor dem Schreiben.
+- **Das Lightroom-Manifest gibt Entfernungen dagegen weiter.** Die Stichwort-Option des Zusatzmoduls schreibt bei jedem Apply die `Facet ›`-Kinder jedes Fotos neu.
+- **KI-Tags bleiben KI-Tags.** Sidecars halten fest, welche Stichwörter KI und welche manuell waren, sodass ein erneutes Tagging ein altes KI-Stichwort nicht zu einem manuellen Tag macht. Sidecars älterer Facet-Versionen behalten das alte additive Verhalten. Hierarchische Stichwörter sind immer additiv.
+- **Besitzgrenzen:** 10.000 Namen pro Liste und 1.024 Zeichen pro Name. Ein Export, der sie überschreiten würde, stoppt vor dem Schreiben. Archivieren und bereinigen Sie ein solches Sidecar von Hand, bevor Sie neu beginnen.
+- **Von einer älteren Facet-Version importierte Stichwörter bleiben, wo sie sind.** Ältere Versionen führten Stichwörter in `photos.tags` zusammen, wo sie wie KI-Tags aussehen, und keine Migration verschiebt sie. Um eines in ein manuelles Tag umzuwandeln, leeren oder taggen Sie `photos.tags` neu und führen dann `--import-sidecars` erneut aus — oder fügen Sie das Tag von Hand hinzu.
+- **Eine verschobene oder umbenannte Datei verliert ihre manuellen Tags.** Sie hängen am Pfad des Fotos.
+- **`--export-csv` und `--export-json` bleiben auf KI beschränkt.** Ihr `tags`-Wert enthält keine manuellen Tags.
 
 ## Wie Facet zusammenführt
 
@@ -178,26 +251,44 @@ Facet hält die Tags, die Sie selbst eingeben (siehe [Web-Galerie — Manuelle T
 | Bildunterschrift | `dc:description` Standardsprache (+ `IPTC:Caption-Abstract` über exiftool) | Nicht zurückimportiert | Nur Export |
 | Benannte Gesichtsbereiche | MWG `mwg-rs:RegionList` + `facet:RegionOwner=Facet` (zentriert-normalisiert, `Type=Face`) | Nicht zurückimportiert | Nur Export; nativ von digiKam gelesen, **nicht** von Lightroom (eine bekannte Adobe-Einschränkung — Lightroom liest nur MWG-Bereiche, die es selbst geschrieben hat) |
 
-Siehe [Befehle — Vorschau & Export](COMMANDS.md#preview--export) für die vollständige CLI-Referenz (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
+Siehe [Befehle — Vorschau & Export](COMMANDS.md#vorschau--export) für die vollständige CLI-Referenz (`--export-sidecars`, `--import-sidecars`, `--embed-originals`, `--score-to-stars`, `--user`).
 
-Steht ein veraltetes `facet:GPSState=cleared` neben Standard-GPS-Feldern, hat ein vollständiges gültiges Koordinatenpaar Vorrang. Ein unvollständiges oder ungültiges, nicht leeres Paar ist mehrdeutig und wird ignoriert; es löscht keinen Standort. Nur fehlende oder leere Koordinaten mit der expliziten Löschmarkierung löschen GPS. Manuelle GPS-Werte bleiben geschützt, sofern Überschreiben nicht ausdrücklich angefordert wird.
+**GPS-Löschungen.** Enthält ein Sidecar sowohl Standard-GPS-Felder als auch ein altes `facet:GPSState=cleared`, hat ein vollständiges gültiges Paar aus Breite und Länge Vorrang. Ein unvollständiges oder ungültiges Paar wird ignoriert und löscht nie einen Ort. Nur ein fehlendes oder leeres Paar plus die Löschmarkierung löscht GPS. Manuelles GPS bleibt geschützt, sofern Sie das Überschreiben nicht verlangen.
 
-Beim Beschriftungsexport mit ExifTool wird nur `x-default` in `dc:description` geändert; andere Sprachen bleiben in jeder bestehenden Sidecar-Datei oder Bilddatei erhalten. Eine leere Facet-Beschriftung lässt vorhandene Beschriftungen unverändert. Ohne ExifTool enthält das XML die Standardsprache und wird bei vorhandener Sidecar-Datei normalerweise nach `<image>.facet.xmp` umgeleitet; explizites Überschreiben ersetzt weiterhin das Zielpaket.
+**Beschriftungen.** Mit ExifTool aktualisiert der Export nur die Standardsprache (`x-default`) von `dc:description` und behält andere Sprachen. Eine leere Facet-Beschriftung lässt vorhandene Beschriftungen unverändert. Ohne ExifTool schreibt Facet eine Beschriftung in der Standardsprache und, wenn ein Editor-Sidecar existiert, stattdessen nach `<image>.facet.xmp`.
 
-ExifTool ersetzt nur MWG-Rechtecke mit `facet:RegionOwner=Facet` in den Extensions. Unmarkierte Regionen, auch alte Facet-Exporte, bleiben erhalten: Namen und Koordinaten beweisen keine Herkunft. Nach dem Upgrade können alte unmarkierte Gesichter neben neuen markierten Kopien erscheinen; beim Löschen bleibt die alte Kopie. Wiederholte Exporte ersetzen markierte Kopien ohne weitere Duplikate. Fremde Regionen und unbekannte Extensions bleiben unverändert. Unterschiedliche aktuelle Gesichtsabmessungen oder andere/unbekannte Bildabmessungen fremder Regionen überspringen alle Gesichtsänderungen mit Warnung; Bewertung, Label, Schlagwörter und GPS werden trotzdem exportiert. Unlesbare oder ungültige Gesichtsmetadaten verweigern den Einzelbildexport und das Einbetten vor dem Schreiben mit HTTP 412. Ohne ExifTool werden keine Rechtecke exportiert. Extern bearbeitete markierte Regionen bleiben Facet zugeordnet; entfernen Sie die Markierung für unabhängige Annotationen. Bekannte Voraussetzungen für Original und Sidecar werden vor dem Einbetten geprüft. Die getrennten Schreibvorgänge sind nicht atomar; spätere externe Änderungen oder E/A-Fehler können Teilresultate hinterlassen.
+**Gesichtsregionen.** Mit ExifTool ersetzt der Export nur MWG-Rechtecke, die mit `facet:RegionOwner=Facet` markiert sind.
 
-Eine nicht verfügbare, fehlgeschlagene oder ungültige ExifTool-Versionsprüfung wird bei der nächsten Prüfung wiederholt. Solange die Version unbekannt ist, überspringt Facet Gesichtsänderungen und kann andere Metadaten exportieren; eine spätere erfolgreiche Prüfung ermöglicht den Gesichtsexport wieder, wenn die Version ihn unterstützt. Bekannte fehlerhafte Versionen werden weiterhin vor dem Schreiben abgelehnt.
+- Unmarkierte Regionen, auch die älterer Facet-Versionen, bleiben erhalten. Nach einem Upgrade können ein altes unmarkiertes Gesicht und seine neue markierte Kopie beide erscheinen, und beim Löschen von Gesichtern bleibt das alte.
+- Wiederholte Exporte ersetzen die markierten Kopien; sie häufen sich nicht an.
+- Weichen die Bildabmessungen von denen ab, auf denen die vorhandenen Regionen gezeichnet wurden (oder sind unbekannt), werden Gesichtsänderungen mit Warnung übersprungen. Bewertung, Label, Stichwörter und GPS werden trotzdem exportiert.
+- Unlesbare oder ungültige Gesichtsmetadaten stoppen einen Einzelfoto-Export oder das Einbetten vor dem Schreiben.
+- Der Ersatz-Writer (ohne ExifTool) exportiert keine Gesichtsrechtecke.
+- Eine markierte Region, die Sie anderswo bearbeiten, gehört weiterhin Facet. Entfernen Sie ihre Besitzmarkierung, um sie als Ihre eigene zu behalten.
+
+> **Warnung:** Schreibvorgänge in getrennte Dateien sind nicht atomar. Ein E/A-Fehler oder eine äußere Änderung während des Exports kann einige Dateien aktualisiert und andere nicht hinterlassen.
+
+Schlägt die Prüfung der ExifTool-Version fehl, wiederholt Facet sie beim nächsten Mal. Solange die Version unbekannt ist, werden Gesichtsregionen übersprungen und der Rest exportiert. Bekannt fehlerhafte Versionen werden immer abgelehnt.
 
 ## Sidecar-Importvorschau und Konflikte
 
-`--import-sidecars /pfad --dry-run` zeigt JSON mit gewählter Datei, Vorher/Nachher-Werten, Ergänzungen, Quelle und Ablehnungsgründen. Die vorhandene Datenbank wird schreibgeschützt geöffnet, ohne Migration oder Commit. Anwenden liest Dateien und Datenbank in seiner Schreibtransaktion erneut; JSON ist kein Anwendungstoken.
+Führen Sie `--import-sidecars /path --dry-run` aus, um vor dem Schreiben den JSON-Plan zu sehen: das gewählte Sidecar, Vorher/Nachher-Felder, hinzuzufügende Stichwörter, Quellzeit sowie Überspringungs- und Konfliktgründe. Die Vorschau öffnet die Datenbank schreibgeschützt und ändert sie nie. Anwenden liest alles erneut, die Vorschau ist also kein Token zum Wiederverwenden.
 
-Fehlt die Datenbank, ist sie nicht lesbar oder ungültig, endet die Vorschau mit Exitcode 1 und einer Fehlermeldung; sie erstellt oder repariert die Datenbank nicht. `--dry-run-count` begrenzt nur Scan-Stichproben, nicht Importvorschauen.
+Fehlt die Datenbank, ist sie nicht lesbar oder ungültig, endet die Vorschau mit Exitcode 1 und erstellt oder repariert sie nicht. `--dry-run-count` begrenzt nur Scan-Stichproben, nicht Importvorschauen.
 
-`--sidecar-fields review,gps,keywords` wählt Gruppen. `review` hält Sterne, Favorit, Ablehnung und Keep zusammen, damit keine halbe Entscheidung angewendet wird. Manuelles GPS bleibt ohne `--overwrite-manual-gps` geschützt. Stichwörter bleiben additiv und auch mit `--user` gemeinsam.
+`--sidecar-fields review,gps,keywords` wählt, welche Gruppen importiert werden; lassen Sie eine Gruppe weg, um sie zu überspringen.
 
-Nach dem Upgrade speichern SQLite-Trigger je Foto/Konto/Bewertungsfeld einen Beleg, auch bei Zurücksetzen und Löschen einer Präferenzzeile. Ein älteres Paket erzeugt `newer_local_edit`; die ganze Bewertungsgruppe bleibt erhalten. `--overwrite-sidecar-review` erzwingt ausdrücklich den Ersatz. XMP-Belege nennen Datei/Zeit; `local` bedeutet unbekannter SQL-Schreiber, keinen bestätigten Menschen. Kein neuer Import für Beschriftungen, Gesichter, Hierarchien oder unmarkiertes externes GPS.
+- **review** importiert Sterne, Favorit, Ablehnung und Behalten zusammen, sodass ein Konflikt nie eine halbe Entscheidung anwendet.
+- **gps** behält manuelle Orte, sofern nicht `--overwrite-manual-gps` angegeben ist.
+- **keywords** sind additiv und gemeinsam, auch mit `--user`.
 
-Ohne Beleg ist die Änderungszeit unbekannt: Es gilt die Scanzeit-Regel, und `untracked_legacy_edit` meldet das, ohne menschliche Änderungszeiten zu erfinden. Die Vorschau liest ältere Datenbanken ohne Migration; ein fehlendes Keep-Feld bedeutet unentschieden. Die Quelle ist `xmp:MetadataDate`, sonst die Dateizeit. Details umfassen 1.000 Fotos und 100 Diagnosen pro Foto mit Auslassungszahlen; Bereich und Sichtbarkeit gelten vor der Planung.
+**Änderungszeitmarken.** Facet hält fest, wann jedes Bewertungsfeld zuletzt geändert wurde, je Foto und Konto, einschließlich Zurücksetzungen. Ein Sidecar, das älter als diese Änderung ist, ist ein Konflikt `newer_local_edit`, und diese Bewertungsgruppe bleibt unverändert. `--overwrite-sidecar-review` hebt dies und die Scanzeit-Prüfung auf. Eine Quelle `local` bedeutet einen unbekannten Schreiber, nicht unbedingt eine Person. Beschriftungen, Gesichter, hierarchische Stichwörter und unmarkiertes externes GPS werden nie importiert.
 
-Änderungsbelege bleiben privat in ihrer Datenbank. Neue Viewer-Exporte enthalten keine Scanner-Belege oder XMP-Pfade; inkrementelle Exporte bewahren nur die bereits im Viewer vorhandenen Belege. Explizite Viewer-Zurücksetzungen einschließlich gelöschter Benutzereinstellungen bleiben erhalten. Scanner-Werte ohne Viewer-Änderungen werden weiter aktualisiert. Eine Viewer-Datenbank aus einem unveröffentlichten Build vor 1.24.0 kann bereits kopierte Scanner-Belege enthalten. Sie werden nun als Viewer-Änderungen behalten, sodass diese Felder Scanner-Updates nicht mehr folgen; Zeitstempel werden nicht erfunden. Sichern und prüfen Sie diese Datenbank vor einem Neuaufbau: Ein vollständiger Neuaufbau erhält lokale Viewer-Änderungen nicht.
+- Felder, die geändert wurden, bevor Facet Änderungen aufzeichnete, haben keine bekannte Änderungszeit. Es gilt die Scanzeit-Regel, gemeldet als `untracked_legacy_edit`.
+- Die Vorschau öffnet auch ältere Datenbanken ohne Upgrade; ein fehlendes Behalten-Feld gilt als unentschieden.
+- Die Zeit des Sidecars ist `xmp:MetadataDate`, oder die Änderungszeit der Datei, wenn sie fehlt oder ungültig ist.
+- Die Details listen die ersten 1.000 Fotos im Umfang und 100 Hinweise pro Foto auf, mit Zählungen des Ausgelassenen.
+
+Änderungszeitmarken bleiben in ihrer eigenen Datenbank. Ein frischer Viewer-Export kopiert keine Scanner-Zeitmarken oder Sidecar-Pfade. Ein inkrementeller Export behält die eigenen Zeitmarken des Viewers, sodass im Viewer vorgenommene Zurücksetzungen (einschließlich gelöschter Benutzerbewertungen) erhalten bleiben. Scanner-Werte, die der Viewer nie bearbeitet hat, werden weiter aktualisiert.
+
+> **Warnung:** Eine Viewer-Datenbank aus einem unveröffentlichten Build vor 1.24.0 kann kopierte Scanner-Zeitmarken enthalten. Sie zählen nun als Viewer-Änderungen, sodass diese Felder Scanner-Updates nicht mehr folgen. Sichern und prüfen Sie diese Datenbank vor einem Neuaufbau: Ein vollständiger Neuaufbau verwirft lokale Viewer-Änderungen.

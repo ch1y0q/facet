@@ -2,11 +2,9 @@
 
 > 🌐 [English](../GETTING_STARTED.md) · [Français](../fr/GETTING_STARTED.md) · **Deutsch** · [Italiano](../it/GETTING_STARTED.md) · [Español](../es/GETTING_STARTED.md) · [Português](../pt/GETTING_STARTED.md) · [简体中文](../zh/GETTING_STARTED.md)
 
-Eine Anleitung für die erste Sitzung bei der üblichen Aufgabe: Sie haben gerade einen Stapel
-Fotos aufgenommen oder importiert und möchten am Ende eine kuratierte Auswahl haben. Sie
-folgt sechs Schritten — importieren, Ähnliches gruppieren, Facet Ihren Geschmack beibringen,
-aussortieren, verschlagworten, exportieren — und verweist auf die Seite, die den jeweiligen
-Schritt erklärt, statt ihn zu wiederholen.
+Sie haben einen frischen Stapel Fotos und möchten eine kuratierte Auswahl. Diese Seite führt
+durch sechs Schritte — importieren, Ähnliches gruppieren, Facet Ihren Geschmack beibringen,
+aussortieren, verschlagworten, exportieren — und verweist für die Details jeweils weiter.
 
 ![Facet-Galerie im Überblick](../screenshots/walkthrough.gif)
 
@@ -14,14 +12,12 @@ Schritt erklärt, statt ihn zu wiederholen.
 
 ### 1. Ein Bearbeitungspasswort festlegen
 
-Eine frische Installation ist **schreibgeschützt**. Sie können stöbern (vorbehaltlich
-`viewer.password`, falls Sie eines gesetzt haben), aber jede Änderung — Bewertungen,
-Aussortieren, Gesichter, Alben, Tags und die Scan-Schaltfläche — wird abgelehnt, bis Sie
-`viewer.edition_password` in `scoring_config.json` setzen und den Viewer neu starten (die
-Konfiguration wird nicht im laufenden Betrieb neu geladen).
+Eine frische Installation ist **schreibgeschützt**. Um etwas zu ändern (Bewertungen, Aussortieren,
+Gesichter, Alben, Tags, Scan), setzen Sie `viewer.edition_password` in `scoring_config.json` und
+starten Sie den Viewer neu (die Konfiguration wird nicht im laufenden Betrieb neu geladen).
 
-Mit der mitgelieferten `docker-compose.yml` müssen Sie sich keines ausdenken: Das Image
-erzeugt beim ersten Start ein Passwort und gibt es einmal aus. Lesen Sie es mit:
+Mit der mitgelieferten `docker-compose.yml` erzeugt das Image beim ersten Start ein Passwort und
+gibt es einmal aus:
 
 ```bash
 docker compose logs facet
@@ -48,11 +44,9 @@ Zwei Dinge bereiten bei Containern häufig Probleme:
 
 ### 3. Keine GPU? Kein Problem
 
-Alles — Bewertung, Gesichter, Tags, Aussortieren, die Scan-Schaltfläche — funktioniert auf
-einem Prozessor mit dem CPU-Profil `legacy`; es ist nur langsamer. Lesen Sie
+Alles funktioniert mit dem CPU-Profil `legacy`, nur langsamer. Siehe
 [Keine Grafikkarte](INSTALLATION.md#keine-grafikkarte) und
-[Welches Profil passt zu meiner Hardware?](INSTALLATION.md#welches-profil-passt-zu-meiner-hardware). Eine Grafikkarte ist
-nie Voraussetzung dafür, dass die Scan-Schaltfläche erscheint.
+[Welches Profil passt zu meiner Hardware?](INSTALLATION.md#welches-profil-passt-zu-meiner-hardware).
 
 ### 4. Auf den Speicher achten
 
@@ -73,9 +67,9 @@ und scannen Sie ihn. Das geht im Terminal ([Scannen](COMMANDS.md#scannen)) oder 
   sein. Mehrbenutzer: Sie benötigen die Rolle Superadmin.
 - Fügen Sie den Ordner zu `viewer.scan_directories` hinzu, damit der Starter etwas zur Auswahl hat.
 
-Eine Schaltfläche **Neue Fotos scannen** erscheint dann am Ende der Kopfzeile direkt vor dem
-Kontomenü (auf kleinen Bildschirmen am rechten Ende der unteren Leiste), nicht nur in der leeren Galerie. Vollständige Regeln: [Scan auslösen](VIEWER.md#scan-auslösen). Der erste
-Scan lädt die KI-Modelle einmalig herunter ([Erster Start](INSTALLATION.md#erster-start-was-sie-erwartet)).
+Eine Schaltfläche **Neue Fotos scannen** erscheint dann am Ende der Kopfzeile (auf kleinen
+Bildschirmen in der unteren Leiste). Siehe [Scan auslösen](VIEWER.md#scan-auslösen). Der erste Scan lädt die KI-Modelle
+einmalig herunter ([Erster Start](INSTALLATION.md#erster-start-was-sie-erwartet)).
 
 ![Scan-Schaltfläche am Ende der Kopfleiste](../screenshots/getting-started-scan-button.jpg)
 
@@ -110,15 +104,15 @@ Lehnen Sie Fotos beim Aussortieren ab oder wählen Sie eine Gruppe aus und wende
 Aktion darauf an
 ([Mehrfachauswahl & Sammelaktionen](VIEWER.md#mehrfachauswahl--sammelaktionen)):
 [Top N% behalten](VIEWER.md#top-n-behalten), [In Ordner aussortieren](VIEWER.md#in-ordner-aussortieren) oder
-[Löschen](VIEWER.md#löschen). „In Ordner aussortieren" zeigt zunächst eine Trockenlauf-Vorschau, bis Sie es anwenden. Löschen verschiebt Dateien
-sofort in den Papierkorb des Betriebssystems, und nur wenn `viewer.cull.allow_trash` aktiviert ist (standardmäßig `false`).
-[Rückgängig](VIEWER.md#rückgängig) deckt Sammel-Flag-Änderungen und Bestätigungen beim Aussortieren ab, nicht diese Dateioperationen.
-Die Ordner, in die ein Aussortieren schreiben darf, bilden eine Positivliste: Ihre
-Scan-Verzeichnisse plus `viewer.export.allowed_target_dirs`, sodass ein Unterordner des
-Fotobaums ohne Einrichtung funktioniert, während ein Ordner außerhalb abgelehnt wird, bis Sie
-ihn hinzufügen. Siehe
-[Ziele für Export und Aussortierung](CONFIGURATION.md#ziele-für-export-und-aussortierung). Um
-ohne Oberfläche auszusortieren:
+[Löschen](VIEWER.md#löschen).
+
+- **In Ordner aussortieren** zeigt eine Trockenlauf-Vorschau, bis Sie es anwenden.
+- **Löschen** verschiebt Dateien in den Papierkorb des Betriebssystems, und nur wenn `viewer.cull.allow_trash` aktiviert ist (standardmäßig aus).
+- **[Rückgängig](VIEWER.md#rückgängig)** deckt Flag-Änderungen und Bestätigungen beim Aussortieren ab, nicht Dateiverschiebungen oder Löschvorgänge.
+- **Ziele** sind auf Ihre Scan-Verzeichnisse plus `viewer.export.allowed_target_dirs` beschränkt
+  ([Ziele für Export und Aussortierung](CONFIGURATION.md#ziele-für-export-und-aussortierung)).
+
+Um im Terminal auszusortieren:
 [Eine Aufnahmesession im Terminal aussortieren](COMMANDS.md#eine-aufnahmesession-im-terminal-aussortieren).
 
 Fotos, die Sie außerhalb von Facet löschen, hinterlassen ihre Datenbankzeile, bis Sie die
@@ -128,12 +122,10 @@ Bereinigung unter [Datenbankpflege](COMMANDS.md#datenbankpflege) ausführen.
 
 ### Schritt 5: Tags und Metadaten zu den behaltenen Fotos hinzufügen
 
-Facet verschlagwortet Fotos automatisch, und Sie können auch **eigene Tags** hinzufügen: in
-der Foto-Detailansicht für ein einzelnes Foto oder über die Sammelaktionen für eine Auswahl.
-Manuelle Tags überstehen erneutes Scannen, der Tag-Filter und die Suche finden sie, und sie
-sind in Freigabelinks verborgen. Fremde XMP-Sidecar-Stichwörter werden als manuelle Tags
-importiert; das Entfernen eines Tags in Facet entfernt es nicht aus Sidecars, die Facet
-bereits geschrieben hat. Siehe [Manuelle Tags](VIEWER.md#manuelle-tags) und
+Facet verschlagwortet Fotos automatisch. Fügen Sie **eigene Tags** in der Foto-Detailansicht
+oder über die Sammelaktionen hinzu. Manuelle Tags überstehen erneutes Scannen, funktionieren
+in Filtern und der Suche und sind in Freigabelinks verborgen. Siehe
+[Manuelle Tags](VIEWER.md#manuelle-tags) und
 [Manuelle Tags und XMP-Stichwörter](INTEROP.md#manuelle-tags-und-xmp-stichwörter). Um Bewertungen
 und Stichwörter nach Lightroom, Capture One, digiKam oder darktable mitzunehmen, siehe [Interop](INTEROP.md)
 (dafür wird zum Einbetten [exiftool](INSTALLATION.md#exiftool) benötigt).

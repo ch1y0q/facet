@@ -15,6 +15,7 @@ una libreria fotografica locale, poi serve una galleria per sfogliarla. Inizia d
 | [Punteggio](SCORING.md) | Categorie, pesi, guida alla regolazione |
 | [Riconoscimento facciale](FACE_RECOGNITION.md) | Flusso di lavoro dei volti, raggruppamento, gestione delle persone |
 | [Visualizzatore](VIEWER.md) | Funzionalità e utilizzo della galleria web |
+| [API](../API.md) | Riferimento dell'API HTTP del visualizzatore |
 | [Interoperabilità](INTEROP.md) | Scambiare valutazioni/tag con Lightroom, Capture One, digiKam, darktable |
 | [Immich](IMMICH.md) | Sincronizzare valutazioni e preferiti con Immich, più il webhook in entrata |
 | [Distribuzione](DEPLOYMENT.md) | NAS, server remoti, HTTPS, backup, multi-utente |
@@ -24,10 +25,10 @@ una libreria fotografica locale, poi serve una galleria per sfogliarla. Inizia d
 
 - **JPEG** (.jpg, .jpeg)
 - **HEIF/HEIC/HIF** (.heic, .heif, .hif) — richiede `pillow-heif`; gli scatti `.HIF` Canon HDR PQ sono sottoposti a tone mapping in sRGB SDR
-- **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — ignorati se esiste un JPEG/HEIC corrispondente
+- **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — ignorati se esiste un JPEG/HEIC corrispondente. Un RAW che LibRaw non riesce a decodificare (un'unione `-HDR.dng` / `-Pano.dng` di Lightroom, o una fotocamera più recente di LibRaw) viene valutato dalla sua anteprima incorporata più grande tramite `exiftool`; l'anteprima deve misurare almeno 1024 px sul lato lungo. Lightroom Classic 13+ salva quell'anteprima come JPEG XL, che Facet decodifica direttamente
 - **PNG, GIF, WebP, BMP, TIFF** (.png, .gif, .webp, .bmp, .tif, .tiff) — la scala di grigi a 16 bit viene scalata a 8 bit, un canale alfa viene composito su sfondo bianco, e i GIF/WebP animati vengono valutati sul primo fotogramma; il TIFF viene convertito in JPEG per il browser. PNG, WebP e TIFF contengono l'EXIF quando il programma che li ha scritti lo ha salvato; GIF e BMP non possono, quindi per questi due `date_taken` e fotocamera/obiettivo restano vuoti
 - **AVIF** (.avif) — richiede un Pillow compilato con il supporto AVIF (nativo a partire da `pillow>=11.3`); gli scatti AVIF HDR PQ vengono sottoposti a tone mapping in sRGB SDR, come i `.HIF` Canon; l'EXIF viene letto quando è presente
-- **JPEG XL** (.jxl) — decodificato tramite la dipendenza esistente `imagecodecs` nelle installazioni standard e in Docker; non serve un pacchetto aggiuntivo. Le anteprime usano RGB a 8 bit senza mappatura dei toni HDR; delle animazioni viene usato solo il primo fotogramma e viene letto l’EXIF valido. I JPEG ricostruiti mantengono la gestione ICC; `imagecodecs` non espone i profili delle anteprime JXL native
+- **JPEG XL** (.jxl) — funziona subito tramite la dipendenza di base `imagecodecs`, Docker incluso. L'HDR non è sottoposto a tone mapping, i file animati vengono valutati sul primo fotogramma e l'EXIF valido viene letto quando è presente. I JPEG ricostruiti mantengono la gestione del colore ICC; i profili colore JXL nativi non sono disponibili
 
 ## Domande comuni
 

@@ -7,7 +7,7 @@ Fotos werden zunächst einer Kategorie zugeordnet und anschließend mit den Gewi
 ## So funktioniert die Bewertung
 
 1. **Kategorieerkennung** – Das Foto wird auf seinen Inhalt analysiert (Gesichter, Tags, EXIF-Daten)
-2. **Filterauswertung** – Die Kategorien werden in Prioritätsreihenfolge ausgewertet, bis eine zutrifft (ein *Bewertungskontext* kann Kategorien pro Album oder Foto vorziehen/ausschließen, ohne die Basisreihenfolge zu ändern – siehe [Bewertungskontexte](#bewertungskontexte))
+2. **Filterauswertung** – Die Kategorien werden in Prioritätsreihenfolge ausgewertet, bis eine zutrifft (ein [Bewertungskontext](#bewertungskontexte) kann dies pro Album oder Foto ändern)
 3. **Gewichtsanwendung** – Kategoriespezifische Gewichte werden auf die Metriken angewendet
 4. **Modifikatoranwendung** – Boni, Strafen und Verhaltensflags werden angewendet
 5. **Endwertung** – Gewichtete Summe, begrenzt auf den Bereich 0–10
@@ -37,19 +37,23 @@ Fotos werden zunächst einer Kategorie zugeordnet und anschließend mit den Gewi
 
 Weitere tag-basierte Kategorien sind `aerial`, `food`, `sports`, `vehicle`, `travel`, `fashion`, `candid`, `product`, `architecture`, `urban`, `golden_hour`, `blue_hour`, `cinematic`, `vintage`, `abstract`, `minimalist`, `dramatic` und `weather`.
 
-Auf den CLIP-Tagging-Profilen (`legacy`/`8gb` sowie `16gb`/`24gb`, wenn ihr VLM-Tagger nicht läuft) vergibt ein Multi-Pass-Scan die Tags jedes Fotos im Embedding-Durchgang, bevor Kategorie und Gesamtwert berechnet werden. Die Kategorie, die ein Scan speichert, nutzt die Tags daher ebenso wie `--recompute-average`. Der Tag-Schritt am Ende des Scans erfasst nur noch Fotos, die weiterhin ungetaggt sind. Ein einzelner `--pass NAME`-Lauf vergibt keine Tags.
+Auf den CLIP-Tagging-Profilen (`legacy`/`8gb` sowie `16gb`/`24gb`, wenn ihr VLM-Tagger nicht läuft) vergibt ein Scan die Tags jedes Fotos, bevor er dessen Kategorie berechnet; die gespeicherte Kategorie nutzt also die Tags. Ein einzelner `--pass NAME`-Lauf vergibt keine Tags.
 
-**Silhouette.** `is_silhouette` stammt aus einer gesichtsbezogenen Pixelregel (siehe [Boolesche Filter](#boolesche-filter)), nicht aus einem Tag oder einem Histogrammtest. Das gespeicherte Flag beeinflusst neben der Kategorie auch die Wertung. Ist `exposure.silhouette_detection` auf `true` (Standard), überspringt der Gesamtwert einer Silhouette die Clipping-Strafe. Der gespeicherte `exposure_score` hängt vom Befehl ab: Ein Scan speichert ihn mit der Clipping-Strafe, `--recompute-average` berechnet ihn dagegen für jedes Foto mit `is_silhouette` ohne die Strafe neu, unabhängig von `exposure.silhouette_detection`. Um die Flags einer bestehenden Bibliothek neu abzuleiten, führen Sie `python facet.py --recompute-silhouette` aus, danach `--recompute-average` zweimal (siehe [COMMANDS.md](COMMANDS.md)).
+**Silhouette.** `is_silhouette` stammt aus einer gesichtsbezogenen Pixelregel (siehe [Boolesche Filter](#boolesche-filter)), nicht aus einem Tag.
 
-**Astro.** Ein Foto braucht einen Astro-Tag *und* eine mittlere Leuchtdichte von höchstens 0.30 (`luminance_max`): Eine helle Szene mit dem Tag `aurora` oder `stars` ist kein Astro, und ein Foto ohne gespeicherte Leuchtdichte passt nie. Eine `scoring_config.json` mit eigenem `categories`-Array behält ihren eigenen `astro`-Eintrag und erhält diesen Filter erst, wenn Sie `"luminance_max": 0.30` in `astro.filters` eintragen; `python facet.py --doctor` meldet, wenn er bei Ihnen fehlt.
+- Ist `exposure.silhouette_detection` auf `true` (Standard), überspringt der Gesamtwert einer Silhouette die Clipping-Strafe.
+- Ein Scan speichert `exposure_score` mit der Clipping-Strafe. `--recompute-average` berechnet ihn für jedes Foto mit `is_silhouette` ohne die Strafe neu, unabhängig von `exposure.silhouette_detection`.
+- Um die Flags einer bestehenden Bibliothek neu abzuleiten, führen Sie `python facet.py --recompute-silhouette` aus, danach `--recompute-average` zweimal (siehe [COMMANDS.md](COMMANDS.md)).
+
+**Astro.** Ein Foto braucht einen Astro-Tag *und* eine mittlere Leuchtdichte von höchstens 0.30 (`luminance_max`). Eine helle Szene mit dem Tag `aurora` oder `stars` ist kein Astro, und ein Foto ohne gespeicherte Leuchtdichte passt nie. Hat Ihre `scoring_config.json` ein eigenes `categories`-Array, tragen Sie `"luminance_max": 0.30` selbst in `astro.filters` ein; `python facet.py --doctor` meldet, wenn er fehlt.
 
 ## Bewertungskontexte
 
-Die obige Prioritätsreihenfolge ist global – jedes Foto wird gegen dieselbe Liste ausgewertet. Ein **Bewertungskontext** ist ein benanntes *Delta* über dieser Basisreihenfolge: Er zieht eine kurze Liste von Kategorien an den Anfang und schließt andere vollständig aus, ohne irgendetwas neu zu nummerieren. `default` (leere `promote`-/`excluded`-Listen) ist der Kontext ohne Wirkung, sodass sich für ein Foto nichts ändert, solange ihm nicht explizit ein Kontext zugewiesen wird.
+Ein **Bewertungskontext** ändert die Kategorienreihenfolge für einige Fotos, ohne die globalen Prioritäten anzutasten. Er zieht einige Kategorien an den Anfang und schließt andere aus. `default` (leere Listen `promote`/`excluded`) ändert nichts, und Fotos verwenden ihn, solange Sie keinen anderen zuweisen.
 
-**Effektive Reihenfolge** = `promote` (in der angegebenen Reihenfolge) → die globale Prioritätsreihenfolge abzüglich der vorgezogenen und ausgeschlossenen Namen → `default` zuletzt. Ein Name, der sowohl in `promote` als auch in `excluded` steht, wird vollständig entfernt – `excluded` gewinnt. `ScoringConfig.resolve_context_order()` (`config/scoring_config.py`) berechnet dies einmal pro Kontextname und speichert das Ergebnis zwischen (memoization).
+**Effektive Reihenfolge** = `promote` (in der angegebenen Reihenfolge) → die globale Prioritätsreihenfolge abzüglich der vorgezogenen und ausgeschlossenen Namen → `default` zuletzt. Ein Name, der in `promote` und `excluded` steht, wird entfernt: `excluded` gewinnt.
 
-Mitgelieferte Voreinstellungen – bearbeitbar über den Tab **Bewertungskontext** des Viewers (`PUT /api/config/scoring_contexts/{name}`, nur im Bearbeitungsmodus) oder direkt im JSON; die vollständige Feldreferenz siehe [Bewertungskontexte](CONFIGURATION.md#bewertungskontexte):
+Mitgelieferte Voreinstellungen, bearbeitbar im Tab **Bewertungskontext** des Viewers oder im JSON (Feldreferenz: [Bewertungskontexte](CONFIGURATION.md#bewertungskontexte)):
 
 | Context | Promotes | Excludes |
 |---------|----------|----------|
@@ -61,31 +65,40 @@ Mitgelieferte Voreinstellungen – bearbeitbar über den Tab **Bewertungskontext
 | `landscape` | `landscape`, `golden_hour`, `blue_hour` | – |
 | `motorsport` | `sports`, `vehicle` | `silhouette` |
 
-Nur das *Delta* ist bearbeitbar — den bevorzugten Kopf in die gewünschte Reihenfolge ziehen (oder die Schaltflächen Nach oben / Nach unten verwenden), den Ausschluss einer Kategorie umschalten — nie eine vollständige eigenständige Reihenfolge pro Kontext: die nicht bevorzugten Kategorien behalten immer die globale Prioritätsreihenfolge, sodass eine später hinzugefügte Kategorie nie stillschweigend in sechs getrennten Listen fehlen kann. Die Validierungsregeln siehe [Einen Kontext bearbeiten](CONFIGURATION.md#einen-kontext-bearbeiten).
+Sie bearbeiten nur die Liste der vorgezogenen Kategorien (Bearbeitungsmodus; ziehen oder nach oben/unten verschieben) und die Ausschlüsse. Die übrigen Kategorien behalten immer die globale Reihenfolge, sodass in einem Kontext nie eine neue Kategorie fehlt. Validierungsregeln: [Einen Kontext bearbeiten](CONFIGURATION.md#einen-kontext-bearbeiten).
 
-Ein Kontext wird pro Album zugewiesen (`PUT /api/albums/{id}/scoring_context`, was ihn auf jedes Foto überträgt, das gerade Mitglied ist – bei einem intelligenten Album eine Momentaufnahme, kein Abonnement, siehe [Bewertungskontexte](CONFIGURATION.md#bewertungskontexte)) oder, für ein einzelnes hartnäckiges Foto, als dauerhafte Kategorieüberschreibung angewendet (`POST /api/comparison/override_category`). Beide Hebel werden in einer separaten Tabelle `photo_scoring_overrides` gespeichert statt als Spalten auf `photos` – `save_photo`/`save_photos_batch` schreiben Fotozeilen mit `INSERT OR REPLACE`, was eine neue Spalte auf dieser Zeile beim nächsten erneuten Scan stillschweigend löschen würde. Das Setzen des einen Hebels lässt den anderen unberührt, und beide können unabhängig voneinander zurückgesetzt werden. **Keiner der beiden wirkt sich auf bereits bewertete Fotos aus, bevor nicht eine Neuberechnung erfolgt** – `python facet.py --recompute-average` oder `POST /api/scan/recompute` über den Viewer (prozessübergreifend dagegen abgesichert, dass zwei gleichzeitig laufen – siehe [Das Ändern von Prioritäten erfordert eine Neuberechnung](CONFIGURATION.md#die-globale-priorität-neu-ordnen)). Ist `normalization.per_category` aktiviert, führen Sie die Neuberechnung zweimal aus – siehe [Normalization](CONFIGURATION.md#normalization) dafür, warum der erste Durchlauf anhand der alten Kategorie jedes Fotos normalisiert.
+**Einen Kontext zuweisen:**
+
+- **Pro Album.** Gilt für jedes Foto, das derzeit im Album ist. Es ist eine einmalige Momentaufnahme: Fotos, die später zu einem intelligenten Album hinzukommen, erhalten ihn nicht. Siehe [Bewertungskontexte](CONFIGURATION.md#bewertungskontexte).
+- **Pro Foto.** Eine dauerhafte Kategorieüberschreibung für ein einzelnes Foto.
+
+Beide überstehen erneute Scans und lassen sich getrennt zurücksetzen.
+
+**Keiner von beiden wirkt sich auf bereits bewertete Fotos aus, bevor Sie neu berechnen:** Führen Sie `python facet.py --recompute-average` aus oder berechnen Sie im Viewer neu (siehe [Das Ändern von Prioritäten erfordert eine Neuberechnung](CONFIGURATION.md#die-globale-priorität-neu-ordnen)). Ist `normalization.per_category` aktiviert, führen Sie es zweimal aus (siehe [Normalization](CONFIGURATION.md#normalization)).
 
 ### Die Falle fehlender EXIF-Daten
 
-Eine Neuordnung – ob durch Bearbeiten der globalen Priorität oder durch Vorziehen via Kontext – ändert nur, welche Kategorie *zuerst versucht* wird. Sie kann nicht bewirken, dass die Filter einer Kategorie auf ein Foto zutreffen, auf das sie sonst nicht zuträfen. `config/category_filter.py:122-128` lässt einen numerischen Bereichsfilter grundsätzlich scheitern, sobald der zugrunde liegende Fotowert fehlt oder nicht auswertbar ist, anstatt nur diese Grenze zu überspringen – ein fehlender Wert und ein außerhalb des Bereichs liegender Wert werden identisch behandelt, und die Kategorie wird in beiden Fällen übersprungen.
+Eine Neuordnung ändert nur, welche Kategorie *zuerst versucht* wird. Sie kann nicht bewirken, dass die Filter einer Kategorie zutreffen. Ein numerischer Bereichsfilter scheitert, wenn der Wert des Fotos fehlt oder nicht auswertbar ist, genau so, als läge er außerhalb des Bereichs.
 
-Konkret: `sports` (Priorität 71) trägt `shutter_speed_max: 0.02`. Eine Tanzaufnahme, die langsamer als 1/50s belichtet wurde, oder ganz ohne auslesbare EXIF-Verschlusszeit, scheitert an diesem Filter, egal wo `sports` in der Auswertungsreihenfolge steht – selbst wenn es durch einen Kontext wie `action_stage` ganz nach vorn gezogen wird. Das Foto fällt durch zur nächstpassenden Kategorie, typischerweise `fashion` (Priorität 43, mit Tag `fashion`, hat ein Gesicht) oder `silhouette` (Priorität 42, Gegenlicht mit Gesicht). **Das ist die mit Abstand nützlichste Prüfung, wenn ein Foto in einer unerwarteten Kategorie landet:** Bevor Sie etwas neu ordnen oder vorziehen, stellen Sie sicher, dass die numerischen Filter der Zielkategorie tatsächlich zu den gespeicherten EXIF-Daten des Fotos passen können, nicht nur zu seinen Tags.
+Beispiel: `sports` (Priorität 71) trägt `shutter_speed_max: 0.02`. Eine Tanzaufnahme, die langsamer als 1/50s belichtet wurde oder keine auslesbare Verschlusszeit hat, scheitert an diesem Filter, selbst wenn `action_stage` `sports` an den Anfang zieht. Das Foto fällt durch zur nächsten passenden Kategorie, typischerweise `fashion` (Priorität 43, mit Tag `fashion`, hat ein Gesicht) oder `silhouette` (Priorität 42, Gegenlicht mit Gesicht).
+
+**Landet ein Foto in einer unerwarteten Kategorie, prüfen Sie zuerst dies:** Können die numerischen Filter der Zielkategorie zu den gespeicherten EXIF-Daten des Fotos passen, nicht nur zu seinen Tags?
 
 ### Die Falle des fehlenden Tags
 
-Die EXIF-Falle oben setzt voraus, dass die Tag-Ebene bereits getroffen hat – `required_tags` hat ihre eigene Version desselben Problems: Ein Filter kann nicht auf einen Tag zutreffen, den es im CLIP-Vokabular überhaupt nicht gibt. Vor dem Commit `917dd94` deckte nichts in `scoring_config.json` Tanz ab: Ein Bild, das der Tagger als Tanz, Performance oder Bühne beschrieb, traf auf keinen der `required_tags` von `sports` (`sports`, `motion`, `athlete`, `competition`, `action_sport`) zu und fiel direkt durch zum `default`-Rückfall – `sports` über `action_stage` vorzuziehen änderte daran nichts, denn eine Beförderung ordnet nur um, *wann* eine Kategorie versucht wird, niemals, ob ihre Filter zutreffen.
+`required_tags` scheitert auf dieselbe Weise: Ein Filter kann nicht auf einen Tag zutreffen, der im Vokabular fehlt. Die `required_tags` von `sports` sind `sports`, `motion`, `athlete`, `competition`, `action_sport` und `dance`.
 
-`sports.tags.dance` trägt jetzt 11 CLIP-Prompts (`dance performance`, `dancer on stage`, `ballet dancer`, `contemporary dance`, `ballroom dancing`, `latin dance`, `hip hop dance`, `dance competition`, `dance troupe performing`, `dancer mid leap`, `dancer in motion`), und `dance` wurde zu `sports.filters.required_tags` hinzugefügt, sodass ein getaggtes Tanzfoto diesen Filter jetzt besteht. Das macht `sports` für Tanzinhalte *erreichbar* – es hebt die Verschlusszeit-Falle oben nicht auf: Ein Tanzbild mit langsamer Verschlusszeit oder ganz ohne EXIF kann jetzt die Tag-Prüfung bestehen und trotzdem an `shutter_speed_max: 0.02` scheitern und landet dann genau wie dort beschrieben bei `fashion` oder `silhouette`.
+`sports.tags.dance` trägt 11 CLIP-Prompts (`dance performance`, `dancer on stage`, `ballet dancer`, `contemporary dance`, `ballroom dancing`, `latin dance`, `hip hop dance`, `dance competition`, `dance troupe performing`, `dancer mid leap`, `dancer in motion`), und `dance` steht in `sports.filters.required_tags`. Ein getaggtes Tanzfoto kann `sports` erreichen, aber eines mit langsamer Verschlusszeit oder ohne EXIF scheitert weiterhin an `shutter_speed_max: 0.02`.
 
-**Bereits vorhandene Fotos behalten ihre bisherigen Tags** – das neue Vokabular ändert nur, was der Tagger ab jetzt vergibt. Verschlagworten Sie die Bibliothek mit `python facet.py --recompute-tags` neu, um es rückwirkend anzuwenden.
+**Bereits vorhandene Fotos behalten ihre Tags.** Eine Vokabularänderung wirkt nur auf neues Tagging; führen Sie `python facet.py --recompute-tags` aus, um sie auf die Bibliothek anzuwenden.
 
 ### Die globale Priorität neu ordnen
 
-`GET/POST /api/config/category_priorities` (Edition-geschützt) liest und schreibt die Basisreihenfolge, gegen die jeder Kontext sein Delta bildet. `POST` erwartet `{"order": [name, ...]}` – eine mengengleiche Permutation aller Kategorienamen außer `default` – und **permutiert die vorhandenen Prioritätswerte auf die neue Reihenfolge**, statt sie neu durchzunummerieren (10/20/30/…): Die Multimenge der Prioritäten bleibt unverändert, sodass die Zahlen in der obigen Tabelle aussagekräftig bleiben und die Eindeutigkeit konstruktionsbedingt erhalten bleibt. `default` (Priorität 999) ist fest am Ende verankert und von der Neuordnung ausgeschlossen. Jeder Schreibvorgang legt zunächst eine zeitgestempelte Kopie `.backup.<timestamp>` von `scoring_config.json` an; dieser Writer teilt sich nun eine Sperre mit dem Gewichtseditor (`update_category_weights`), da das vorherige ungeschützte Read-Modify-Write dazu führen konnte, dass ein gleichzeitiges Speichern der beiden die Änderungen des jeweils anderen stillschweigend verwarf.
+Sie können die globale Priorität im Viewer neu ordnen (Bearbeitungsmodus). Die Neuordnung tauscht die vorhandenen Prioritätswerte zwischen Kategorien, statt neu zu nummerieren, sodass die Zahlen in der obigen Tabelle aussagekräftig bleiben. `default` (Priorität 999) bleibt immer am Ende. Jeder Schreibvorgang legt zuerst eine zeitgestempelte Kopie `.backup.<timestamp>` von `scoring_config.json` an.
 
-Die Neuordnung allein verändert nicht die gespeicherte `category` eines Fotos – führen Sie anschließend eine Neuberechnung aus (`--recompute-average` oder `POST /api/scan/recompute`), um sie anzuwenden.
+Die Neuordnung ändert nicht die gespeicherte `category` eines Fotos: Führen Sie anschließend eine Neuberechnung aus.
 
-**Bekannte Einschränkung:** `api/types.py` erstellt die Typ-/Filter-Dropdown-Liste der Galerie einmalig beim Import aus `ScoringConfig.get_categories()`. Eine Prioritätsänderung wirkt sich sofort auf die tatsächliche Kategoriezuordnung aus (jeder Bewertungs- und Neuberechnungsaufruf liest die Konfiguration erneut von der Festplatte), aber das Typ-Dropdown der Galerie behält seine alte Reihenfolge bei, bis der Viewer-Prozess neu gestartet wird. Das Filtern selbst ist davon nicht betroffen – die Neuordnung fügt keine Kategorienamen hinzu oder entfernt welche.
+**Bekannte Einschränkung:** Das Typ-Dropdown der Galerie behält seine alte Reihenfolge, bis der Viewer neu gestartet wird. Zuordnung und Filterung nutzen die neue Reihenfolge sofort.
 
 ## Kategoriedefinition
 
@@ -144,8 +157,10 @@ Jede Kategorie in `scoring_config.json` besteht aus diesen Komponenten:
 |--------|-------------|
 | `has_face` | Mindestens ein Gesicht erkannt |
 | `is_monochrome` | Sättigung < 5 % |
-| `is_silhouette` | Das größte Gesicht ist dunkel und seine Umgebung hell: Die mittlere Helligkeit (Luma, 0-1) der zentralen 60 % des Gesichtsrahmens liegt unter 0.12, und das Band um den Rahmen (von 0.2 bis 0.75 der Rahmengröße nach außen auf jeder Seite, am Bildrand beschnitten) ist um mehr als 0.20 heller. Weder der CLIP-Tag `silhouette` noch das Histogramm des ganzen Bildes setzen es noch. Ein Foto ohne Gesicht ist nie eine Silhouette |
+| `is_silhouette` | Das größte Gesicht ist dunkel vor heller Umgebung (siehe unten). Ein Foto ohne Gesicht ist nie eine Silhouette |
 | `is_group_portrait` | face_count >= `min_faces_for_group` (konfigurierbar, Standard: 4) |
+
+**Regel für `is_silhouette`.** Die mittlere Helligkeit (Luma, 0-1) der zentralen 60 % des Gesichtsrahmens liegt unter 0.12, und das Band um den Rahmen (von 0.2 bis 0.75 der Rahmengröße nach außen auf jeder Seite, am Bildrand beschnitten) ist um mehr als 0.20 heller. Der CLIP-Tag `silhouette` und das Histogramm des ganzen Bildes setzen es nicht.
 
 ### Tag-Filter
 
@@ -185,7 +200,7 @@ Alle Gewichte verwenden das Suffix `_percent`. Sie werden von `get_weights()` no
 | `subject_placement_percent` | Drittelregel des Motivs | BiRefNet | Alle |
 | `bg_separation_percent` | Hintergrundtrennung | BiRefNet | Porträts, Makro |
 
-**`quality_percent` zählt zu `aesthetic`.** Die Qualitätsmetrik hat keinen eigenen Wert; deshalb wird `quality_percent` einer Kategorie vor der Bewertung zu ihrem `aesthetic_percent` addiert. Die Gewichte ergeben weiterhin 100. Frühere Versionen bewerteten den `quality`-Anteil an einer Metrik, die immer 0 war, sodass dieser Anteil im Gesamtwert verloren ging. Bei seinem nächsten `--recompute-average` erhält eine von einer früheren Version aggregierte Bibliothek diesen Anteil zurück. An einer Kopie einer Bibliothek mit 129.737 Fotos stiegen 35.139 Gesamtwerte und 544 sanken (Mittel +0,087); keine Kategorie wechselte.
+**`quality_percent` zählt zu `aesthetic`.** Die Qualitätsmetrik hat keinen eigenen Wert, daher wird das `quality_percent` einer Kategorie auf `aesthetic` umverteilt: Es wird vor der Bewertung zu `aesthetic_percent` addiert, und die Gewichte ergeben weiterhin 100. Frühere Versionen verloren diesen Anteil im Gesamtwert; führen Sie nach dem Upgrade einmal `--recompute-average` aus, um ihn zurückzuerhalten. Kategorien ändern sich nicht.
 
 ## Modifikatoren
 
@@ -213,9 +228,13 @@ Vier aus der BiRefNet-Motivsegmentierung abgeleitete Dimensionen:
 
 Verwenden Sie `subject_sharpness_percent` und `bg_separation_percent` für Porträts/Wildtiere; `subject_prominence_percent` für Makro.
 
-**Kein Motiv, keine Zahl.** Wird kein Motiv gefunden, werden `subject_sharpness`, `subject_placement` und `bg_separation` als NULL gespeichert (ebenso `power_point_score`, wenn es keinen Motivrahmen gibt), `subject_prominence` ist 0.0 und `subject_bbox` NULL; frühere Versionen speicherten ein neutrales 5.0. Die Min/Max-Bereichsfilter der Galerie überspringen ein NULL für diese Metriken (`min_subject_sharpness=0` liefert kein Foto ohne Motiv mehr), Statistiken lassen es bei Mittelwerten weg, und die Oberfläche zeigt es als fehlend. Der Gesamtwert bewertet ein NULL weiterhin als neutrale 5.0, sodass sich kein Gesamtwert ändert. Bestehende Zeilen behalten ihre 5.0, bis `--recompute-saliency` und `--recompute-composition-cpu` sie umschreiben.
+**Kein Motiv, keine Zahl.** Wird kein Motiv gefunden, werden `subject_sharpness`, `subject_placement` und `bg_separation` als NULL gespeichert (ebenso `power_point_score`, wenn es keinen Motivrahmen gibt), `subject_prominence` ist 0.0 und `subject_bbox` NULL.
 
-**Wenn die Salienz fehlschlägt.** Auf CUDA wird die Salienz-Batchgröße aus dem freien VRAM abgeleitet (etwa 2,4 GiB pro Bild bei 1024 px, zwischen 1 und 8 Bildern) und nach einem Out-of-Memory-Fehler halbiert, bis hinunter zu einem Bild. Schlägt die Salienz für ein Foto trotzdem fehl, wird ein ERROR protokolliert und nichts gespeichert: Ein Foto, das nie bewertet wurde, behält NULL in allen fünf Salienz-Spalten (`subject_sharpness`, `subject_prominence`, `subject_placement`, `bg_separation`, `subject_bbox`), und `--recompute-saliency` sowie `--pass saliency` behalten die gespeicherten Werte eines Fotos, wenn dessen Salienz fehlschlägt. Ein vollständiger Neuscan des Fotos (z. B. mit `--force`) speichert dafür NULL, wie bei einem nie bewerteten Foto. Facet schreibt nie eine neutrale Zahl anstelle eines fehlgeschlagenen Ergebnisses. Im Gesamtwert zählt NULL als neutral (5,0), genau wie bei einem Foto, das gescannt wurde, bevor es die Salienz gab, und hilft oder schadet der Bewertung daher nicht. `--recompute-saliency` wählt ein solches Foto erneut aus (siehe [Motiv-Salienz](COMMANDS.md#motiv-salienz)).
+- Die Bereichsfilter der Galerie überspringen ein NULL (`min_subject_sharpness=0` liefert kein Foto ohne Motiv). Statistiken lassen es bei Mittelwerten weg, und die Oberfläche zeigt es als fehlend.
+- Der Gesamtwert bewertet ein NULL als neutrale 5.0, sodass sich kein Gesamtwert ändert.
+- Frühere Versionen speicherten eine neutrale 5.0. Bestehende Zeilen behalten sie, bis `--recompute-saliency` und `--recompute-composition-cpu` sie umschreiben.
+
+**Wenn die Salienz fehlschlägt**, wird nichts geschrieben; Facet speichert nie eine neutrale Zahl für ein fehlgeschlagenes Ergebnis. Ein nie bewertetes Foto behält NULL in allen fünf Salienz-Spalten (`subject_sharpness`, `subject_prominence`, `subject_placement`, `bg_separation`, `subject_bbox`) und wird neutral (5.0) bewertet, wie ein Foto, das gescannt wurde, bevor es die Salienz gab. Regeln für Wiederholung und Batchgröße: [Motiv-Salienz](COMMANDS.md#motiv-salienz).
 
 ## Ergänzende IQA-Dimensionen
 
@@ -227,15 +246,28 @@ Drei zusätzliche Qualitätsmodelle:
 | `face_quality_iqa_percent` | TOPIQ NR-Face | Qualitätsbewertung des Gesichtsbereichs. Am besten für Porträtkategorien. |
 | `liqe_percent` | LIQE | Qualitätswertung plus eine Verzerrungsdiagnose (Bewegungsunschärfe, Überbelichtung, Rauschen). |
 
-Diese Modelle laufen als Teil der Standard-Bewertungspipeline und teilen sich VRAM mit TOPIQ. Fügen Sie ihre Gewichtsschlüssel jeder Kategorie hinzu, in der die Bewertung nützlich ist.
+Diese Modelle laufen auf jedem Profil als Teil der Standard-Bewertungspipeline, auch auf dem CPU-Profil `legacy` (dort langsamer), und teilen sich auf einer GPU VRAM mit TOPIQ. Fügen Sie ihre Gewichtsschlüssel jeder Kategorie hinzu, in der die Bewertung nützlich ist.
 
-**Wenn ein ergänzendes Modell ein Foto nicht bewerten kann.** TOPIQ NR-Face braucht ein Gesicht, das sein eigener Detektor findet, und LIQE ein Foto, dessen kurze Seite mindestens 224 px misst; Aesthetic V2.5 kann, sofern aktiviert, bei jedem Bild fehlschlagen. Ein Foto, das ein Modell nicht bewerten kann, speichert in der Spalte dieses Modells (`face_quality_iqa`, `liqe_score`, `aesthetic_iaa`, `aesthetic_v25`) NULL statt eines neutralen Werts von 5,0. Ein GPU-Out-of-Memory-Fehler wird mit halber Batchgröße wiederholt, bis hinunter zu einem Bild, bevor das Foto aufgibt; ein CPU-Speicherfehler wird nicht so wiederholt, er nimmt den gewöhnlichen Weg pro Bild, und ein Foto, das dann noch fehlschlägt, speichert NULL. Ein unerwarteter Fehler wird mit der Anzahl der betroffenen Fotos als ERROR protokolliert, während die beiden erwarteten Fälle (kein Gesicht gefunden, kurze Seite unter 224 px) erst beim Freigeben des Modells im Protokoll summiert werden. `--recompute-iqa` versucht keinen der beiden erwarteten Fälle bei jedem Lauf erneut: Der Fall der kurzen Seite wird anhand der Größe des gespeicherten Thumbnails entschieden, und eine Ablehnung durch NR-Face wird vermerkt, bis das Foto neu gescannt wird. Ein Out-of-Memory- oder unerwarteter Fehler wird vom nächsten Lauf erneut versucht. Im Gesamtwert zählt NULL als neutral (5,0); Gesamtwerte, Kategorien und Rangfolgen ändern sich daher nicht. **Ein Bereichsfilter der Galerie auf Ästhetik (IAA), Gesichtsqualität (IQA), LIQE oder Aesthetic V2.5 trifft auf ein Foto ohne Wert nicht mehr zu**: Ein Foto ohne Gesicht trug früher eine gespeicherte 5,0 und wurde von `min_face_quality_iqa=0` gefunden, jetzt nicht mehr; eine aufsteigende Sortierung nach Ästhetik (IAA), Gesichtsqualität (IQA), LIQE, Aesthetic V2.5, Q-ReAlign oder DeQA stellt solche Fotos in der Galerie und in Alben (auch intelligenten und geteilten) ans Ende. Von früheren Versionen gespeicherte Werte bleiben unverändert, bis `--repair-neutral-iqa` die neutrale 5,0 in `aesthetic_iaa`, `face_quality_iqa` und `liqe_score` löscht (danach `--recompute-iqa` und `--recompute-average` ausführen). Ein Neuscan, der das Foto neu schreibt (z. B. mit `--force`), speichert NULL für einen Wert, den das Modell nicht liefern konnte; `--recompute-iqa` füllt nur Spalten, die NULL sind, und `--pass quality-iaa`, `--pass quality-face` sowie `--pass quality-liqe` behalten den gespeicherten Wert, wenn ein Modell fehlschlägt, sodass keiner davon eine alte 5,0 ersetzt. Schlägt das primäre Qualitätsmodell (TOPIQ in den Profilen `16gb` und `24gb`) für ein Foto fehl, wird das Foto in `scan_failures` als fehlgeschlagen erfasst, statt mit einer neutralen Ästhetikwertung von 5,0 gespeichert zu werden. Der nächste Scan nimmt ein Foto auf, das noch nicht in der Datenbank ist; ein bereits gespeichertes (etwa nach einem `--force`-Neuscan) behält seine Zeile, und wird von `--retry-failed all` (ein bloßes `--retry-failed` erfasst nur den letzten Lauf mit Fehlern) oder einem weiteren `--force`-Neuscan erneut verarbeitet. Unter `--pass quality` bleibt der gespeicherte Wert erhalten und es wird kein Fehlereintrag angelegt. Siehe [Ergänzende Qualitätsmodelle](COMMANDS.md#ergänzende-qualitätsmodelle).
+**Wenn ein ergänzendes Modell ein Foto nicht bewerten kann**, speichert es in der Spalte dieses Modells (`face_quality_iqa`, `liqe_score`, `aesthetic_iaa`, `aesthetic_v25`) NULL statt einer neutralen 5.0. Das passiert, wenn TOPIQ NR-Face kein Gesicht findet oder LIQE eine kurze Seite unter 224 px erhält; Aesthetic V2.5 kann, sofern aktiviert, bei jedem Bild fehlschlagen. Ein CPU-Speicherfehler wird nicht mit kleinerer Batchgröße wiederholt.
+
+- **Gesamtwert:** Ein NULL wird neutral (5.0) bewertet, sodass sich Gesamtwerte, Kategorien und Rangfolgen nicht ändern.
+- **Galerie:** Ein Bereichsfilter auf Ästhetik (IAA), Gesichtsqualität (IQA), LIQE oder Aesthetic V2.5 trifft auf ein unbewertetes Foto nicht zu (`min_face_quality_iqa=0` überspringt ein Foto ohne Gesicht). Eine aufsteigende Sortierung danach, nach Q-ReAlign oder DeQA stellt unbewertete Fotos ans Ende, in der Galerie und in Alben.
+- **Alte neutrale 5.0-Werte** bleiben, bis `--repair-neutral-iqa` sie löscht; führen Sie danach `--recompute-iqa` und `--recompute-average` aus, oder scannen Sie mit `--force` neu.
+- **Ausfall des primären Modells** (TOPIQ auf `16gb` und `24gb`): Das Foto wird als fehlgeschlagen erfasst, statt mit einer neutralen 5.0 gespeichert zu werden. Ein neues Foto nimmt der nächste Scan auf; ein bereits gespeichertes behält seine Zeile und wird von `--retry-failed all` (ein bloßes `--retry-failed` erfasst nur den letzten Lauf mit Fehlern) oder einem weiteren `--force`-Neuscan erneut verarbeitet.
+
+Wiederholungsregeln für jeden Befehl: [Ergänzende Qualitätsmodelle](COMMANDS.md#ergänzende-qualitätsmodelle).
 
 ### Ergänzende Signale (nicht im Standard-Gesamtwert)
 
 | Spalte | Quelle | Beschreibung |
 |--------|--------|-------------|
-| `aesthetic_clip` | `analyzers/aesthetic_clip.py` + zwischengespeichertes CLIP/SigLIP-Embedding | Eine kostenlose ergänzende Ästhetikwertung (0–10), abgeleitet aus zwischengespeicherten Bild-Embeddings durch Projektion auf eine „Ästhetikachse", die aus positiven/negativen Textprompts gebildet wird. Keine zusätzliche Bildinferenz beim Scannen. **Nicht** Teil des Standard-`aggregate`. Befüllen Sie diese mit `python scripts/compute_aesthetic_clip.py --db <path>`. Benchmarken Sie mit `python scripts/benchmark_aesthetic.py --db <path> --ava AVA.txt --photo-dir <dir>`. AVA-SRCC ≈ 0,52 auf dem 500-Foto-Set `ava_test/` (gegenüber 0,94 für `aesthetic_iaa`) – nützlich als günstiger Vorfilter oder wenn TOPIQ-IAA nicht verfügbar ist. |
+| `aesthetic_clip` | `analyzers/aesthetic_clip.py` + zwischengespeichertes CLIP/SigLIP-Embedding | Kostenlose Ästhetikwertung (0–10) aus zwischengespeicherten Embeddings; **nicht** im Standard-`aggregate` |
+
+`aesthetic_clip` projiziert jedes Bild-Embedding auf eine „Ästhetikachse“, die aus Textprompts gebildet wird, und braucht daher keine zusätzliche Bildinferenz.
+
+- Befüllen Sie sie mit `python scripts/compute_aesthetic_clip.py --db <path>`.
+- Benchmarken Sie mit `python scripts/benchmark_aesthetic.py --db <path> --ava AVA.txt --photo-dir <dir>`.
+- AVA-SRCC ≈ 0,52 auf dem 500-Foto-Set `ava_test/` (gegenüber 0,94 für `aesthetic_iaa`). Nutzen Sie sie als günstigen Vorfilter oder wenn TOPIQ-IAA nicht verfügbar ist.
 
 ## Kategorie-Tags (CLIP-Vokabular)
 
@@ -268,7 +300,7 @@ Der „Beste Auswahl"-Filter des Viewers verwendet eine benutzerdefinierte gewic
 
 **Wertungsberechnung:**
 - Mit Gesicht (Gesichtsanteil ≥ 20 %): Alle vier Metriken tragen bei
-- Ohne Gesicht: `face_quality_percent` wird auf `aesthetic` und `composition` umverteilt
+- Ohne Gesicht: `face_quality_percent` wird gleichmäßig (je zur Hälfte) auf `aesthetic` und `composition` umverteilt (mit den Standardgewichten: aesthetic 0.40, composition 0.30)
 
 ## VRAM-Profil-Überlegungen
 
@@ -281,7 +313,7 @@ Die Standardgewichte sind für **TOPIQ** (0,93 SRCC) optimiert, das Ästhetikmod
 | `8gb` | CLIP+MLP (0,76 SRCC) | CLIP ViT-L-14 | CLIP-Ähnlichkeit | Standardgewichte funktionieren gut |
 | `legacy` | CLIP+MLP auf CPU | CLIP ViT-L-14 | CLIP-Ähnlichkeit | Standardgewichte, langsamer |
 
-Alle Profile führen zusätzlich ergänzende PyIQA-Modelle aus (TOPIQ IAA, TOPIQ NR-Face, LIQE) und optional BiRefNet_dynamic für die Motiverkennung.
+Alle Profile, auch das CPU-Profil `legacy`, führen zusätzlich ergänzende PyIQA-Modelle aus (TOPIQ IAA, TOPIQ NR-Face, LIQE) und optional BiRefNet_dynamic für die Motiverkennung.
 
 Führen Sie `--compute-recommendations` nach dem Profilwechsel aus, um die Wertungsverteilungen zu analysieren.
 
@@ -346,22 +378,21 @@ Trainieren Sie Gewichte durch den Vergleich von Fotopaaren:
 ### Vergleichsoberfläche
 
 - Fotos nebeneinander
-- Tastatur: A (links gewinnt), B (rechts gewinnt), T (unentschieden), S (überspringen)
+- Tastatur: ← (links gewinnt), → (rechts gewinnt), T (unentschieden), S (überspringen). Die Schaltflächen auf dem Bildschirm sind mit **A** / **B** beschriftet.
 - Der Fortschrittsbalken zeigt die Vergleiche in Richtung des Minimums von 50 an
 
 ### Vergleichsquellen
 
-Vergleiche tragen eine Markierung `source`, damit der Optimierer sie nach Zuverlässigkeit gewichten kann:
+Jeder Vergleich hat eine `source`, die der Optimierer nach Zuverlässigkeit gewichtet:
 
 - `vote` – explizite A/B-Stimmen aus der Vergleichsoberfläche
-- `culling` – automatisch aus Serienbild-/Ähnlichkeits-Auswahlentscheidungen
-  abgeleitet: Jedes abgelehnte Foto wird gegen bis zu zwei behaltene Fotos aus
-  derselben Gruppe gepaart (begrenzt auf 12 Paare pro Gruppe). Behaltene Fotos
-  gewinnen. Explizite Stimmen zum selben Paar werden niemals überschrieben.
-- `rating` – synthetische Paare, generiert aus Sternebewertungen und Favoriten
+- `culling` – aus Serienbild-/Ähnlichkeits-Auswahlentscheidungen: Jedes abgelehnte
+  Foto wird gegen bis zu zwei behaltene Fotos aus seiner Gruppe gepaart (höchstens
+  12 Paare pro Gruppe). Behaltene Fotos gewinnen. Explizite Stimmen zum selben Paar
+  werden niemals überschrieben.
+- `rating` – synthetische Paare aus Sternebewertungen und Favoriten
 
-Das Überprüfen von Serienbildgruppen im Viewer erweitert daher den Trainingsdatensatz
-für die Gewichtsoptimierung ohne zusätzlichen Aufwand.
+Das Überprüfen von Serienbildgruppen im Viewer erweitert daher auch den Trainingsdatensatz.
 
 ### Gewichtsoptimierung
 
@@ -384,17 +415,31 @@ python facet.py --recompute-average
 
 ### Pipeline von Labels zu Gewichten
 
-Über explizite A/B-Stimmen hinaus speisen zwei weitere Label-Ströme den Optimierer:
+Über A/B-Stimmen hinaus speisen zwei weitere Label-Ströme den Optimierer:
 
 1. **Auswahlentscheidungen** werden bei jeder Serienbild-/Ähnlichkeits-Bestätigung
-   automatisch erfasst (`source='culling'`).
-2. **Sternebewertungen, Favoriten und Ablehnungen** werden mit `python facet.py --sync-label-comparisons`
-   in synthetische Paare materialisiert (`source='rating'`). Ein erneuter Lauf
-   synchronisiert aus den aktuellen Labels neu, sodass zurückgezogene Bewertungen verschwinden.
+   erfasst (`source='culling'`).
+2. **Sternebewertungen, Favoriten und Ablehnungen** werden mit
+   `python facet.py --sync-label-comparisons` zu synthetischen Paaren (`source='rating'`).
+   Ein erneuter Lauf synchronisiert aus den aktuellen Labels neu, sodass
+   zurückgezogene Bewertungen verschwinden.
 
-Der Optimierer passt die Gewichte so an, dass sie am besten vorhersagen, welches Foto jeden Vergleich gewonnen hat (ein Bradley-Terry-Modell), und zählt jede Quelle nach ihrer Zuverlässigkeit: vote 1.0, rating 0.7, culling 0.5. Ein **Gleichstand** zählt als halber Sieg plus halbe Niederlage: ein Hinweis, dass die beiden Fotos ähnlich bewertet werden sollten. Die Anpassung ist an **Ihre aktuellen Gewichte verankert**: Bei wenigen Vergleichen bleibt der Vorschlag nahe an ihnen und entfernt sich mit wachsender Stimmenzahl weiter. Er trainiert auf jedem Foto, wie der Scorer es sieht: dieselben 0–10-Metriken, die der Gesamtwert liest (einschließlich `liqe`, `aesthetic_iaa`, `face_quality_iqa` und der Motiverkennungs-Metriken), mit nach Perzentilen normalisierter Augenschärfe, technischer Schärfe und Farbe, dem aus dem gespeicherten Histogramm neu aufgebauten Belichtungswert und dem Gruppenporträt-Flag. Die Perzentile sind die, die das letzte `--recompute-average` gespeichert hat; vor dem ersten `--recompute-average` werden die gespeicherten Spalten unverändert verwendet. Er startet bei den Gewichten, die der Scorer tatsächlich verwendet, und schreibt auch diese: `quality_percent` wird wie im Scorer in `aesthetic` gefaltet, und das Anwenden schreibt `quality_percent: 0` für die Kategorien, die es haben.
+**So funktioniert die Anpassung.** Der Optimierer findet die Gewichte, die den Gewinner jedes Vergleichs am besten vorhersagen (ein Bradley-Terry-Modell).
 
-Gewichte werden **nur angewendet, wenn sie generalisieren**. Die endgültigen Gewichte werden auf allen Vergleichen angepasst, aber ob sie geschrieben werden, entscheiden Vergleiche, die die Anpassung nicht gesehen hat: 5-fache Kreuzvalidierung mit **fotogruppierten Folds** (kein Foto steckt in einem Fold zugleich in den Trainings- und den Held-out-Paaren). Die über die Folds gepoolten Held-out-Vorhersagen werden auf denselben Paaren per **einseitigem exaktem McNemar-Test** mit den aktuellen Gewichten verglichen; er fragt, ob die neuen Gewichte deutlich mehr der Paare gewinnen, bei denen die beiden Gewichtungen uneins sind. Die Gewichte werden nur angewendet, wenn `p < 0.05` **und** der Held-out-Gewinn mindestens 2 Prozentpunkte beträgt; sonst protokolliert der Lauf die Zahlen und schreibt nichts. Mit `--optimize-force` wenden Sie sie trotzdem an. Kann das Kriterium nicht berechnet werden (zu wenige unabhängige Fotogruppen), wird ohne Erzwingen nichts angewendet. Die Optimierung erfolgt pro Kategorie und benötigt mindestens 30 **entscheidende** Vergleiche (ein Foto hat gewonnen) **in dieser Kategorie**; Gleichstände und Vergleiche aus anderen Kategorien zählen nicht. Eine Kategorie ohne Stimmen kann nicht aus Daten abgestimmt werden. Das Protokoll zeigt zum Beispiel:
+- Quellen zählen nach Zuverlässigkeit: vote 1.0, rating 0.7, culling 0.5.
+- Ein **Gleichstand** zählt als halber Sieg und halbe Niederlage.
+- Die Anpassung ist an **Ihre aktuellen Gewichte verankert**: Bei wenigen Vergleichen bleibt sie nahe an ihnen.
+- Sie nutzt dieselben 0–10-Metriken wie der Gesamtwert (einschließlich `liqe`, `aesthetic_iaa`, `face_quality_iqa` und der Motiverkennung), wobei Augenschärfe, technische Schärfe und Farbe nach den Perzentilen normalisiert sind, die das letzte `--recompute-average` gespeichert hat.
+- `quality_percent` wird wie im Scorer in `aesthetic` gefaltet; das Anwenden schreibt `quality_percent: 0`.
+
+**Gewichte werden nur angewendet, wenn sie generalisieren.** Die Entscheidung nutzt Held-out-Vergleiche: 5-fache Kreuzvalidierung mit **fotogruppierten Folds** (kein Foto steckt zugleich in Trainings- und Held-out-Paaren).
+
+- Ein **einseitiger exakter McNemar-Test** prüft, ob die neuen Gewichte deutlich mehr der Paare gewinnen, bei denen die beiden Gewichtungen uneins sind.
+- Die Gewichte werden nur angewendet, wenn `p < 0.05` **und** der Held-out-Gewinn mindestens 2 Prozentpunkte beträgt. Sonst protokolliert der Lauf die Zahlen und schreibt nichts.
+- Mit `--optimize-force` wenden Sie sie trotzdem an. Kann der Test nicht laufen (zu wenige unabhängige Fotogruppen), wird ohne Erzwingen nichts angewendet.
+- Jede Kategorie braucht mindestens 30 **entscheidende** Vergleiche (ein Foto hat gewonnen) **in dieser Kategorie**. Gleichstände und andere Kategorien zählen nicht.
+
+Beispielprotokoll:
 
 ```
 Held-out accuracy:      69.2% +/- 4.0 (5-fold, photo-grouped) - the honest estimate
@@ -403,9 +448,14 @@ McNemar (one-sided):    p = 0.0006 (only the fit right: 66, only the current wei
 NOT applying: the held-out gate needs p < 0.05 and a gain of at least 2.0 pp. ...   (logged when the gate fails)
 ```
 
-Das Anwenden eines Ergebnisses mit `--optimize-weights` ändert, wie die Fotos der Kategorie untereinander rangieren, nicht wo die Kategorie gegenüber den anderen steht. Im selben Config-Schreibvorgang wie die Gewichte wird `modifiers.bonus` um das Gegenteil der projizierten mittleren Wertungsverschiebung der Kategoriefotos verschoben, sodass der mittlere Gesamtwert der Kategorie dort bleibt, wo er war. Der Bonus bleibt innerhalb von [-5, 5], und das Protokoll meldet, wenn diese Grenze die Korrektur verkürzt. Eine Kategorie ohne Eintrag in `categories` (`others`) hat keinen Bonus und wird nicht neu zentriert. Der vor dem Schreiben aufgezeichnete Gewichts-Snapshot enthält den Bonus, und das Wiederherstellen eines Snapshots stellt Gewichte **und** Bonus wieder her (Snapshots, die vor dieser Änderung, von `calibrate.py` oder für `others` aufgezeichnet wurden, haben keinen Bonus und lassen ihn unberührt). Bekannte Grenze: Die Schaltfläche **Anwenden** des Viewers und eine manuelle Bearbeitung im Tab „Gewichte“ schreiben Gewichte über `POST /api/config/update_weights`, und diese Route zentriert den Bonus nicht neu; nur `--optimize-weights` tut das.
+**Das Anwenden erhält das Niveau der Kategorie.** `--optimize-weights` ändert, wie die Fotos einer Kategorie untereinander rangieren, nicht gegenüber anderen Kategorien. Es verschiebt `modifiers.bonus`, um die mittlere Wertungsverschiebung der Kategorie auszugleichen.
 
-**Trainieren Sie nach dem Upgrade den persönlichen Ranker und den Keeper-Head neu (`--train-ranker`, `--train-keeper`) und führen Sie dann `--recompute-average` aus.** Optimierer, Ranker und Keeper-Head lesen dieselben Metriken pro Foto, zu denen nun die nach Perzentilen normalisierte Augenschärfe, technische Schärfe und Farbe gehören; ein von einer früheren Version gespeichertes Modell kann die Änderung nicht erkennen.
+- Der Bonus bleibt innerhalb von [-5, 5]; das Protokoll meldet, wenn diese Grenze greift.
+- Eine Kategorie ohne Eintrag in `categories` (`others`) hat keinen Bonus und wird nicht neu zentriert.
+- Das Wiederherstellen eines Gewichts-Snapshots stellt Gewichte **und** Bonus wieder her. Ältere Snapshots, solche von `calibrate.py` und solche für `others` lassen den Bonus unberührt.
+- Die Schaltfläche **Anwenden** des Viewers und manuelle Bearbeitungen im Tab „Gewichte“ zentrieren den Bonus nicht neu; nur `--optimize-weights` tut das.
+
+**Trainieren Sie nach dem Upgrade den persönlichen Ranker und den Keeper-Head neu (`--train-ranker`, `--train-keeper`) und führen Sie dann `--recompute-average` aus.** Sie lesen nun nach Perzentilen normalisierte Augenschärfe, technische Schärfe und Farbe, und ein älteres gespeichertes Modell kann die Änderung nicht erkennen.
 
 Empfohlene Kadenz:
 
@@ -418,12 +468,14 @@ python facet.py --recompute-average      # anwenden + Perzentil-Snapshot persist
 
 ### Gewichtsfeinabstimmung in der Benutzeroberfläche
 
-1. Öffnen Sie das Panel „Gewichtungsvorschau" während des Vergleichs
-2. Passen Sie die Regler an, um Wertungsänderungen in Echtzeit zu sehen
-3. Klicken Sie auf „Gewichte vorschlagen" für optimierte Werte
-4. Aktualisieren Sie die Konfiguration manuell
+Während des Vergleichs zeigt das Panel „Gewichtungsvorschau“ die Wertungsänderungen, während Sie die Regler bewegen, und **Gewichte vorschlagen** schlägt optimierte Werte vor. Speichern und Neuberechnen funktionieren wie in [Option A: Über den Viewer](#option-a-über-den-viewer-empfohlen).
 
-**Gewichte vorschlagen** beantwortet auch eine engere Frage als das Held-out-Kriterium oben: Wie gut stimmen die *aktuell live* verwendeten Gewichte dieser Kategorie bereits mit Ihren eigenen Vergleichen überein? Ein Klick liefert `accuracy_before` — den Prozentsatz der gelabelten Paare dieser Kategorie (A/B-Stimmen, Aussortieren und aus Bewertungen abgeleitete Paare), deren Gewinner die live verwendeten Gewichte korrekt vorhersagen — neben `accuracy_after`, derselben Kennzahl für die vorgeschlagenen Gewichte. Beide werden an denselben Vergleichen gemessen, auf denen die Gewichte angepasst wurden, daher ist `accuracy_after` optimistisch. Beide werden bei jedem Ausführen nebeneinander im Tab „Gewichtsvorschläge“ und in der Seitenleiste des Tabs „A/B-Vergleich“ angezeigt (`GET /api/comparison/learned_weights`). Ob **Anwenden** angeboten wird, folgt demselben Held-out-McNemar-Kriterium wie die CLI, nicht diesem optimistischen Gewinn: `suggest_changes` ist nur wahr, wenn das Kriterium erfüllt ist. Die Anfrage führt die Kreuzvalidierung nur aus, wenn der optimistische Gewinn bereits 2 Prozentpunkte erreicht (`?use_cv=true` führt sie in jedem Fall aus). Der Viewer benötigt `min_comparisons_for_optimization` (ausgelieferter Standard 50) entscheidende Vergleiche für diese Kategorie, die CLI dagegen 30; darunter meldet die Schaltfläche das Defizit („Need at least N decisive comparisons (have K)“) statt einer Zahl.
+**Gewichte vorschlagen** zeigt zwei Kennzahlen, im Tab „Gewichtsvorschläge“ und in der Seitenleiste des Tabs „A/B-Vergleich“:
+
+- `accuracy_before`: wie oft die aktuellen Gewichte den Gewinner der gelabelten Paare dieser Kategorie vorhersagen.
+- `accuracy_after`: dasselbe für die vorgeschlagenen Gewichte. Sie wird an den Paaren gemessen, auf denen angepasst wurde, und ist daher optimistisch.
+
+**Anwenden** wird nur angeboten, wenn derselbe Held-out-McNemar-Test wie in der CLI besteht (`suggest_changes` ist wahr). Die Kreuzvalidierung läuft nur, wenn der optimistische Gewinn 2 Prozentpunkte erreicht (`?use_cv=true` führt sie immer aus). Der Viewer benötigt `min_comparisons_for_optimization` (Standard 50) entscheidende Vergleiche in der Kategorie, die CLI dagegen 30. Darunter meldet er „Need at least N decisive comparisons (have K)“.
 
 ## Eigene Kategorien hinzufügen
 
