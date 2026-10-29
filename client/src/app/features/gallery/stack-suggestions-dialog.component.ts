@@ -1,3 +1,4 @@
+import { stackDialogConfig } from './stack-dialog.config';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, linkedSignal, signal } from '@angular/core';
 import { NavigationStart, Router } from '@angular/router';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -244,9 +245,9 @@ export class StackSuggestionsDialogComponent {
     this.busy.set(true);
     let skipped = false;
     try {
-      const ref = this.dialogs.open(StackDialogComponent, { width: '900px', maxWidth: '96vw', data: {
+      const ref = this.dialogs.open(StackDialogComponent, stackDialogConfig({
         paths: [...candidate.paths], activePath: this.focusedPath() ?? candidate.cover_path, skippable: true,
-      } });
+      }));
       this.editor = ref;
       skipped = await firstValueFrom(ref.afterClosed().pipe(takeUntilDestroyed(this.destroyRef))) === SKIP_SUGGESTION;
     } catch {

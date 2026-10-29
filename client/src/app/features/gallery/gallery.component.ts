@@ -1,3 +1,4 @@
+import { stackDialogConfig } from './stack-dialog.config';
 import {
   Component,
   ChangeDetectorRef,
@@ -2329,7 +2330,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
     const session = this.stacks.context();
     const { StackDialogComponent } = await import('./stack-dialog.component');
     if (this.destroyRef.destroyed || !session()) return;
-    this.dialog.open(StackDialogComponent, { data, width: '900px', maxWidth: '96vw' });
+    this.dialog.open(StackDialogComponent, stackDialogConfig(data));
   }
 
   protected downloadPhoto(photo: Photo): void {
