@@ -68,7 +68,7 @@ Two passwords control access:
 - **`viewer.password`** decides who may *browse*. Empty means anyone can browse the whole library. Set, users must log in first.
 - **`viewer.edition_password`** is required for every edit: ratings, favorites and rejects, culling, albums, person and face management, comparison mode, weight and priority changes, and exports. Empty (the shipped default) makes the install **read-only**: edits are refused with `403` ("Set viewer.edition_password to enable editing").
 
-On-demand AI generation (captions, VLM critiques) also needs the edition password. Without it you get only what is already cached (`source: "edition_required"` or `vlm_available: false`). With no edition password, the gallery also hides existing star, favourite and reject badges, as it does for non-edition viewers on a password-protected install.
+On-demand AI generation (captions, VLM critiques) also needs the edition password. Without it you get only what is already cached (`source: "none"` or `vlm_available: false`). With no edition password, the gallery also hides existing star, favourite and reject badges, as it does for non-edition viewers on a password-protected install.
 
 Restart the viewer after setting `viewer.edition_password`: the config is not hot-reloaded.
 
@@ -616,17 +616,17 @@ The dialog also tells a photo that is *not scored yet* from one whose *stored sc
 
 ### VLM Critique `[GPU]` `[16gb/24gb]`
 
-Uses the configured VLM (Qwen3.5-2B or Qwen3.5-4B) for a context-aware critique. Needs the 16gb or 24gb profile, `viewer.features.show_vlm_critique` set to `true` (the default) and an edition session to generate. Without edition, only a cached critique is shown and `vlm_available` is `false`.
+Uses the configured VLM (Qwen3.5-2B or Qwen3.5-4B) for a context-aware critique. Needs the 16gb or 24gb profile, `viewer.features.show_vlm_critique` set to `true` (the default) and an edition session to generate. Without edition, only a cached critique is shown and `vlm_available` is `false`. The dialog generates through `POST /api/critique/vlm` (edition only; concurrent requests for one photo share a single generation); `GET /api/critique` only reads what is cached and never generates, translates or writes.
 
 - The prompt (`critique.vlm`) includes the score breakdown, stored and recalculated scores, detected conditions and EXIF.
-- The reply reads **Observation / Assessment / Suggestions**. It is cached per photo (`photos.vlm_critique`), translated on demand, and **Regenerate** recomputes it.
+- The reply reads **Observation / Assessment / Suggestions**. It is cached per photo (`photos.vlm_critique`), translated when an edition session opens it in the target language (stored then, and served as stored thereafter), and **Regenerate** recomputes it. Without an edition session you see the untranslated text unless a stored translation already exists.
 - It runs on the stored thumbnail, so RAW files work.
 
 **Visual "why this score" overlay.** With `viewer.features.show_saliency_overlay` on (default `true`), the critique dialog has **Show overlay**. It draws the BiRefNet saliency map as a heatmap (`GET /api/saliency_overlay`), plus face boxes and eye markers from stored landmarks (`GET /api/photo/face_markers`). Boxes are green for open eyes, amber for a blink. The heatmap is thumbnail-resolution, so it is approximate. The toggle hides on profiles that cannot produce a saliency mask.
 
 ## AI Captioning `[GPU]` `[16gb/24gb]` `[Edition]`
 
-Get a natural-language caption for any photo. An edition session generates it on first request; it is then cached in the `caption` column. Edit captions in photo detail (edition mode). An open, read-only install never generates one.
+Get a natural-language caption for any photo. An edition session generates it on first request; it is then cached in the `caption` column. Edit captions in photo detail (edition mode). An open, read-only install never generates one. `POST /api/caption` generates (and translates) it; `GET /api/caption` only returns the stored caption or translation and never generates, translates or writes.
 
 Bulk generation and translation from the CLI:
 

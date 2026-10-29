@@ -254,6 +254,8 @@ EXPECTED_NON_2XX = {
     # A relative path (no leading slash) names no photo; the absolute form of the
     # same route is driven by PARAMETERISED_ROUTES and answers 200.
     ('GET', '/api/similar_photos/conftest-seeded/a.jpg'): 404,
+    # The seeded row has no file on disk, so there is no image to caption.
+    ('POST', '/api/caption'): 503,
 }
 
 
