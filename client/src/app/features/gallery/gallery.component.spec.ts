@@ -4975,6 +4975,11 @@ describe('GalleryComponent', () => {
       expect(host.querySelector('section progress')).toBeNull();
     });
 
+    it('shows no review notice when the scope holds no photos', () => {
+      mockStore.reviewProgress.set({ total: 0, undecided: 0, kept: 0, rejected: 0 });
+      expect(render().querySelector('[data-review-progress]')).toBeNull();
+    });
+
     it('renders the decision counts and completion for the scope', () => {
       mockStore.reviewProgress.set({ total: 10, undecided: 6, kept: 3, rejected: 1 });
       mockStore.reviewPercent.set(40);
