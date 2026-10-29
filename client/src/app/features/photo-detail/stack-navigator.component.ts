@@ -18,7 +18,7 @@ import { GalleryStore } from '../gallery/gallery.store';
   selector: 'app-stack-navigator',
   imports: [MatButtonModule, MatIconModule, ThumbnailUrlPipe, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'block shrink-0 min-w-0' },
+  host: { class: 'block shrink-0 min-w-0', '[style.min-height.px]': 'reservedHeight()' },
   template: `
     @if (error()) {
       <div class="flex items-center gap-2 px-3 py-1" role="alert">
@@ -68,10 +68,14 @@ export class StackNavigatorComponent {
   private readonly dialog = inject(MatDialog);
   private readonly store = inject(GalleryStore);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly owner = this.auth.identity();
   private readonly generation = signal(0);
   private readonly thumbnails = viewChildren<ElementRef<HTMLButtonElement>>('thumbnail');
   private navigating = false;
+  private reservedTarget: string | null = null;
+  private reservedRevision = 0;
+  protected readonly reservedHeight = signal<number | null>(null);
   readonly stack = signal<PhotoStack | null>(null);
   readonly error = signal(false);
   private readonly loading = signal(true);
@@ -95,9 +99,21 @@ export class StackNavigatorComponent {
           || this.stack()?.members.some(member => member.path === path))) this.invalidate();
     });
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
-      if (event instanceof NavigationStart) this.navigating = true;
-      else if (event instanceof NavigationEnd || event instanceof NavigationCancel || event instanceof NavigationError) this.navigating = false;
-      else return;
+      if (event instanceof NavigationStart) {
+        const target = this.photoPath(event.url);
+        // Keep only layout, never old membership, while an authorized member
+        // gets its own fresh lookup. Measure before clearing the rendered strip.
+        if (this.owner === this.auth.identity() && this.visibleStack()
+          && this.members().some(member => member.path === target)) {
+          this.reservedTarget = target;
+          this.reservedRevision = this.stacks.revision();
+          this.reservedHeight.set(this.host.nativeElement.getBoundingClientRect().height || null);
+        } else this.clearReservation();
+        this.navigating = true;
+      } else if (event instanceof NavigationEnd || event instanceof NavigationCancel || event instanceof NavigationError) {
+        this.navigating = false;
+        if (!(event instanceof NavigationEnd) || this.photoPath(event.urlAfterRedirects) !== this.reservedTarget) this.clearReservation();
+      } else return;
       this.stack.set(null);
       this.generation.update(value => value + 1);
     });
@@ -106,6 +122,8 @@ export class StackNavigatorComponent {
       const generation = this.generation();
       const revision = this.stacks.revision();
       const identity = this.auth.identity();
+      if (identity !== this.owner || revision !== this.reservedRevision
+        || (!this.navigating && path !== this.reservedTarget)) this.clearReservation();
       this.stack.set(null); this.error.set(false); this.loading.set(true);
       if (this.navigating || identity !== this.owner) return;
       const context = this.stacks.context();
@@ -113,12 +131,17 @@ export class StackNavigatorComponent {
       const request = this.stacks.byPhoto(path).subscribe({
         next: group => {
           if (!current()) return;
+          this.clearReservation();
           this.loading.set(false);
           if (group?.members.some(member => member.path === path)) this.stack.set(group);
         },
-        error: () => { if (current()) { this.error.set(true); this.loading.set(false); } },
+        error: () => { if (current()) { this.clearReservation(); this.error.set(true); this.loading.set(false); } },
       });
       onCleanup(() => request.unsubscribe());
+    });
+    effect(() => {
+      const allowed = this.allowedPaths();
+      if (this.reservedTarget !== null && allowed !== null && !allowed.includes(this.reservedTarget)) this.clearReservation();
     });
     effect(() => {
       const active = this.thumbnails()[this.position()]?.nativeElement;
@@ -127,12 +150,26 @@ export class StackNavigatorComponent {
   }
 
   private invalidate(): void {
+    this.clearReservation();
     this.stack.set(null);
     this.loading.set(true);
     this.generation.update(value => value + 1);
   }
 
-  retry(): void { this.generation.update(value => value + 1); }
+  private photoPath(url: string): string | null {
+    const tree = this.router.parseUrl(url);
+    const outlets = tree.root.children;
+    const segments = outlets['primary']?.segments;
+    return Object.keys(outlets).length === 1 && segments?.length === 1 && segments[0].path === 'photo'
+      && tree.queryParamMap.getAll('path').length === 1 ? tree.queryParamMap.get('path') : null;
+  }
+
+  private clearReservation(): void {
+    this.reservedTarget = null;
+    this.reservedHeight.set(null);
+  }
+
+  retry(): void { this.clearReservation(); this.generation.update(value => value + 1); }
 
   openMember(path: string): void {
     if (this.navigating || this.owner !== this.auth.identity() || !this.members().some(member => member.path === path)) return;

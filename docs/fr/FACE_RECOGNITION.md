@@ -54,7 +54,7 @@ python facet.py --suggest-person-merges --merge-threshold 0.7  # Plus strict
 
 Ouvre le navigateur sur la page des suggestions de fusion.
 
-### Étape 4 : Gestion dans la visionneuse
+### Étape 4 : Gestion dans la visionneuse
 
 Le travail restant se déroule dans la visionneuse web, en suivant le pipeline **Extraire → Regrouper → Fusionner → Gérer** :
 
@@ -80,8 +80,10 @@ Voir [Intégration à la galerie](#intégration-à-la-galerie) pour la référen
 | Paramètre | Défaut | Description |
 |---------|---------|-------------|
 | `min_confidence_percent` | `65` | Confiance de détection minimale |
-| `min_face_size` | `20` | Taille de visage minimale en pixels — InsightFace uniquement : le détecteur YuNet du mode commercial utilise des valeurs fixes mesurées (confiance 0,7, 30 px) et ignore `min_confidence_percent` ainsi que ce réglage. |
+| `min_face_size` | `20` | Taille de visage minimale en pixels (InsightFace uniquement, voir la note) |
 | `blink_ear_threshold` | `0.28` | Eye Aspect Ratio pour la détection des clignements |
+
+En mode commercial, le détecteur YuNet utilise des valeurs fixes (confiance 0,7, 30 px) et ignore `min_confidence_percent` et `min_face_size`.
 
 ### Regroupement des visages
 
@@ -106,7 +108,7 @@ Voir [Intégration à la galerie](#intégration-à-la-galerie) pour la référen
 |---------|---------|-------------|
 | `min_faces_per_person` | `2` | Nombre minimal de photos pour créer une personne |
 | `min_samples` | `2` | Paramètre min_samples de HDBSCAN |
-| `thresholds_by_model` | voir JSON | Par modèle de reconnaissance : `auto_merge_distance_percent` (distance de fusion automatique) et `merge_threshold` (similarité des centroïdes). Valeurs par défaut : ArcFace `15` / `0.6`, SFace `27.5` / `0.65` |
+| `thresholds_by_model` | voir JSON | Par modèle : `auto_merge_distance_percent` et `merge_threshold` (ArcFace `15` / `0.6`, SFace `27.5` / `0.65`) |
 | `use_gpu` | `"auto"` | Mode GPU : `auto`, `always`, `never` |
 
 ### Traitement des visages
@@ -174,32 +176,30 @@ pip install --extra-index-url https://pypi.nvidia.com/ "cuml-cu12"
 
 ### Le GPU et le CPU ne produisent pas des groupes identiques
 
-Mesuré sur une bibliothèque de 145 677 visages, avec les mêmes embeddings et les mêmes paramètres :
+Avec les mêmes visages et les mêmes paramètres, cuML produit un peu plus de groupes, plus petits, que le regroupement CPU (environ 1,1 à 1,2× plus). Qui est groupé avec qui reste à peu près identique, mais le *nombre* de groupes diffère entre une exécution GPU et une exécution CPU.
 
-| Visages | Groupes cuML | Groupes CPU | Rapport |
-|--------:|-------------:|------------:|--------:|
-| 5 000 | 202 | 181 | 1,12× |
-| 20 000 | 1 285 | 1 039 | 1,24× |
+**cuML n'est pas non plus déterministe.** Deux exécutions GPU sur les mêmes visages donnent des nombres de groupes quasi identiques mais des étiquettes différentes.
 
-cuML est légèrement plus granulaire, avec un taux de bruit comparable et une taille médiane de groupe identique (4). L'écart reste trop faible pour changer qui se retrouve groupé avec qui, mais le *nombre* de groupes ne correspondra pas entre une exécution GPU et une exécution CPU.
-
-**cuML n'est pas non plus déterministe.** Deux exécutions GPU consécutives sur les mêmes 145 677 visages, à paramètres identiques, ne s'accordaient que sur **41 % des étiquettes**, tout en produisant un nombre de groupes quasi identique (14 809 contre 14 807) et des résultats finaux identiques. La structure est stable, l'étiquetage ne l'est pas. Conséquences à connaître :
-
-- **Les identifiants de personnes ne sont pas reproductibles d'une exécution à l'autre.** Ne supposez pas qu'un nouveau regroupement conserve la numérotation des personnes auto-groupées — nommez celles qui comptent, c'est ce qui les rend stables.
+- **Les identifiants de personnes ne sont pas reproductibles d'une exécution à l'autre.** Nommez les personnes qui comptent ; les personnes nommées restent stables.
 - **Ne comparez pas deux regroupements par étiquette.** Comparez plutôt l'appartenance des visages.
 
 Le regroupement CPU avec un `algorithm` fixe est déterministe pour une même entrée.
 
 ### Regroupement et personnes déjà nommées
 
-Tous les modes sauf `--cluster-faces-force` conservent les enregistrements de personnes, mais tous redérivent de zéro chaque affectation visage→personne. Seuls les visages dont la personne change réellement sont écrits, le tout dans une seule transaction : une exécution interrompue avant ce commit laisse la personne de chaque visage telle qu'elle était. Une exécution comporte deux phases : le chargement et le clustering des visages, la partie longue, puis une courte phase base de données qui écrit le résultat (environ 13 s sur une copie d'une bibliothèque de 145 677 visages, mesuré). Un visage que vous réaffectez dans la visionneuse pendant la phase base de données conserve votre affectation : l'exécution ne modifie un visage que s'il a toujours la personne qu'elle a lue au début de cette phase, et journalise combien de visages elle a ignorés. Un enregistrement envoyé pendant que l'exécution écrit attend la fin de celle-ci (2,8 s sur la copie de 145 677 visages) ; s'il attend plus de 5 s, il est refusé avec « library busy » et doit être répété. Une modification faite plus tôt, pendant que les visages sont encore chargés ou regroupés, est écrasée, comme avant. Un groupe reconstruit est rendu à une personne lorsque :
+Tous les modes sauf `--cluster-faces-force` conservent les enregistrements de personnes existants, mais tous recalculent la personne de chaque visage.
+
+- **Les interruptions sont sans danger.** Les changements sont écrits en une seule étape à la fin ; une exécution arrêtée avant cela ne change rien.
+- **Modifications dans la visionneuse pendant une exécution.** Un visage que vous réaffectez pendant que l'exécution écrit ses résultats (les dernières secondes) conserve votre choix, et l'exécution journalise combien elle en a ignorés. Un enregistrement envoyé à ce moment attend la fin de l'exécution ; s'il attend plus de 5 s, il est refusé avec « library busy » et doit être répété. Une modification faite plus tôt, pendant que les visages sont encore regroupés, est écrasée.
+
+Un groupe reconstruit est rendu à une personne existante lorsque :
 
 1. son embedding moyen se situe à moins de `merge_threshold` (0,6 cosinus par défaut pour ArcFace, 0,65 pour SFace) du centroïde stocké de cette personne, **ou**
 2. au moins la moitié de ses visages appartenaient à cette personne avant l'exécution.
 
-La seconde règle compte plus qu'il n'y paraît. Le centroïde d'une personne est un unique vecteur moyen : quelqu'un photographié pendant des années couvre une région large, et HDBSCAN le découpe correctement en sous-groupes serrés qui se retrouvent loin de cette moyenne et échouent à la règle 1. Sur la bibliothèque ci-dessus, la règle 1 seule rendait 38 % des visages rattachés aux personnes nommées ; avec la règle 2, on atteint 96 %.
+La règle 2 compte pour les personnes photographiées pendant de nombreuses années : leurs visages se découpent en sous-groupes serrés qui se retrouvent loin du centroïde moyen unique. Sans elle, la plupart des visages des personnes nommées ne leur seraient pas rendus.
 
-Comme la règle 2 s'en remet à l'affectation précédente, une erreur ancienne est reconduite plutôt que corrigée. C'est le contrat attendu d'un mode dont le but est de préserver les personnes existantes — utilisez `--cluster-faces-force` pour tout recalculer de zéro. Lorsque les visages d'un groupe se répartissent exactement à égalité entre deux personnes, l'égalité est tranchée par l'ordre des identifiants de visage : la personne qui possède le visage déjà affecté de plus petit numéro du groupe est conservée. Les embeddings sont chargés avec `ORDER BY id` ; les versions antérieures laissaient cet ordre non spécifié, si bien que, dans une telle égalité, l'identifiant de la personne conservée peut différer de celui d'une ancienne exécution.
+Comme la règle 2 s'en remet à l'affectation précédente, une erreur ancienne est reconduite. Utilisez `--cluster-faces-force` pour repartir de zéro. Lorsque les visages d'un groupe se répartissent exactement à égalité entre deux personnes, c'est la personne qui possède le visage déjà affecté de plus petit numéro du groupe qui l'emporte.
 
 ## Détection des clignements
 
@@ -231,33 +231,37 @@ Ne traite que les photos comportant des visages, aucun GPU nécessaire.
 
 ## Qualité de visage OFIQ optionnelle (mode commercial)
 
-En mode commercial, le modèle restreint de qualité de visage est indisponible. Comme remplacement optionnel, installez `python-ofiq` (liaisons UNICEF sur OFIQ du BSI, ISO/IEC 29794-5 ; MIT ; compatible avec numpy 2 et OpenCV 4.8+) avec `pip install python-ofiq`. Il ne fournit des wheels que pour Linux x86-64 et macOS arm64 (sous Windows : WSL2 ou Docker). Les modèles OFIQ (environ 400 Mo, MIT/Apache-2.0) ne sont jamais fournis : au premier usage, Facet les télécharge, SHA-256 épinglé, dans `pretrained_models/ofiq/`. Le pipeline facial commercial divise par 10 le score unifié OFIQ (0-100) et le stocke dans `face_quality_iqa` ; la valeur d'une photo est 0,7 x son pire visage + 0,3 x la moyenne. Sans `python-ofiq`, la colonne reste NULL et son poids est renormalisé.
+En mode commercial, le modèle restreint de qualité de visage est indisponible. Comme remplacement optionnel, installez `python-ofiq` (liaisons UNICEF sur OFIQ du BSI, ISO/IEC 29794-5 ; MIT) :
+
+```bash
+pip install python-ofiq
+```
+
+- Des wheels n'existent que pour Linux x86-64 et macOS arm64 (sous Windows, utilisez WSL2 ou Docker). Il fonctionne avec numpy 2 et OpenCV 4.8+.
+- Au premier usage, Facet télécharge les modèles OFIQ (environ 400 Mo, MIT/Apache-2.0, SHA-256 épinglé) dans `pretrained_models/ofiq/`.
+- Le score OFIQ (0-100) est divisé par 10 et stocké dans `face_quality_iqa`. La valeur d'une photo est 0,7 x son pire visage + 0,3 x la moyenne.
+- Sans `python-ofiq`, la colonne reste NULL et son poids est réparti sur les autres métriques.
 
 ## Signaux d'expression par visage (yeux ouverts + sourire)
 
-Chaque ligne de visage stocke deux signaux continus sur une échelle de 0 à 10, utilisés par le
-panneau de visages du tri et les agrégats au niveau de la photo : `eyes_open_score` (10 = grand
-ouvert, 0 = complètement fermé) et `smile_score` (5 = neutre, 10 = large sourire, 0 = moue).
+Chaque visage stocke deux scores de 0 à 10, utilisés par le panneau de visages du tri et les scores au niveau de la photo : `eyes_open_score` (10 = grand ouvert, 0 = complètement fermé) et `smile_score` (5 = neutre, 10 = large sourire, 0 = moue).
 
-Deux moteurs les produisent, sur la même échelle 0-10 :
+Deux moteurs les produisent, sur la même échelle :
 
-1. **Géométrie (toujours disponible).** Dérivé des 106 points de repère InsightFace stockés :
-   l'Eye Aspect Ratio pour les yeux ouverts, le soulèvement des coins de la bouche pour le sourire.
-   Pure géométrie, donc `--recompute-face-signals` peut les recalculer à partir des points de
-   repère stockés sans aucun pixel et sans GPU.
-2. **Blendshapes MediaPipe (optionnel, basé sur l'apparence).** Pendant l'analyse / l'extraction
-   des visages, un recadrage généreux de chaque visage passe par le MediaPipe Face Landmarker,
-   dont les blendshapes de style ARKit (`eyeBlink*`, `mouthSmile*`, `mouthFrown*`) correspondent
-   aux mêmes échelles. L'apparence surpasse la géométrie des points de repère sur les yeux fermés,
-   les sourires discrets et les têtes de profil, donc quand un visage est noté via MediaPipe, cela
-   **remplace** la valeur géométrique. Si MediaPipe ou son modèle est absent, ou si le recadrage du
-   visage est trop petit / non détecté, la valeur géométrique est conservée — le comportement est
-   identique à une installation géométrie seule.
+1. **Géométrie (toujours disponible).** Calculée à partir des 106 points de repère InsightFace
+   stockés : l'Eye Aspect Ratio pour les yeux, le soulèvement des coins de la bouche pour le sourire.
+   `--recompute-face-signals` peut les recalculer sans GPU et sans lire d'image.
+2. **Blendshapes MediaPipe (optionnel).** Pendant l'analyse et l'extraction des visages, chaque
+   recadrage de visage passe par le MediaPipe Face Landmarker, dont les blendshapes
+   (`eyeBlink*`, `mouthSmile*`, `mouthFrown*`) correspondent aux mêmes échelles. Il lit mieux
+   les yeux fermés, les sourires discrets et les têtes tournées, donc sa valeur **remplace**
+   la valeur géométrique. Si MediaPipe ou son modèle est absent, ou si le recadrage est trop
+   petit, la valeur géométrique est conservée.
 
 ### Installer MediaPipe
 
-MediaPipe est optionnel et **doit** être installé sans son `opencv-contrib-python` embarqué, qui
-installerait un second espace de noms `cv2` à côté de celui de Facet (`opencv-python`) :
+MediaPipe est optionnel. Installez-le **sans** son `opencv-contrib-python` embarqué,
+qui entrerait en conflit avec l'`opencv-python` de Facet (les deux fournissent `cv2`) :
 
 ```bash
 pip install mediapipe==0.10.35 --no-deps
@@ -268,12 +272,10 @@ Ne lancez jamais un simple `pip install mediapipe`.
 
 ### Modèle
 
-Le modèle `face_landmarker.task` (~3,6 Mio, Apache-2.0) est téléchargé automatiquement à la
-première utilisation vers `pretrained_models/face_landmarker.task`. Si la machine est hors ligne,
-téléchargez-le manuellement depuis
+Le modèle `face_landmarker.task` (~3,6 Mio, Apache-2.0) est téléchargé à la première utilisation
+vers `pretrained_models/face_landmarker.task`. Hors ligne, téléchargez-le depuis
 `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task`
-et placez-le à cet emplacement. Un téléchargement échoué journalise un avertissement une seule fois
-et revient aux scores géométriques.
+et placez-le à cet emplacement. Si le téléchargement échoue, Facet avertit une fois et utilise la géométrie.
 
 ### Configuration
 
@@ -289,20 +291,17 @@ et revient aux scores géométriques.
 }
 ```
 
-- `enabled` (défaut `true`) : utiliser les scores blendshapes dès que MediaPipe et le modèle
-  sont disponibles ; sinon le repli géométrique s'exécute automatiquement. Mettre à `false`
-  pour forcer la géométrie seule.
+- `enabled` (défaut `true`) : utiliser les blendshapes quand MediaPipe et le modèle sont
+  disponibles. Mettre à `false` pour forcer la géométrie seule.
 - `min_crop_size` (défaut `192`) : les visages dont le recadrage rembourré est plus petit que
-  cette valeur (px, côté le plus court) retombent sur la géométrie plutôt que d'agrandir un visage
-  minuscule.
-- `blink_pose_gate_deg` (défaut `null` = désactivé) : analyseur MediaPipe du mode commercial uniquement. Un visage dont |yaw| ou |pitch| (degrés, issus de la matrice de transformation du Face Landmarker) dépasse cette valeur n'a ni verdict de clignement ni score yeux ouverts / sourire (NULL = inconnu), car une tête tournée ressemble à des yeux fermés. Désactivé par défaut : sur une moitié réservée d'une vraie bibliothèque, aucun seuil entre 20° et 45° n'a amélioré la détection des clignements (chacun perdait plus de vrais clignements que de faux), donc aucun n'est fourni ; ne le définissez que si votre bibliothèque contient beaucoup de visages très tournés ; s'applique aux photos nouvellement analysées, les valeurs `is_blink` existantes ne changent qu'au rescan. Doit être un nombre positif de degrés : 0 ou une valeur négative est refusé au démarrage ; `null` = désactivé.
+  cette valeur (px, côté le plus court) utilisent la géométrie plutôt qu'un recadrage agrandi.
+- `blink_pose_gate_deg` (défaut `null` = désactivé) : analyseur MediaPipe du mode commercial uniquement. Un visage tourné de plus de ce nombre de degrés (|yaw| ou |pitch|) n'a ni verdict de clignement ni score yeux ouverts / sourire, car une tête tournée ressemble à des yeux fermés. Les tests n'ont trouvé aucun seuil entre 20° et 45° qui améliore les résultats : il est donc désactivé par défaut ; ne le définissez que si votre bibliothèque contient beaucoup de visages très tournés. Doit être un nombre positif. S'applique aux photos nouvellement analysées ; les valeurs `is_blink` existantes ne changent qu'au rescan.
 
 ### Recalcul
 
-`--recompute-face-signals` recalcule les signaux par visage uniquement à partir des points de
-repère stockés — il est **géométrie seule** et n'exécute pas MediaPipe (aucun pixel n'est lu). Pour
-rafraîchir les scores basés sur l'apparence, ré-extrayez les visages (`--extract-faces-gpu-force`)
-afin que les recadrages en pleine résolution soient réanalysés.
+`--recompute-face-signals` n'utilise que les points de repère stockés : il est **géométrie seule** et
+n'exécute pas MediaPipe. Pour rafraîchir les scores MediaPipe, ré-extrayez les visages avec
+`--extract-faces-gpu-force`.
 
 ## Miniatures de visages
 
@@ -392,7 +391,7 @@ Les deux commandes utilisent le traitement parallèle pour plus de rapidité.
 ### Galerie d'une personne
 
 - Cliquez sur une personne dans le menu déroulant pour voir toutes ses photos
-- URL : `/person/<id>`
+- Cliquer sur une personne applique un filtre `person_id` à la galerie (pas de route dédiée par personne)
 
 ### Page Gérer les personnes
 
@@ -408,37 +407,26 @@ Accès via le bouton d'en-tête ou `/persons` :
 
 ### Créer une personne
 
-Les personnes ne proviennent plus uniquement du regroupement automatique — vous pouvez nommer un
-visage que le clusterer a manqué directement depuis la galerie :
+Vous pouvez nommer un visage que le clusterer a manqué directement depuis la galerie :
 
 1. Sur une carte photo, ouvrez les actions de personne et choisissez un visage non assigné.
 2. Dans le sélecteur de personne, choisissez **Créer une nouvelle personne** et saisissez un nom.
-3. Le visage est rattaché à la nouvelle personne (créée manuellement, `auto_clustered = 0`) en un
-   seul appel.
+3. Le visage est rattaché à la nouvelle personne (`auto_clustered = 0`).
 
-Endpoint : `POST /api/persons` (réservé à l'édition), corps
-`{ "name": "<nom>", "face_ids": [<id>, ...] }`. Le nom est requis (non vide après suppression des
-espaces). Les visages déjà rattachés à une autre personne sont réassignés, et toute ancienne
-personne qui se retrouve sans visage est supprimée — les mêmes règles que l'assignation de visage.
-En mode multi-utilisateur, l'appelant ne peut rattacher que des visages issus de photos de ses
-propres répertoires (ou partagés) ; un visage hors de ce périmètre est rejeté comme introuvable.
+Un visage qui appartient déjà à une autre personne est déplacé, et une personne laissée sans visage est supprimée. En mode multi-utilisateur, vous ne pouvez rattacher que des visages issus de photos de vos propres répertoires ou de répertoires partagés. API : `POST /api/persons` (voir [API.md](../API.md)).
 
 ### À nommer
 
-La page Gérer les personnes affiche les personnes regroupées automatiquement qui méritent d'être
-nommées dans une section **À nommer** : les clusters non nommés (`name IS NULL`,
-`auto_clustered = 1`) comportant au moins `viewer.persons.needs_naming_min_faces` visages (défaut
-`5`), chacun avec un champ de nom en ligne afin que les grands clusters puissent être nommés sans
-avoir à les chercher. Servi par `GET /api/persons/needs_naming?min_faces=N`.
+La page Gérer les personnes liste les grands clusters non nommés dans une section **À nommer**, chacun avec un champ de nom. Un cluster y apparaît lorsqu'il compte au moins `viewer.persons.needs_naming_min_faces` visages (défaut `5`).
 
 ### Page Suggestions de fusion
 
-Accès via `/merge-suggestions` ou le bouton « Suggestions de fusion » de la page Gérer les personnes :
+Accès via `/merge-suggestions` ou le bouton « Suggestions de fusion » de la page Gérer les personnes :
 
-- Présente des paires de personnes aux embeddings de visages similaires susceptibles d'être le même individu
-- **Curseur de seuil** — contrôle le seuil de similarité (plus bas = plus de suggestions)
-- **Fusion en un clic** — fusionnez instantanément une paire suggérée
-- **Fusion par lot** — sélectionnez plusieurs suggestions et fusionnez-les toutes en une fois
+- Présente des paires de personnes dont les visages se ressemblent
+- **Curseur de seuil** — seuil de similarité (plus bas = plus de suggestions)
+- **Fusion en un clic** — fusionne une paire suggérée
+- **Fusion par lot** — fusionne plusieurs suggestions à la fois
 
 ### Cartes de photos
 
@@ -447,47 +435,21 @@ Accès via `/merge-suggestions` ou le bouton « Suggestions de fusion » de la p
 
 ## Marqueur d'espace d'embedding (sécurité du modèle de reconnaissance)
 
-Chaque ligne de visage porte une étiquette `embedding_model` (colonne de `faces`, par défaut
-`arcface_buffalo_l` — l'actuel modèle de reconnaissance InsightFace `buffalo_l` / ArcFace `w600k_r50`).
-Les embeddings produits par des modèles de reconnaissance **différents** vivent dans des
-espaces vectoriels **incompatibles** et ne doivent jamais être regroupés ensemble — le faire
-produit silencieusement des personnes erronées, sans aucune erreur.
-
-`FaceClusterer.load_embeddings()` ne charge donc que l'espace d'embedding **actif**
-(`active_embedding_model()` dans `db/embedding_space.py` ; une étiquette `NULL` est traitée
-comme l'ancien espace ArcFace) et émet un avertissement bien visible si des visages d'un autre
-espace sont présents et exclus. Il s'agit d'une protection de compatibilité ascendante : elle
-rend sûr par construction un futur changement de modèle de reconnaissance.
+Chaque visage stocke dans `embedding_model` le modèle de reconnaissance qui l'a produit (par défaut `arcface_buffalo_l`, le modèle InsightFace `buffalo_l` / ArcFace `w600k_r50`). Les embeddings de modèles différents ne sont pas comparables : le regroupement n'utilise donc que les visages du modèle **actif**. Une étiquette `NULL` compte comme ArcFace. Si des visages d'un autre modèle sont présents, Facet les exclut et journalise un avertissement.
 
 ### Changer de modèle de reconnaissance (ex. AdaFace) — plan différé
 
-Une amélioration de qualité telle qu'**AdaFace** (marge adaptative à la qualité, meilleur
-regroupement des visages flous/candides) est intégrable comme backend 512-d optionnel (même
-chemin de stockage, même HDBSCAN), mais n'est **pas encore implémentée** car elle ne peut être
-validée sans données réelles. La réaliser correctement nécessite :
-
-1. **Poids + backbone** — un checkpoint AdaFace (ex. `adaface_ir101_webface12m`)
-   ainsi que son backbone IResNet ; un nouveau téléchargement dans le cache de modèles.
-2. **Crops alignés** — calculer l'embedding à partir d'un crop aligné 112×112
-   `norm_crop(img, face.kps, 112)` au moment de l'extraction (les kps existent sur l'objet
-   `face` d'InsightFace mais ne sont pas persistés, donc AdaFace ne peut pas être recalculé
-   hors ligne — il doit s'exécuter pendant l'extraction). Vérifier que le BGR/la normalisation
-   correspondent au checkpoint.
-3. **Bascule de configuration** — ajouter `face_detection.recognition_model: arcface|adaface`
-   et en déduire `active_embedding_model()` ; étiqueter les nouveaux visages en conséquence.
-4. **Ré-extraction + re-regroupement complets** — `--extract-faces-gpu-force` puis
-   `--cluster-faces-force`, car les embeddings ArcFace et AdaFace ne sont pas
-   comparables. Le marqueur d'espace d'embedding ci-dessus empêche qu'une base à moitié
-   migrée regroupe silencieusement les deux espaces (elle avertit et exclut à la place).
-5. **Validation de la qualité** — mesurer la qualité des clusters par rapport à des identités
-   étiquetées ; « ça tourne et émet des vecteurs 512-d » ne prouve pas que le prétraitement est correct.
+AdaFace (meilleur regroupement des visages flous ou candides) n'est **pas encore implémenté**. L'adopter nécessiterait une ré-extraction et un re-regroupement complets (`--extract-faces-gpu-force` puis `--cluster-faces-force`), car les embeddings ArcFace et AdaFace ne sont pas comparables.
 
 ### Bibliothèques mixtes, ré-extraction et valeurs inconnues
 
-- **Bibliothèques mixtes.** Une bibliothèque peut contenir à la fois des visages ArcFace (512-d) et SFace (128-d). Le clustering, les suggestions de fusion, la recherche de personne similaire et les centroïdes de personnes n'utilisent chacun qu'un modèle à la fois (`persons.centroid_model` indique lequel) ; les modes de regroupement incrémental et « personnes nommées seulement » ne touchent ni les visages ni les personnes de l'autre modèle, mais `--cluster-faces-force` efface toutes les affectations visage→personne et supprime toutes les personnes, nommées comprises, quel que soit leur modèle. Pour faire passer une bibliothèque au modèle actif, lancez `--extract-faces-gpu-force` (en mode commercial, il utilise l'extracteur permissif ; les personnes nommées sont conservées) puis `--cluster-faces-incremental`.
-- **Avertissements.** Un scan journalise un avertissement quand des visages stockés appartiennent à un autre modèle que l'actif, et `--doctor` signale le même écart par rapport au modèle actif. En mode commercial, `--doctor` liste les composants qu'un scan chargerait réellement (YuNet, SFace, Q-ReAlign, plus OFIQ lorsque `python-ofiq` est installé), et non ceux que le profil VRAM se contente de nommer ; TOPIQ, LIQE et InsightFace n'apparaissent donc plus comme avertissements. Un scan sur CUDA journalise aussi un avertissement quand les sessions ONNX Runtime d'InsightFace tournent sur le CPU (une build `onnxruntime` CPU uniquement, ou une build GPU dont les bibliothèques CUDA ne se chargent pas) ; la section ONNX Runtime de `--doctor` en donne la raison, et [Installation › ONNX Runtime pour la détection de visages](INSTALLATION.md#onnx-runtime-pour-la-détection-de-visages) indique le correctif.
-- **Les personnes nommées survivent à la ré-extraction.** Avant que `--extract-faces-gpu-force` ne supprime les lignes de visages, Facet retient la boîte de chaque visage d'une personne nommée ; ensuite chaque visage re-détecté est rendu à la personne dont l'ancienne boîte le recouvre avec une IoU >= 0,5 (un pour un, meilleur recouvrement d'abord), et les centroïdes sont recalculés par modèle. Un visage sans ancienne boîte correspondante reste non assigné jusqu'au prochain clustering. Les boîtes mémorisées sont stockées dans la table `face_reextract_snapshot`, dans la même transaction que la suppression : une exécution interrompue est donc reprise par l'extraction suivante. Rescanner une photo conserve ses personnes nommées de la même façon. Les centroïdes de personnes qu'un nouveau scan a laissés obsolètes sont reconstruits une seule fois à la fin du scan (même s'il est interrompu), et non une fois par lot ; les compteurs et les visages représentatifs restent mis à jour par lot.
-- **Inconnu n'est pas zéro.** Sans MediaPipe, l'analyseur permissif ne peut pas mesurer les yeux, le sourire ni les clignements ; ces valeurs sont stockées à NULL (ni 0, ni « clignement »). Le filtre et la pénalité de clignement traitent NULL comme « pas un clignement ». Les lecteurs des 106 points de repère ignorent les visages sans repères. Une photo dont la passe visages échoue est stockée avec `face_count`, `face_ratio` et `is_group_portrait` à NULL (inconnu), et non à 0, et ses visages stockés sont conservés ; le scoring la traite comme sans visage jusqu'à ce qu'elle soit rescannée.
+- **Bibliothèques mixtes.** Une bibliothèque peut contenir à la fois des visages ArcFace (512-d) et SFace (128-d). Le regroupement, les suggestions de fusion, la recherche de personne similaire et les centroïdes n'utilisent chacun qu'un modèle à la fois (`persons.centroid_model` l'indique).
+  - Les modes incrémental et « personnes nommées seulement » ne touchent ni les visages ni les personnes de l'autre modèle.
+  - `--cluster-faces-force` efface toutes les affectations de visages et supprime toutes les personnes, nommées comprises, quel que soit le modèle.
+  - Pour faire passer une bibliothèque au modèle actif, lancez `--extract-faces-gpu-force` (extracteur permissif en mode commercial ; les personnes nommées sont conservées), puis `--cluster-faces-incremental`.
+- **Avertissements.** Un scan avertit quand des visages stockés utilisent un autre modèle que l'actif, et `--doctor` le signale aussi. En mode commercial, `--doctor` liste ce qu'un scan charge réellement (YuNet, SFace, Q-ReAlign, plus OFIQ lorsque `python-ofiq` est installé). Sur CUDA, un scan avertit une fois quand InsightFace tourne sur le CPU ; voir la section ONNX Runtime de `--doctor` et [Installation › ONNX Runtime pour la détection de visages](INSTALLATION.md#onnx-runtime-pour-la-détection-de-visages).
+- **Les personnes nommées survivent à la ré-extraction.** `--extract-faces-gpu-force` rend chaque visage re-détecté à la personne nommée dont l'ancienne boîte de visage le recouvre (IoU >= 0,5, un pour un). Les visages sans correspondance attendent le prochain regroupement. Une exécution interrompue reprend à l'extraction suivante. Rescanner une photo conserve ses personnes nommées de la même façon.
+- **Inconnu n'est pas zéro.** Sans MediaPipe, l'analyseur permissif ne peut pas mesurer les yeux, le sourire ni les clignements, ils sont donc stockés à NULL ; les filtres et pénalités de clignement traitent NULL comme « pas un clignement ». Si la passe visages d'une photo échoue, `face_count`, `face_ratio` et `is_group_portrait` sont NULL et ses visages stockés sont conservés ; elle est notée comme sans visage jusqu'à son prochain scan.
 
 ## Dépannage
 
@@ -499,4 +461,4 @@ validée sans données réelles. La réaliser correctement nécessite :
 | Le regroupement GPU échoue | Vérifiez l'installation de cuML, utilisez `"never"` pour forcer le CPU |
 | Miniatures manquantes | Exécutez `--refill-face-thumbnails-incremental` |
 | Détection de clignement erronée | Ajustez `blink_ear_threshold`, exécutez `--recompute-blinks` |
-| Avertissement « Excluded N faces from non-active embedding space » | Un changement de modèle de reconnaissance a laissé des embeddings mélangés — exécutez `--extract-faces-gpu-force` puis `--cluster-faces-incremental` |
+| Avertissement « Excluded N faces from non-active embedding space » | Un changement de modèle de reconnaissance a laissé des embeddings mélangés — exécutez `--extract-faces-gpu-force` puis `--cluster-faces-incremental` |

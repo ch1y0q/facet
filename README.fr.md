@@ -5,7 +5,7 @@
 Facet est un moteur local d'analyse et de tri de photos. Il évalue chaque image selon 9 dimensions — de la qualité esthétique à la netteté des visages — puis vous permet de parcourir, trier et organiser votre bibliothèque via une galerie web. Tout fonctionne sur votre machine ; aucun cloud, compte ou clé d'API.
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue)
-![Angular](https://img.shields.io/badge/Angular-21-dd0031)
+![Angular](https://img.shields.io/badge/Angular-22-dd0031)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -16,7 +16,7 @@ Facet est un moteur local d'analyse et de tri de photos. Il évalue chaque image
 
 ## Fonctionnement
 
-1. **Analyse** — Pointez Facet vers un dossier de photos. Chaque image est analysée pour sa qualité, sa composition et ses visages. Prend en charge le JPG, le HEIF/HEIC/HIF (les images `.HIF` Canon HDR PQ sont décodées avec la fonction de transfert SMPTE ST 2084 PQ et tonemappées automatiquement en sRGB SDR), 10 formats RAW (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF), ainsi que les images PNG, GIF, WebP, BMP, TIFF et AVIF (AVIF nécessite un Pillow compilé avec la prise en charge AVIF, native à partir de 11.3), ainsi que JPEG XL (`.jxl`) via la dépendance existante `imagecodecs`, incluse dans les installations standard et Docker. Un RAW que LibRaw ne peut pas décoder — comme un DNG « Fusionner en HDR/Panorama » de Lightroom (`-HDR.dng`, `-Pano.dng`) ou un appareil plus récent que la version de LibRaw installée — bascule sur son plus grand aperçu intégré via `exiftool` (nécessite un aperçu d'au moins 1024 px sur le grand côté ; les scores viennent alors de cet aperçu, pas d'un décodage RAW complet). Les fusions Lightroom Classic 13+ (et Enhance) stockent cet aperçu en JPEG XL ; Facet le décode directement.
+1. **Analyse** — Pointez Facet vers un dossier de photos. Chaque image est analysée pour sa qualité, sa composition et ses visages. Prend en charge JPEG, HEIF/HEIC, 10 formats RAW, JPEG XL, AVIF, PNG, WebP, TIFF et plus — voir les [types de fichiers pris en charge](docs/fr/README.md#types-de-fichiers-pris-en-charge).
 2. **Parcours** — Ouvrez la galerie web pour explorer votre bibliothèque avec des filtres, une recherche et plusieurs modes d'affichage.
 3. **Tri** — Facet détecte les rafales, signale les clignements, regroupe les photos similaires et fait remonter les meilleurs choix. Les bracketings d'exposition et les séries panorama/HDR sont reconnus et conservés intacts plutôt que dispersés par le tri.
 
@@ -35,12 +35,16 @@ Survolez n'importe quelle photo pour afficher le détail du score et les donnée
 ### Trier
 
 - **Détection de rafales** — regroupe les prises de vue en rafale et sélectionne automatiquement la meilleure d'après la netteté, la qualité et la détection des clignements
-- **Protection des séries** — les bracketings d'exposition, les balayages panoramiques et les panoramas HDR (`--detect-sequences` / `--detect-panoramas`) sont reconnus comme des séries multi-images délibérées et conservés intacts : la chambre noire de tri marque d'emblée toutes les images d'une série comme gardées et ne la réduit jamais à une seule « gagnante »
+- **Protection des séries** — les bracketings d'exposition, les panoramas et les panoramas HDR (`--detect-sequences` / `--detect-panoramas`) sont reconnus comme des séries ; la chambre noire de tri démarre avec chaque image d'une série marquée comme conservée
 - **Groupes de similarité** — trouve les photos visuellement similaires dans toute la bibliothèque, quel que soit leur moment de prise de vue
-- **Scènes** — regroupe une séance en « scènes » chronologiques selon les écarts entre prises de vue, pour trier dans l'ordre du récit ; touchez pour marquer puis confirmez pour rejeter
+- **Scènes** — regroupe une séance en « scènes » chronologiques selon les écarts entre prises de vue, pour trier dans l'ordre du récit ; touchez pour marquer puis confirmez pour rejeter
+- **Tri automatique** — un bouton trie tout un périmètre (tous les groupes, ou rafales / similaires / scènes seulement, éventuellement restreint à un album ou une période) avec un aperçu en simulation, un budget de photos conservées et un album Temps forts facultatif
 - **Tri automatique en terminal** — `python facet.py --auto-cull [PATH]` prévisualise le tri en simulation, `--apply` l'écrit et `--copy-keepers DIR` copie les photos conservées (voir [docs/fr/COMMANDS.md](docs/fr/COMMANDS.md#tri-en-ligne-de-commande))
+- **Profils par genre** — les préréglages sport / mariage / concert / faune regroupent rigueur, budget de photos conservées, seuil de similarité et filtres de visage en un seul choix
+- **Aperçu du rendu développé** `[Edition]` — affiche une photo à travers un style darktable nommé dans la chambre noire de tri, pour trier sur le rendu développé plutôt que sur l'aperçu RAW plat
+- **Gros plans du sujet** — les groupes sans visage (faune, macro, produit) se comparent sur une bande recadrée automatiquement sur le sujet, avec des badges de netteté normalisés par groupe
 - **Nettoyage des indésirables** — détection zero-shot des fichiers non photographiques parasites (captures d'écran, documents, reçus, mèmes, diapositives) avec une file de revue rapide : conservez ou rejetez chaque candidat, ou rejetez-les tous d'un coup
-- **Badges par visage au tri** — la visionneuse de tri affiche des badges par visage (yeux ouverts/fermés, expression, confiance de détection) au lieu d'un seul indicateur de clignement au niveau de la photo
+- **Badges par visage au tri** — la visionneuse de tri affiche des badges par visage (yeux ouverts/fermés, expression, confiance de détection) au lieu d'un seul indicateur de clignement au niveau de la photo ; les blendshapes MediaPipe facultatifs affinent la lecture des yeux et du sourire
 - **Détection des clignements** — signale les prises aux yeux fermés pour les masquer ou les rejeter en un clic
 - **Détection des doublons** — identifie les images quasi identiques par hachage perceptuel
 
@@ -53,12 +57,13 @@ Survolez n'importe quelle photo pour afficher le détail du score et les donnée
 
 - **Modes de galerie** — mosaïque (rangées justifiées préservant les proportions) et grille (cartes uniformes avec superposition des métadonnées)
 - **Filtres** — plage de dates, tag de contenu, motif de composition, appareil, objectif, personne, dossier, niveau de qualité, note (étoiles) et plages de métriques personnalisées
-- **Recherche sémantique** — saisissez une requête en langage naturel comme « coucher de soleil à la plage » et trouvez les photos correspondantes grâce à la recherche par embedding et par texte
+- **Recherche sémantique** — saisissez une requête en langage naturel comme « coucher de soleil à la plage » et trouvez les photos correspondantes grâce à la recherche par embedding et par texte
 - **Chronologie** — navigateur chronologique avec navigation par année/mois et défilement infini
 - **Carte** — photos géolocalisées sur une carte interactive avec regroupement des marqueurs
 - **Capsules** — diaporamas thématiques : voyages avec noms de lieux, collection dorée, palettes saisonnières, photos d'une personne, et plus encore
 - **Dossiers** — parcours par structure de répertoires avec fil d'Ariane et photos de couverture
-- **Souvenirs** — « Ce jour-là » : photos prises à la même date les années précédentes
+- **Moments narratifs** — des étiquettes zero-shot de scène et d'activité (plage, fête, concert…) nomment vos scènes, filtrent et trient la galerie, et alimentent la sélection des capsules
+- **Souvenirs** — « Ce jour-là » : photos prises à la même date les années précédentes
 - **Diaporama** — mode plein écran avec transitions thématiques, enchaînement automatique entre capsules et contrôles au clavier
 
 <table><tr>
@@ -71,9 +76,9 @@ Survolez n'importe quelle photo pour afficher le détail du score et les donnée
 </details>
 
 **Conseils de flux de travail :**
-- La vue **`/timeline`** descend des années aux mois puis à un calendrier de jours — cliquez sur un jour pour ouvrir la galerie filtrée sur cette date. Il n'y a pas de tri ici ; pour choisir les meilleures prises d'un voyage, utilisez plutôt **`/capsules`** ci-dessous, qui applique une passe de diversité sur une plage de dates que vous pouvez enregistrer comme album.
-- La vue **`/capsules`** génère des diaporamas thématiques (voyages, « Visages de », saisonniers, dorés) que vous pouvez enregistrer comme albums.
-- La galerie masque par défaut les clignements, les rafales secondaires et les doublons. Lorsque la bannière **« N photos masquées par les filtres actuels »** apparaît, cliquez sur « Tout afficher » pour développer la vue.
+- **`/timeline`** descend des années aux mois puis aux jours ; cliquez sur un jour pour ouvrir la galerie à cette date.
+- **`/capsules`** crée des diaporamas thématiques (voyages, « Visages de », saisonniers, dorés) que vous pouvez enregistrer comme albums — le meilleur choix pour sélectionner les meilleures prises d'un voyage.
+- La galerie masque par défaut les clignements, les rafales secondaires et les doublons. Lorsque la bannière **« N photos masquées par les filtres actuels »** apparaît, cliquez sur « Tout afficher » pour développer la vue.
 
 ### Organiser
 
@@ -96,12 +101,12 @@ Survolez n'importe quelle photo pour afficher le détail du score et les donnée
 - **Statistiques** — tableaux de bord sur l'utilisation du matériel, la répartition par catégorie, la chronologie de prise de vue et les corrélations entre métriques
 - **Critique IA** — détail du score montrant la contribution de chaque métrique ; évaluation en langage naturel par VLM `[GPU]` `[16gb/24gb]`
 - **Réglage des poids** — éditeur de poids par catégorie avec aperçu du score en direct. La comparaison A/B de photos apprend de vos choix et suggère des poids optimisés.
-- **Contextes de notation** — contrôlez *quelle* catégorie note une photo, indépendamment des curseurs de poids qui n'ajustent que la catégorie déjà choisie : réorganisez la priorité globale des catégories, appliquez un contexte nommé (Action/Scène, Séance portrait, Faune, …) par album, ou fixez un remplacement de catégorie par photo qui survit à chaque recalcul.
-- **Tri « Mon goût »** — triez la galerie selon le score appris du classeur personnel, avec un badge de confiance indiquant la couverture apprise et la précision sur données de validation
+- **Contextes de notation** — choisissez *quelle* catégorie note une photo : réorganisez la priorité des catégories, appliquez un contexte nommé (Action/Scène, Séance portrait, Faune, …) par album, ou fixez une catégorie sur une photo.
+- **Tri « Mon goût »** — triez la galerie selon le score appris du classeur personnel, avec un badge de confiance indiquant la couverture apprise et la précision sur données de validation
 - **Apprentissage à partir des étiquettes** — les décisions de tri, les notes (étoiles), les favoris et les rejets alimentent l'optimiseur de poids (`--sync-label-comparisons`, `--mine-insights`)
 - **Instantanés** — enregistrez, restaurez et comparez des configurations de poids
 - **Histogramme** — histogramme RVB/luminance avec indicateurs d'écrêtage, dans le panneau latéral de la galerie et la vue détaillée
-- **Légendes IA** `[GPU]` `[16gb/24gb]` — descriptions textuelles, modifiables `[Edition]` et traduisibles en 5 langues (la consultation est ouverte ; la génération et la modification requièrent l'édition)
+- **Légendes IA** `[GPU]` `[16gb/24gb]` — descriptions textuelles, modifiables `[Edition]` et traduisibles en 5 langues (la consultation est ouverte ; la génération et la modification requièrent l'édition)
 
 <table><tr>
 <td><img src="docs/screenshots/stats-gear.jpg" alt="Statistiques d'équipement" width="100%"></td>
@@ -126,9 +131,14 @@ Survolez n'importe quelle photo pour afficher le détail du score et les donnée
 ### Partager
 
 - **Partage d'albums** — générez des liens partageables pour n'importe quel album, sans connexion requise pour les destinataires. Révoquez l'accès à tout moment.
+- **Épreuvage client** — un album partagé peut fonctionner en mode épreuvage : les clients mettent un cœur aux photos et laissent des commentaires avec le seul lien (plus un code PIN facultatif), sans aucun lien avec vos propres notes
+- **Envoi automatique depuis le téléphone** — pointez PhotoSync ou toute appli WebDAV vers la boîte de réception `/dav` intégrée ; `--watch` note les nouvelles photos dès leur arrivée
+- **Cadres photo et kiosques** — un point d'accès protégé par jeton envoie vos meilleures photos sélectionnées aux cadres photo connectés et aux tableaux de bord Home Assistant
+- **Agents IA (MCP)** — un point d'accès [Model Context Protocol](https://modelcontextprotocol.io/) (activé par défaut, `viewer.mcp.enabled`) permet aux assistants de rechercher dans la bibliothèque avec des jetons personnels révocables. Les niveaux de jeton supérieurs peuvent noter, étiqueter, organiser et trier ; les actions destructives sont d'abord prévisualisées et exigent une confirmation
+- **Export de portfolio** `[Edition]` — transforme un album en galerie HTML statique autonome (aucune référence CDN, fonctionne hors ligne) à déposer sur n'importe quel hébergeur
+- **Recadrages pour les réseaux sociaux** `[Edition]` — exports en pleine résolution cadrés sur le sujet détecté, aux formats carré, portrait et story
 - **Téléchargement de photos** — téléchargez des photos individuelles ou des sélections depuis la galerie
 - **Export** — exportez tous les scores en CSV ou JSON pour une analyse externe
-- **Agents IA (MCP)** — un point d'accès [Model Context Protocol](https://modelcontextprotocol.io/) activé par défaut (désactivable avec `viewer.mcp.enabled`) permet aux assistants compatibles MCP de rechercher et d'inspecter la bibliothèque avec les filtres de la galerie, au moyen de jetons personnels révocables; selon le niveau du jeton, un assistant peut aussi noter, étiqueter, organiser et trier les photos (les actions destructives sont d'abord prévisualisées et exigent une confirmation)
 
 ### En plus
 
@@ -137,10 +147,10 @@ Survolez n'importe quelle photo pour afficher le détail du score et les donnée
 - **PWA installable** — manifeste d'application web + service worker : installation sur l'écran d'accueil, coque d'application hors ligne, miniatures en cache
 - **Galerie virtualisée** — n'affiche qu'une poignée de nœuds DOM quelle que soit la taille de la bibliothèque, pour un défilement rapide même au-delà de 100 000 photos
 - **Analyses reprenables** — les analyses interrompues reprennent (`--resume`), les fichiers en échec sont suivis et réessayables (`--retry-failed`), la progression est diffusée vers l'interface web
-- **7 langues dans l'interface** — l'interface est disponible en anglais, français, allemand, espagnol, italien, portugais brésilien et chinois simplifié (简体中文) ; la documentation est disponible dans les sept langues
+- **7 langues dans l'interface** — l'interface est disponible en anglais, français, allemand, espagnol, italien, portugais brésilien et chinois simplifié (简体中文) ; la documentation est disponible dans les sept langues
 - **Multi-utilisateur** — répertoires, notes et accès par rôle propres à chaque utilisateur
 - **Plugins et webhooks** — actions personnalisées déclenchées sur les événements d'évaluation
-- **Analyse depuis l'interface web** — déclenchez des analyses depuis le navigateur (superadmin en mode multi-utilisateurs ; accès édition sur une installation mono-utilisateur dotée d'un mot de passe d'édition)
+- **Analyse depuis l'interface web** — déclenchez des analyses depuis le navigateur (superadmin en mode multi-utilisateurs ; accès édition sur une installation mono-utilisateur dotée d'un mot de passe d'édition)
 
 <table><tr>
 <td width="33%"><img src="docs/screenshots/mobile-gallery.jpg" alt="Galerie sur mobile" width="100%"></td>
@@ -150,7 +160,11 @@ Survolez n'importe quelle photo pour afficher le détail du score et les donnée
 
 ## Ce dont vous avez besoin
 
-L'essentiel de Facet fonctionne sur **n'importe quelle machine (CPU)** — l'évaluation, la détection de visages, le tri, la galerie, la recherche, les albums et l'export des métadonnées fonctionnent tous sans GPU. Un **GPU** (avec le profil `16gb` ou `24gb`) débloque les modèles les plus performants : l'évaluation esthétique TOPIQ, les embeddings SigLIP 2, le tagging par VLM, les légendes et la critique IA, ainsi que la saillance du sujet. Pas de GPU local ? Pointez le tagging, le légendage et la critique VLM vers un serveur **Ollama** ou **compatible OpenAI** distant via `vlm_backend` dans `scoring_config.json` — ces fonctionnalités fonctionnent alors aussi sur les profils CPU `legacy`/`8gb`. Dans le visualiseur, les actions d'édition (notes, visages, tri) nécessitent le **mot de passe d'édition**, et le déclenchement des analyses nécessite `viewer.features.show_scan_button: true` et, en plus, le rôle **superadmin** en mode multi-utilisateurs, ou l'accès édition sur une installation mono-utilisateur.
+- **N'importe quelle machine (CPU)** exécute l'essentiel de Facet : évaluation, visages, tri, galerie, recherche, albums et export des métadonnées.
+- **Apple Silicon** utilise automatiquement le backend Metal (`mps`). Le profil `auto` suit la mémoire unifiée : 32 Go atteint `16gb`, 48 Go atteint `24gb`.
+- **Un GPU NVIDIA** avec les profils `16gb`/`24gb` débloque les modèles les plus performants : TOPIQ, SigLIP 2, tagging par VLM, légendes et critique IA, saillance du sujet.
+- **Pas de GPU ?** Pointez le tagging, les légendes et la critique VLM vers un serveur **Ollama** ou **compatible OpenAI** distant avec `vlm_backend` dans `scoring_config.json`.
+- **L'édition dans le visualiseur** (notes, visages, tri) nécessite le **mot de passe d'édition**. Le bouton Analyser nécessite `viewer.features.show_scan_button: true` et l'accès édition (le rôle **superadmin** en mode multi-utilisateurs).
 
 → Prérequis complets par fonctionnalité (GPU, profil VRAM, paquets optionnels, authentification) : **[Installation › Exigences par fonctionnalité](docs/fr/INSTALLATION.md#exigences-par-fonctionnalité)**.
 
@@ -163,7 +177,7 @@ Facet évalue, classe et trie une bibliothèque de photos locale et sert une gal
 - possédez une grande bibliothèque locale et souhaitez trouver vos meilleures prises et écarter les rafales et quasi-doublons ;
 - voulez une évaluation de la qualité, de la composition et des visages que vous pouvez régler selon votre propre goût (elle apprend de vos comparaisons A/B) ;
 - préférez l'auto-hébergement et la confidentialité — aucun envoi vers le cloud, aucun compte, aucun abonnement ;
-- éditez déjà dans Lightroom, darktable, digiKam ou immich — Facet écrit les notes, les libellés, les mots-clés, les légendes et les régions de visages nommés dans des fichiers annexes `.xmp` (les originaux restent intacts par défaut) et peut, en option, les intégrer dans le fichier pour les formats JPEG/HEIC/TIFF/PNG/DNG (l'action « Écrire les métadonnées dans le fichier » de la galerie ou `--export-sidecars --embed-originals`), et relit les modifications externes avec `--import-sidecars`. Spécifiquement pour Lightroom, le module externe `facet.lrplugin` ajoute un flux bidirectionnel : il peut renseigner les étoiles à partir des scores de Facet, sélectionner/rejeter les images d'une rafale, regrouper rafales/brackets/panoramas en collections et mots-clés à partir d'un manifeste téléchargé, et exporter vos propres drapeaux/notes/libellés Lightroom vers Facet.
+- éditez déjà dans Lightroom, darktable, digiKam ou Immich — Facet écrit les notes, les libellés, les mots-clés, les légendes et les régions de visages dans des fichiers annexes `.xmp` (les originaux restent intacts sauf si vous demandez l'intégration : l'action « Écrire les métadonnées dans le fichier » de la galerie ou `--export-sidecars --embed-originals`) et relit les modifications avec `--import-sidecars`. Un module externe Lightroom `facet.lrplugin` ajoute un flux bidirectionnel. Voir [Interopérabilité](docs/fr/INTEROP.md).
 
 **Probablement pas pour vous si vous voulez :**
 
@@ -209,19 +223,20 @@ Guide complet : **[Installation](docs/fr/INSTALLATION.md)** — configuration p
 au premier lancement, et [dépannage des conflits de dépendances](docs/fr/INSTALLATION.md#résoudre-les-conflits-de-dépendances).
 Lancez `python facet.py --doctor` pour diagnostiquer les problèmes de GPU.
 
-Première fois ? Suivez le parcours **[Prise en main](docs/fr/GETTING_STARTED.md)** : analyser, passer en revue, apprendre, écarter, taguer et exporter.
+Première fois ? Suivez le parcours **[Prise en main](docs/fr/GETTING_STARTED.md)** : analyser, passer en revue, apprendre, écarter, taguer et exporter.
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
 | [Installation](docs/fr/INSTALLATION.md) | Prérequis, configuration GPU, profils VRAM, dépendances |
-| [Prise en main](docs/fr/GETTING_STARTED.md) | Parcours de premier lancement : de l'installation à l'analyse, au tri, à l'apprentissage, à l'écartement, au tagging et à l'export |
+| [Prise en main](docs/fr/GETTING_STARTED.md) | Parcours de premier lancement : de l'installation à l'analyse, au tri, à l'apprentissage, à l'écartement, au tagging et à l'export |
 | [Commandes](docs/fr/COMMANDS.md) | Référence de toutes les commandes CLI |
 | [Configuration](docs/fr/CONFIGURATION.md) | Référence complète de `scoring_config.json` |
 | [Évaluation](docs/fr/SCORING.md) | Catégories, poids, guide de réglage |
 | [Reconnaissance faciale](docs/fr/FACE_RECOGNITION.md) | Flux des visages, regroupement, gestion des personnes |
 | [Visualiseur](docs/fr/VIEWER.md) | Fonctionnalités et utilisation de la galerie web |
+| [API](docs/API.md) | Référence de l'API HTTP du visualiseur |
 | [Interopérabilité](docs/fr/INTEROP.md) | Faire circuler notes/tags avec Lightroom, Capture One, digiKam, darktable |
 | [Immich](docs/fr/IMMICH.md) | Synchroniser notes et favoris avec Immich, plus le webhook entrant |
 | [Relier](docs/fr/RELINK.md) | Relier une photo déplacée |
@@ -235,4 +250,4 @@ Première fois ? Suivez le parcours **[Prise en main](docs/fr/GETTING_STARTED.md
 
 ### Licences
 
-Le code de Facet est sous licence MIT. Certains modèles par défaut ne sont **pas** autorisés pour un usage commercial : pyiqa (TOPIQ, LIQE, etc.) et les poids InsightFace sont non commerciaux. Le réglage `licensing.mode: commercial` restreint Facet aux modèles à licence permissive : les composants restreints ne sont jamais importés ni téléchargés, et chaque emplacement est redirigé vers un remplaçant permissif (voir [Licences](docs/fr/CONFIGURATION.md#licences)). Voir [Modèles tiers et licences](docs/fr/THIRD_PARTY_MODELS.md).
+Le code de Facet est sous licence MIT. Certains modèles par défaut sont **non commerciaux** : pyiqa (TOPIQ, LIQE, …) et les poids InsightFace. Définissez `licensing.mode: commercial` pour n'utiliser que des remplaçants à licence permissive ([Licences](docs/fr/CONFIGURATION.md#licences), [Modèles tiers](docs/fr/THIRD_PARTY_MODELS.md)).

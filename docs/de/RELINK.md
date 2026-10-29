@@ -1,16 +1,22 @@
 # Ein fehlendes Foto nach einem ausdrücklichen Umzug neu verknüpfen
 
-`python database.py --relink-photos` aktualisiert vorhandene Pfade in der Facet-Datenbank, nachdem Sie Dateien selbst verschoben haben. Es verschiebt, kopiert, löscht oder bearbeitet niemals Originale oder Sidecar-Dateien und kontaktiert Immich nie. Es ist ein Offline-Wartungsbefehl für Betreiber mit Zugriff auf die Datenbank und die konfigurierten Ordner. Beenden Sie zuerst Viewer, Scanner und externe Dateieditoren, sichern Sie die Datenbank und prüfen Sie den Plan, bevor Sie ihn anwenden.
+`python database.py --relink-photos` aktualisiert die Pfade in der Facet-Datenbank, nachdem Sie Dateien selbst verschoben haben. Es verschiebt, kopiert, löscht oder bearbeitet niemals Originale oder Sidecar-Dateien und kontaktiert Immich nie. Es ist ein Offline-Wartungsbefehl.
 
-Das Anwenden hält die Bibliothekswartungssperre von Facet bis zum Ende des Datenbankschreibvorgangs. Ein anderer Bibliotheksauftrag führt zu Exitcode 75, ohne dass Datenbank oder Medien verändert werden; eine unbenutzbare Sperre führt zu Exitcode 1. Die Vorschau bleibt schreibgeschützt und nimmt keine Bibliothekssperre. Diese Sperre koordiniert Aufträge auf einem Host; die Offline-Anforderungen gelten weiterhin für andere Hosts und externe Editoren.
+Bevor Sie einen Plan anwenden:
 
-Die vorhandene Datenbank enthält keinen kryptografischen Hash der Bytes der Originaldatei. `phash` und die Graustufensignaturen manueller Gesichter beweisen keine Byte-Identität. Jeder Plan nennt deshalb `original_bytes_unknown`. Der SHA-256 des Ziels identifiziert nur die neue Datei, die in der Vorschau gezeigt wurde. Das Anwenden bekräftigt ausdrücklich, dass Sie die richtige verschobene Datei unabhängig identifiziert haben; es ist nie eine automatisch verifizierte Übereinstimmung. Eine falsche Angabe kann vorhandene Annotationen an das falsche Bild hängen.
+- Beenden Sie Viewer, Scanner und externe Dateieditoren.
+- Sichern Sie die Datenbank.
+- Prüfen Sie den Plan.
 
-Das Verschieben oder Umbenennen eines ganzen Verzeichnisses liegt außerhalb dieses begrenzten Modus, wenn der alte übergeordnete Ordner nicht mehr existiert. Fehlende Verzeichnisse lassen einen beabsichtigten Umzug nicht von Offline-Speicher unterscheiden. Legen Sie keine leeren alten Elternordner neu an, um diese Prüfung zu umgehen.
+Das Anwenden nimmt die Bibliothekssperre von Facet. Läuft ein anderer Bibliotheksauftrag, endet der Befehl mit Exitcode 75 und ändert nichts; eine unbenutzbare Sperre führt zu Exitcode 1. Die Vorschau ist schreibgeschützt und nimmt keine Sperre. Die Sperre deckt nur Aufträge auf einem Host ab.
+
+> **Warnung:** Facet speichert keinen Hash der Bytes der Originaldatei und kann daher nicht beweisen, dass die neue Datei die verschobene ist. Jeder Plan nennt `original_bytes_unknown`; `phash` und die Signaturen manueller Gesichter beweisen keine Identität. Der SHA-256 des Ziels identifiziert nur die Datei, die Sie in der Vorschau gesehen haben. Das Anwenden bekräftigt, dass Sie die Übereinstimmung selbst geprüft haben. Eine falsche Angabe hängt vorhandene Annotationen an das falsche Bild.
+
+Das Verschieben oder Umbenennen eines ganzen Verzeichnisses wird nicht unterstützt, wenn der alte übergeordnete Ordner nicht mehr existiert. Legen Sie keine leeren alten Elternordner neu an, um diese Prüfung zu umgehen.
 
 ## Vorschau, Prüfung, dann Anwenden
 
-Erstellen Sie eine JSON-Liste mit exakten kanonischen absoluten Pfaden. Eine fehlende Quelle muss bereits in Facet registriert sein; ein Ziel muss als Bild existieren und darf noch keine Fotozeile haben:
+Erstellen Sie eine JSON-Liste mit exakten kanonischen absoluten Pfaden. Jede Quelle muss bereits in Facet registriert sein. Jedes Ziel muss als Bild existieren und darf noch keine Fotozeile haben:
 
 ```json
 [
@@ -41,39 +47,74 @@ python database.py --relink-photos --db library.db --config scoring_config.json 
   --acknowledge-unverified-identity
 ```
 
-Im Mehrbenutzerbetrieb ist zusätzlich `--user alice` in beiden Befehlen erforderlich. Das ist ein Bereichsselektor für Betreiber, kein Ersatz für die Zugriffskontrolle des Betriebssystems und keine authentifizierte API. Beide Pfade müssen für diesen Benutzer sichtbar sein, und die Menge **aller** Benutzer, die das Foto sehen können, muss identisch bleiben. Von privat zu geteilt oder andere benutzerübergreifende Verschiebungen werden abgelehnt. Beide Pfade müssen in ausdrücklich konfigurierten Scan-, Benutzer- oder gemeinsamen Verzeichnissen liegen. Leere Wurzelkonfiguration, nicht erreichbare Wurzeln und `viewer.path_mapping` werden abgelehnt; dieses erste Werkzeug unterstützt nur native kanonische Pfade.
+Im Mehrbenutzerbetrieb fügen Sie beiden Befehlen `--user alice` hinzu. Es wählt, wessen Bereich geprüft wird; es ist keine Zugriffskontrolle. Regeln:
 
-Das Anwenden prüft den gesamten geprüften Plan innerhalb einer einzigen SQLite-Schreibtransaktion erneut. Geänderte Zieldateien, Fotozeilen, Annotationen, Schemata, Datenbank-Inodes oder Sichtbarkeitsrichtlinien erfordern eine neue Vorschau. Ein fehlgeschlagener Stapel macht alle seine Datenbankschreibvorgänge rückgängig. Ein erfolgreiches Anwenden gibt einen Beleg mit der Plan-ID aus. Es wird weder eine neue logische Asset-ID noch eine Zuordnung zu einer entfernten UUID gespeichert.
+- Beide Pfade müssen für diesen Benutzer sichtbar sein.
+- Die Menge **aller** Benutzer, die das Foto sehen können, muss identisch bleiben. Von privat zu geteilt und andere benutzerübergreifende Verschiebungen werden abgelehnt.
+- Beide Pfade müssen in ausdrücklich konfigurierten Scan-, Benutzer- oder gemeinsamen Verzeichnissen liegen.
+- Leere Wurzelkonfiguration, nicht erreichbare Wurzeln und `viewer.path_mapping` werden abgelehnt. Unterstützt werden nur native kanonische Pfade.
+
+Das Anwenden prüft den gesamten Plan in einer einzigen Datenbanktransaktion erneut. Haben sich Zieldateien, Fotozeilen, Annotationen, Schema, Datenbankdatei oder Sichtbarkeit geändert, führen Sie eine neue Vorschau aus. Ein fehlgeschlagener Stapel macht alle seine Datenbankschreibvorgänge rückgängig. Ein erfolgreiches Anwenden gibt einen Beleg mit der Plan-ID aus.
 
 ## Was dem Foto folgt
 
-Foto-Rowids, Bewertungen/Keep/GPS, Tags, Gesichts-/Personen-IDs und manuelle UUIDs, Vergleiche, gelernte Scores, Präferenzen pro Benutzer, Überschreibungen, feste Albummitgliedschaften/Cover/Kundenauswahlen, Extraktions-Snapshots und Vektor-Embeddings behalten ihre Zuordnungen. Vorhandene Fremdschlüssel auf photos werden aus dem tatsächlichen Schema ermittelt; eine neue nicht registrierte Pfadspalte wird abgelehnt, statt stillschweigend verwaist zu werden. Abgeleitete Statistiken werden ungültig gemacht; dauerhafter Trainingszustand bleibt erhalten.
+Diese Daten behalten ihre Zuordnung zum Foto:
 
-Einträge des Organisationsverlaufs behalten ihre ursprünglichen historischen Pfad-Nutzdaten. Vorhandene Trigger bei Pfadänderungen schalten die Revisionsuhr weiter und machen private Revisions-Caches ungültig; ein Eintrag, der sich auf den alten Pfad bezieht, kann nach dem Neuverknüpfen möglicherweise nicht mehr erscheinen oder zurückgesetzt werden. Das Neuverknüpfen erhält die aktuellen Annotationswerte und Zuordnungen, schreibt vergangene Aktionen aber nicht um, damit sie auf einen anderen Pfad anwendbar werden.
+- Foto-IDs, Bewertungen, Keep und GPS
+- Tags, Gesichter, Personen-IDs und manuelle Gesichts-UUIDs
+- Vergleiche, gelernte Scores und Präferenzen pro Benutzer
+- Überschreibungen, feste Albummitgliedschaften, Cover und Kundenauswahlen
+- Extraktions-Snapshots und Vektor-Embeddings
+- Gruppenwerte für Serienbilder, Duplikate und Sequenzen
 
-Alle manuellen Rechtecke bleiben erhalten, müssen aber auf dem neuen Pfad geprüft werden. Die grobe alte Signatur kann die Pixel des fehlenden Originals nicht beweisen. Eine Markierung `relink_unverified` verhindert, dass gewöhnliche Signaturprüfungen diesen Prüfstatus löschen; öffnen Sie den Editor und speichern Sie jedes Rechteck ausdrücklich gegen den neuen Frame, bevor es exportiert werden oder Erkennungen unterdrücken kann. Vorhandene Rechteck- und Personen-IDs bleiben erhalten.
+Abgeleitete Statistiken werden ungültig gemacht; der Trainingszustand bleibt erhalten.
 
-Der Immich-Push-/Ausstehend-Zustand bleibt unverändert: Eine lokale Dateinamenbehauptung kann keine entfernte Identität verifizieren. Keine entfernte Bewertung, kein Löschen, keine Albummitgliedschaft und keine UUID wird neu verknüpft. Prüfen Sie die entfernte Zuordnung getrennt, bevor Sie synchronisieren. Historische Scan-Fehlerpfade bleiben historisch; Filterprädikate intelligenter Alben und logische Sequenzgruppenschlüssel werden nicht stillschweigend umgeschrieben. Statische Mitgliedschaften und Sequenz-/Serienbild-/Duplikat-Gruppenwerte bleiben unverändert.
+Was sich nicht ändert:
+
+- **Der Rückgängig-Verlauf** behält seine alten Pfade. Ein Eintrag für den alten Pfad erscheint nach dem Neuverknüpfen möglicherweise nicht mehr oder lässt sich nicht mehr zurücksetzen.
+- **Manuelle Gesichtsrechtecke** bleiben erhalten, werden aber mit `relink_unverified` markiert. Öffnen Sie den Editor und speichern Sie jedes Rechteck gegen den neuen Frame, bevor es exportiert werden oder Erkennungen unterdrücken kann.
+- **Immich**-Push- und Ausstehend-Zustand bleiben unverändert; keine entfernte Bewertung, kein Album und keine UUID wird neu verknüpft. Prüfen Sie die entfernte Zuordnung selbst, bevor Sie synchronisieren.
+- **Scan-Fehlerverlauf, Filter intelligenter Alben und Sequenzgruppenschlüssel** werden nicht umgeschrieben.
 
 ## Ausdrückliche Begleitdateien und Ablehnungen
 
-Führen Sie Begleitdateien ausdrücklich auf; das Werkzeug kann nicht indizierte RAW-/XMP-Dateien, die aus dem alten Verzeichnis verschwunden sind, nicht entdecken. `sidecar_full` bedeutet `photo.ext.xmp`, `sidecar_basename` bedeutet `photo.xmp`, `sidecar_facet` bedeutet `photo.ext.facet.xmp`, und `raw` behält ein ausdrücklich angegebenes RAW-Paar im selben Verzeichnis mit gleichem Stamm bei, das mit dem aktuellen Culling kompatibel ist. Diese Dateinamenregeln validieren eine deklarierte Beziehung; sie beweisen keine Dateiidentität. Indizierte RAW-Fotos benötigen einen eigenen Relink-Eintrag auf oberster Ebene, damit ihre Annotationen erhalten bleiben.
+Führen Sie Begleitdateien selbst auf; das Werkzeug kann RAW- oder XMP-Dateien, die aus dem alten Verzeichnis verschwunden sind, nicht finden. Arten von Begleitdateien:
 
-Nicht aufgeführte Sidecars oder RAW-Begleitdateien am Ziel werden abgelehnt, einschließlich Facet-Fallback-Paketen und Schreibweisen mit abweichender Groß-/Kleinschreibung. Mehrere RAW-Kandidaten und mehrdeutige XMP-Zuordnung werden abgelehnt, darunter `IMG.CR2` + `IMG.CR2.jpg` + `IMG.CR2.xmp`, `IMG.CR2` + `IMG.CR2.facet.jpg` + `IMG.CR2.facet.xmp` sowie Kollisionen von Basisnamen und Groß-/Kleinschreibung oder Unicode. Keine Begleitdatei wird nach dem ersten Treffer zugewiesen. Die Bytes vorhandener Begleitdateien werden gehasht, erneut geprüft und unverändert gelassen. Nicht aufgeführte fehlende Begleitdateien bleiben unbekannt; werten Sie eine leere Liste nicht als Beweis, dass es keine gab.
+| Art | Datei |
+|---|---|
+| `sidecar_full` | `photo.ext.xmp` |
+| `sidecar_basename` | `photo.xmp` |
+| `sidecar_facet` | `photo.ext.facet.xmp` |
+| `raw` | RAW-Paar im selben Verzeichnis mit gleichem Stamm |
 
-Abgelehnt werden Kopien mit noch vorhandenem alten Original, fehlende oder unlesbare alte Elternordner, bereits vorhandene Zielfotos oder abhängige Zeilen, wiederholte Zuordnungen, doppelte Fotoinhalte oder Ziel-Inodes, reine Groß-/Kleinschreibungs- oder Unicode-Änderungen, Symlinks sowie Änderungen von Erweiterung oder Format. Gespeicherte kanonische Abmessungen müssen, sofern bekannt, zum dekodierten Ziel passen. Es läuft keine Ähnlichkeits- oder Dateinamensuche und keine automatische Abstimmung.
+Diese Regeln prüfen die deklarierte Beziehung; sie beweisen keine Identität. Ein indiziertes RAW-Foto braucht einen eigenen Eintrag auf oberster Ebene, damit seine Annotationen erhalten bleiben. Vorhandene Begleitdateien werden gehasht und unverändert gelassen. Eine leere Liste von Begleitdateien beweist nicht, dass es keine gab.
 
-Grenzen: 100 Fotos, 300 ausdrücklich benannte Dateien, 512 MiB pro Datei, 2 GiB Dateibytes insgesamt und 2 MiB JSON-Eingabe bzw. Prüfplan. Verkleinern Sie einen Stapel, wenn eine Grenze erreicht wird. Die Datenbanktransaktion ist atomar; das Dateisystem ist gegenüber anderen Anwendungen nicht gesperrt, daher die Offline-Anforderung. Die Fixture-Tests behaupten keinen Rundlauf mit einer echten externen Anwendung oder einem entfernten Server.
+Facet lehnt ab:
 
-Lesbare Verzeichnisse beweisen **nicht**, dass ein Speicher eingehängt ist. Ein nicht eingehängtes Volume kann einen leeren, lesbaren Einhängepunkt hinterlassen, der von einem tatsächlich leeren Verzeichnis nach dem Umzug nicht zu unterscheiden ist. Der Plan meldet ausdrücklich `source_mount_status: not_verified`; bestätigen Sie unabhängig, dass jede Quelle verschoben und nicht nur nicht verfügbar wurde, bevor Sie die Identität bestätigen. Der Befehl erkennt nicht jeden Offline-Volume-Zustand. Prüfpläne enthalten private vollständige Pfade und die Benutzerbereichsrichtlinie; `--plan-out` legt sie exklusiv mit Modus 0600 unter POSIX an.
+- nicht aufgeführte Sidecars oder RAW-Begleitdateien am Ziel, einschließlich Facet-Fallback-Paketen und Schreibweisen mit abweichender Groß-/Kleinschreibung
+- mehrere RAW-Kandidaten oder mehrdeutige XMP-Zuordnung, z. B. `IMG.CR2` + `IMG.CR2.jpg` + `IMG.CR2.xmp` oder `IMG.CR2` + `IMG.CR2.facet.jpg` + `IMG.CR2.facet.xmp`, sowie Kollisionen von Basisnamen, Groß-/Kleinschreibung oder Unicode
+- Kopien, bei denen das alte Original noch vorhanden ist
+- fehlende oder unlesbare alte Elternordner
+- Ziele, die bereits Foto- oder abhängige Zeilen haben
+- wiederholte Zuordnungen, doppelte Fotoinhalte oder Ziel-Inodes
+- reine Groß-/Kleinschreibungs- oder Unicode-Umbenennungen, Symlinks sowie Änderungen von Erweiterung oder Format
+- ein dekodiertes Ziel, dessen Abmessungen von den gespeicherten abweichen, sofern diese bekannt sind
+
+Es läuft keine Ähnlichkeits- oder Dateinamensuche.
+
+Grenzen pro Stapel: 100 Fotos, 300 benannte Dateien, 512 MiB pro Datei, 2 GiB insgesamt und 2 MiB für die JSON-Eingabe bzw. den Plan. Teilen Sie den Stapel auf, wenn Sie eine Grenze erreichen. Der Datenbankschreibvorgang ist atomar, andere Anwendungen können die Dateien aber weiterhin ändern; deshalb muss der Auftrag offline laufen.
+
+> **Warnung:** Ein lesbares Verzeichnis beweist nicht, dass der Speicher eingehängt ist. Ein nicht eingehängtes Volume kann wie ein leerer Ordner aussehen. Der Plan meldet `source_mount_status: not_verified`; bestätigen Sie, dass jede Quelle wirklich verschoben wurde, bevor Sie die Identität bekräftigen. Der Befehl erkennt nicht jeden Offline-Volume-Zustand.
+
+Plandateien enthalten vollständige private Pfade und den Benutzerbereich. `--plan-out` legt sie unter POSIX exklusiv mit Modus 0600 an.
 
 | Option | Zweck |
 |---|---|
 | `--db` | Vorhandene Datenbank |
 | `--config` | Aufgelöste Konfiguration |
-| `--user` | Konfigurierter Benutzer im Mehrbenutzerbetrieb erforderlich |
-| `--mapping` | Explizite alte/neue JSON-Pfade; Vorschau |
-| `--plan-out` | Neue private Plandatei ohne Überschreiben |
-| `--apply-plan` | Geprüften Plan anwenden |
+| `--user` | Konfigurierter Benutzer, im Mehrbenutzerbetrieb erforderlich |
+| `--mapping` | Explizite alte/neue JSON-Zuordnungen; Vorschaumodus |
+| `--plan-out` | Neue private Plandatei anlegen; nie überschreiben |
+| `--apply-plan` | Zuvor geprüften Plan anwenden |
 | `--ack-plan` | Exakter Hash des geprüften Plans |
-| `--acknowledge-unverified-identity` | Explizite Bestätigung trotz unbekannter Originalbytes |
+| `--acknowledge-unverified-identity` | Explizite Bekräftigung trotz unbekannter Originalbytes |

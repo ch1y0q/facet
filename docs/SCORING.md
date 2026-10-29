@@ -7,14 +7,14 @@ Photos are classified into a category, then scored with that category's weights.
 ## How Scoring Works
 
 1. **Category Detection** - Photo analyzed for content (faces, tags, EXIF data)
-2. **Filter Evaluation** - Categories evaluated in priority order until one matches (a *scoring context* can promote/exclude categories per album or photo without changing the base order — see [Scoring Contexts](#scoring-contexts))
+2. **Filter Evaluation** - Categories tried in priority order until one matches (a [scoring context](#scoring-contexts) can change this per album or photo)
 3. **Weight Application** - Category-specific weights applied to metrics
 4. **Modifier Application** - Bonuses, penalties, and behavior flags applied
 5. **Final Score** - Weighted sum clamped to 0-10 range
 
 ## Categories
 
-`scoring_config.json` defines 34 categories (33 named plus `default`), evaluated in ascending priority order until one matches. Lower priority wins. The full list lives in the `categories` array; the main ones:
+`scoring_config.json` defines 34 categories (33 named plus `default`), tried in ascending priority order until one matches. Lower priority wins. The full list is in the `categories` array; the main ones:
 
 | Priority | Category | Detection Method |
 |----------|----------|------------------|
@@ -37,19 +37,23 @@ Photos are classified into a category, then scored with that category's weights.
 
 Other tag-based categories include `aerial`, `food`, `sports`, `vehicle`, `travel`, `fashion`, `candid`, `product`, `architecture`, `urban`, `golden_hour`, `blue_hour`, `cinematic`, `vintage`, `abstract`, `minimalist`, `dramatic`, and `weather`.
 
-On the CLIP-tagging profiles (`legacy`/`8gb`, and `16gb`/`24gb` when their VLM tagger does not run), a multi-pass scan tags each photo during the embeddings pass, before its category and aggregate are computed. The category a scan stores therefore uses the tags, as `--recompute-average` does. The tagging step at the end of the scan only catches photos still untagged. A single `--pass NAME` run does not tag.
+On the CLIP-tagging profiles (`legacy`/`8gb`, and `16gb`/`24gb` when their VLM tagger does not run), a scan tags each photo before computing its category, so the stored category uses the tags. A single `--pass NAME` run does not tag.
 
-**Silhouette.** `is_silhouette` comes from a face-aware pixel rule (see [Boolean Filters](#boolean-filters)), not from a tag or a histogram test. The stored flag affects the score as well as the category. When `exposure.silhouette_detection` is `true` (the default), a silhouette's aggregate skips the clipping penalty. The stored `exposure_score` depends on the command: a scan stores it with the clipping penalty, while `--recompute-average` recomputes it without the penalty for every photo flagged `is_silhouette`, whatever `exposure.silhouette_detection` says. To re-derive the flags of an existing library, run `python facet.py --recompute-silhouette`, then `--recompute-average` twice (see [COMMANDS.md](COMMANDS.md)).
+**Silhouette.** `is_silhouette` comes from a face-aware pixel rule (see [Boolean Filters](#boolean-filters)), not from a tag.
 
-**Astro.** A photo needs an astro tag *and* a mean luminance of at most 0.30 (`luminance_max`): a bright scene tagged `aurora` or `stars` is not astro, and a photo with no stored luminance never matches. A `scoring_config.json` with its own `categories` array keeps its own `astro` entry and does not get this filter until you add `"luminance_max": 0.30` to `astro.filters`; `python facet.py --doctor` tells you when yours lacks it.
+- When `exposure.silhouette_detection` is `true` (the default), a silhouette's aggregate skips the clipping penalty.
+- A scan stores `exposure_score` with the clipping penalty. `--recompute-average` recomputes it without the penalty for every photo flagged `is_silhouette`, whatever `exposure.silhouette_detection` says.
+- To re-derive the flags of an existing library, run `python facet.py --recompute-silhouette`, then `--recompute-average` twice (see [COMMANDS.md](COMMANDS.md)).
+
+**Astro.** A photo needs an astro tag *and* a mean luminance of at most 0.30 (`luminance_max`). A bright scene tagged `aurora` or `stars` is not astro, and a photo with no stored luminance never matches. If your `scoring_config.json` has its own `categories` array, add `"luminance_max": 0.30` to `astro.filters` yourself; `python facet.py --doctor` tells you when it is missing.
 
 ## Scoring Contexts
 
-The priority order above is global — every photo evaluates against the same list. A **scoring context** is a named *delta* over that base order: it promotes a short list of categories to the front and excludes others outright, without renumbering anything. `default` (empty `promote`/`excluded`) is the no-op context, so nothing changes for a photo unless a context is explicitly assigned to it.
+A **scoring context** changes the category order for some photos without touching the global priorities. It promotes a few categories to the front and excludes others. `default` (empty `promote`/`excluded`) changes nothing, and photos use it unless you assign another.
 
-**Effective order** = `promote` (in the order given) → the global priority order with the promoted and excluded names removed → `default` last. A name listed in both `promote` and `excluded` is dropped entirely — `excluded` wins. `ScoringConfig.resolve_context_order()` (`config/scoring_config.py`) computes and memoizes this once per context name.
+**Effective order** = `promote` (in the order given) → the global priority order without the promoted and excluded names → `default` last. A name in both `promote` and `excluded` is dropped: `excluded` wins.
 
-Shipped presets — editable from the viewer's **Scoring Context** tab (`PUT /api/config/scoring_contexts/{name}`, edition-gated) or directly in the JSON; see [Scoring Contexts](CONFIGURATION.md#scoring-contexts) for the full field reference:
+Shipped presets, editable in the viewer's **Scoring Context** tab or in the JSON (field reference: [Scoring Contexts](CONFIGURATION.md#scoring-contexts)):
 
 | Context | Promotes | Excludes |
 |---------|----------|----------|
@@ -61,31 +65,40 @@ Shipped presets — editable from the viewer's **Scoring Context** tab (`PUT /ap
 | `landscape` | `landscape`, `golden_hour`, `blue_hour` | — |
 | `motorsport` | `sports`, `vehicle` | `silhouette` |
 
-Only the *delta* is editable — drag the promoted head into order (or use the move-up/move-down buttons), toggle a category's exclusion — never a full standalone ordering per context: the non-promoted categories always keep the global priority order, so a category added later can never be silently missing from six separate lists. See [Editing a context](CONFIGURATION.md#editing-a-context) for the validation rules.
+You edit only the promoted list (edition mode; drag, or move up/down) and the exclusions. The other categories always keep the global order, so a new category is never missing from a context. Validation rules: [Editing a context](CONFIGURATION.md#editing-a-context).
 
-A context is assigned per album (`PUT /api/albums/{id}/scoring_context`, which materializes it onto every photo that is currently a member — a one-time snapshot, not a live subscription for a smart album, see [Assigning a context](CONFIGURATION.md#scoring-contexts)) or, for a single stubborn photo, applied as a sticky category override (`POST /api/comparison/override_category`). Both levers persist in a `photo_scoring_overrides` side table rather than as columns on `photos` — `save_photo`/`save_photos_batch` write photo rows with `INSERT OR REPLACE`, which would silently wipe a new column on that row at the next rescan. Setting one lever leaves the other untouched, and either can be cleared independently. **Neither takes effect on already-scored photos until a recompute** — `python facet.py --recompute-average`, or `POST /api/scan/recompute` from the viewer (guarded cross-process against a second scan/recompute running at once — see [Changing priorities requires a recompute](CONFIGURATION.md#reordering-the-global-priority)). If `normalization.per_category` is enabled, run the recompute twice — see [Normalization](CONFIGURATION.md#normalization) for why the first pass normalizes against each photo's old category.
+**Assigning a context:**
+
+- **Per album.** Applies to every photo that is in the album now. It is a one-time snapshot: photos added to a smart album later do not get it. See [Assigning a context](CONFIGURATION.md#scoring-contexts).
+- **Per photo.** A sticky category override for a single photo.
+
+Both survive rescans and can be cleared separately.
+
+**Neither affects already-scored photos until you recompute:** run `python facet.py --recompute-average`, or recompute from the viewer (see [Changing priorities requires a recompute](CONFIGURATION.md#reordering-the-global-priority)). With `normalization.per_category` enabled, run it twice (see [Normalization](CONFIGURATION.md#normalization)).
 
 ### The missing-EXIF trap
 
-Reordering — whether by editing global priority or by promoting via a context — only changes which category is *tried first*. It cannot make a category's filters match a photo they otherwise wouldn't. `config/category_filter.py:122-128` fails a numeric range filter outright whenever the photo's underlying value is missing or unparseable, rather than skipping just that bound — a missing value and an out-of-range value are treated identically, and the category is passed over either way.
+Reordering only changes which category is *tried first*. It cannot make a category's filters match. A numeric range filter fails when the photo's value is missing or unreadable, exactly as if it were out of range.
 
-Concretely: `sports` (priority 71) carries `shutter_speed_max: 0.02`. A dance frame shot slower than 1/50s, or with no readable EXIF shutter speed at all, fails that filter no matter where `sports` sits in the evaluation order — even promoted to the very front by a context like `action_stage`. The photo falls through to whatever matches next, typically `fashion` (priority 43, tagged `fashion`, has a face) or `silhouette` (priority 42, backlit with a face). **This is the single most useful thing to check when a photo lands in an unexpected category:** before reordering or promoting anything, confirm the target category's numeric filters can actually match the photo's stored EXIF, not just its tags.
+Example: `sports` (priority 71) has `shutter_speed_max: 0.02`. A dance frame shot slower than 1/50s, or with no readable shutter speed, fails that filter even when `action_stage` promotes `sports` to the front. It falls through to the next match, typically `fashion` (priority 43, tagged `fashion`, has a face) or `silhouette` (priority 42, backlit with a face).
+
+**When a photo lands in an unexpected category, check this first:** can the target category's numeric filters match the photo's stored EXIF, not just its tags?
 
 ### The missing-tag trap
 
-The EXIF trap above assumes the tag layer already matched — `required_tags` has its own version of the same failure: a filter can't match a tag that doesn't exist in the CLIP vocabulary at all. Before commit `917dd94`, nothing in `scoring_config.json` covered dance: a frame the tagger described as dance, performance, or stage matched none of `sports`'s `required_tags` (`sports`, `motion`, `athlete`, `competition`, `action_sport`) and fell straight through to the `default` catch-all — promoting `sports` via `action_stage` changed nothing, because promotion only reorders *when* a category is tried, never whether its filters match.
+`required_tags` fails the same way: a filter cannot match a tag missing from the vocabulary. The `required_tags` of `sports` are `sports`, `motion`, `athlete`, `competition`, `action_sport` and `dance`.
 
-`sports.tags.dance` now carries 11 CLIP prompts (`dance performance`, `dancer on stage`, `ballet dancer`, `contemporary dance`, `ballroom dancing`, `latin dance`, `hip hop dance`, `dance competition`, `dance troupe performing`, `dancer mid leap`, `dancer in motion`), and `dance` was added to `sports.filters.required_tags`, so a tagged dance photo can now clear that filter. This makes `sports` *reachable* for dance content — it doesn't waive the shutter-speed trap above: a slow-shutter or EXIF-less dance frame can now pass the tag check and still fail `shutter_speed_max: 0.02`, landing in `fashion` or `silhouette` exactly as described there.
+`sports.tags.dance` carries 11 CLIP prompts (`dance performance`, `dancer on stage`, `ballet dancer`, `contemporary dance`, `ballroom dancing`, `latin dance`, `hip hop dance`, `dance competition`, `dance troupe performing`, `dancer mid leap`, `dancer in motion`), and `dance` is in `sports.filters.required_tags`. A tagged dance photo can reach `sports`, but a slow-shutter or EXIF-less one still fails `shutter_speed_max: 0.02`.
 
-**Existing photos keep whatever tags they already have** — the new vocabulary only changes what the tagger assigns from here on. Re-tag the library with `python facet.py --recompute-tags` to apply it retroactively.
+**Existing photos keep their tags.** A vocabulary change only affects new tagging; run `python facet.py --recompute-tags` to apply it to the library.
 
 ### Reordering global priority
 
-`GET/POST /api/config/category_priorities` (edition-gated) reads and rewrites the base order that every context deltas against. `POST` takes `{"order": [name, ...]}` — a set-equal permutation of every non-`default` category name — and **permutes the existing priority values onto the new order** rather than renumbering (10/20/30/…): the priority multiset is unchanged, so the numbers in the table above stay meaningful and uniqueness holds by construction. `default` (priority 999) is pinned last and excluded from reordering. Every write takes a timestamped `.backup.<timestamp>` copy of `scoring_config.json` first; this writer and the weight editor (`update_category_weights`) now share one lock, since the previous unguarded read-modify-write let a concurrent save from each silently drop the other's changes.
+You can reorder the global priority in the viewer (edition mode). The reorder swaps the existing priority numbers between categories instead of renumbering, so the numbers in the table above stay meaningful. `default` (priority 999) always stays last. Each write saves a timestamped `.backup.<timestamp>` copy of `scoring_config.json` first.
 
-Reordering does not touch any photo's stored `category` by itself — run a recompute afterward (`--recompute-average` or `POST /api/scan/recompute`) to apply it.
+Reordering does not change any photo's stored `category`: run a recompute afterwards.
 
-**Known limitation:** `api/types.py` builds the gallery's type/filter dropdown list from `ScoringConfig.get_categories()` once at import time. A priority reorder is picked up immediately for actual category matching (every scoring and recompute call re-reads the config from disk), but the gallery's type dropdown keeps its old ordering until the viewer process restarts. Filtering itself is unaffected — reordering adds or removes no category names.
+**Known limitation:** the gallery's type dropdown keeps its old order until the viewer restarts. Matching and filtering use the new order at once.
 
 ## Category Definition
 
@@ -144,8 +157,10 @@ Each category in `scoring_config.json` has these components:
 |--------|-------------|
 | `has_face` | At least one face detected |
 | `is_monochrome` | Saturation < 5% |
-| `is_silhouette` | The largest face is dark and its surround is bright: the mean brightness (luma, 0-1) of the central 60% of the face box is below 0.12, and the band around the box (from 0.2 to 0.75 of the box's size outward on each side, clipped to the frame) is brighter by more than 0.20. The CLIP `silhouette` tag and the whole-frame histogram no longer set it. A photo without a face is never a silhouette |
+| `is_silhouette` | The largest face is dark against a bright surround (see below). A photo without a face is never a silhouette |
 | `is_group_portrait` | face_count >= `min_faces_for_group` (configurable, default: 4) |
+
+**`is_silhouette` rule.** The mean brightness (luma, 0-1) of the central 60% of the face box is below 0.12, and the band around the box (from 0.2 to 0.75 of the box's size outward on each side, clipped to the frame) is brighter by more than 0.20. The CLIP `silhouette` tag and the whole-frame histogram do not set it.
 
 ### Tag Filters
 
@@ -185,7 +200,7 @@ All weights use the `_percent` suffix. They are normalized by `get_weights()`, s
 | `subject_placement_percent` | Subject rule-of-thirds | BiRefNet | All |
 | `bg_separation_percent` | Background separation | BiRefNet | Portraits, macro |
 
-**`quality_percent` counts toward `aesthetic`.** The quality metric has no score of its own, so a category's `quality_percent` is added to its `aesthetic_percent` before scoring. The weights still sum to 100. Earlier versions scored the `quality` share against a metric that was always 0, so that share was lost from the aggregate. On its next `--recompute-average`, a library aggregated by an earlier version gets that share back. On a copy of a 129,737-photo library, 35,139 aggregates rose, 544 fell (mean +0.087), and no category changed.
+**`quality_percent` counts toward `aesthetic`.** The quality metric has no score of its own, so a category's `quality_percent` is redistributed into `aesthetic`: it is added to `aesthetic_percent` before scoring, and the weights still sum to 100. Earlier versions lost that share from the aggregate; run `--recompute-average` once after upgrading to get it back. Categories do not change.
 
 ## Modifiers
 
@@ -213,9 +228,13 @@ Four dimensions derived from BiRefNet subject segmentation:
 
 Use `subject_sharpness_percent` and `bg_separation_percent` for portrait/wildlife; `subject_prominence_percent` for macro.
 
-**No subject, no number.** When no subject is found, `subject_sharpness`, `subject_placement` and `bg_separation` are stored as NULL (as is `power_point_score` when there is no subject box), `subject_prominence` is 0.0 and `subject_bbox` is NULL; earlier versions stored a neutral 5.0. The gallery's min/max range filters on those metrics skip a NULL (`min_subject_sharpness=0` no longer returns a photo without a subject), statistics leave it out of averages, and the UI shows it as absent. The aggregate still scores a NULL as the neutral 5.0, so no aggregate moves. Existing rows keep their 5.0 until `--recompute-saliency` and `--recompute-composition-cpu` rewrite them.
+**No subject, no number.** When no subject is found, `subject_sharpness`, `subject_placement` and `bg_separation` are stored as NULL (as is `power_point_score` when there is no subject box), `subject_prominence` is 0.0 and `subject_bbox` is NULL.
 
-**When saliency fails.** On CUDA the saliency batch size is derived from the free VRAM (about 2.4 GiB per image at 1024 px, between 1 and 8 images) and is halved after an out-of-memory error, down to one image. A photo whose saliency still fails logs an ERROR and stores nothing: a photo that was never scored keeps NULL in all five saliency columns (`subject_sharpness`, `subject_prominence`, `subject_placement`, `bg_separation`, `subject_bbox`), and `--recompute-saliency` and `--pass saliency` keep a photo's stored values when its saliency fails. A full rescan of the photo (for example `--force`) stores NULL for it, as for a never-scored photo. Facet never writes a neutral number in place of a failed result. In the aggregate a NULL scores neutral (5.0), exactly like a photo scanned before saliency existed, so it neither helps nor hurts the score. `--recompute-saliency` selects such a photo again (see [Subject Saliency](COMMANDS.md#subject-saliency)).
+- Gallery range filters skip a NULL (`min_subject_sharpness=0` does not return a photo without a subject). Statistics leave it out of averages, and the UI shows it as absent.
+- The aggregate scores a NULL as a neutral 5.0, so no aggregate moves.
+- Earlier versions stored a neutral 5.0. Existing rows keep it until `--recompute-saliency` and `--recompute-composition-cpu` rewrite them.
+
+**When saliency fails**, nothing is written; Facet never stores a neutral number for a failed result. A never-scored photo keeps NULL in all five saliency columns (`subject_sharpness`, `subject_prominence`, `subject_placement`, `bg_separation`, `subject_bbox`) and scores neutral (5.0), like a photo scanned before saliency existed. Retry and batch-size rules: [Subject Saliency](COMMANDS.md#subject-saliency).
 
 ## Supplementary IQA Dimensions
 
@@ -227,15 +246,28 @@ Three additional quality models:
 | `face_quality_iqa_percent` | TOPIQ NR-Face | Face-region quality assessment. Best for portrait categories. |
 | `liqe_percent` | LIQE | Quality score plus a distortion diagnosis (motion blur, overexposure, noise). |
 
-These models run as part of the default scoring pipeline on all GPU profiles (8gb/16gb/24gb) and share VRAM with TOPIQ; the CPU legacy profile skips them. Add their weight keys to any category where the assessment is useful.
+These models run as part of the default scoring pipeline on every profile, including the CPU `legacy` profile (slower there), and share VRAM with TOPIQ on a GPU. Add their weight keys to any category where the assessment is useful.
 
-**When a supplementary model cannot score a photo.** TOPIQ NR-Face needs a face its own detector finds, and LIQE needs a photo whose short side is at least 224 px; Aesthetic V2.5, when enabled, can fail on any image. A photo a model cannot score stores NULL in that model's column (`face_quality_iqa`, `liqe_score`, `aesthetic_iaa`, `aesthetic_v25`) instead of a neutral 5.0. A GPU out-of-memory error is retried at half the batch size, down to one image, before the photo gives up; a CPU memory error is not retried that way, it takes the ordinary per-image path, and a photo that still fails stores NULL. An unexpected failure is logged as an ERROR with the number of photos affected, while the two expected cases (no face found, short side under 224 px) are only totalled in the log when the model is released. `--recompute-iqa` does not retry either expected case on every run: the short-side case is decided from the stored thumbnail's size, and an NR-Face decline is remembered until the photo is rescanned. An out-of-memory or unexpected failure is retried by the next run. In the aggregate a NULL scores neutral (5.0), so aggregate scores, categories and rankings do not move. **A gallery range filter on Aesthetic (IAA), Face Quality (IQA), LIQE or Aesthetic V2.5 no longer matches a photo without a score**: a faceless photo used to carry a stored 5.0 and matched `min_face_quality_iqa=0`, and now it does not; an ascending sort on Aesthetic (IAA), Face Quality (IQA), LIQE, Aesthetic V2.5, Q-ReAlign or DeQA puts such photos last, in the gallery and in albums (smart and shared included). Values stored by earlier versions stay as they are until `--repair-neutral-iqa` clears the neutral 5.0 in `aesthetic_iaa`, `face_quality_iqa` and `liqe_score` (then run `--recompute-iqa` and `--recompute-average`). A rescan that rewrites the photo (for example `--force`) stores NULL for a score the model could not produce; `--recompute-iqa` only fills columns that are NULL, and `--pass quality-iaa`, `--pass quality-face` and `--pass quality-liqe` keep the stored value when a model fails, so none of them replaces an old 5.0. If the primary quality model (TOPIQ on the `16gb` and `24gb` profiles) fails for a photo, the photo is recorded as failed in `scan_failures`, instead of being saved with a neutral 5.0 aesthetic score. The next scan picks up a photo that is not yet in the database; a photo that is already stored (for example after a `--force` rescan) keeps its row, and is retried by `--retry-failed all` (a bare `--retry-failed` covers only the latest run that recorded failures) or by another `--force` rescan. Under `--pass quality` the stored value is kept and no failure row is recorded. See [Supplementary Quality Models](COMMANDS.md#supplementary-quality-models).
+**When a supplementary model cannot score a photo**, it stores NULL in that model's column (`face_quality_iqa`, `liqe_score`, `aesthetic_iaa`, `aesthetic_v25`) instead of a neutral 5.0. This happens when TOPIQ NR-Face finds no face, or LIQE gets a short side under 224 px; Aesthetic V2.5, when enabled, can fail on any image. A CPU memory error is not retried at a smaller batch size.
+
+- **Aggregate:** a NULL scores neutral (5.0), so scores, categories and rankings do not move.
+- **Gallery:** a range filter on Aesthetic (IAA), Face Quality (IQA), LIQE or Aesthetic V2.5 does not match an unscored photo (`min_face_quality_iqa=0` skips a faceless photo). An ascending sort on those, Q-ReAlign or DeQA puts unscored photos last, in the gallery and in albums.
+- **Old neutral 5.0 values** stay until `--repair-neutral-iqa` clears them; then run `--recompute-iqa` and `--recompute-average`, or rescan with `--force`.
+- **Primary model failure** (TOPIQ on `16gb` and `24gb`): the photo is recorded as failed instead of saved with a neutral 5.0. A new photo is picked up by the next scan; a stored one keeps its row and is retried by `--retry-failed all` (a bare `--retry-failed` covers only the latest run with failures) or another `--force` rescan.
+
+Retry rules for each command: [Supplementary Quality Models](COMMANDS.md#supplementary-quality-models).
 
 ### Supplementary signals (not in default aggregate)
 
 | Column | Source | Description |
 |--------|--------|-------------|
-| `aesthetic_clip` | `analyzers/aesthetic_clip.py` + cached CLIP/SigLIP embedding | A free supplementary aesthetic score (0-10) derived from cached image embeddings by projecting onto an "aesthetic axis" built from positive/negative text prompts. Zero extra image inference at scan time. **Not** part of the default `aggregate`. Populate with `python scripts/compute_aesthetic_clip.py --db <path>`. Benchmark with `python scripts/benchmark_aesthetic.py --db <path> --ava AVA.txt --photo-dir <dir>`. AVA SRCC ≈ 0.52 on the 500-photo `ava_test/` set (vs 0.94 for `aesthetic_iaa`) — useful as a cheap pre-filter or when TOPIQ-IAA is unavailable. |
+| `aesthetic_clip` | `analyzers/aesthetic_clip.py` + cached CLIP/SigLIP embedding | Free aesthetic score (0-10) from cached embeddings; **not** in the default `aggregate` |
+
+`aesthetic_clip` projects each image embedding onto an "aesthetic axis" built from text prompts, so it needs no extra image inference.
+
+- Fill it with `python scripts/compute_aesthetic_clip.py --db <path>`.
+- Benchmark with `python scripts/benchmark_aesthetic.py --db <path> --ava AVA.txt --photo-dir <dir>`.
+- AVA SRCC ≈ 0.52 on the 500-photo `ava_test/` set (vs 0.94 for `aesthetic_iaa`). Use it as a cheap pre-filter or when TOPIQ-IAA is unavailable.
 
 ## Category Tags (CLIP Vocabulary)
 
@@ -281,7 +313,7 @@ Default weights are optimized for **TOPIQ** (0.93 SRCC), the aesthetic model for
 | `8gb` | CLIP+MLP (0.76 SRCC) | CLIP ViT-L-14 | CLIP similarity | Default weights work well |
 | `legacy` | CLIP+MLP on CPU | CLIP ViT-L-14 | CLIP similarity | Default weights, slower |
 
-All GPU profiles (8gb/16gb/24gb) additionally run supplementary PyIQA models (TOPIQ IAA, TOPIQ NR-Face, LIQE) and optionally BiRefNet_dynamic for subject saliency; the CPU legacy profile skips them.
+All profiles, including the CPU `legacy` profile, additionally run supplementary PyIQA models (TOPIQ IAA, TOPIQ NR-Face, LIQE) and optionally BiRefNet_dynamic for subject saliency.
 
 Run `--compute-recommendations` after switching profiles to analyze score distributions.
 
@@ -346,22 +378,20 @@ Train weights by comparing photo pairs:
 ### Comparison Interface
 
 - Side-by-side photos
-- Keyboard: ← (left wins), → (right wins), T (tie), S (skip). The on-screen buttons are still labelled **A** / **B** (the values submitted), but the keys are ArrowLeft/ArrowRight.
+- Keyboard: ← (left wins), → (right wins), T (tie), S (skip). The on-screen buttons are labelled **A** / **B**.
 - Progress bar shows comparisons toward 50 minimum
 
 ### Comparison Sources
 
-Comparisons carry a `source` marker so the optimizer can weight them by reliability:
+Each comparison has a `source`, which the optimizer weights by reliability:
 
 - `vote` — explicit A/B votes from the comparison interface
-- `culling` — derived automatically from burst/similar culling decisions: each
-  rejected photo is paired against up to two kept photos from the same group
-  (capped at 12 pairs per group). Kept photos win. Explicit votes on the same
-  pair are never overwritten.
-- `rating` — synthetic pairs generated from star ratings and favorites
+- `culling` — from burst/similar culling decisions: each rejected photo is paired
+  with up to two kept photos from its group (at most 12 pairs per group). Kept
+  photos win. Explicit votes on the same pair are never overwritten.
+- `rating` — synthetic pairs from star ratings and favorites
 
-Reviewing burst groups in the viewer therefore grows the training set for
-weight optimization without any extra effort.
+So reviewing burst groups in the viewer also grows the training set.
 
 ### Weight Optimization
 
@@ -384,17 +414,29 @@ python facet.py --recompute-average
 
 ### Label-to-Weight Pipeline
 
-Beyond explicit A/B votes, two more label streams feed the optimizer:
+Besides A/B votes, two label streams feed the optimizer:
 
-1. **Culling decisions** are captured automatically on every burst/similar
-   confirm (`source='culling'`).
-2. **Star ratings, favorites and rejections** are materialized into synthetic
-   pairs with `python facet.py --sync-label-comparisons` (`source='rating'`).
-   Re-running re-syncs from the current labels, so retracted ratings disappear.
+1. **Culling decisions** are captured on every burst/similar confirm (`source='culling'`).
+2. **Star ratings, favorites and rejections** become synthetic pairs with
+   `python facet.py --sync-label-comparisons` (`source='rating'`). Re-running
+   re-syncs from the current labels, so retracted ratings disappear.
 
-The optimizer fits the weights that best predict which photo won each comparison (a Bradley-Terry model), counting each source by its reliability: vote 1.0, rating 0.7, culling 0.5. A **tie** counts as half a win plus half a loss: evidence that the two photos should score alike. The fit is **anchored to your current weights**: with few comparisons the suggestion stays close to them, and it moves further as votes accumulate. It trains on each photo as the scorer sees it: the same 0-10 metrics the aggregate reads (including `liqe`, `aesthetic_iaa`, `face_quality_iqa` and the subject-saliency metrics), with eye sharpness, technical sharpness and colour normalised by percentile, the exposure score rebuilt from the stored histogram, and the group-portrait flag. The percentiles are the ones the last `--recompute-average` saved; before the first `--recompute-average`, the stored columns are used as they are. It starts from, and writes, the weights the scorer actually uses: `quality_percent` is folded into `aesthetic` as the scorer does, and applying writes `quality_percent: 0` for the categories that have it.
+**How the fit works.** The optimizer finds the weights that best predict each comparison's winner (a Bradley-Terry model).
 
-Weights are **applied only if they generalize**. The final weights are fit on all comparisons, but whether to write them is decided on comparisons the fit did not see: 5-fold cross-validation with **photo-grouped folds** (no photo is in both the training pairs and the held-out pairs of a fold). The held-out predictions, pooled over the folds, are compared with the current weights on the same pairs by a **one-sided exact McNemar test**, which asks whether the new weights win significantly more of the pairs on which the two disagree. The weights are applied only when `p < 0.05` **and** the held-out gain is at least 2 percentage points; otherwise the run logs the numbers and writes nothing. Pass `--optimize-force` to apply anyway. If the gate cannot run (too few independent groups of photos), nothing is applied unless forced. Optimization is per category and needs at least 30 **decisive** comparisons (one photo won) **in that category**; ties and comparisons from other categories do not count. A category with no votes cannot be tuned from data. The log shows, for example:
+- Sources count by reliability: vote 1.0, rating 0.7, culling 0.5.
+- A **tie** counts as half a win and half a loss.
+- The fit is **anchored to your current weights**: with few comparisons it stays close to them.
+- It uses the same 0-10 metrics as the aggregate (including `liqe`, `aesthetic_iaa`, `face_quality_iqa` and subject saliency), with eye sharpness, technical sharpness and colour normalised by the percentiles the last `--recompute-average` saved.
+- `quality_percent` is folded into `aesthetic`, as the scorer does; applying writes `quality_percent: 0`.
+
+**Weights are applied only if they generalize.** The decision uses held-out comparisons: 5-fold cross-validation with **photo-grouped folds** (no photo is in both training and held-out pairs).
+
+- A **one-sided exact McNemar test** checks whether the new weights win significantly more of the pairs where the two weight sets disagree.
+- The weights are applied only when `p < 0.05` **and** the held-out gain is at least 2 percentage points. Otherwise the run logs the numbers and writes nothing.
+- Pass `--optimize-force` to apply anyway. If the test cannot run (too few independent photo groups), nothing is applied unless forced.
+- Each category needs at least 30 **decisive** comparisons (one photo won) **in that category**. Ties and other categories do not count.
+
+Example log:
 
 ```
 Held-out accuracy:      69.2% +/- 4.0 (5-fold, photo-grouped) - the honest estimate
@@ -403,9 +445,14 @@ McNemar (one-sided):    p = 0.0006 (only the fit right: 66, only the current wei
 NOT applying: the held-out gate needs p < 0.05 and a gain of at least 2.0 pp. ...   (logged when the gate fails)
 ```
 
-Applying a result with `--optimize-weights` changes how the category's photos rank among themselves, not where the category sits against the others. In the same config write as the weights, `modifiers.bonus` is moved by the opposite of the projected mean score shift of the category's photos, so the category's mean aggregate stays where it was. The bonus is kept within [-5, 5], and the log says when that limit cuts the correction short. A category with no entry in `categories` (`others`) has no bonus and is not re-centred. The weight snapshot recorded before the write includes the bonus, and restoring a snapshot restores weights **and** bonus (snapshots recorded before this change, by `calibrate.py` or for `others` have no bonus and leave it untouched). Known limit: the viewer's **Apply** button and a hand edit in the Weights tab write weights through `POST /api/config/update_weights`, which does not re-centre the bonus; only `--optimize-weights` does.
+**Applying keeps the category's level.** `--optimize-weights` changes how a category's photos rank among themselves, not against other categories. It moves `modifiers.bonus` to cancel the category's mean score shift.
 
-**After upgrading, retrain the personal ranker and the keeper head (`--train-ranker`, `--train-keeper`), then run `--recompute-average`.** The optimizer, the ranker and the keeper head read the same per-photo metrics, which now include the percentile-normalised eye sharpness, technical sharpness and colour; a model saved by an earlier version cannot detect the change.
+- The bonus stays within [-5, 5]; the log says when that limit applies.
+- A category with no entry in `categories` (`others`) has no bonus and is not re-centred.
+- Restoring a weight snapshot restores weights **and** bonus. Older snapshots, those from `calibrate.py` and those for `others` leave the bonus alone.
+- The viewer's **Apply** button and hand edits in the Weights tab do not re-centre the bonus; only `--optimize-weights` does.
+
+**After upgrading, retrain the personal ranker and the keeper head (`--train-ranker`, `--train-keeper`), then run `--recompute-average`.** They now read percentile-normalised eye sharpness, technical sharpness and colour, and an older saved model cannot detect the change.
 
 Recommended cadence:
 
@@ -418,13 +465,14 @@ python facet.py --recompute-average      # apply + persist percentile snapshot
 
 ### In-UI Weight Tuning
 
-During comparison, the Weight Preview panel lets you adjust sliders for
-real-time score changes and click "Suggest Weights" for optimized values.
-This is the same in-viewer slider workflow described in
-[Option A: Via Viewer](#option-a-via-viewer-recommended) above — see there
-for the full save/recompute flow.
+During comparison, the Weight Preview panel shows score changes as you move the sliders, and **Suggest Weights** proposes optimized values. Saving and recomputing work as in [Option A: Via Viewer](#option-a-via-viewer-recommended).
 
-**Suggest Weights** also answers a narrower question than the held-out gate above: how well do this category's *current, live* weights already agree with your own comparisons? Clicking it returns `accuracy_before` — the percentage of that category's labelled pairs (A/B votes, culling, and rating-derived pairs) whose winner the live weights predict correctly — next to `accuracy_after`, the same figure for the suggested weights. Both are measured on the same comparisons the weights were fit on, so `accuracy_after` is optimistic. They are shown side by side in the Weight Suggestions tab and in the A/B Compare tab's sidebar every time you run it (`GET /api/comparison/learned_weights`). Whether **Apply** is offered follows the same held-out McNemar gate as the CLI, not that optimistic gain: `suggest_changes` is true only when the gate passes. The request runs the cross-validation only when the optimistic gain already reaches 2 percentage points (`?use_cv=true` runs it in every case). The viewer needs `min_comparisons_for_optimization` (shipped default 50) decisive comparisons for that category, where the CLI needs 30; below that the button reports the shortfall ("Need at least N decisive comparisons (have K)") instead of a number.
+**Suggest Weights** shows two figures, in the Weight Suggestions tab and the A/B Compare sidebar:
+
+- `accuracy_before`: how often the current weights predict the winner of this category's labelled pairs.
+- `accuracy_after`: the same for the suggested weights. It is measured on the pairs it was fit on, so it is optimistic.
+
+**Apply** is offered only when the same held-out McNemar test as the CLI passes (`suggest_changes` is true). The cross-validation runs only when the optimistic gain reaches 2 percentage points (`?use_cv=true` always runs it). The viewer needs `min_comparisons_for_optimization` (default 50) decisive comparisons in the category, where the CLI needs 30. Below that it reports "Need at least N decisive comparisons (have K)".
 
 ## Adding Custom Categories
 

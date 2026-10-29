@@ -2,11 +2,9 @@
 
 > 🌐 [English](../GETTING_STARTED.md) · [Français](../fr/GETTING_STARTED.md) · [Deutsch](../de/GETTING_STARTED.md) · [Italiano](../it/GETTING_STARTED.md) · [Español](../es/GETTING_STARTED.md) · **Português** · [简体中文](../zh/GETTING_STARTED.md)
 
-Um passo a passo da primeira sessão para o caso mais comum: você acabou de fotografar ou
-importar um lote de fotos e quer terminar com um conjunto selecionado. Ele segue seis
-etapas — importar, agrupar fotos parecidas, ensinar ao Facet o seu gosto, descartar,
-marcar com tags, exportar — e aponta para a página que explica cada uma em vez de
-repeti-la.
+Você tem um lote novo de fotos e quer um conjunto selecionado. Esta página percorre seis
+etapas — importar, agrupar fotos parecidas, ensinar o seu gosto, descartar, marcar com
+tags, exportar — e aponta para os detalhes de cada uma.
 
 ![Passo a passo da galeria do Facet](../screenshots/walkthrough.gif)
 
@@ -14,13 +12,11 @@ repeti-la.
 
 ### 1. Defina uma senha de edição
 
-Uma instalação nova é **somente leitura**. Você pode navegar (sujeito a `viewer.password`,
-se você definir uma), mas toda edição — avaliações, triagem, rostos, álbuns, tags e o botão
-Escanear — é recusada até que você defina `viewer.edition_password` em
-`scoring_config.json` e reinicie o visualizador (a configuração não é recarregada a quente).
+Uma instalação nova é **somente leitura**. Para editar (avaliações, triagem, rostos, álbuns, tags, Escanear),
+defina `viewer.edition_password` em `scoring_config.json` e reinicie o visualizador (a configuração não é recarregada a quente).
 
-Com o `docker-compose.yml` incluído, você não precisa inventar uma: a imagem gera uma senha
-na primeira inicialização e a exibe uma única vez. Leia-a com:
+Com o `docker-compose.yml` incluído, a imagem gera uma senha na primeira inicialização e
+a exibe uma única vez:
 
 ```bash
 docker compose logs facet
@@ -47,11 +43,9 @@ Duas coisas costumam atrapalhar com contêineres:
 
 ### 3. Sem GPU? Tudo bem
 
-Tudo — pontuação, rostos, tags, triagem, o botão Escanear — funciona em um processador com o
-perfil `legacy` de CPU; só fica mais lento. Leia
+Tudo funciona no perfil `legacy` de CPU, só fica mais lento. Veja
 [Sem placa de vídeo](INSTALLATION.md#sem-placa-de-vídeo) e
-[Qual perfil combina com o meu hardware?](INSTALLATION.md#qual-perfil-combina-com-o-meu-hardware). Uma placa
-nunca é condição para o botão Escanear aparecer.
+[Qual perfil combina com o meu hardware?](INSTALLATION.md#qual-perfil-combina-com-o-meu-hardware).
 
 ### 4. Atenção à memória
 
@@ -73,9 +67,9 @@ fazer isso pelo terminal ([Scanning](COMMANDS.md#scanning)) ou pelo navegador:
   Multiusuário: você precisa do papel de superadmin.
 - Adicione a pasta a `viewer.scan_directories` para que o lançador tenha algo a oferecer.
 
-Um botão **Escanear novas fotos** fica então no fim do cabeçalho, logo antes do menu
-da conta (na extremidade direita da barra inferior em telas pequenas), e não apenas na galeria vazia. Regras completas: [Disparo de Varredura](VIEWER.md#disparo-de-varredura). A primeira
-varredura baixa os modelos de IA uma única vez ([Primeira execução](INSTALLATION.md#primeira-execução-o-que-esperar)).
+Um botão **Escanear novas fotos** aparece então no fim do cabeçalho (barra inferior em telas
+pequenas). Veja [Disparo de Varredura](VIEWER.md#disparo-de-varredura). A primeira varredura baixa
+os modelos de IA uma única vez ([Primeira execução](INSTALLATION.md#primeira-execução-o-que-esperar)).
 
 ![Botão Escanear no fim do cabeçalho](../screenshots/getting-started-scan-button.jpg)
 
@@ -109,14 +103,15 @@ sozinho depois de escolhas novas suficientes, e só quando você faz uma pausa
 Rejeite fotos durante a triagem, ou selecione um conjunto e aja sobre ele
 ([Seleção Múltipla e Ações em Lote](VIEWER.md#seleção-múltipla-e-ações-em-lote)):
 [Manter top %](VIEWER.md#manter-top-n), [Selecionar para pasta](VIEWER.md#selecionar-para-pasta) ou
-[Excluir](VIEWER.md#excluir). Selecionar para pasta mostra uma simulação até você aplicar. Excluir envia os arquivos para
-a lixeira do sistema na hora, e só quando `viewer.cull.allow_trash` está ativo (vem `false`).
-[Desfazer](VIEWER.md#desfazer) cobre alterações de flags em lote e confirmações de triagem, não essas
-operações de arquivo. As pastas nas quais uma seleção pode gravar formam uma lista de permissão: seus
-diretórios de varredura mais `viewer.export.allowed_target_dirs`, então uma subpasta da árvore de fotos funciona sem
-configuração, enquanto uma pasta fora dela é recusada até você adicioná-la. Veja
-[Destinos de exportação e seleção](CONFIGURATION.md#destinos-de-exportação-e-seleção). Para fazer a triagem
-sem interface: [Triar uma sessão pelo terminal](COMMANDS.md#triar-uma-sessão-pelo-terminal).
+[Excluir](VIEWER.md#excluir).
+
+- **Selecionar para pasta** mostra uma simulação até você aplicar.
+- **Excluir** envia os arquivos para a lixeira do sistema, e só quando `viewer.cull.allow_trash` está ativo (desativado por padrão).
+- **[Desfazer](VIEWER.md#desfazer)** cobre alterações de flags e confirmações de triagem, não movimentações nem exclusões de arquivos.
+- **Os destinos** são limitados aos seus diretórios de varredura mais `viewer.export.allowed_target_dirs`
+  ([Destinos de exportação e seleção](CONFIGURATION.md#destinos-de-exportação-e-seleção)).
+
+Para fazer a triagem pelo terminal: [Triar uma sessão pelo terminal](COMMANDS.md#triar-uma-sessão-pelo-terminal).
 
 As fotos que você exclui fora do Facet deixam sua linha no banco de dados até você executar a limpeza em
 [Database Maintenance](COMMANDS.md#database-maintenance).
@@ -125,12 +120,10 @@ As fotos que você exclui fora do Facet deixam sua linha no banco de dados até 
 
 ### Etapa 5: Adicionar tags e metadados às escolhidas
 
-O Facet marca as fotos com tags automaticamente, e você também pode adicionar **suas próprias tags**: na
-visualização de detalhe da foto, para uma foto, ou pelas ações em lote, para uma seleção. As tags manuais sobrevivem a novas varreduras,
-o filtro de tags e a busca as encontram, e elas ficam ocultas nos links de compartilhamento. As palavras-chave de
-sidecars XMP externos são importadas como tags manuais; remover uma tag no Facet não a remove
-dos sidecars que o Facet já gravou. Veja [Tags manuais](VIEWER.md#tags-manuais) e
-[Tags manuais e palavras-chave XMP](INTEROP.md#tags-manuais-e-palavras-chave-xmp). Para levar avaliações
+O Facet marca as fotos com tags automaticamente. Adicione **suas próprias tags** na visualização
+de detalhe da foto ou pelas ações em lote. As tags manuais sobrevivem a novas varreduras, funcionam
+em filtros e na busca, e ficam ocultas nos links de compartilhamento. Veja [Tags manuais](VIEWER.md#tags-manuais) e
+[[Tags manuais e palavras-chave XMP](INTEROP.md#tags-manuais-e-palavras-chave-xmp). Para levar avaliações
 e palavras-chave para o Lightroom, Capture One, digiKam ou darktable, veja [Interoperabilidade](INTEROP.md)
 (isso exige o [exiftool](INSTALLATION.md#exiftool) para a incorporação).
 

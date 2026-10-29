@@ -2,302 +2,365 @@
 
 > 🌐 [English](../COMMANDS.md) · [Français](../fr/COMMANDS.md) · [Deutsch](../de/COMMANDS.md) · [Italiano](../it/COMMANDS.md) · [Español](../es/COMMANDS.md) · **Português** · [简体中文](../zh/COMMANDS.md)
 
-[Escaneamento](#scanning) · [Pré-visualização e Exportação](#preview--export) · [Operações de Recálculo](#recompute-operations) · [Reconhecimento Facial](#face-recognition) · [Gerenciamento de Miniaturas](#thumbnail-management) · [Diagnóstico](#diagnostics) · [Informações de Modelos](#model-information) · [Otimização de Pesos](#weight-optimization-pairwise-comparison) · [Configuração](#configuration) · [Marcação](#tagging) · [Validação do Banco de Dados](#database-validation) · [Manutenção do Banco de Dados](#database-maintenance) · [Visualizador Web](#web-viewer) · [Fluxos de Trabalho Comuns](#common-workflows)
+[Escaneamento](#scanning) · [Pré-visualização e Exportação](#preview--export) · [Operações de Recálculo](#recompute-operations) · [Reconhecimento Facial](#face-recognition) · [Gerenciamento de Miniaturas](#thumbnail-management) · [Diagnósticos](#diagnostics) · [Informações dos Modelos](#model-information) · [Otimização de Pesos](#weight-optimization-pairwise-comparison) · [Configuração](#configuration) · [Marcação](#tagging) · [Validação do Banco de Dados](#database-validation) · [Manutenção do Banco de Dados](#database-maintenance) · [Visualizador Web](#web-viewer) · [Fluxos de Trabalho Comuns](#common-workflows)
 
-> Tags de requisito usadas abaixo: `[GPU]` · `[8gb/16gb/24gb]` / `[16gb/24gb]` / `[24gb]` (perfil de VRAM). Veja a [matriz de recursos](../README.md#feature-availability--requirements).
+> Tags de requisito usadas abaixo: `[GPU]` · `[8gb/16gb/24gb]` / `[16gb/24gb]` / `[24gb]` (perfil de VRAM). Veja a [matriz de recursos](INSTALLATION.md#requisitos-por-recurso).
 
 ## Scanning
 
 | Comando | Descrição |
 |---------|-------------|
-| `python facet.py /path` | Escaneia o diretório (modo multi-passo, detecção automática de VRAM) |
-| `python facet.py /path --force` | Re-escaneia arquivos já processados |
-| `python facet.py /path --single-pass` | Força o modo de passo único (todos os modelos de uma só vez). Requer a cabeça CLIP+MLP dos perfis `legacy`/`8gb`; em `16gb`/`24gb` emite um aviso e executa em multi-passo (fora do modo comercial) |
-| `python facet.py /path --pass quality` | Executa apenas o passo de pontuação de qualidade TOPIQ |
+| `python facet.py /path` | Escaneia um diretório (multi-passo, detecção automática de VRAM) |
+| `python facet.py /path --force` | Reescaneia arquivos já processados |
+| `python facet.py /path --single-pass` | Carrega todos os modelos de uma vez; apenas `legacy`/`8gb` (veja [Modos de Processamento](#modos-de-processamento)) |
+| `python facet.py /path --pass quality` | Executa apenas a pontuação de qualidade TOPIQ |
 | `python facet.py /path --pass quality-iaa` | Executa apenas a pontuação de mérito estético TOPIQ IAA |
 | `python facet.py /path --pass quality-face` | Executa apenas a pontuação de qualidade TOPIQ NR-Face |
 | `python facet.py /path --pass quality-liqe` | Executa apenas o diagnóstico de qualidade + distorção LIQE |
-| `python facet.py /path --pass tags` | Executa apenas o passo de marcação (o modelo depende do perfil de VRAM) |
+| `python facet.py /path --pass tags` | Executa apenas a marcação (o modelo depende do perfil de VRAM) |
 | `python facet.py /path --pass composition` | Executa apenas a detecção de padrão de composição SAMP-Net |
 | `python facet.py /path --pass faces` | Executa apenas a detecção facial InsightFace |
-| `python facet.py /path --pass embeddings` | Executa apenas a extração de embeddings CLIP/SigLIP (uma execução com um único `--pass` não grava tags) |
+| `python facet.py /path --pass embeddings` | Executa apenas a extração de embeddings CLIP/SigLIP (não grava tags) |
 | `python facet.py /path --pass saliency` | Executa apenas a detecção de saliência do sujeito BiRefNet |
 | `python facet.py /path --db custom.db` | Usa um arquivo de banco de dados personalizado |
 | `python facet.py /path --config my.json` | Usa uma configuração de pontuação personalizada |
-| `python facet.py --resume` | Retoma o último escaneamento interrompido/falho — inclusive um que travou abruptamente por SIGKILL/OOM/queda de energia (uma execução ainda marcada como `running` cujo heartbeat é mais antigo que `processing.scan_stale_seconds`, padrão 120). Reutiliza seus diretórios; com `--force`, ignora arquivos já re-pontuados desde o início daquela execução. Recusa se outro escaneamento parecer genuinamente ativo. |
-| `python facet.py --retry-failed` | Reprocessa apenas os arquivos que falharam durante a última execução de escaneamento (`--retry-failed all` para falhas em todas as execuções) |
-| `python facet.py /path --force-since 2026-01-01` | Como `--force`, mas reprocessa apenas as fotos escaneadas por último antes da data |
-| `python facet.py /path --watch` | Permanece em execução e re-escaneia sempre que novas fotos aparecem (requer `pip install watchdog`; `--watch-debounce N` ajusta o período de inatividade, padrão 30s) |
-| `python facet.py /path --force-low-space` | Ignora a proteção de espaço livre pré-escaneamento (prossegue mesmo quando o volume parece pequeno demais para as miniaturas/embeddings que o escaneamento irá gravar) |
+| `python facet.py --resume` | Retoma o último escaneamento interrompido, com falha ou travado |
+| `python facet.py --retry-failed` | Reprocessa os arquivos que falharam no último escaneamento (`--retry-failed all` para todas as execuções) |
+| `python facet.py /path --force-since 2026-01-01` | Como `--force`, apenas para fotos escaneadas pela última vez antes da data |
+| `python facet.py /path --watch` | Reescaneia quando novas fotos aparecem (requer `pip install watchdog`; `--watch-debounce N`, padrão 30s) |
+| `python facet.py /path --force-low-space` | Ignora a verificação de espaço livre antes do escaneamento |
+
+**`--resume`** também recupera um escaneamento encerrado por uma queda, falta de memória ou falta de energia: uma execução ainda marcada como `running` cujo heartbeat é mais antigo que `processing.scan_stale_seconds` (padrão 120). Ele reutiliza os diretórios dessa execução. Com `--force`, ignora os arquivos já repontuados desde o início da execução. Recusa-se a iniciar se outro escaneamento parecer ativo.
 
 ### Registro de Escaneamento
 
-Cada escaneamento registra uma linha em `scan_runs` (status, modo, diretórios, contadores)
-e erros por arquivo em `scan_failures` (caminho, etapa, erro). Interromper um
-escaneamento com Ctrl+C marca a execução como `interrupted` para que `--resume` possa retomá-la;
-arquivos com falha ficam visíveis e podem ser reprocessados, em vez de serem silenciosamente reprocessados a
-cada escaneamento incremental. A CLI também emite linhas JSON estruturadas `@FACET_PROGRESS`
-(fase, atual/total, ETA) que a API de escaneamento do visualizador expõe no
-campo `progress` de `/api/scan/status` e no fluxo SSE.
+O Facet registra cada escaneamento (estado, modo, diretórios, contadores) e cada erro por arquivo. Ctrl+C marca a execução como `interrupted`, para que `--resume` possa continuá-la. Os arquivos com falha são listados e reprocessados somente com `--retry-failed`. O visualizador mostra o progresso do escaneamento a partir das linhas `@FACET_PROGRESS` da CLI.
 
 ### Modos de Processamento
 
-**Multi-passo (padrão):** detecta a VRAM e carrega os modelos sequencialmente. Cada passo carrega seu modelo, processa todas as fotos e então descarrega para liberar VRAM, de modo que modelos de alta qualidade rodam mesmo com VRAM limitada.
+**Multi-passo (padrão):** detecta a VRAM e carrega os modelos um de cada vez. Cada passo carrega o seu modelo, processa todas as fotos e então o baixa, de modo que os modelos de alta qualidade rodam mesmo com pouca VRAM.
 
-**Passo único (`--single-pass`):** carrega todos os modelos de uma só vez. Mais rápido, precisa de mais VRAM. Pontua a estética com a cabeça CLIP+MLP, por isso se aplica aos perfis `legacy` e `8gb`. Em `16gb` e `24gb` o modelo de estética é o TOPIQ, que só a varredura multi-passo executa; por isso um pedido de passo único (`--single-pass` ou `processing.mode: "single-pass"`) registra um aviso e executa em multi-passo. `--pass NAME` e `--dry-run` ignoram essa verificação. No modo comercial o passo único continua disponível, porque ali o Q-ReAlign nativo pontua a estética. Se um lote de passo único ainda assim chegar ao pontuador sem cabeça de estética, ele falha: suas fotos são registradas em `scan_failures` e não são gravadas.
+**Passo único (`--single-pass`):** carrega todos os modelos de uma vez. Mais rápido, mas exige mais VRAM.
 
-**Nota de atualização:** versões anteriores gravavam uma estética neutra de 5,0 para cada foto de uma varredura de passo único em `16gb`/`24gb`. Encontre essas linhas com `SELECT path FROM photos WHERE scoring_model = 'topiq' AND aesthetic = 5.0 AND topiq_score IS NULL` (uma varredura multi-passo sempre grava `topiq_score`). Não há comando de reparação, porque o TOPIQ precisa da imagem: refaça a varredura das pastas afetadas com `--force` em multi-passo.
+- Pontua a estética com a cabeça CLIP+MLP, então se aplica aos perfis `legacy` e `8gb`.
+- Em `16gb` e `24gb` o modelo estético é o TOPIQ, que só roda em multi-passo. Um pedido de passo único (`--single-pass` ou `processing.mode: "single-pass"`) registra um aviso e roda em multi-passo.
+- `--pass NAME` e `--dry-run` pulam essa verificação.
+- O modo comercial mantém o passo único, porque o Q-ReAlign nativo pontua a estética ali.
 
-**Passo específico (`--pass NAME`):** executa apenas um passo, para atualizar métricas específicas sem o reprocessamento completo. Passos disponíveis:
+**Nota de atualização:** versões anteriores salvavam uma estética neutra de 5.0 para cada foto de um escaneamento de passo único em `16gb`/`24gb`. Reescaneie essas pastas com `--force` em multi-passo. Para encontrá-las: `SELECT path FROM photos WHERE scoring_model = 'topiq' AND aesthetic = 5.0 AND topiq_score IS NULL`.
+
+**Passo específico (`--pass NAME`):** roda um único passo, para atualizar algumas métricas sem reprocessar tudo.
 
 | Passo | Modelo | Saída | VRAM |
 |------|-------|--------|------|
 | `quality` | TOPIQ | pontuação `aesthetic` (0-10) | ~2 GB |
-| `quality-iaa` | TOPIQ IAA | pontuação `aesthetic_iaa` (mérito artístico vs qualidade técnica, treinado com AVA) | Compartilhado com TOPIQ |
-| `quality-face` | TOPIQ NR-Face | pontuação `face_quality_iqa` (qualidade facial dedicada) | Compartilhado com TOPIQ |
+| `quality-iaa` | TOPIQ IAA | `aesthetic_iaa` (mérito artístico, treinado no AVA) | Compartilhada com o TOPIQ |
+| `quality-face` | TOPIQ NR-Face | `face_quality_iqa` (qualidade do rosto) | Compartilhada com o TOPIQ |
 | `quality-liqe` | LIQE | `liqe_score` + diagnóstico de distorção (desfoque, superexposição, ruído) | ~2 GB |
 | `tags` | CLIP / Qwen VLM | Tags semânticas do vocabulário configurado | 0-16 GB |
 | `composition` | SAMP-Net | `composition_pattern` (8 padrões) + `comp_score` | ~2 GB |
-| `faces` | InsightFace buffalo_l | Detecção facial, landmarks, detecção de piscadas, embeddings de reconhecimento | ~2 GB |
-| `embeddings` | CLIP ViT-L-14 ou SigLIP 2 NaFlex | BLOB `clip_embedding` para similaridade/marcação | 4-5 GB |
+| `faces` | InsightFace buffalo_l | Rostos, pontos de referência, piscadas, embeddings de reconhecimento | ~2 GB |
+| `embeddings` | CLIP ViT-L-14 ou SigLIP 2 NaFlex | `clip_embedding` para similaridade e marcação | 4-5 GB |
 | `saliency` | BiRefNet_dynamic | `subject_sharpness`, `subject_prominence`, `subject_placement`, `bg_separation` | ~3 GB |
 
 ## Preview & Export
 
 | Comando | Descrição |
 |---------|-------------|
-| `python facet.py /path --dry-run` | Pontua 10 fotos de amostra sem salvar. Em `16gb`/`24gb` a coluna de estética mostra `n/a`, porque o TOPIQ só é executado numa varredura real (o modo comercial mostra no lugar a pontuação do Q-ReAlign); o agregado conta a estética ausente como um 5,0 neutro |
+| `python facet.py /path --dry-run` | Pontua 10 fotos de amostra sem salvar |
 | `python facet.py /path --dry-run --dry-run-count 20` | Pontua 20 fotos de amostra |
-| `python facet.py --export-csv` | Exporta todas as pontuações para um CSV com data e hora no nome (a coluna `tags` contém apenas os tags de IA; os [tags manuais](VIEWER.md#tags-manuais) não são incluídos) |
+| `python facet.py --export-csv` | Exporta todas as pontuações para um CSV com data e hora |
 | `python facet.py --export-csv output.csv` | Exporta para um arquivo CSV específico |
-| `python facet.py --export-json` | Exporta para um JSON com data e hora no nome; o objeto `scores` de cada foto traz todas as colunas de métricas armazenadas (NULL, números não finitos e BLOBs como `null`; colunas que um esquema antigo não tem são omitidas). `tags` contém apenas os tags de IA, como no CSV. Um caminho de saída que seja o banco de dados ou seus `-wal`/`-shm`/`-journal` é recusado |
+| `python facet.py --export-json` | Exporta todas as métricas armazenadas para um JSON com data e hora |
 | `python facet.py --export-json output.json` | Exporta para um arquivo JSON específico |
-| `python facet.py --export-manifest` | Exporta um manifesto JSON compacto (caminho, categoria, pontuações, tags, avaliação em estrelas, favorito/rejeitado, líder de rajada) para `facet_manifest.json`, para ferramentas externas como um plugin do Lightroom Classic (`tags` = tags de IA + tags manuais) |
-| _manifesto versão 2_ | Adiciona a cada foto `burst_group_id`, `sequence_kind`, `sequence_group_id` e `score_stars` (a pontuação agregada convertida via `xmp_export.score_to_rating`), para as novas opções de seleção/rejeição de rajadas e de fallback de estrelas do plug-in do Facet — veja [docs/INTEROP.md](INTEROP.md#o-plug-in-do-facet-classificações-por-estrelas-sinalizadores-pick-campos-de-metadados-e-palavras-chave). Um plug-in construído para esta versão recusa um manifesto mais antigo e pede para reexportar |
-| `python facet.py --export-manifest /path` | Limita o manifesto às fotos sob uma subárvore de caminho |
-| `python facet.py --export-manifest --user alice` | Modo multiusuário: exporta as avaliações de `user_preferences` da Alice para o manifesto em vez das colunas globais (tags e pontuações permanecem globais) |
-| `python facet.py --import-lightroom ARQUIVO` | Importa o estado de avaliação/pick/rejeição do Lightroom exportado pelo plug-in (`facet_lightroom_state.json`, veja [Lightroom → Facet](INTEROP.md#lightroom--facet) em docs/INTEROP.md) — o Lightroom vence para cada campo que o arquivo carregue. Imprime `matched=… unmatched=… changed=…` |
-| `python facet.py --import-lightroom ARQUIVO --user alice` | Modo multiusuário: grava na linha `user_preferences` da Alice em vez das colunas globais; **obrigatório** numa instalação multiusuário — recusado caso contrário, para que uma importação nunca aterrisse silenciosamente no escopo errado |
-| `python facet.py --import-sidecars` | Importa avaliações, rótulos, decisões Keep/rejeição, GPS manual e palavras-chave dos sidecars `<image.ext>.xmp` / `<image.ext>.facet.xmp` de volta para o banco de dados (todas as fotos); uma decisão do Facet (Keep, rejeição ou indeciso) sem avaliação nem rótulo padrão é aplicada sem comparar com a data da varredura; as palavras-chave que o Facet ainda não tem viram [tags manuais](INTEROP.md#tags-manuais-e-palavras-chave-xmp) |
-| `python facet.py --import-sidecars /path` | Importa sidecars apenas para fotos sob uma subárvore de caminho |
-| `python facet.py --import-sidecars /path --dry-run` | `--import-sidecars /caminho --dry-run` mostra JSON com arquivo escolhido, antes/depois, adições, origem e motivos de recusa. |
-| `python facet.py --import-sidecars /path --sidecar-fields keywords,gps` | Importa apenas os grupos de campos indicados: `review` (estrelas, favorito, rejeição e Keep juntos), `gps`, `keywords`; grupos omitidos ficam intactos (padrão: os três) |
-| `python facet.py --import-sidecars /path --overwrite-sidecar-review` | Aplica os campos de revisão mesmo quando uma edição local mais recente (`newer_local_edit`) ou a comparação com a data da varredura os bloquearia; confira antes com `--dry-run` |
-| `python facet.py --import-sidecars --user alice` | Modo multiusuário: importa avaliações e decisões Keep/rejeição para o `user_preferences` da Alice em vez das colunas globais, limitado às fotos visíveis para a Alice (palavras-chave e GPS permanecem globais) |
-| `python facet.py --import-sidecars --sidecar-naming full` | Ler nomes completos principais/alternativos (padrão); vence a modificação mais recente, o principal no empate |
-| `python facet.py --import-sidecars --sidecar-naming basename` | Ler `<image>.xmp` removendo a extensão da imagem; recusar nomes base compartilhados |
-| `python facet.py --import-sidecars --sidecar-naming auto` | Aceitar uma família; ignorar e informar a presença de ambas as convenções |
-| `python facet.py --import-sidecars --overwrite-manual-gps` | Substitui o GPS manual já definido no Facet (incluindo um local apagado) pelo local manual do sidecar; sem a opção, o GPS manual existente é mantido |
-| `python facet.py --export-sidecars` | Grava/mescla sidecars `<image>.xmp` a partir do banco de dados para todas as fotos (somente sidecar) |
-| `python facet.py --export-sidecars /path` | Exporta sidecars apenas para fotos sob uma subárvore de caminho |
-| `python facet.py --export-sidecars /path --reconcile-keywords` | Reconcilia apenas palavras do Facet; preserva as externas (requer ExifTool). |
-| `python facet.py --export-sidecars --user alice` | Modo multiusuário: exporta as avaliações e decisões Keep/rejeição do `user_preferences` da Alice em vez das colunas globais, limitado às fotos visíveis para a Alice (palavras-chave, GPS e data de captura permanecem globais) |
-| `python facet.py --export-sidecars --embed-originals` | Também embute os metadados **no arquivo** para JPEG/HEIC/TIFF/PNG/DNG (reescreve os originais) |
-| `python facet.py --export-sidecars --score-to-stars` | Deriva `xmp:Rating` da pontuação agregada para fotos que você não avaliou manualmente (uma avaliação/favorito/rejeição manual sempre prevalece) |
+| `python facet.py --export-manifest` | Grava `facet_manifest.json` para ferramentas externas como o plug-in do Lightroom Classic |
+| `python facet.py --export-manifest /path` | Limita o manifesto às fotos sob um caminho |
+| `python facet.py --export-manifest --user alice` | Modo multiusuário: usa as avaliações da Alice (tags e pontuações continuam globais) |
+| `python facet.py --import-lightroom FILE` | Importa avaliações, escolhas e rejeições do plug-in; o Lightroom prevalece |
+| `python facet.py --import-lightroom FILE --user alice` | Modo multiusuário: grava as avaliações da Alice; **obrigatório** em uma instalação multiusuário |
+| `python facet.py --import-sidecars` | Importa avaliações, rótulos, Manter/Rejeitar, GPS manual e palavras-chave de sidecars XMP |
+| `python facet.py --import-sidecars /path` | Importa apenas para fotos sob um caminho |
+| `python facet.py --import-sidecars /path --dry-run` | Imprime um plano JSON de alterações e conflitos; não grava nada |
+| `python facet.py --import-sidecars /path --sidecar-fields keywords,gps` | Importa apenas estes grupos: `review` (estrelas, favorito, rejeição, Manter), `gps`, `keywords` (padrão: todos) |
+| `python facet.py --import-sidecars /path --overwrite-sidecar-review` | Aplica os campos de revisão mesmo sobre uma edição local mais recente (`newer_local_edit`); pré-visualize antes com `--dry-run` |
+| `python facet.py --import-sidecars --user alice` | Modo multiusuário: importa avaliações e Manter/Rejeitar para a conta da Alice, nas fotos que ela vê |
+| `python facet.py --import-sidecars --sidecar-naming full` | Lê `<image.ext>.xmp` / `<image.ext>.facet.xmp` (padrão); vence o arquivo mais recente |
+| `python facet.py --import-sidecars --sidecar-naming basename` | Lê `<image>.xmp` (sem a extensão); recusa nomes-base compartilhados |
+| `python facet.py --import-sidecars --sidecar-naming auto` | Aceita qualquer um dos nomes; ignora uma foto que tenha ambos |
+| `python facet.py --import-sidecars --overwrite-manual-gps` | Substitui o GPS manual já definido no Facet pelo do sidecar |
+| `python facet.py --export-sidecars` | Grava ou mescla sidecars `<image>.xmp` para todas as fotos |
+| `python facet.py --export-sidecars /path --reconcile-keywords` | Remove também as palavras-chave do Facet que não existem mais (requer ExifTool) |
+| `python facet.py --export-sidecars /path` | Exporta sidecars apenas para fotos sob um caminho |
+| `python facet.py --export-sidecars --user alice` | Modo multiusuário: exporta avaliações e Manter/Rejeitar da Alice, nas fotos que ela vê |
+| `python facet.py --export-sidecars --embed-originals` | Grava também metadados **dentro** dos originais JPEG/HEIC/TIFF/PNG/DNG |
+| `python facet.py --export-sidecars --score-to-stars` | Define `xmp:Rating` a partir da pontuação nas fotos que você não avaliou |
 
-> **Sincronização bidirecional de metadados.** O Facet grava avaliações, rótulos de cor, palavras-chave, legendas e regiões de rostos nomeados em um sidecar padrão `<image>.xmp` que o ecossistema lê (Lightroom, darktable, digiKam, immich, …); a imagem original nunca é modificada a menos que você opte por isso com `--export-sidecars --embed-originals` (somente JPEG/HEIC/TIFF/PNG/DNG — RAW nunca é tocado). A incorporação e a mesclagem segura por união de palavras-chave requerem **exiftool**; sem ele, o Facet recorre a um sidecar XML puro, sem dependências. As palavras-chave gravadas são os tags de IA mais os seus [tags manuais](VIEWER.md#tags-manuais), e as exportações continuam aditivas sem `--reconcile-keywords` (veja [Tags manuais e palavras-chave XMP](INTEROP.md#tags-manuais-e-palavras-chave-xmp)).
->
-> **Ressalvas da importação.** As palavras-chave importadas vão para a tabela de [tags manuais](INTEROP.md#tags-manuais-e-palavras-chave-xmp) (`photo_manual_tags`), que os filtros de tags leem diretamente: depois não é preciso rodar `--migrate-tags`. Como um sidecar é comparado com as edições locais (data da varredura, recibos de edição por campo, `newer_local_edit`) está descrito em [Prévia de importação e conflitos](INTEROP.md#prévia-de-importação-e-conflitos).
->
-> **`--export-manifest` vs. `--export-csv`/`--export-json`.** O argumento opcional do manifesto delimita *quais fotos* são exportadas (como `--export-sidecars`), não o nome do arquivo de saída — ele sempre (re)grava `facet_manifest.json` no diretório de trabalho, já que é pensado para ser regenerado no lugar por uma ferramenta que relê um caminho fixo. Ele carrega os mesmos valores `star_rating`/`is_favorite`/`is_rejected` que o `--export-sidecars` — as colunas globais por padrão, ou a linha `user_preferences` do usuário indicado quando `--user` é informado, de modo que uma instalação multiusuário deixa de exportar um manifesto todo zerado — mais `is_burst_lead` (sempre global), uma contagem de nível superior `pending_corrections` (correções manuais de bracket/panorama ainda não aplicadas por uma execução de detecção — uma contagem maior que zero imprime um aviso de uma linha após a exportação com `--detect-panoramas`), e é gravado em JSON compacto (sem formatação) — com ~100 mil fotos, a saída `indent=2` do `--export-json` chegaria a dezenas de megabytes sem nenhum benefício para um leitor automatizado.
+**Simulação (dry run).** Em `16gb`/`24gb` a coluna de estética mostra `n/a`, porque o TOPIQ roda apenas em um escaneamento real (o modo comercial mostra a pontuação Q-ReAlign). O agregado a conta como um 5.0 neutro.
+
+**CSV e JSON.** A coluna `tags` contém apenas tags de IA; as [tags manuais](VIEWER.md#tags-manuais) não são incluídas. No JSON, o objeto `scores` de cada foto contém todas as métricas armazenadas; NULL, números não finitos e BLOBs viram `null`. A exportação JSON se recusa a gravar sobre o banco de dados ou os seus arquivos `-wal`/`-shm`/`-journal`.
+
+**Manifesto.**
+
+- O argumento opcional limita *quais fotos* são exportadas. O arquivo é sempre `facet_manifest.json` no diretório de trabalho.
+- Ele traz `star_rating`/`is_favorite`/`is_rejected` (globais, ou os do `--user`), `is_burst_lead`, tags de IA mais manuais e uma contagem `pending_corrections`. Uma contagem diferente de zero imprime um aviso que aponta para `--detect-panoramas`.
+- _manifest version 2_ acrescenta `burst_group_id`, `sequence_kind`, `sequence_group_id` e `score_stars` (a pontuação mapeada por `xmp_export.score_to_rating`). Um plug-in construído para ele recusa um manifesto mais antigo: reexporte. Veja [o plug-in do Facet](INTEROP.md#o-plug-in-do-facet-classificações-por-estrelas-sinalizadores-pick-campos-de-metadados-e-palavras-chave).
+
+**`--import-lightroom`** lê a exportação própria do plug-in, `facet_lightroom_state.json` (`{"format":"facet-lightroom-state","version":1,"photos":[...]}`), não o manifesto. Um arquivo no formato errado é recusado antes de qualquer gravação. O valor do Lightroom prevalece em todos os campos que o arquivo traz; os campos omitidos mantêm o valor do Facet. Imprime `matched=… unmatched=… changed=…`. Veja [Lightroom → Facet](INTEROP.md#lightroom--facet).
+
+**Sincronização bidirecional de metadados.** O Facet grava avaliações, rótulos de cor, palavras-chave, legendas e regiões de rostos nomeados em um sidecar `<image>.xmp` padrão que Lightroom, darktable, digiKam, immich e outros leem.
+
+- Os originais nunca são modificados, a menos que você adicione `--embed-originals` (apenas JPEG/HEIC/TIFF/PNG/DNG; o RAW nunca é tocado).
+- As palavras-chave são as tags de IA mais as suas [tags manuais](VIEWER.md#tags-manuais). Elas só são acrescentadas, a menos que `--reconcile-keywords` remova as que o Facet gravou antes; as palavras-chave de terceiros são mantidas. Veja [Manual tags and XMP keywords](INTEROP.md#tags-manuais-e-palavras-chave-xmp).
+- A incorporação e a fusão de palavras-chave exigem o **exiftool**. Sem ele, o Facet grava um sidecar XML simples.
+
+**Importação de sidecar.**
+
+- As palavras-chave importadas viram [tags manuais](INTEROP.md#tags-manuais-e-palavras-chave-xmp); não é preciso `--migrate-tags`.
+- Uma decisão do Facet (Manter, Rejeitar ou sem decisão) sem avaliação ou rótulo padrão é aplicada sem a verificação do momento do escaneamento.
+- Com `--user`, palavras-chave e GPS continuam globais. Com `--export-sidecars --user`, palavras-chave, GPS e data de captura continuam globais.
+- Como um sidecar é pesado contra edições locais: [Sidecar import preview and review conflicts](INTEROP.md#prévia-de-importação-de-sidecars-e-conflitos-de-revisão).
 
 ### Sincronização com o Immich
 
-Envie suas avaliações e favoritos do Facet para um servidor [Immich](https://immich.app/) por meio da API REST dele (unidirecional — Facet → Immich). Os ativos são resolvidos por `originalPath` através dos mapeamentos de prefixo de caminho no bloco de configuração `immich`, em uma única passagem de busca em massa.
+Envie avaliações e favoritos do Facet a um servidor [Immich](https://immich.app/) (mão única, Facet → Immich, somente API REST). Os ativos são associados por `originalPath` através dos mapeamentos de prefixo de caminho do bloco de configuração `immich`.
 
 | Comando | Descrição |
 |---------|-------------|
-| `python facet.py --immich-test` | Verifica a conectividade e a autenticação com o servidor Immich configurado (`immich.url` + `immich.api_key`, enviada como `x-api-key`) |
-| `python facet.py --immich-sync` | Envia avaliações por estrelas (1–5) e favoritos para o Immich, resolvendo os ativos por `originalPath`. Respeita `--dry-run` (resolve mas nunca grava) e `--user` (avaliações por usuário no modo multiusuário) |
-| `python facet.py --immich-sync --dry-run` | Resolve cada ativo e relata o que mudaria sem gravar |
+| `python facet.py --immich-test` | Verifica a conexão e a chave de API (`immich.url` + `immich.api_key`, enviada como `x-api-key`) |
+| `python facet.py --immich-sync` | Envia avaliações por estrelas (1–5) e favoritos; respeita `--dry-run` e `--user` |
+| `python facet.py --immich-sync --dry-run` | Informa o que mudaria sem gravar |
 
-As avaliações seguem a política segura de versão do Immich (apenas 1–5, nunca 0/−1); um álbum opcional de melhores escolhas reúne fotos acima de um limiar de avaliação. Somente REST — sem acoplamento direto ao banco de dados do Immich. Veja [Configuração — Immich Sync](CONFIGURATION.md#immich-sync) para o bloco completo.
+Apenas as avaliações 1–5 são enviadas (nunca 0/−1). Um álbum opcional de melhores escolhas reúne as fotos acima de um limiar de avaliação. Veja [Configuração — Sincronização com o Immich](CONFIGURATION.md#immich-sync).
 
 ### Planos de pilhas Immich
 
-Use `--config`, `--db`, `--user` existentes; multiusuário exige proprietário existente explícito. Prévia sem gravações nem migrações. Aplicação exige o resumo revisado.
+Aceitam `--config`, `--db` e `--user`; o modo multiusuário exige um proprietário existente. A prévia nunca grava. Aplicar exige o digest do plano revisado.
 
 | CLI | |
 |---|---|
-| `python facet.py --immich-stacks-plan import --stack-plan-out NEW_JSON` | Prévia das pilhas remotas para importar |
-| `python facet.py --immich-stacks-plan push --stack-id UUID --stack-plan-out NEW_JSON` | Prévia das pilhas locais para criar remotamente |
-| `python facet.py --immich-stacks-apply PLAN_JSON --ack-stack-plan SHA256` | Aplicar explicitamente o plano revisado |
+| `python facet.py --immich-stacks-plan import --stack-plan-out NEW_JSON` | Pré-visualiza as pilhas remotas para importação local |
+| `python facet.py --immich-stacks-plan push --stack-id UUID --stack-plan-out NEW_JSON` | Pré-visualiza as pilhas locais para criação remota |
+| `python facet.py --immich-stacks-apply PLAN_JSON --ack-stack-plan SHA256` | Aplica o plano revisado |
 
-Repita `--stack-id UUID` para limitar a origem. `--stack-plan-out NEW_JSON` cria arquivo privado (POSIX `0600`), sem sobrescrever. Limites: 1000 grupos, 1000 membros/grupo, 20000 totais, 16 MiB. Correspondências exatas podem adotar vínculos; mapas incompletos e sobreposições ignoram grupos inteiros. Pilhas existentes nunca são atualizadas; criações incertas são reconciliadas antes de repetir. Veja [permissões, conflitos e concorrência remota](IMMICH.md#importar-e-enviar-pilhas-manuais). No Windows, escolha uma pasta de saída cuja ACL restrinja o acesso à sua conta; os bits de permissões POSIX não garantem a privacidade dos ficheiros Windows.
+- Repita `--stack-id UUID` para escolher os grupos de origem.
+- `--stack-plan-out NEW_JSON` grava um novo arquivo privado (POSIX `0600`) e nunca sobrescreve um existente. No Windows, escolha uma pasta cuja ACL restrinja o acesso à sua conta.
+- Limites: 1000 grupos, 1000 membros por grupo, 20000 membros no total, 16 MiB.
+- Mapeamentos incompletos e sobreposições ignoram o grupo inteiro. Os grupos existentes nunca são atualizados.
+
+Veja [permissões, conflitos e limites de corrida remota](IMMICH.md#importar-e-enviar-pilhas-manuais).
 
 ## Recompute Operations
 
-Esses comandos atualizam métricas específicas, derivam novos dados (legendas por IA, GPS, embeddings) ou analisam o banco de dados — tudo sem reexecutar o pipeline completo de pontuação. A maioria reutiliza miniaturas/landmarks armazenados e é leve para a CPU, mas as linhas de IA/extração (por exemplo, `--generate-captions`) e as linhas de recálculo a partir da imagem são pesadas para a GPU.
+Estes comandos atualizam métricas ou derivam novos dados sem reexecutar todo o pipeline de pontuação. A maioria reutiliza miniaturas e pontos de referência armazenados e pesa pouco na CPU; as linhas de IA (como `--generate-captions`) exigem uma GPU.
 
 | Comando | Descrição |
 |---------|-------------|
-| `python facet.py --recompute-average` | Recalcula as pontuações agregadas a partir dos embeddings armazenados (re-derivável; sem snapshot do banco — reverta restaurando um snapshot de pesos e recalculando). Após atualizar da 1.20 ou anterior, execute primeiro `--recompute-silhouette` e depois este comando duas vezes: a primeira passada sobre uma biblioteca agregada pela última vez com o código antigo grava os percentis em relação aos quais normaliza, então a segunda ainda altera algumas linhas |
-| `python facet.py --recompute-category portrait` | Recalcula as pontuações apenas para uma única categoria |
-| `python facet.py --tag-untagged` | Marca apenas as fotos que ainda não têm tags, a partir dos embeddings armazenados (sem ler imagens). O mesmo trabalho que um scan faz no final; serve para preencher lacunas sem re-marcar o que já está etiquetado |
-| `python facet.py --recompute-tags` | Re-marca todas as fotos usando o modelo configurado |
-| `python facet.py --recompute-tags-vlm` | Re-marca todas as fotos usando o marcador VLM |
-| `python facet.py --detect-moments` | Rotula novas fotos com seu momento narrativo (semântico de legenda, zero-shot + suavização temporal; executa automaticamente ao final de cada escaneamento). Codifica cada nova legenda uma vez em `caption_embedding`, depois cosseno sobre vetores armazenados — o primeiro backfill completo sobre uma biblioteca existente tem GPU recomendada; adicione `--limit N` para verificar em uma amostra. Quando `narrative_moments.vlm_tiebreak.enabled` está definido (perfis 16gb/24gb), quadros de baixo posterior / baixa margem são reclassificados pelo VLM do perfil |
-| `python facet.py --recompute-moments` | Re-rotula os momentos narrativos de toda a biblioteca (re-suaviza a linha do tempo completa). Adicione `--dry-run --verbose` para visualizar os 3 principais momentos por foto sem gravar. Também respeita a reclassificação por VLM `narrative_moments.vlm_tiebreak` de quadros de baixa confiança quando habilitada (16gb/24gb) |
-| `python facet.py --discover-moments` | Propõe um vocabulário de momentos específico da biblioteca agrupando os embeddings de legenda armazenados (HDBSCAN) e nomeando cada cluster a partir de suas legendas. Grava `scoring_config.discovered.json` para revisão — nunca reescreve a configuração ativa. Execute `--detect-moments` primeiro para preencher `caption_embedding`; ajuste a granularidade com `--discover-min-cluster-size N` |
-| `python facet.py --detect-junk` | Sinaliza lixo não fotográfico (capturas de tela, documentos, recibos, memes, slides) em fotos novas/não avaliadas via CLIP zero-shot sobre os embeddings armazenados; roda automaticamente ao final de cada varredura. Fotos limpas são marcadas como `not_junk` para que reexecuções nunca as revarram; adicione `--dry-run --verbose` para pré-visualizar as pontuações por foto sem gravar |
-| `python facet.py --recompute-junk` | Reavalia `junk_kind` para a biblioteca inteira (todas as fotos com um embedding armazenado) |
-| `python facet.py --recompute-saliency` | `[GPU]` `[16gb/24gb]` Recalcula as métricas de saliência do sujeito (BiRefNet_dynamic). Uma foto cuja saliência falha (por exemplo, por falta de memória) é registrada como ERROR e não é gravada: uma linha nunca pontuada continua NULL e é selecionada novamente na próxima execução, e com `--force` uma linha que já tem saliência mantém seus valores gravados. Em CUDA, o tamanho do lote é derivado da VRAM livre. |
-| `python facet.py --recompute-composition-cpu` | Recalcula a composição, baseada em regras (CPU, qualquer perfil). Uma foto cuja miniatura não tem caixa de sujeito recebe um `power_point_score` NULL (o 5.0 neutro herdado é reescrito como NULL; uma miniatura que não pode ser decodificada mantém o seu valor) |
-| `python facet.py --recompute-composition-gpu` | `[GPU]` Recalcula a composição com SAMP-Net |
-| `python facet.py --recompute-iqa` | `[GPU]` Recalcula métricas IQA suplementares (TOPIQ IAA, NR-Face, LIQE) a partir das miniaturas armazenadas. Ativado em todos os perfis (`legacy` roda na CPU, mais lento); GPU fortemente recomendada. Preenche apenas colunas NULL. O NR-Face ignora fotos sem rosto detectado; o LIQE ignora uma foto cuja miniatura armazenada tem um lado menor abaixo de 224 px (contada no resumo, nada é gravado); uma foto que o NR-Face recusa (nenhum rosto encontrado na miniatura) é lembrada na tabela `iqa_declined` e não é repetida até a foto ser reescaneada (atualizar o pyiqa ou os pesos do NR-Face não apaga esses registros: reescaneie com `--force` ou execute `--refresh-thumbnails`); qualquer outra falha (falta de memória, erro inesperado) continua NULL e é selecionada novamente pela próxima execução. Um valor já gravado (incluindo um 5,0 neutro de uma versão anterior) nunca é substituído: limpe-o antes com `--repair-neutral-iqa`. Veja [Modelos de Qualidade Suplementares](#modelos-de-qualidade-suplementares) |
-| `python facet.py --detect-text` | Extrai o texto presente na imagem (placas, cartazes, documentos) para `ocr_text` via OCR sobre as miniaturas armazenadas, tornando-o pesquisável a partir da barra de busca da galeria. Pula fotos já avaliadas, então reexecuções leem apenas as novas. Opcional: precisa de `ocr.enabled` em `scoring_config.json` mais `pip install easyocr` — veja [Configuração — OCR](CONFIGURATION.md#ocr) |
-| `python facet.py --recompute-text` | Reexecuta o OCR em toda a biblioteca, relendo as fotos que `--detect-text` já avaliou |
-| `python facet.py --recompute-colors` | Extrai a matiz dominante + a temperatura de cor quente/fria das miniaturas (CPU, rápido) para `dominant_hue` / `color_temp` |
-| `python facet.py --recompute-form` | Recalcula as cinco métricas explicáveis de forma/cor — simetria esquerda-direita, equilíbrio visual, entropia de orientação de bordas, complexidade fractal por contagem de caixas e harmonia de cores por modelo de matiz de Matsuda — a partir das miniaturas armazenadas (CPU, sem modelo). Elas aparecem no detalhamento da crítica, nas sugestões e na dica da foto, e estão disponíveis como pesos de categoria (distribuídas com valor 0) |
-| `python facet.py --recompute-skin-tone` | Recalcula a naturalidade do tom de pele em retratos a partir das miniaturas de rosto + landmarks armazenados (croma CIELAB das bochechas vs um locus de pele por CCT, CIEDE2000; CPU, sem modelo). Apenas informativo — aparece como uma nota na crítica, sem acoplamento ao agregado |
-| `python facet.py --recompute-distortions` | Rotula cada foto com atributos de distorção prováveis (desfoque de movimento, dominante de cor, nitidez excessiva, …) por meio de prompts contrastivos zero-shot no estilo ExIQA sobre o embedding CLIP/SigLIP armazenado, depois imprime um relatório de correlação de Spearman vs `liqe_score` / `noise_sigma`. Apenas informativo (chips de aviso na crítica), sem acoplamento ao agregado |
-| `python facet.py --upgrade-db` | Migra o esquema, repara as miniaturas HEIF deitadas pela dupla transposição do pillow-heif 1.6 (reerguidas no lugar, dimensões trocadas de volta, rostos guardados girados junto, pontuações de sujeito limpas para a etapa de saliência) e executa a cadeia completa de preenchimento: extract-gps, detect-duplicates, recompute-iqa, saliency, composition-cpu, burst, blinks, eyes-expression, face-signals, average. Idempotente; pula etapas pesadas como legendagem.|
-| `python facet.py --recompute-blinks` | Recalcula a detecção de piscadas a partir dos landmarks armazenados (CPU, rápido) |
-| `python facet.py --recompute-eyes-expression` | Recalcula as pontuações de olhos-abertos + expressão a partir dos landmarks armazenados (CPU, rápido) |
-| `python facet.py --recompute-face-signals` | Preenche retroativamente as pontuações de olhos-abertos + sorriso por rosto a partir dos landmarks de 106 pontos armazenados (CPU, rápido; sem modelo). Também roda como uma etapa de `--upgrade-db` |
-| `python facet.py --recompute-burst` | Recalcula os grupos de detecção de rajada (grava apenas as linhas cujo estado de rajada mudou e regista `Burst state: N rows changed`) |
-| `python facet.py --detect-sequences` | Deteta séries multi-fotograma deliberadas: primeiro os brackets de exposição a partir dos EXIF armazenados, depois as panorâmicas a partir da geometria das miniaturas, e coloca o fotograma principal de cada rajada na exposição base. Corre no fim de cada análise e como passo de `--upgrade-db`. Pré-requisito para as granularidades de triagem **Bracketings de exposição** / **Panorâmicas** / **Panorâmicas HDR** do visualizador e para `hide_brackets` / `hide_panoramas` terem algo para filtrar — nenhum dos dois faz nada até uma série ser etiquetada. Como cada execução reetiqueta a biblioteca inteira do zero, executá-lo de novo (ou `--detect-panoramas`) é também o que rederiva o fotograma representativo de uma série depois de o anterior ser eliminado pela triagem |
-| `python facet.py --detect-panoramas` | Deteta panorâmicas comparando geometricamente as miniaturas armazenadas (biblioteca completa, CPU, sem descodificar imagens). Corre primeiro a passagem de brackets, tal como `--detect-sequences`: uma panorâmica HDR está bracketada em cada posição, pelo que ambas têm de andar a par. Mesmo pré-requisito que `--detect-sequences` para as granularidades de triagem de panorâmica/panorâmica HDR e para a alternância `hide_panoramas` |
-| `python facet.py --detect-duplicates` | Detecta fotos duplicadas via pHash (grava apenas as linhas cujo estado de duplicata mudou e regista `Duplicate state: N rows changed`; uma segunda execução indica 0) |
-| `python facet.py --sweep-dedup-thresholds [labels.json]` | Avalia limiares de cosseno para quase-duplicatas (tabela de precisão/revocação com rótulos; caso contrário, distribuição de cosseno dos candidatos) |
-| `python facet.py --generate-captions` | `[GPU]` `[16gb/24gb]` Gera legendas por IA para as fotos usando VLM. Quando `narrative_moments.caption_min_confidence > 0`, ignora fotos sem rótulo / `other` / abaixo do limiar (o mesmo portão se aplica ao endpoint de legenda sob demanda) |
-| `python facet.py --translate-captions` | Traduz as legendas em inglês para o idioma de destino configurado (CPU, MarianMT) |
-| `python facet.py --extract-gps` | Extrai coordenadas GPS dos dados EXIF para colunas do banco de dados. As fotos cuja localização foi definida no visualizador são ignoradas. |
-| `python facet.py --rescan-gps` | Re-extrai as coordenadas GPS do EXIF para todas as fotos (sobrescreve as existentes). As fotos cuja localização foi definida no visualizador são ignoradas. |
-| `python facet.py --recompute-embeddings` | Recalcula os embeddings CLIP/SigLIP para todas as fotos (necessário após troca de modelo) |
-| `python facet.py --score-topiq` | Recalcula `topiq_score` com o TOPIQ para cada foto que tenha uma miniatura armazenada (requer GPU). Não há filtro de NULL, então os valores existentes são sobrescritos; uma foto que o TOPIQ não consegue pontuar mantém o valor armazenado |
-| `python facet.py --backfill-focal-35mm` | Preenche retroativamente a distância focal equivalente a 35mm a partir do EXIF para fotos que não a têm |
-| `python facet.py --backfill-clipping` | Deriva as percentagens de recorte por canal a partir dos histogramas armazenados. Apenas base de dados (sem descodificar imagens) e retomável; as fotos cujo histograma é anterior ao formato RGB ficam desconhecidas (NULL) |
-| `python facet.py --recompute-silhouette` | Rederiva `is_silhouette` com a regra baseada no rosto (veja [SCORING.md](SCORING.md)) a partir das miniaturas e das caixas de rosto armazenadas. Somente banco de dados (sem decodificar o original), retomável (commit em lotes) e reescreve apenas essa coluna; respeita o `--dry-run` global (informa o que mudaria, não grava nada). O relatório agrupa as fotos conforme o alinhamento das suas caixas de rosto armazenadas com a miniatura (`exact`, `scaled`, `count_mismatch`, `other`; a correspondência usada em `count_mismatch` não foi validada). Uma foto cujas caixas de rosto ele não sabe situar na miniatura é gravada como 0 (não é silhueta), como uma foto sem rostos. Fotos com `face_count` NULL, ou com rostos mas sem miniatura armazenada, mantêm o sinalizador e são contadas como `skipped_face_count_null` / `skipped_no_thumbnail`. Depois execute `--recompute-average` para que pontuações e categorias sigam o novo sinalizador |
-| `python facet.py --repair-int-columns` | Repara as colunas INTEGER de `photos` cujo valor armazenado é um REAL — a afinidade do SQLite não é uma restrição, pelo que um ISO fracionário escrito por uma ferramenta externa fica guardado como REAL. Arredonda cada valor no lugar (um valor que o SQLite não consegue guardar como inteiro — não finito, ou além de 2^53 — passa a NULL) e não toca em mais nada. Apenas base de dados (sem descodificar imagens). A API arredonda na leitura as linhas não reparadas, pelo que a galeria funciona sem isto; os filtros e as ordenações comparam o valor realmente guardado, pelo que vale a pena executá-lo para que uma foto mostrada como ISO 63 não fique de fora de um intervalo ISO |
-| `python facet.py --repair-neutral-iqa` | Apaga o 5,0 neutro que as versões anteriores à 1.20 gravavam em `aesthetic_iaa`, `face_quality_iqa` e `liqe_score` para fotos que um modelo não conseguiu pontuar: todo valor exatamente igual a 5,0 nessas três colunas passa a NULL, numa única transação, e as faixas da galeria em cache são descartadas. Imprime a contagem por coluna. Não toca em `aesthetic`, `topiq_score`, `aesthetic_v25` nem `quality_score` (ali um 5,00 genuíno não se distingue do falso, e `aesthetic` é a coluna CLIP+MLP em `legacy`/`8gb`). Um valor genuíno que arredonda exatamente para 5,00 também é apagado e depois preenchido de novo por `--recompute-iqa` a partir da miniatura armazenada, por isso o novo valor pode diferir ligeiramente. Execute em seguida `--recompute-iqa` para preencher as colunas e depois `--recompute-average`; a reparação em si não move nenhum agregado, porque um NULL pontua como neutro. Um visualizador em execução serve as novas faixas de filtro a partir do pedido seguinte, sem reinício; uma página da galeria já aberta mantém as antigas, que ainda contam os valores 5,0 apagados, até ser recarregada. Apenas base de dados (sem descodificar imagens); recusado com `--dry-run` (código de saída 2); não faz parte de nenhuma cadeia de `--upgrade-db` |
-| `python facet.py --compute-recommendations` | Analisa o banco de dados, exibe um resumo de pontuação |
-| `python facet.py --compute-recommendations --verbose` | Exibe estatísticas detalhadas |
+| `python facet.py --recompute-average` | Recalcula pontuações agregadas e categorias a partir das métricas armazenadas (nenhuma imagem é relida) |
+| `python facet.py --recompute-category portrait` | Recalcula as pontuações de uma única categoria |
+| `python facet.py --tag-untagged` | Marca apenas as fotos ainda sem tags, a partir dos embeddings armazenados |
+| `python facet.py --recompute-tags` | Remarca todas as fotos com o modelo configurado |
+| `python facet.py --recompute-tags-vlm` | Remarca todas as fotos com o marcador VLM |
+| `python facet.py --detect-moments` | Rotula as fotos novas com o seu momento narrativo (roda após cada escaneamento) |
+| `python facet.py --recompute-moments` | Rotula de novo os momentos narrativos de toda a biblioteca |
+| `python facet.py --discover-moments` | Propõe um vocabulário de momentos a partir das suas legendas em `scoring_config.discovered.json` |
+| `python facet.py --detect-junk` | Sinaliza capturas de tela, documentos, recibos, memes e slides (roda após cada escaneamento) |
+| `python facet.py --recompute-junk` | Reavalia `junk_kind` de toda a biblioteca |
+| `python facet.py --recompute-saliency` | `[GPU]` Recalcula a saliência do sujeito a partir das miniaturas armazenadas; `--force` refaz tudo |
+| `python facet.py --recompute-composition-cpu` | Recalcula a composição, baseada em regras (CPU, qualquer perfil) |
+| `python facet.py --recompute-composition-gpu` | `[GPU]` Recalcula a composição com o SAMP-Net |
+| `python facet.py --recompute-iqa` | `[GPU]` Preenche as pontuações TOPIQ IAA, NR-Face e LIQE ausentes a partir das miniaturas armazenadas. Roda em todos os perfis; na CPU (`legacy`) é bem mais lento |
+| `python facet.py --detect-text` | Lê o texto presente nas imagens em `ocr_text` para que a busca o encontre (opcional, veja a nota) |
+| `python facet.py --recompute-text` | Reexecuta o OCR em toda a biblioteca |
+| `python facet.py --recompute-colors` | Extrai o matiz dominante e a temperatura quente/fria em `dominant_hue` / `color_temp` (CPU, rápido) |
+| `python facet.py --recompute-form` | Recalcula simetria, equilíbrio, entropia de bordas, complexidade fractal e harmonia de cores (CPU) |
+| `python facet.py --recompute-skin-tone` | Recalcula a naturalidade do tom de pele em retratos (CPU; apenas nota informativa da crítica) |
+| `python facet.py --recompute-distortions` | Rotula distorções prováveis (desfoque de movimento, dominante de cor, …) e as correlaciona com `liqe_score` / `noise_sigma` (informativo) |
+| `python facet.py --upgrade-db` | Migra o esquema e executa toda a cadeia de preenchimento retroativo (veja a nota) |
+| `python facet.py --recompute-blinks` | Recalcula a detecção de piscadas a partir dos pontos de referência armazenados (CPU, rápido) |
+| `python facet.py --recompute-eyes-expression` | Recalcula as pontuações de olhos abertos + expressão a partir dos pontos de referência armazenados (CPU, rápido) |
+| `python facet.py --recompute-face-signals` | Preenche as pontuações de olhos abertos + sorriso por rosto a partir dos pontos de referência armazenados (CPU, rápido) |
+| `python facet.py --recompute-burst` | Recalcula os grupos de rajada (registra `Burst state: N rows changed`) |
+| `python facet.py --detect-sequences` | Detecta bracketings de exposição e panorâmicas (roda após cada escaneamento; veja a nota) |
+| `python facet.py --detect-panoramas` | Detecta conjuntos de panorâmica a partir das miniaturas armazenadas (executa antes o passo de bracketing; CPU) |
+| `python facet.py --detect-duplicates` | Detecta fotos duplicadas por pHash (registra `Duplicate state: N rows changed`) |
+| `python facet.py --sweep-dedup-thresholds [labels.json]` | Avalia limiares de cosseno de quase-duplicatas (precisão/revocação com rótulos) |
+| `python facet.py --generate-captions` | `[GPU]` `[16gb/24gb]` Gera legendas de IA com o VLM |
+| `python facet.py --translate-captions` | Traduz as legendas em inglês para o idioma configurado (CPU, MarianMT) |
+| `python facet.py --extract-gps` | Copia o GPS do EXIF para o banco de dados; ignora localizações definidas no visualizador |
+| `python facet.py --rescan-gps` | Reextrai o GPS do EXIF de todas as fotos (sobrescreve); ignora localizações definidas no visualizador |
+| `python facet.py --recompute-embeddings` | Recalcula os embeddings CLIP/SigLIP de todas as fotos (necessário após trocar de modelo) |
+| `python facet.py --score-topiq` | `[GPU]` Repontua `topiq_score` de toda foto com miniatura (sobrescreve) |
+| `python facet.py --backfill-focal-35mm` | Preenche a distância focal equivalente a 35 mm a partir do EXIF onde faltar |
+| `python facet.py --backfill-clipping` | Deriva as porcentagens de clipping por canal a partir dos histogramas armazenados (retomável) |
+| `python facet.py --recompute-silhouette` | Rederiva `is_silhouette` com a regra que considera rostos (veja a nota) |
+| `python facet.py --repair-int-columns` | Arredonda valores fracionários que um gravador EXIF externo salvou em colunas inteiras (como ISO) |
+| `python facet.py --repair-neutral-iqa` | Limpa as falsas pontuações IQA neutras de 5.0 armazenadas antes da 1.20 (veja a nota) |
+| `python facet.py --compute-recommendations` | Analisa o banco de dados e mostra um resumo da pontuação |
+| `python facet.py --compute-recommendations --verbose` | Mostra estatísticas detalhadas |
 | `python facet.py --compute-recommendations --apply-recommendations` | Aplica automaticamente as correções de pontuação |
-| `python facet.py --compute-recommendations --simulate` | Visualiza as mudanças projetadas |
+| `python facet.py --compute-recommendations --simulate` | Pré-visualiza as alterações projetadas |
 
-`--upgrade-db` volta a tentar os ficheiros HEIF cujos cabeçalhos ou miniaturas das fotografias não puderam ser lidos ou reparados. Enquanto algum candidato falhar, mantém o último progresso concluído, pelo que os ficheiros horizontais legíveis podem ser verificados novamente. Os retratos já reparados não são rodados uma segunda vez. Ao atualizar de versões anteriores da reparação, os candidatos restantes são verificados de novo; limpar a cache de estatísticas também reinicia esta verificação. Os ficheiros de imagem originais nunca são alterados.
+**`--recompute-average`** não salva nenhum instantâneo: para reverter, restaure um snapshot de pesos e recalcule. Depois de atualizar da 1.20 ou anterior, execute primeiro `--recompute-silhouette` e depois `--recompute-average` duas vezes. A primeira passagem armazena novos percentis, então a segunda ainda altera algumas linhas.
+
+**Momentos.**
+
+- `--detect-moments` codifica cada legenda nova uma vez em `caption_embedding`. O primeiro preenchimento de uma biblioteca existente é melhor em uma GPU; acrescente `--limit N` para experimentar em uma amostra.
+- Acrescente `--dry-run --verbose` a `--recompute-moments` (ou `--detect-junk`) para pré-visualizar sem gravar.
+- `narrative_moments.vlm_tiebreak` (16gb/24gb): quando `narrative_moments.vlm_tiebreak.enabled` está definido, o VLM do perfil reclassifica os quadros de baixa confiança.
+- `--discover-moments` agrupa os embeddings de legenda armazenados e dá nome a cada grupo. Nunca reescreve a configuração ativa. Execute antes `--detect-moments`; ajuste com `--discover-min-cluster-size N`.
+- `--generate-captions` ignora fotos sem rótulo, `other` e de baixa confiança quando `narrative_moments.caption_min_confidence > 0`.
+
+**Lixo.** As fotos limpas são marcadas `not_junk`, então as execuções seguintes verificam apenas as novas.
+
+**`--detect-text`** é opcional: exige `ocr.enabled` no `scoring_config.json` e `pip install easyocr`. Veja [Configuração — OCR](CONFIGURATION.md#ocr).
+
+**`--detect-sequences`** encontra bracketings de exposição pelo EXIF, depois panorâmicas pela geometria das miniaturas, e move o líder de cada rajada para a sua exposição base. Também roda em `--upgrade-db`. As visões de triagem **Bracketings de exposição** / **Panoramas** / **Panoramas HDR** do visualizador e os alternadores `hide_brackets` / `hide_panoramas` não fazem nada até ele rodar. Cada execução rotula de novo toda a biblioteca, então rodá-lo de novo (ou `--detect-panoramas`) escolhe um novo quadro representativo depois que você faz a triagem do antigo.
+
+**`--upgrade-db`** migra o esquema e executa: extract-gps, detect-duplicates, recompute-iqa, saliency, composition-cpu, burst, blinks, eyes-expression, face-signals, average. É seguro rodar de novo e pula passos pesados como a legendagem. Também endireita as miniaturas HEIF deixadas de lado pelo pillow-heif 1.6, com os seus rostos; os arquivos originais nunca são gravados. Os arquivos HEIF que ele não consegue ler são tentados de novo na execução seguinte.
+
+**`--recompute-silhouette`** lê apenas o banco de dados, faz commit por lote e respeita `--dry-run`.
+
+- O relatório agrupa as fotos conforme a correspondência das caixas de rostos com a miniatura: `exact`, `scaled`, `count_mismatch` (correspondência não validada), `other`.
+- Uma foto sem rostos, ou cujas caixas não podem ser posicionadas, é definida como 0.
+- Fotos com `face_count` NULL, ou com rostos mas sem miniatura, são deixadas em paz (`skipped_face_count_null` / `skipped_no_thumbnail`).
+- Execute `--recompute-average` depois. Veja [SCORING.md](SCORING.md).
+
+**`--repair-int-columns`** lê apenas o banco de dados. A galeria os mostra corretamente sem ele, mas filtros de intervalo e ordenações usam o valor armazenado, então uma foto mostrada como ISO 63 pode ser perdida. Valores que não podem ser inteiros viram NULL.
+
+**`--repair-neutral-iqa`** define como NULL todo valor exatamente 5.0 em `aesthetic_iaa`, `face_quality_iqa` e `liqe_score`, e imprime a contagem por coluna.
+
+- Deixa em paz `aesthetic`, `topiq_score`, `aesthetic_v25` e `quality_score`.
+- Uma pontuação real de exatamente 5.00 também é limpa; `--recompute-iqa` a preenche de novo, possivelmente um pouco diferente.
+- Depois, execute `--recompute-iqa` e `--recompute-average`.
+- Recusado com `--dry-run` (código de saída 2). Não faz parte de `--upgrade-db`. Recarregue as páginas abertas da galeria para ver os novos intervalos de filtro.
 
 ### Modelos de Qualidade Suplementares
 
-Três modelos PyIQA adicionais pontuam além da pontuação estética primária do TOPIQ. Eles compartilham a VRAM com o TOPIQ e rodam como parte do pipeline multi-passo padrão.
+Três modelos PyIQA pontuam além da estética principal do TOPIQ. Compartilham VRAM com o TOPIQ e rodam no escaneamento multi-passo padrão.
 
-- **TOPIQ IAA** (`--pass quality-iaa`): mérito estético artístico treinado com AVA, separado da qualidade técnica. Armazenado como `aesthetic_iaa`.
-- **TOPIQ NR-Face** (`--pass quality-face`): avaliação de qualidade da região do rosto. Armazenado como `face_quality_iqa`.
-- **LIQE** (`--pass quality-liqe`): pontuação de qualidade mais um diagnóstico de tipo de distorção (por exemplo, desfoque de movimento, superexposição, ruído). Armazenado como `liqe_score`.
+- **TOPIQ IAA** (`--pass quality-iaa`): mérito artístico treinado no AVA, separado da qualidade técnica. Armazenado como `aesthetic_iaa`.
+- **TOPIQ NR-Face** (`--pass quality-face`): qualidade da região do rosto. Armazenado como `face_quality_iqa`.
+- **LIQE** (`--pass quality-liqe`): pontuação de qualidade mais um diagnóstico de distorção (desfoque de movimento, superexposição, ruído). Armazenado como `liqe_score`.
 
-Uma foto que um modelo não consegue pontuar (para o NR-Face, nenhum rosto encontrado pelo seu detector; para o LIQE, um lado menor abaixo de 224 px) grava NULL nessa coluna, não um 5,0 neutro; antes disso, um erro de falta de memória da GPU é repetido com metade do tamanho do lote, até chegar a uma única imagem. `--recompute-iqa` preenche apenas colunas NULL, ignora o NR-Face em fotos com `face_count` 0 e não executa de novo um modelo nos dois casos esperados: uma miniatura cujo lado menor está abaixo de 224 px depois de limitar o lado maior a 1024 px é ignorada para o LIQE, avaliada pelo cabeçalho da imagem sem decodificá-la, e contada no resumo (nada é gravado, então cada execução confere o cabeçalho de novo); uma foto que o NR-Face recusa («No face detected» na miniatura) é registrada na tabela `iqa_declined` e não é repetida até que uma nova varredura que reescreve a foto (por exemplo com `--force`), `--refresh-thumbnails` ou `--fix-thumbnail-rotation` invalide o registro. Qualquer outra falha (falta de memória da GPU, um erro inesperado) não é gravada em lugar nenhum e a foto é selecionada novamente pela próxima execução. Ele nunca substitui um valor já gravado, incluindo um 5,0 neutro escrito por uma versão anterior: limpe-o com `--repair-neutral-iqa` e execute depois `--recompute-iqa` e `--recompute-average`, ou refaça a varredura da foto (por exemplo com `--force`). Com `--pass quality`, `quality-iaa`, `quality-face` e `quality-liqe`, uma foto cujo modelo falha mantém o valor gravado. Uma varredura completa registra em `scan_failures` uma foto cujo modelo TOPIQ principal falha (tente de novo com `--retry-failed`); `--pass quality` não registra nada. Veja [Dimensões Suplementares de IQA](SCORING.md#dimensões-suplementares-de-iqa).
+Quando um modelo não consegue pontuar uma foto:
+
+- Armazena NULL, não um 5.0 neutro. Um erro de falta de memória da GPU é tentado de novo primeiro com metade do tamanho do lote, até uma imagem.
+- O LIQE ignora miniaturas cujo lado menor tem menos de 224 px (após limitar o lado maior a 1024 px).
+- O NR-Face ignora fotos com `face_count` 0. Uma foto em que ele não encontra rosto é lembrada em `iqa_declined` até um novo escaneamento (`--force`), `--refresh-thumbnails` ou `--fix-thumbnail-rotation`. Atualizar o pyiqa não a limpa.
+- Outras falhas não são armazenadas; o próximo `--recompute-iqa` tenta de novo.
+- Em `--pass quality`, `quality-iaa`, `quality-face` e `quality-liqe`, uma foto que falha mantém o valor armazenado.
+- Um escaneamento completo registra uma foto cujo modelo TOPIQ falha, para `--retry-failed`; `--pass quality` não.
+
+`--recompute-iqa` preenche apenas colunas NULL e nunca substitui um valor armazenado, inclusive um 5.0 neutro de uma versão anterior. Limpe-os com `--repair-neutral-iqa`, depois execute `--recompute-iqa` e `--recompute-average`, ou reescaneie com `--force`. Veja [Supplementary IQA Dimensions](SCORING.md#dimensões-suplementares-de-iqa).
 
 ### Benchmarks e pontuações suplementares
 
 | Comando | Descrição |
 |---------|-------------|
-| `python scripts/compute_aesthetic_clip.py --db <path>` | Preenche a coluna `aesthetic_clip` projetando os embeddings CLIP/SigLIP em cache sobre um eixo estético derivado de texto. Zero inferência de imagem adicional. Não faz parte do `aggregate` padrão. Veja [docs/SCORING.md](SCORING.md#supplementary-signals-not-in-default-aggregate). |
-| `python scripts/benchmark_aesthetic.py --db <path> --ava AVA.txt --photo-dir <dir>` | Calcula SRCC + PLCC em relação à referência de pontuação de opinião média (mean-opinion-score) do AVA para cada coluna de pontuação preenchida no banco. Útil ao adicionar ou ajustar uma variante de modelo. |
+| `python scripts/compute_aesthetic_clip.py --db <path>` | Preenche `aesthetic_clip` a partir dos embeddings em cache (sem inferência de imagem; fora do `aggregate` padrão). Veja [SCORING.md](SCORING.md#sinais-suplementares-não-no-agregado-padrão) |
+| `python scripts/benchmark_aesthetic.py --db <path> --ava AVA.txt --photo-dir <dir>` | Calcula SRCC + PLCC contra a verdade de referência do AVA para toda coluna de pontuação |
 
 ### Saliência do Sujeito
 
-`--pass saliency` e `--recompute-saliency` usam o BiRefNet-dynamic (`ZhengPeng7/BiRefNet_dynamic`, via `transformers`) para gerar uma máscara binária do sujeito e então derivar quatro métricas:
+`--pass saliency` e `--recompute-saliency` usam o BiRefNet-dynamic (`ZhengPeng7/BiRefNet_dynamic`, via `transformers`, ~3 GB de VRAM) para encontrar o sujeito e então derivam quatro métricas:
 
-- **Nitidez do Sujeito**: variância do Laplaciano na região do sujeito vs fundo — indica se o sujeito está em foco.
-- **Proeminência do Sujeito**: área do sujeito / área do quadro — alta para um sujeito dominante (por exemplo, macro).
-- **Posicionamento do Sujeito**: pontuação de regra dos terços para o centroide do sujeito.
-- **Separação do Fundo**: diferença de gradiente de borda entre o contorno do sujeito e o fundo — qualidade do bokeh.
+- **Nitidez do Sujeito**: o sujeito está em foco (variância do Laplaciano, sujeito vs fundo).
+- **Proeminência do Sujeito**: área do sujeito / área do quadro. Alta para um sujeito dominante (por exemplo, macro).
+- **Posicionamento do Sujeito**: pontuação da regra dos terços para o centroide do sujeito.
+- **Separação do Fundo**: contraste de bordas entre sujeito e fundo (qualidade do bokeh).
 
-Requer `transformers` (~3 GB de VRAM). Em CUDA, o tamanho do lote é derivado da VRAM livre (cerca de 2,4 GiB por imagem a 1024 px, entre 1 e 8 imagens) e é reduzido à metade após um erro de falta de memória, até chegar a uma única imagem. Uma foto cuja saliência ainda assim falha é registrada como ERROR e não grava nenhum valor: ela continua NULL se nunca foi pontuada (e pontua como neutra no agregado, como as fotos varridas antes de a saliência existir), com `--recompute-saliency` e `--pass saliency` mantém seus valores gravados se já tinha saliência (uma nova varredura completa, por exemplo com `--force`, grava NULL para ela, como para uma foto nunca pontuada), e `--recompute-saliency` a seleciona novamente. Veja [Dimensões de Saliência do Sujeito](SCORING.md#dimensões-de-saliência-do-sujeito).
+A saliência roda em todos os perfis; `legacy` a roda na CPU, mais lento. `--recompute-saliency` funciona com o volume da biblioteca offline e é retomável. Em CUDA, o tamanho do lote acompanha a VRAM livre (cerca de 2,4 GiB por imagem a 1024 px, 1 a 8 imagens) e cai pela metade após um erro de falta de memória.
 
-Uma foto sem sujeito detectável armazena NULL em nitidez do sujeito, posicionamento do sujeito e separação do fundo (e, desde a passada de composição, em `power_point_score` quando não há caixa de sujeito), proeminência 0.0 e um `subject_bbox` NULL; versões anteriores armazenavam um 5.0 neutro. As linhas existentes mantêm esse 5.0 até que `--recompute-saliency` e `--recompute-composition-cpu` as reescrevam. `--recompute-saliency` seleciona uma foto cuja `subject_prominence` nunca foi gravada — nunca pontuada, ou uma execução com falha — e uma pontuada antes de a coluna `subject_bbox` existir (proeminência positiva ainda sem caixa), além de uma foto sem sujeito que ainda tem o 5.0 neutro de uma versão anterior, que uma execução reescreve; uma foto sem sujeito é um resultado final e não é medida de novo nas execuções seguintes. Uma métrica NULL ainda pontua como neutra no agregado; veja [SCORING.md](SCORING.md).
+- **Uma foto com falha** é registrada como ERROR e nada é gravado. Uma foto nunca pontuada continua NULL e é pega pelo próximo `--recompute-saliency`; uma que já tinha saliência mantém os seus valores, mesmo com `--recompute-saliency --force`. Um novo escaneamento completo (por exemplo, `python facet.py --force`) grava NULL para ela.
+- **Uma foto sem sujeito** grava nitidez, posicionamento e separação NULL, proeminência 0.0 e `subject_bbox` NULL (e `power_point_score` NULL, do passo de composição). Isso é definitivo; não é medido de novo.
+- **Linhas antigas** gravavam um 5.0 neutro. `--recompute-saliency` e `--recompute-composition-cpu` as reescrevem. `--recompute-saliency` também pega fotos pontuadas antes de `subject_bbox` existir.
+- Uma métrica NULL pontua neutro no agregado. Veja [Subject Saliency Dimensions](SCORING.md#dimensões-de-saliência-do-sujeito).
 
 ### Modelos de Marcação
 
-O modelo de marcação é selecionado por perfil de VRAM:
+O modelo de marcação depende do perfil de VRAM:
 
 | Perfil | Modelo | Como funciona |
 |---------|-------|-------------|
-| `legacy` | Similaridade CLIP | Similaridade de cosseno entre o embedding da imagem e os embeddings de texto das tags. Sem carga de modelo extra. |
+| `legacy` | Similaridade CLIP | Similaridade de cosseno entre os embeddings da imagem e do texto das tags. Nenhum modelo extra. |
 | `8gb` | Similaridade CLIP | Igual ao legacy, sobre os embeddings CLIP ViT-L-14 armazenados. |
-| `16gb` | Qwen3.5-2B | Modelo multimodal para marcação semântica de cenas. |
+| `16gb` | Qwen3.5-2B | Modelo multimodal para marcação de cenas. |
 | `24gb` | Qwen3.5-4B | Modelo multimodal maior. |
 
-Todos os marcadores mapeiam a saída para o vocabulário de tags configurado. Use `--recompute-tags` para re-marcar com o modelo padrão do perfil, ou `--recompute-tags-vlm` para re-marcação baseada em VLM.
+Todos os marcadores mapeiam a sua saída para o vocabulário de tags configurado. Use `--recompute-tags` para remarcar com o modelo do perfil, ou `--recompute-tags-vlm` para o VLM.
 
-**Quando as tags são gravadas.** Nos perfis de similaridade CLIP (`legacy`/`8gb`, e `16gb`/`24gb` quando a passada do tagger VLM não está agendada) uma varredura multipassada etiqueta durante a passada de embeddings, então a categoria e o agregado da varredura já veem as tags; a etapa de tagging pós-varredura é apenas um recurso para as fotos ainda sem tags. Uma execução com um único `--pass` (por exemplo `--pass embeddings`) não grava tags, e `--pass tags` em um perfil CLIP continua parando e apontando para `--recompute-tags`. As linhas existentes mantêm a categoria até `--recompute-average`.
+**Quando as tags são gravadas.** Nos perfis de similaridade CLIP (`legacy`/`8gb`, e `16gb`/`24gb` quando o passo VLM não está agendado), um escaneamento multi-passo marca durante o passo de embeddings, então a categoria e o agregado do escaneamento já as usam. Uma execução com um único `--pass` (por exemplo `--pass embeddings`) não grava tags. `--pass tags` em um perfil CLIP para e aponta para `--recompute-tags`. As linhas existentes mantêm a categoria até `--recompute-average`.
 
 ### Modelos de Embedding
 
-Dois modelos de embedding disponíveis, selecionados por perfil de VRAM via `clip_config`:
+Dois modelos de embedding, selecionados por perfil de VRAM via `clip_config`:
 
-| Config | Modelo | Dimensões | Usado Por |
+| Config | Modelo | Dimensões | Usado por |
 |--------|-------|-----------|---------|
-| `clip` | SigLIP 2 NaFlex SO400M | 1152 | perfis 16gb, 24gb |
-| `clip_legacy` | CLIP ViT-L-14 | 768 | perfis legacy, 8gb |
+| `clip` | SigLIP 2 NaFlex SO400M | 1152 | Perfis 16gb, 24gb |
+| `clip_legacy` | CLIP ViT-L-14 | 768 | Perfis legacy, 8gb |
 
-Os embeddings impulsionam a marcação semântica, a detecção de duplicatas, a busca por fotos semelhantes e a estética CLIP+MLP (legacy/8gb). Trocar de modelo requer recalcular os embeddings de todas as fotos (`--force`, `--pass embeddings` ou `--recompute-embeddings`).
+Os embeddings alimentam a marcação, a detecção de duplicatas, a busca de fotos semelhantes e a estética CLIP+MLP (legacy/8gb). Trocar de modelo exige recalcular os embeddings de todas as fotos (`--force`, `--pass embeddings` ou `--recompute-embeddings`).
 
 ## Face Recognition
 
 | Comando | Descrição |
 |---------|-------------|
-| `python facet.py --extract-faces-gpu-incremental` | Extrai rostos para novas fotos (GPU, paralelo) |
-| `python facet.py --extract-faces-gpu-force` | Apaga todos os rostos e re-extrai (GPU; extrator permissivo no modo comercial; as pessoas com nome são preservadas) |
-| `python facet.py --cluster-faces-incremental` | Clustering HDBSCAN, preserva todas as pessoas (CPU) |
-| `python facet.py --cluster-faces-incremental-named` | Clustering, preserva apenas as pessoas nomeadas (CPU) |
-| `python facet.py --cluster-faces-force` | Re-clustering completo, apaga todas as pessoas (CPU) |
-| `python facet.py --suggest-person-merges` | Sugere possíveis fusões de pessoas |
+| `python facet.py --extract-faces-gpu-incremental` | Extrai rostos das fotos novas (GPU, paralelo) |
+| `python facet.py --extract-faces-gpu-force` | Exclui todos os rostos e reextrai (GPU; as pessoas nomeadas são mantidas; extrator permissivo no modo comercial) |
+| `python facet.py --cluster-faces-incremental` | Agrupamento HDBSCAN, mantém todas as pessoas (CPU) |
+| `python facet.py --cluster-faces-incremental-named` | Agrupamento, mantém apenas as pessoas nomeadas (CPU) |
+| `python facet.py --cluster-faces-force` | Reagrupamento completo, exclui todas as pessoas (CPU) |
+| `python facet.py --suggest-person-merges` | Sugere possíveis mesclagens de pessoas |
 | `python facet.py --suggest-person-merges --merge-threshold 0.7` | Usa um limiar mais rigoroso |
-| `python facet.py --refill-face-thumbnails-incremental` | Gera miniaturas ausentes (CPU, paralelo) |
-| `python facet.py --refill-face-thumbnails-force` | Regenera TODAS as miniaturas (CPU, paralelo) |
+| `python facet.py --refill-face-thumbnails-incremental` | Gera as miniaturas de rostos que faltam (CPU, paralelo) |
+| `python facet.py --refill-face-thumbnails-force` | Regenera TODAS as miniaturas de rostos (CPU, paralelo) |
 
 ## Thumbnail Management
 
 | Comando | Descrição |
 |---------|-------------|
-| `python facet.py --fix-thumbnail-rotation` | Corrige a rotação das miniaturas armazenadas usando a orientação EXIF |
-| `python facet.py --refresh-thumbnails` | Reconstrói as miniaturas RAW a partir da pré-visualização incorporada pela câmera |
-| `python facet.py --refresh-thumbnails --refresh-thumbnails-workers 16` | O mesmo, com mais leituras em paralelo |
+| `python facet.py --fix-thumbnail-rotation` | Gira as miniaturas armazenadas para coincidir com a orientação EXIF |
+| `python facet.py --refresh-thumbnails` | Reconstrói as miniaturas RAW a partir da pré-visualização embutida na câmera |
+| `python facet.py --refresh-thumbnails --refresh-thumbnails-workers 16` | Igual, com mais leituras em paralelo |
 
-Lê a orientação EXIF dos arquivos originais e gira os bytes da miniatura armazenada; para fotos processadas antes de existir o tratamento de EXIF. Lê apenas o cabeçalho EXIF e a miniatura armazenada, não as imagens completas.
+**`--fix-thumbnail-rotation`** é para fotos processadas antes de a orientação EXIF ser tratada. Lê apenas o cabeçalho EXIF e a miniatura armazenada.
 
-`--refresh-thumbnails` renderiza novamente a miniatura armazenada de cada foto RAW através do perfil de exibição (pré-visualização da câmera primeiro, demosaicagem como alternativa — veja [CONFIGURATION.md](CONFIGURATION.md#raw-decode)). É a migração para uma biblioteca varrida antes de esse perfil existir: as miniaturas escritas por uma varredura mais antiga carregam o brilho automático por fotograma do LibRaw, que achata as diferenças de exposição entre os fotogramas de um bracket de exposição. Nenhum modelo é carregado e nenhuma coluna de pontuação é tocada — apenas `photos.thumbnail` é reescrita.
+**`--refresh-thumbnails`** renderiza de novo a miniatura armazenada de toda foto RAW pelo perfil de exibição (primeiro a pré-visualização da câmera, demosaico como alternativa; veja [CONFIGURATION.md](CONFIGURATION.md#decodificação-raw)). Use-o em uma biblioteca escaneada antes de esse perfil existir: as miniaturas antigas achatam as diferenças de exposição entre quadros de bracketing. Não carrega nenhum modelo e não altera nenhuma pontuação.
 
-O comando é limitado pela taxa de transferência do armazenamento em vez da CPU, então seu custo escala com o tamanho da biblioteca e com a velocidade do disco ou do ponto de montagem de rede da biblioteca, não com o número de núcleos da máquina. `--refresh-thumbnails-workers` (padrão 8) define quantos arquivos são lidos ao mesmo tempo: aumente-o em um ponto de montagem de rede rápido, onde cada leitura passa o tempo esperando, diminua-o em um disco local lento. Também limita as demosaicagens completas para as quais um RAW sem pré-visualização recorre, então valores muito altos custam memória.
-
-É retomável. Cada lote confirmado registra até onde chegou, de modo que uma execução interrompida com Ctrl+C (ou por um ponto de montagem perdido) deixa um banco de dados consistente, e o próximo `--refresh-thumbnails` continua de onde parou. Uma execução concluída limpa o marcador, então executá-lo novamente mais tarde recomeça do zero.
-
-Uma foto cuja nova renderização volta totalmente preta mantém sua miniatura existente e é registrada pelo nome. Isso não é paranoia: um RW2 da Panasonic severamente truncado não falha ao decodificar — o LibRaw o preenche com zeros, transformando-o em um fotograma preto válido de tamanho completo em vez de falhar — então, sem essa verificação, um arquivo corrompido substituiria silenciosamente uma boa miniatura por uma preta. Essa foto permanece sem marcação e é tentada novamente na próxima execução, então reparar o arquivo já é suficiente para corrigi-la.
-
-Uma foto pertencente a um bracket de exposição é renderizada novamente sem a pré-visualização da câmera e sem nenhum ganho de exposição, de modo que sua miniatura mostra o que o sensor registrou (veja [CONFIGURATION.md](CONFIGURATION.md#bracketed-frames-render-uncorrected)). Como a associação a um bracket vem da detecção de sequências, que roda depois de uma varredura, execute este comando após `--detect-sequences` para que essas miniaturas recebam a renderização.
+- A **velocidade** depende da vazão do disco ou da rede, não da CPU. `--refresh-thumbnails-workers` (padrão 8) define quantos arquivos são lidos ao mesmo tempo: aumente em um compartilhamento de rede rápido, diminua em um disco local lento. Valores muito altos custam memória.
+- **Retomável.** Interrompa com Ctrl-C e a próxima execução continua de onde parou. Uma execução concluída recomeça do zero na vez seguinte.
+- As **renderizações pretas** (por exemplo, de um RAW truncado) são descartadas: a foto mantém a miniatura antiga, é registrada pelo nome e é tentada de novo na próxima execução.
+- Os **quadros de bracketing** são renderizados sem a pré-visualização da câmera nem ganho de exposição, de modo que cada bloco mostra o que o sensor registrou (veja [CONFIGURATION.md](CONFIGURATION.md#quadros-de-bracketing-são-renderizados-sem-correção)). Execute-o depois de `--detect-sequences`.
 
 ### O que atualiza uma miniatura armazenada
 
-As miniaturas armazenadas são geradas no momento da varredura, então uma biblioteca varrida antes de o perfil de exibição existir continua mostrando a renderização antiga na grade da galeria. `photos.render_version` registra qual pipeline gerou a miniatura de cada linha, e dois caminhos a atualizam:
+As miniaturas são feitas no momento do escaneamento, então uma biblioteca escaneada antes de o perfil de exibição existir mantém a renderização antiga na grade da galeria. Duas coisas as atualizam:
 
 | Caminho | Cobre | Custo |
 |------|--------|------|
-| Uma nova varredura (`python facet.py <diretório>`) | Tudo o que ela varre, miniatura e histograma | Varredura completa |
-| `--refresh-thumbnails` | A miniatura de cada linha RAW | Limitado pelo armazenamento, horas em uma biblioteca grande |
+| Um novo escaneamento (`python facet.py <dir>`) | Tudo o que ele escaneia, miniatura e histograma | Execução completa de pontuação |
+| `--refresh-thumbnails` | A miniatura de toda linha RAW | Limitado pelo armazenamento, horas em uma biblioteca grande |
 
-**Nada acontece sozinho.** A visualização detalhada está sempre atualizada porque `/image` renderiza em tempo real, mas a grade da galeria lê `photos.thumbnail`, e nenhuma quantidade de navegação a reescreve. É para isso que serve `--refresh-thumbnails`, e por isso a galeria mostra um banner descartável contando as linhas ainda pendentes.
-
-A contagem do banner vem de uma entrada de `stats_cache` com um TTL de uma hora, atualizada diretamente por `--refresh-thumbnails` e por `python database.py --refresh-stats`, então, depois de uma varredura, ela pode ficar atrás da realidade em até uma hora.
+**Nada acontece por conta própria.** A visão de detalhe sempre renderiza do zero, mas a grade da galeria mostra a miniatura armazenada. Um banner dispensável conta as linhas ainda pendentes. A contagem pode atrasar até uma hora após um novo escaneamento; `--refresh-thumbnails` e `python database.py --refresh-stats` a atualizam.
 
 ## Diagnostics
 
 | Comando | Descrição |
 |---------|-------------|
 | `python facet.py --doctor` | Executa verificações de diagnóstico (Python, GPU, ONNX Runtime, dependências, configuração, banco de dados) |
-| `python facet.py --doctor --simulate-gpu "RTX 5070 Ti" --simulate-vram 16` | Simula o hardware de GPU para diagnóstico |
+| `python facet.py --doctor --simulate-gpu "RTX 5070 Ti" --simulate-vram 16` | Simula hardware de GPU para o diagnóstico |
 
-Reporta a versão do Python, o build do PyTorch/CUDA, a detecção e o driver da GPU, o pacote ONNX Runtime com sua versão e seus provedores de execução (e, quando o Facet roda em CUDA, uma sessão de teste de um único nó que comprova que o build de GPU realmente carrega), a recomendação de perfil de VRAM, as dependências opcionais e o status da configuração/banco de dados. Quando o PyTorch não consegue enxergar a GPU mas o `nvidia-smi` consegue, ele imprime o comando `pip install` para corrigir o build do CUDA; quando o ONNX Runtime é o build errado, não consegue carregar em CUDA ou está quebrado (os dois pacotes instalados, ou a importação falha), ele imprime o comando que o repara (veja [Instalação › ONNX Runtime para detecção de faces](INSTALLATION.md#onnx-runtime-para-detecção-de-faces)).
+`--doctor` informa a versão do Python, a versão do PyTorch/CUDA, a GPU e o driver, a versão e os provedores do ONNX Runtime, o perfil de VRAM recomendado, as dependências opcionais e o estado da configuração/banco de dados. Em CUDA, ele também testa o carregamento do ONNX Runtime na GPU. Quando o PyTorch ou o ONNX Runtime é a versão errada, imprime o comando `pip install` que a corrige (veja [ONNX Runtime for face detection](INSTALLATION.md#onnx-runtime-para-detecção-de-faces)).
 
-`--simulate-gpu NAME` e `--simulate-vram GB` testam o comportamento com hardware diferente. Ambos requerem `--doctor`; `--simulate-vram` requer `--simulate-gpu`.
+`--simulate-gpu NAME` e `--simulate-vram GB` exigem `--doctor`; `--simulate-vram` exige também `--simulate-gpu`.
 
 | Comando | Descrição |
 |---------|-------------|
-| `python facet.py --check-raw-rendering` | Renderiza 20 fotos RAW amostradas com as configurações de decodificação antigas e atuais |
+| `python facet.py --check-raw-rendering` | Renderiza 20 fotos RAW amostradas com a configuração de decodificação antiga e a atual |
 | `python facet.py --check-raw-rendering 50` | Amostra 50 fotos em vez disso |
 
-Somente leitura: decodifica uma amostra aleatória diretamente do disco e imprime a luminância média que cada renderização produz — o brilho automático por fotograma do LibRaw, a demosaicagem de ganho fixo das métricas e a pré-visualização incorporada pela câmera usada pelas miniaturas e pelo visualizador. Use-o para verificar `raw_decode.bright` nos seus próprios arquivos antes de iniciar uma varredura ou uma execução de `--refresh-thumbnails`; as colunas fixo e pré-visualização mantêm a escada de exposição de um bracket, a coluna de brilho automático a achata.
+Somente leitura. Imprime o brilho médio de cada renderização: o auto-brilho do LibRaw, o demosaico de ganho fixo e a pré-visualização da câmera. Use-o para conferir `raw_decode.bright` nos seus arquivos antes de um escaneamento ou de `--refresh-thumbnails`. As colunas de ganho fixo e de pré-visualização preservam os passos de exposição de um bracketing; o auto-brilho os achata.
 
 ## Model Information
 
@@ -309,69 +372,77 @@ Somente leitura: decodifica uma amostra aleatória diretamente do disco e imprim
 
 | Comando | Descrição |
 |---------|-------------|
-| `python facet.py --comparison-stats` | Mostra as estatísticas de comparação pareada |
-| `python facet.py --optimize-weights` | Otimiza e salva pesos a partir das comparações (todas as fontes, ponderadas por confiabilidade); só se aplica se superar os pesos atuais em comparações reservadas fora do treino (validação cruzada de 5 dobras que mantém cada foto em uma só dobra, depois um teste de McNemar unilateral com p < 0.05 e um ganho de pelo menos 2 pontos percentuais). Ao aplicar, também recentra o `modifiers.bonus` da categoria, de modo que as suas fotos são reordenadas em vez de todas subirem ou descerem; veja [SCORING.md](SCORING.md) |
-| `python facet.py --optimize-weights --optimize-force` | Aplica os pesos otimizados mesmo que falhem no teste reservado (ou ele não tenha podido ser executado) |
-| `python facet.py --optimize-weights --optimize-sources vote,culling` | Restringe os dados de treino a fontes de comparação específicas |
-| `python facet.py --optimize-weights --optimize-category portrait` | Treina apenas em uma categoria e grava seu bloco v4 `categories[].weights` |
-| `python facet.py --auto-tune-categories` | **Apenas superadmin** (passe `--user` no modo multiusuário): reporta a prontidão dos rótulos de comparação por categoria para o ajuste automático dos pesos globais compartilhados. Stub — reporta apenas a prontidão; o loop de aplicação automática está adiado, aguardando rótulos |
-| `python facet.py --sync-label-comparisons` | Reconstrói os pares derivados de avaliações (source=rating) a partir de estrelas/favoritos/rejeições |
-| `python facet.py --train-ranker` | Treina o ranqueador pessoal sobre [embedding + pontuações] e grava learned_scores (condicionado à acurácia de validação cruzada k-fold (held-out) vs a linha de base agregada) |
-| `python facet.py --train-ranker --ranker-category portrait` | Treina o ranqueador apenas em uma categoria |
-| `python facet.py --train-ranker --train-ranker-force` | Grava learned_scores mesmo se a barreira de acurácia não for atingida |
-| `python facet.py --train-ranker --user alice` | Restringe o treinamento às comparações próprias desse usuário (mais as linhas legadas de antes do multiusuário), gravando os learned_scores próprios desse usuário (modo multiusuário) |
-| `python facet.py --train-keeper` | Treina a **cabeça de ranqueamento de retenção** (keeper-ranking head) sobre suas decisões de triagem (pares `source='culling'`) e só a grava se ela superar a escolha heurística da triagem automática em acurácia de validação cruzada k-fold (held-out). Aprimora as escolhas da triagem automática e alimenta o selo "existe uma foto melhor neste grupo". Recai na heurística até que se acumulem pares de triagem suficientes. Executa automaticamente, como `--train-ranker`, após as confirmações de triagem |
-| `python facet.py --train-keeper --train-keeper-force` | Grava a cabeça de ranqueamento de retenção mesmo se sua barreira de acurácia não for atingida (também respeita `--ranker-category` e `--user`) |
-| `python facet.py --report-unreviewed-bursts` | Reporta quantos grupos de rajada permanecem não revisados (somente leitura) |
-| `python facet.py --eval-iqa-srcc` | Reporta o SRCC de Spearman de cada métrica IQA/estética vs suas avaliações por estrelas (somente leitura) |
-| `python facet.py --evaluate-models SLOT` | Classifica os modelos candidatos de um slot (`aesthetic`, `quality`, `faces-detect`, `faces-recognize`, `faces-centroid`, `blink`, `face-quality`, `end-to-end`) pela concordância com as suas escolhas em pares na tabela comparisons; `--candidates a,b` (`stored:<coluna>` ou um nome registado) e `--eval-out CAMINHO` (predefinido `.facet_cache/eval/<slot>-<timestamp>.json`) refinam-no (somente leitura). Os slots de rostos (`faces-detect`: `yunet`, `yunet@<conf>`, `blazeface`; `faces-recognize`: `sface`, `sface@<limiar>`; `faces-centroid`: ajusta o `merge_threshold` do SFace / a fusão automática ao nível do centroide face às pessoas InsightFace; `blink`: varre o limiar de piscar do analisador permissivo face aos indicadores de piscar InsightFace armazenados) medem, em vez disso, a concordância com os rostos InsightFace armazenados numa amostra com semente fixa, pelo que só se aplicam a bibliotecas em modo predefinido; `--limit N` limita as fotos (predefinido 600) ou os rostos de referência (predefinido 1200) |
-| `python facet.py --mine-insights` | Relatório de mineração de dados: inventário de rótulos, correlações métrica-rótulo, distribuição de categorias, deriva (drift) de percentis, saúde das comparações |
-| `python facet.py --mine-insights report.json` | O mesmo, mas também grava o relatório completo como JSON |
-| `python calibrate.py --db <path> --ava-annotations AVA.txt` | Calibra os pesos de pontuação por categoria em relação ao [conjunto de dados AVA](https://github.com/imfing/ava_downloader) maximizando o SRCC vs as pontuações de opinião média do AVA (somente leitura; imprime os pesos propostos) |
-| `python calibrate.py --db <path> --ava-annotations AVA.txt --categories landscape,portrait --apply` | Restringe a categorias específicas e grava os pesos otimizados de volta em `scoring_config.json` |
+| `python facet.py --comparison-stats` | Mostra estatísticas das comparações pareadas |
+| `python facet.py --optimize-weights` | Otimiza os pesos a partir das suas comparações; aplicados só se passarem em um teste com dados retidos (veja a nota) |
+| `python facet.py --optimize-weights --optimize-force` | Aplica os pesos otimizados mesmo que falhem no teste |
+| `python facet.py --optimize-weights --optimize-sources vote,culling` | Treina apenas com estas fontes de comparação |
+| `python facet.py --optimize-weights --optimize-category portrait` | Treina uma categoria e grava o seu bloco v4 `categories[].weights` |
+| `python facet.py --auto-tune-categories` | **Somente superadmin** (`--user` no modo multiusuário): informa a prontidão de rótulos por categoria (apenas relatório) |
+| `python facet.py --sync-label-comparisons` | Reconstrói os pares derivados de avaliações (source=rating) a partir de estrelas, favoritos e rejeições |
+| `python facet.py --train-ranker` | Treina o ranqueador pessoal e grava learned_scores se superar o agregado |
+| `python facet.py --train-ranker --ranker-category portrait` | Treina o ranqueador em uma única categoria |
+| `python facet.py --train-ranker --train-ranker-force` | Grava learned_scores mesmo que o limite de precisão falhe |
+| `python facet.py --train-ranker --user alice` | Treina com as comparações desse usuário e grava os seus learned_scores (modo multiusuário) |
+| `python facet.py --train-keeper` | Treina a **cabeça de classificação de fotos mantidas** a partir das suas decisões de triagem (veja a nota) |
+| `python facet.py --train-keeper --train-keeper-force` | Mantém a cabeça mesmo que o seu limite falhe (também respeita `--ranker-category` e `--user`) |
+| `python facet.py --report-unreviewed-bursts` | Conta os grupos de rajada ainda não revisados (somente leitura) |
+| `python facet.py --eval-iqa-srcc` | Informa o quanto cada métrica IQA/estética coincide com as suas avaliações por estrelas (SRCC; somente leitura) |
+| `python facet.py --evaluate-models SLOT` | Classifica modelos candidatos de um slot pela concordância com as suas escolhas (somente leitura; veja a nota) |
+| `python facet.py --mine-insights` | Relatório sobre rótulos, correlações de métricas, categorias, deriva de percentis e comparações |
+| `python facet.py --mine-insights report.json` | Igual, e grava o relatório completo em JSON |
+| `python calibrate.py --db <path> --ava-annotations AVA.txt` | Calibra os pesos das categorias contra o [conjunto de dados AVA](https://github.com/imfing/ava_downloader) (somente leitura; imprime propostas) |
+| `python calibrate.py --db <path> --ava-annotations AVA.txt --categories landscape,portrait --apply` | Limita a estas categorias e grava os pesos no `scoring_config.json` |
 | `python calibrate.py --db <path> --ava-annotations AVA.txt --method nelder-mead` | Escolhe o otimizador (`de` = evolução diferencial, padrão; `nelder-mead` = simplex local) |
-| `python calibrate.py --db <path> --ava-annotations AVA.txt --ava-tags` | Também calibra em relação às tags semânticas do AVA (`--ava-tags-only` para usar exclusivamente as tags; `--apply-filters` para também ajustar os limiares de filtro de categoria) |
+| `python calibrate.py --db <path> --ava-annotations AVA.txt --ava-tags` | Usa também as tags do AVA (`--ava-tags-only` só para tags; `--apply-filters` para ajustar limiares de filtros) |
+
+**`--optimize-weights`** treina com todas as fontes de comparação, ponderadas pela confiabilidade. Os novos pesos só são aplicados se superarem os atuais em comparações retidas (validação cruzada de 5 partes, teste de McNemar unilateral, p < 0.05, ganho de pelo menos 2 pontos percentuais). Aplicar também recentraliza o `modifiers.bonus` da categoria, de modo que as suas fotos são reordenadas em vez de todas deslocadas. Veja [SCORING.md](SCORING.md).
+
+**`--train-keeper`** aprende com os pares `source='culling'` e só é mantido se superar a heurística da seleção automática em dados retidos. Ele alimenta as escolhas da seleção automática e o emblema "existe uma foto melhor neste grupo". Enquanto não há pares de triagem suficientes, a heurística é usada. Retreina sob o mesmo gatilho de `--train-ranker`.
+
+**`--evaluate-models SLOT`** slots: `aesthetic`, `quality`, `faces-detect`, `faces-recognize`, `faces-centroid`, `blink`, `face-quality`, `end-to-end`.
+
+- `--candidates a,b` escolhe os candidatos (`stored:<column>` ou um nome registrado).
+- `--eval-out PATH` define a saída (padrão `.facet_cache/eval/<slot>-<timestamp>.json`).
+- Os slots de rostos comparam com os rostos InsightFace armazenados em vez das suas escolhas, então servem apenas para bibliotecas em modo padrão: `faces-detect` (`yunet`, `yunet@<conf>`, `blazeface`), `faces-recognize` (`sface`, `sface@<threshold>`), `faces-centroid` (ajusta o `merge_threshold` do SFace / a mesclagem automática), `blink` (varre o limiar permissivo de piscada).
+- `--limit N` limita as fotos (padrão 600) ou os rostos de referência (padrão 1200).
 
 ## Configuration
 
-`scoring_config.json` é um **override**: contém apenas as configurações que você
-mudou, e é resolvido por cima dos padrões distribuídos em
-`config/scoring_config.default.json`. A ausência do arquivo de configuração é,
-portanto, uma instalação rodando inteiramente com esses padrões, não uma
-instalação quebrada — veja
-[Configuração](CONFIGURATION.md#padrões-e-seu-override).
+O `scoring_config.json` é um **override**: contém apenas as configurações que você alterou, sobre `config/scoring_config.default.json`. Sem arquivo de configuração, o Facet roda com os padrões. Veja [Configuração](CONFIGURATION.md#padrões-e-seu-override).
 
-A variável de ambiente `FACET_CONFIG`, quando definida, fornece o caminho padrão de `scoring_config.json` para `facet.py`, `database.py`, `tag_existing.py`, `diagnostics.py`, `calibrate.py` e `viewer.py` quando são executados sem um `--config` explícito; `--config` sempre a sobrepõe. O `viewer.py` (e o servidor `api/` que ele inicia) não tem uma opção `--config` própria — `FACET_CONFIG` é, portanto, a única forma de redirecioná-lo. Se a variável — ou `--config` — nomear um arquivo inexistente, isso é um erro e não um override vazio: um caminho que alguém NOMEOU e que está faltando denuncia um erro de digitação ou uma montagem quebrada, então o visualizador recusa o caminho de autenticação de instalação aberta em vez de concluir que a instalação não tem senhas, e registra um erro que nomeia o caminho em falta. Só o caminho padrão *herdado* pode estar ausente.
+Qual arquivo é lido:
 
-Se nenhuma das duas estiver definida, `facet.py`, `database.py`, `tag_existing.py`, `diagnostics.py` e `calibrate.py` leem um `scoring_config.json` no **diretório de trabalho**, se houver — assim uma fototeca que carrega sua própria configuração é pontuada por ela — e caso contrário o que fica ao lado da instalação. Só esse recuo herdado pode estar ausente: significa uma instalação rodando com os padrões distribuídos.
+1. `--config` sempre vence.
+2. Senão `FACET_CONFIG`, se definida. Aplica-se a `facet.py`, `database.py`, `tag_existing.py`, `diagnostics.py`, `calibrate.py` e `viewer.py`. O `viewer.py` não tem `--config`, então esta é a sua única forma de override.
+3. Senão, para as ferramentas CLI (não o `viewer.py`), um `scoring_config.json` no **diretório de trabalho**, para que uma biblioteca possa carregar a sua própria configuração.
+4. Senão o arquivo ao lado da instalação. Se ele não existir, valem os padrões distribuídos.
 
-O visualizador `viewer.py` e o servidor `api/` que ele inicia nunca fazem esse desvio pelo diretório de trabalho: eles resolvem apenas `FACET_CONFIG`, senão o arquivo ao lado da instalação — nunca um `scoring_config.json` que esteja por acaso no diretório de onde são iniciados. Isso importa porque a configuração do visualizador é a que carrega as senhas do operador: iniciá-lo de dentro de uma fototeca não pega a configuração dela, e se também não houver nenhuma ao lado da instalação, ele recai silenciosamente nos padrões distribuídos — um `viewer.edition_password` vazio e nenhuma senha do visualizador, de modo que toda rota de leitura é servida de forma anônima.
+Um caminho nomeado por `--config` ou `FACET_CONFIG` que não existe é um erro, não "usar os padrões". O visualizador registra o caminho ausente e se recusa a iniciar em modo aberto.
+
+> **Aviso:** o `viewer.py` nunca lê um `scoring_config.json` do diretório em que você o inicia. Se você o inicia a partir de uma biblioteca e a raiz da instalação não tem configuração, ele roda com os padrões: um `viewer.edition_password` vazio e nenhuma senha do visualizador, de modo que qualquer pessoa pode navegar.
 
 ```bash
-# 1. --config vence tudo. Um arquivo ausente aqui é um ERRO, não um override vazio.
+# 1. --config vence sobre tudo. Um arquivo ausente é um erro.
 python facet.py --config /srv/facet/wedding.json /photos/wedding
 
-# 2. $FACET_CONFIG fornece o caminho padrão quando --config é omitido (o Docker define isso).
+# 2. $FACET_CONFIG fornece o padrão quando --config é omitido (o Docker define isso).
 export FACET_CONFIG=/config/scoring_config.json
 python facet.py /photos            # lê /config/scoring_config.json
-python facet.py --config other.json /photos   # --config ainda prevalece
+python facet.py --config other.json /photos   # --config ainda o sobrepõe
 
-# 3. Nenhum dos dois: uma configuração no DIRETÓRIO DE TRABALHO vence para as
-#    ferramentas CLI, então uma fototeca pode ter a sua própria; o viewer.py não tem essa etapa -- veja abaixo.
-cd /photos/client-shoot          # contém seu próprio scoring_config.json
+# 3. Nenhum dos dois: uma configuração no DIRETÓRIO DE TRABALHO vence para as ferramentas CLI.
+cd /photos/client-shoot          # tem o seu próprio scoring_config.json
 python /opt/facet/facet.py .     # pontuado por /photos/client-shoot/scoring_config.json
 
-# 4. Nenhum dos dois e nada aqui: recai no arquivo ao lado da instalação.
+# 4. Nenhum dos dois e nada aqui: recai na configuração ao lado da instalação.
 cd /tmp
 python /opt/facet/facet.py /photos   # lê /opt/facet/scoring_config.json
-                                     # ausente ali = rodando com os padrões distribuídos
+                                     # ausente ali = roda com os padrões distribuídos
 
-# 5. O viewer.py nunca faz esse desvio pelo diretório de trabalho, diferente dos casos 1 a 4.
-cd /photos/client-shoot          # contém seu próprio scoring_config.json -- irrelevante aqui
-python /opt/facet/viewer.py      # continua lendo /opt/facet/scoring_config.json (ou $FACET_CONFIG)
+# 5. O viewer.py nunca faz a etapa do diretório de trabalho.
+cd /photos/client-shoot          # tem o seu próprio scoring_config.json -- irrelevante aqui
+python /opt/facet/viewer.py      # ainda lê /opt/facet/scoring_config.json (ou $FACET_CONFIG)
 ```
-
-Só os casos 4 e 5 podem não encontrar nada. Os casos 1 e 2 nomeiam um caminho, então um arquivo ausente interrompe o comando em vez de pontuar silenciosamente com valores que ninguém escolheu.
 
 | Comando | Descrição |
 |---------|-------------|
@@ -381,159 +452,172 @@ Só os casos 4 e 5 podem não encontrar nada. Os casos 1 e 2 nomeiam um caminho,
 
 | Comando | Descrição |
 |---------|-------------|
-| `python tag_existing.py` | Adiciona tags a fotos não marcadas usando os embeddings CLIP armazenados |
+| `python tag_existing.py` | Marca as fotos sem tags a partir dos embeddings CLIP armazenados |
 | `python tag_existing.py --dry-run` | Pré-visualiza as tags sem salvar |
-| `python tag_existing.py --threshold 0.25` | Limiar de similaridade personalizado (padrão: o `tag_threshold_percent` do perfil ativo, distribuído como 8, ou seja, 0.08) |
+| `python tag_existing.py --threshold 0.25` | Limiar de similaridade personalizado (padrão: o `tag_threshold_percent` do perfil, distribuído como 8, ou seja 0.08) |
 | `python tag_existing.py --max-tags 3` | Limita as tags por foto (padrão: 5) |
-| `python tag_existing.py --force` | Re-marca todas as fotos |
+| `python tag_existing.py --force` | Remarca todas as fotos |
 | `python tag_existing.py --db custom.db` | Usa um banco de dados personalizado |
 | `python tag_existing.py --config my.json` | Usa uma configuração personalizada |
 
-Em uma máquina com CUDA, um perfil SigLIP (`16gb`, `24gb`) agora codifica o vocabulário de tags em fp16, como o pontuador de passagem única já fazia; o `tag_existing.py` o carregava antes em fp32. `python tag_existing.py`, `python tag_existing.py --force`, `python facet.py --tag-untagged` e a etapa de marcação ao final de uma varredura compartilham esse carregador. Medido em 49 fotos, o conjunto de tags mudou em 2 delas (4 %): execute `python tag_existing.py --force` novamente para re-marcar as fotos marcadas antes. CPU e os perfis CLIP ViT-L-14 (`legacy`, `8gb`) não mudam.
+Em CUDA, os perfis SigLIP (`16gb`, `24gb`) agora codificam o vocabulário de tags em fp16, o que altera as tags de algumas fotos. Execute `python tag_existing.py --force` para remarcar as fotos marcadas antes. A CPU e os perfis `legacy`/`8gb` não mudam.
 
-A etapa de marcação ao final de uma varredura só carrega esse modelo quando tem trabalho a fazer. Ela é ignorada, com uma linha de log, quando `tagging.enabled` é `false` ou quando nenhuma foto está à espera de tags (um embedding armazenado mas nenhuma tag); uma varredura sem nada a marcar não recarrega mais o SigLIP 2 nem o CLIP para isso. `python tag_existing.py`, `--force` e `--tag-untagged` não são afetados.
+O passo de marcação ao fim de um escaneamento é pulado quando `tagging.enabled` é `false` ou nenhuma foto aguarda tags.
 
 ## Database Validation
 
 | Comando | Descrição |
 |---------|-------------|
 | `python validate_db.py` | Valida a consistência do banco de dados (interativo) |
-| `python validate_db.py --auto-fix` | Corrige automaticamente todos os problemas |
-| `python validate_db.py --report-only` | Reporta sem solicitar confirmação |
+| `python validate_db.py --auto-fix` | Corrige todos os problemas automaticamente |
+| `python validate_db.py --report-only` | Relata sem perguntar |
 | `python validate_db.py --db custom.db` | Valida um banco de dados personalizado |
 
-Verifica: faixas de pontuação, métricas faciais, corrupção de BLOB, tamanhos de embedding, rostos órfãos, valores estatísticos atípicos (outliers).
+Verificações: intervalos de pontuação, métricas de rostos, corrupção de BLOB, tamanhos de embeddings, rostos órfãos, valores atípicos estatísticos.
 
 ## Database Maintenance
 
 | Comando | Descrição |
 |---------|-------------|
-| `python database.py` | Inicializa/atualiza o schema. Também cria os índices da galeria e da pós-varredura que faltam, como faz uma varredura na sua inicialização, e regista uma linha antes e depois de cada um (veja [VIEWER.md](VIEWER.md#índices-da-galeria-e-cache-de-contagens)). A primeira execução após a atualização da 1.20 cria nove deles; numa biblioteca de 130.000 fotos, só o `idx_gallery_aggregate` levou de 45,6 a 54,1 s, e o `idx_post_scan` com o `idx_date_asc_cover`, construídos sozinhos, cerca de 55 s num host sem outra carga, até cerca de 67 s num ocupado. Numa biblioteca grande, execute-a uma vez antes de iniciar o visualizador, que de outro modo os cria em segundo plano e recusa gravações enquanto cada índice é escrito. |
-| `python database.py --info` | Mostra informações do schema |
-| `python database.py --migrate-tags` | Carga inicial única da tabela de consulta photo_tags (consultas 10-50x mais rápidas). Depois de preenchida, as varreduras, `--recompute-tags`, `--recompute-tags-vlm` e `tag_existing.py` a mantêm atualizada foto a foto; uma tabela nunca preenchida não é preenchida implicitamente e os leitores usam o recurso `LIKE` até lá |
-| `python database.py --rebuild-fts` | Reconstrói o índice de busca textual completa FTS5 a partir de legendas/tags |
-| `python database.py --populate-vec` | Popula a tabela de busca vetorial sqlite-vec a partir dos embeddings |
+| `python database.py` | Inicializa ou atualiza o esquema e cria os índices que faltam (veja a nota) |
+| `python database.py --info` | Mostra informações do esquema |
+| `python database.py --migrate-tags` | Configuração única da tabela de consulta de tags (filtros de tags 10-50x mais rápidos) |
+| `python database.py --rebuild-fts` | Reconstrói o índice de busca de texto completo a partir de legendas e tags |
+| `python database.py --populate-vec` | Preenche a tabela de busca vetorial sqlite-vec a partir dos embeddings |
 | `python database.py --refresh-stats` | Atualiza o cache de estatísticas |
-| `python database.py --compact-config` | Reescreve `scoring_config.json` como o override que ele é, descartando todo valor igual ao padrão distribuído (sem perda de dados; faz um backup em `0600` primeiro) |
-| `python database.py --stats-info` | Mostra o status e a idade do cache |
+| `python database.py --compact-config` | Remove do `scoring_config.json` todo valor igual ao padrão distribuído (faz antes um backup `0600`) |
+| `python database.py --stats-info` | Mostra o estado e a idade do cache |
 | `python database.py --vacuum` | Recupera espaço, desfragmenta |
 | `python database.py --analyze` | Atualiza as estatísticas do planejador de consultas |
 | `python database.py --optimize` | Executa VACUUM e ANALYZE |
-| `python database.py --backup` | Grava um snapshot do banco com data e hora, seguro para WAL (rotaciona conforme `--keep N`, padrão 3) |
-| `python database.py --export-viewer-db` | Exporta um banco de dados leve para o visualizador (remove BLOBs, reduz as miniaturas; incremental se a saída já existir) |
-| `python database.py --export-viewer-db --force-export` | Força uma re-exportação completa, mesmo se o banco do visualizador já existir |
-| `python database.py --cleanup-orphaned-persons` | Remove pessoas sem rostos associados |
-| `python database.py --cleanup-missing-photos` | Remove do banco de dados as fotos que não estão mais no disco (as exclusões em cascata limpam tags, rostos detectados etc.; também limpa associações de álbuns e o índice vetorial, e invalida o cache de estatísticas exceto o estado da biblioteca que ele guarda — o snapshot de percentis, o estado de sincronização com o Immich, as heads keeper treinadas e as métricas do ranker, e os marcadores de atualização de miniaturas e de reparo; os contadores de comparações do retreinamento automático são zerados) |
-| `python database.py --cleanup-missing-photos --dry-run` | Pré-visualiza os arquivos ausentes sem excluir |
-| `python database.py --cleanup-missing-photos --force` | Prossegue mesmo quando todas as fotos parecem ausentes (proteção contra apagar tudo quando um volume está desmontado) |
-| `python database.py --relink-photos` | Atualiza os caminhos no banco das fotos que você mesmo moveu (prévia por padrão; aplicar exige um plano revisado). Veja [Religar fotos movidas](#religar-fotos-movidas) |
-| `python database.py --migrate-storage-fs` | Migra miniaturas e embeddings dos BLOBs do banco de dados para o sistema de arquivos |
-| `python database.py --migrate-storage-db` | Migra miniaturas e embeddings do sistema de arquivos de volta para o banco de dados |
-| `python database.py --add-user alice --role admin` | Adiciona um usuário (solicita a senha) |
-| `python database.py --add-user alice --role user --display-name "Alice"` | Adiciona um usuário com nome de exibição |
-| `python database.py --migrate-user-preferences --user alice` | Copia as avaliações de photos para user_preferences |
+| `python database.py --backup` | Grava um snapshot com data e hora, seguro com WAL (mantém `--keep N`, padrão 3) |
+| `python database.py --export-viewer-db` | Exporta um banco de dados leve para o visualizador (sem BLOBs, miniaturas menores; incremental) |
+| `python database.py --export-viewer-db --force-export` | Força uma reexportação completa |
+| `python database.py --cleanup-orphaned-persons` | Remove pessoas sem rostos |
+| `python database.py --cleanup-missing-photos` | Remove fotos que não estão mais no disco, com as suas tags, rostos e entradas de álbum |
+| `python database.py --cleanup-missing-photos --dry-run` | Lista os arquivos ausentes sem excluir |
+| `python database.py --cleanup-missing-photos --force` | Prossegue mesmo quando todas as fotos parecem ausentes (veja o aviso) |
+| `python database.py --relink-photos` | Atualiza os caminhos de fotos que você mesmo moveu (pré-visualização por padrão). Veja [Religar fotos movidas](#religar-fotos-movidas) |
+| `python database.py --migrate-storage-fs` | Move miniaturas e embeddings do banco de dados para o sistema de arquivos |
+| `python database.py --migrate-storage-db` | Move miniaturas e embeddings do sistema de arquivos de volta para o banco de dados |
+| `python database.py --add-user alice --role admin` | Adiciona um usuário (pede a senha) |
+| `python database.py --add-user alice --role user --display-name "Alice"` | Adiciona um usuário com um nome de exibição |
+| `python database.py --migrate-user-preferences --user alice` | Copia as avaliações das fotos para user_preferences |
 
-**Dica de desempenho:** Para bancos de dados grandes (50k+ fotos), execute `--migrate-tags`, `--rebuild-fts` e `--populate-vec` uma vez, e então `--optimize` periodicamente.
+**`python database.py`** também cria os índices da galeria que faltam (veja [VIEWER.md](VIEWER.md#índices-da-galeria-e-cache-de-contagem)). Em uma biblioteca grande, execute-o uma vez antes de iniciar o visualizador; pode levar cerca de um minuto. Caso contrário, o visualizador os cria em segundo plano e recusa gravações nesse meio-tempo.
+
+**`--migrate-tags`** é necessário uma vez. Depois, escaneamentos, `--recompute-tags`, `--recompute-tags-vlm` e `tag_existing.py` mantêm a tabela atualizada. Enquanto ela não está preenchida, os filtros de tags usam uma busca `LIKE` mais lenta.
+
+**`--cleanup-missing-photos`** também limpa o índice vetorial e zera os contadores de comparação do retreinamento automático. O estado da biblioteca, como modelos treinados, o estado da sincronização com o Immich e o instantâneo de percentis, é mantido.
+
+> **Aviso:** sem `--force`, `--cleanup-missing-photos` para quando todas as fotos parecem ausentes, o que geralmente significa que um volume está desmontado. Confira a montagem antes de acrescentar `--force`.
+
+**Dica de desempenho:** para bancos de dados grandes (50k+ fotos), execute `--migrate-tags`, `--rebuild-fts` e `--populate-vec` uma vez, depois `--optimize` de tempos em tempos.
 
 ## Web Viewer
 
 | Comando | Descrição |
 |---------|-------------|
-| `python viewer.py` | Inicia o servidor em http://localhost:5000 (API + Angular SPA) |
-| `python viewer.py --port 5001` | Vincula a outra porta (ou defina a variável de ambiente `PORT`; padrão 5000) |
-| `python viewer.py --host 127.0.0.1` | Vincula a uma interface específica (padrão `0.0.0.0`) |
+| `python viewer.py` | Inicia o servidor em http://localhost:5000 (API + SPA Angular) |
+| `python viewer.py --port 5001` | Usa outra porta (ou defina a variável de ambiente `PORT`; padrão 5000) |
+| `python viewer.py --host 127.0.0.1` | Associa-se a uma interface específica (padrão `0.0.0.0`) |
 | `python viewer.py --production` | Modo de produção (workers do uvicorn) |
 | `python viewer.py --production --workers 4` | Modo de produção com N workers (padrão 1) |
 
 ## Triagem pelo terminal
 
-Triagem automática sem interface: a versão de terminal da [triagem automática](VIEWER.md#triagem-automática) do visualizador. As rejeições são gravadas no banco de dados; os originais nunca são movidos nem excluídos, e `--copy-keepers` copia as fotos mantidas para uma pasta.
+Seleção automática sem interface: a versão de terminal da [Seleção automática](VIEWER.md#seleção-automática) do visualizador. As rejeições são gravadas no banco de dados. Os originais nunca são movidos nem excluídos; `--copy-keepers` copia os sobreviventes para uma pasta.
 
 | Comando | Descrição |
 |---------|-------------|
-| `python facet.py --auto-cull [PATH]` | Tria o que já está no banco de dados, limitado a `PATH` (uma pasta ou um arquivo); sem argumento ou com `all`, a biblioteca inteira. **Simulação: mostra o plano e não altera nada** |
-| `python facet.py /path --auto-cull` | Escanear e depois triar: escaneia `/path` de verdade e em seguida tria as fotos dentro dele. Recusado junto com `--auto-cull PATH`, `--resume`, `--retry-failed` e `--watch` |
+| `python facet.py --auto-cull [PATH]` | Faz a triagem das fotos já no banco de dados sob `PATH` (pasta ou arquivo; nada ou `all` = biblioteca inteira). **Simulação por padrão** |
+| `python facet.py /path --auto-cull` | Escaneia `/path` e depois faz a triagem das fotos sob ele |
 | `--apply` | Grava a triagem: rejeições, marcas de grupos revisados e pares de comparação `source='culling'` |
-| `--copy-keepers DIR` | Copia para `DIR` cada foto não rejeitada do escopo, com seus arquivos acompanhantes RAW / `.xmp` de mesmo nome |
-| `--cull-strictness N` | Orçamento de fotos mantidas de 0 a 100; mais alto mantém menos por grupo (padrão: `auto_cull.default_strictness`) |
+| `--copy-keepers DIR` | Copia para `DIR` toda foto não rejeitada do escopo, com o seu RAW / `.xmp` de mesmo nome-base |
+| `--cull-strictness N` | Orçamento de fotos mantidas 0–100, mais alto mantém menos por grupo (padrão: `auto_cull.default_strictness`) |
 | `--cull-min-keep N` | Mínimo de fotos mantidas por grupo (padrão `1`) |
 | `--cull-group-by {all,burst,similar,scene}` | Quais grupos triar (padrão `all`) |
-| `--cull-min-score X` | Rejeita também fotos isoladas cuja pontuação agregada seja inferior a `X` |
-| `--cull-trim-brackets` | Rejeita também os quadros redundantes de bracketings de exposição (o `trim_brackets` do visualizador) |
-| `--user NAME` | De quem usar avaliações e rejeições; **obrigatório** em uma instalação multiusuário |
+| `--cull-min-score X` | Rejeita também as fotos avulsas com pontuação agregada abaixo de `X` |
+| `--cull-trim-brackets` | Rejeita também os quadros redundantes de bracketing de exposição (o `trim_brackets` do visualizador) |
+| `--user NAME` | De quem usar as avaliações e rejeições; **obrigatório** em uma instalação multiusuário |
 
-- **Simulação por padrão.** Sem `--apply` nada é gravado: nenhuma rejeição, nenhum par de comparação, nenhuma linha de cache, e a pasta de `--copy-keepers` não é criada. O comando imprime um resumo: `groups`, `kept`, `rejected_by_groups`, `rejected_by_score`, `spanning_skipped` e, com `--copy-keepers`, `keepers`, `copied`, `already_present`, `skipped`, `errors` (`would_reject_*` / `would_copy` em simulação). `--apply` controla apenas a triagem: escanear e depois triar sempre escaneia de verdade primeiro, e a triagem só roda se o escaneamento terminou. `--dry-run` é recusado com `--auto-cull`. A única exceção: se existir um modelo de fotos a manter treinado, carregá-lo pode reescrever `scoring_config.json` se seus pesos precisarem de correção (comportamento pré-existente, compartilhado com a triagem automática do visualizador).
-- **Regras.** Os grupos seguem as mesmas regras da [triagem automática do visualizador](VIEWER.md#triagem-automática): cada um mantém sua melhor foto mais tudo que estiver dentro da margem de rigor, com piso de `--cull-min-keep`; bracketings, panoramas e panoramas HDR são mantidos inteiros. `--apply` registra rejeições, marca cada foto mantida como **Manter** e registra pares de comparação exatamente como `POST /api/culling/auto`; nenhum álbum de Destaques é preenchido. As configurações [`auto_cull`](CONFIGURATION.md#auto-cull), `burst_scoring` e `similarity_groups` vêm da configuração do **servidor** (`FACET_CONFIG` ou o caminho padrão), não de `--config`; se as duas divergirem quanto ao modo multiusuário, o comando termina com código 1.
-- **Escopo.** O escopo compara caminhos reais locais, portanto linhas gravadas antes de um `path_mapping` ser definido não podem ser limitadas por pasta: use `all` ou escaneie de novo. Uma sequência, um bracketing ou um panorama com membros fora do escopo é ignorado inteiro e contado em `spanning_skipped`; grupos de similares e de cenas são calculados apenas dentro do escopo.
-- **`--cull-min-score` existe só na linha de comando** e é cauteloso: nunca toca quadros de bracketing ou panorama, fotos sem pontuação, fotos favoritas, com avaliação por estrelas ou marcadas como **Manter**, nem uma foto já mantida ou rejeitada por uma triagem anterior (nunca julgada de novo por pontuação); uma segunda execução não rejeita, portanto, nada novo. Membros de uma sequência são sempre poupados; os de um grupo de similares somente se a passagem de agrupamento encontrou o grupo (melhor esforço: lê as `similarity_groups.max_photos` fotos mais recentes do escopo, padrão `10000`, e descarta clusters maiores que `similarity_groups.max_group_size`, padrão `50`); os de um grupo de cena somente com `--cull-group-by scene` — com o padrão `all`, uma foto que apenas compartilha a janela de tempo de uma cena continua sendo julgada por pontuação.
-- **Cópia.** `--copy-keepers` copia cada foto não rejeitada do escopo com seus acompanhantes RAW e `.xmp` de mesmo nome, nunca uma foto rejeitada nem seus acompanhantes; arquivos de mesmo nome vindos de pastas diferentes recebem o sufixo `_1`, e uma nova execução para a mesma pasta ignora arquivos idênticos (mesmo tamanho e mesma hora, contados em `already_present`). `DIR` não pode ser igual ao escopo ou às pastas da biblioteca, estar dentro deles nem contê-los (verificado também em simulação, código 1), ou o próximo escaneamento ingeriria as cópias. Os arquivos são resolvidos pela lista de pastas de escaneamento permitidas (`users.*.directories` / `viewer.scan_directories` na configuração do servidor): se por isso toda foto for ignorada, o comando termina com código 3 e cita essas chaves. Também recusa uma pasta que se sobreponha a uma raiz já escaneada e registrada pelo Facet.
-- **Usuários.** Em uma instalação multiusuário `--user` é obrigatório (código 1 sem ele ou com usuário desconhecido). Em uma instalação de usuário único `--user` é ignorado com um aviso e o comando enxerga todas as fotos mesmo com senha do visualizador definida. `--apply` toma o bloqueio da biblioteca; uma simulação não toma nenhum.
-- **Erros de uso (código 2).** `--apply`, `--copy-keepers` ou qualquer `--cull-*` sem `--auto-cull`; `--dry-run`, `--resume`, `--retry-failed` ou `--watch` com `--auto-cull`; `--auto-cull PATH` junto com pastas posicionais; rigor fora de 0–100 ou `--cull-min-keep` menor que 1. `--apply` agora é um sinalizador exato, então a abreviação não seleciona mais `--apply-recommendations`.
-- **Códigos de saída.** `0` sucesso (simulação e zero grupos incluídos); `1` falha de pré-requisito, configuração ou banco de dados (banco ausente, `--user` faltando, destino da cópia sobreposto à biblioteca); `2` erro de uso; `75` `--apply` encontrou o bloqueio da biblioteca mantido por outro trabalho; `3` a triagem teve sucesso mas a etapa de cópia teve erros ou não copiou nada porque todas as fotos foram ignoradas. Uma simulação cujas fotos mantidas seriam todas ignoradas pela lista de pastas de escaneamento permitidas também termina com código `3`. Em escanear e depois triar, um escaneamento interrompido registra que a triagem foi ignorada.
-- **Retreinamento.** O temporizador de retreinamento automático não sobrevive ao processo do comando: o contador de comparações persiste, e o retreinamento roda na próxima ação no visualizador ou com um comando `--train-*`. A primeira execução pode criar `.facet_secret` (a importação da camada de API faz isso, como em `--report-unreviewed-bursts`).
+- **Simulação.** Sem `--apply` nada é gravado e a pasta de `--copy-keepers` não é criada. O resumo lista `groups`, `kept`, `rejected_by_groups`, `rejected_by_score`, `spanning_skipped` e, com `--copy-keepers`, `keepers`, `copied`, `already_present`, `skipped`, `errors` (`would_reject_*` / `would_copy` em uma simulação). O próprio `--dry-run` é recusado. Se um modelo de fotos mantidas treinado precisar ter os pesos corrigidos, carregá-lo ainda pode reescrever o `scoring_config.json`.
+- **Escanear e depois triar** sempre escaneia de verdade; a triagem só roda se o escaneamento terminou. Não pode ser combinado com `--auto-cull PATH`, `--resume`, `--retry-failed` nem `--watch`.
+- **Regras.** As mesmas da [Seleção automática do visualizador](VIEWER.md#seleção-automática): cada grupo mantém a sua melhor foto mais todas as que estão dentro da margem de rigor, no mínimo `--cull-min-keep`. Bracketings, panorâmicas e panorâmicas HDR são mantidos inteiros. `--apply` marca as fotos mantidas como **Mantida** e registra pares de comparação como faz `POST /api/culling/auto`; nenhum álbum de Destaques é preenchido.
+- **Configuração.** As configurações [`auto_cull`](CONFIGURATION.md#auto-cull), `burst_scoring` e `similarity_groups` vêm da configuração do **servidor** (`FACET_CONFIG` ou o caminho padrão), não de `--config`. Se as duas discordarem no modo multiusuário, ele sai com 1.
+- O **escopo** corresponde a caminhos reais locais, então as linhas armazenadas antes de um `path_mapping` ser definido não podem ser delimitadas por pasta: use `all` ou reescaneie. Uma rajada, bracketing ou panorâmica parcialmente fora do escopo é ignorada inteira (`spanning_skipped`). Os grupos de semelhantes e de cenas são calculados dentro do escopo.
+- **`--cull-min-score`** (somente CLI) nunca rejeita quadros de bracketing ou panorâmica, fotos sem pontuação, favoritas, avaliadas ou **Mantidas**, nem fotos que uma triagem anterior já julgou, então uma segunda execução não rejeita nada de novo. Sempre poupa membros de rajadas. Poupa membros de grupos de semelhantes quando o agrupamento os encontrou (lê as `similarity_groups.max_photos` fotos mais recentes do escopo, padrão `10000`, e descarta grupos acima de `similarity_groups.max_group_size`, padrão `50`). Poupa membros de grupos de cenas somente com `--cull-group-by scene`.
+- **Cópia.** As fotos rejeitadas e os seus acompanhantes nunca são copiados. Arquivos de mesmo nome vindos de pastas diferentes recebem o sufixo `_1`; uma nova execução pula os arquivos idênticos (`already_present`). `DIR` não pode ser, conter nem estar dentro do escopo, da biblioteca ou de qualquer pasta que o Facet tenha escaneado (saída 1, verificado também em uma simulação). Os arquivos precisam estar dentro da lista de permissão de diretórios de varredura (`users.*.directories` / `viewer.scan_directories`); se todas as fotos forem ignoradas por causa disso, o comando sai com 3.
+- **Usuários.** Em uma instalação multiusuário `--user` é obrigatório (saída 1 sem ele, ou com um usuário desconhecido). Em uma instalação de usuário único `--user` é ignorado com um aviso, e o comando vê todas as fotos mesmo com uma senha de visualizador definida. `--apply` toma o bloqueio da biblioteca; uma simulação não.
+- **Erros de uso (saída 2).** `--apply`, `--copy-keepers` ou qualquer `--cull-*` sem `--auto-cull`; `--dry-run`, `--resume`, `--retry-failed` ou `--watch` com `--auto-cull`; `--auto-cull PATH` com pastas posicionais; rigor fora de 0–100; `--cull-min-keep` abaixo de 1. `--apply` deve ser digitado por inteiro (ele não abrevia mais `--apply-recommendations`).
+- **Códigos de saída.** `0` sucesso (inclusive uma simulação ou zero grupos); `1` falha de pré-condição, configuração ou banco de dados; `2` erro de uso; `75` o bloqueio da biblioteca está com outro trabalho; `3` a triagem funcionou mas a cópia teve erros ou não copiou nada (uma simulação em que toda foto mantida seria ignorada também sai com `3`).
+- O **retreinamento** não roda dentro da CLI. O contador de comparações persiste, e o retreinamento roda na próxima ação do visualizador ou comando `--train-*`. A primeira execução pode criar `.facet_secret`.
 
 ## Common Workflows
 
 ### Configuração Inicial
 ```bash
-python facet.py /path/to/photos     # Score all photos (auto multi-pass)
-python facet.py --cluster-faces-incremental # Cluster faces
-python database.py --migrate-tags    # Enable fast tag queries
-python viewer.py                    # View results
+python facet.py /path/to/photos     # Pontua todas as fotos (multi-passo automático)
+python facet.py --cluster-faces-incremental # Agrupa os rostos
+python database.py --migrate-tags    # Habilita consultas de tags rápidas
+python viewer.py                    # Veja os resultados
 ```
 
 ### Após Mudanças de Configuração
 ```bash
-python facet.py --recompute-average                # Update all scores with new weights
-python facet.py --recompute-category portrait      # Update only one category (faster)
+python facet.py --recompute-average                # Atualiza todas as pontuações com os novos pesos
+python facet.py --recompute-category portrait      # Atualiza só uma categoria (mais rápido)
 ```
 
 ### Configuração do Reconhecimento Facial
 ```bash
-python facet.py /path               # Extract faces during scan
-python facet.py --cluster-faces-incremental     # Group into persons
-python facet.py --suggest-person-merges         # Find duplicates
-# Use /persons in viewer to merge/rename
+python facet.py /path               # Extrai os rostos durante o escaneamento
+python facet.py --cluster-faces-incremental     # Agrupa em pessoas
+python facet.py --suggest-person-merges         # Encontra duplicatas
+# Use /persons no visualizador para mesclar/renomear
 ```
 
 ### Triar uma sessão pelo terminal
 ```bash
-python facet.py --auto-cull /photos/wedding                   # Prévia do plano, nada é gravado
+python facet.py --auto-cull /photos/wedding                     # Pré-visualiza o plano, nada é gravado
 python facet.py --auto-cull /photos/wedding --apply \
-    --copy-keepers ~/wedding-keepers                          # Rejeita e depois copia as fotos mantidas
+    --copy-keepers ~/wedding-keepers                             # Rejeita e depois copia os sobreviventes
 python facet.py /photos/new-shoot --auto-cull --apply --cull-min-score 5   # Escaneia e depois tria
 ```
 
 ### Configuração Multiusuário
 ```bash
-# Add users (prompts for password)
+# Adicione usuários (pede a senha)
 python database.py --add-user alice --role superadmin --display-name "Alice"
 python database.py --add-user bob --role user --display-name "Bob"
-# Edit scoring_config.json to set directories and shared_directories
-# Migrate existing ratings to a user
+# Edite scoring_config.json para definir directories e shared_directories
+# Migre as avaliações existentes para um usuário
 python database.py --migrate-user-preferences --user alice
 ```
 
 ### Trocar o Modelo de Marcação
 ```bash
-# Edit scoring_config.json: "tagging": {"model": "clip"}
-python facet.py --recompute-tags     # Re-tag with new model
+# Edite scoring_config.json: "tagging": {"model": "clip"}
+python facet.py --recompute-tags     # Remarca com o novo modelo
 ```
 
 ### Trocar o Perfil de VRAM
 ```bash
-# Edit scoring_config.json: "vram_profile": "auto"
-# Or use specific: "vram_profile": "8gb"
-python facet.py --compute-recommendations  # Check distributions
-python facet.py --recompute-average        # Apply new weights
+# Edite scoring_config.json: "vram_profile": "auto"
+# Ou use um específico: "vram_profile": "8gb"
+python facet.py --compute-recommendations  # Verifica as distribuições
+python facet.py --recompute-average        # Aplica os novos pesos
 ```
-
-> **`--import-lightroom` é o inverso de `--export-manifest`.** Ele lê a exportação própria do plug-in (`facet_lightroom_state.json`, um formato de arquivo *diferente* — `{"format":"facet-lightroom-state","version":1,"photos":[...]}` — validado e rejeitado antes de qualquer gravação no BD se não corresponder), nunca o manifesto em si, e aplica a avaliação/o pick do Lightroom como valor vencedor para cada campo que um registro carregue; um campo omitido deixa intacto o próprio valor do Facet. Uma mudança dispara a mesma reconstrução dos pares de treinamento derivados das avaliações e o mesmo impulso de retreinamento automático que qualquer outra gravação de avaliação.
 
 ## Religar fotos movidas
 
-Depois de mover os arquivos manualmente, `python database.py --relink-photos` mostra uma prévia dos caminhos antigos/novos exatos e preserva suas associações no banco. A prévia é o padrão. Aplicar exige o ID do plano salvo e `--acknowledge-unverified-identity`: o banco não possui prova criptográfica do original ausente. Pare o viewer/as varreduras e revise o plano. Os dois caminhos devem permanecer em raízes configuradas com a mesma visibilidade de usuários; cópias, nomes ambíguos, planos obsoletos e mapeamentos de caminhos são recusados. Os companheiros devem ser explícitos; retângulos manuais exigem revisão no editor e o estado Immich fica inalterado. Contrato e exemplos: [Religar fotos movidas](RELINK.md).
+Depois de mover arquivos por conta própria, `python database.py --relink-photos` pré-visualiza os mapeamentos de caminho antigo → novo e mantém os dados do banco de dados de cada foto. A prévia é o padrão.
 
-A aplicação usa o bloqueio da biblioteca: o código 75 indica outro trabalho em curso e o código 1 um bloqueio inutilizável. A prévia não adquire o bloqueio.
+- **Aplicar** exige o ID do plano salvo e `--acknowledge-unverified-identity`, porque o Facet não pode provar que o novo arquivo é o original. Pare visualizadores e escaneadores e revise o plano antes.
+- **Recusados:** caminhos fora das suas raízes configuradas ou da visibilidade do usuário, cópias, nomes ambíguos, planos desatualizados e mapeamentos de caminho.
+- Os **acompanhantes** devem ser listados explicitamente; os tipos incluem `sidecar_facet` para `photo.ext.facet.xmp`. Os retângulos manuais precisam de revisão no editor. O estado do Immich não muda.
+- Os **planos** são salvos de forma privada (0600 em POSIX).
+- **Montagens:** uma pasta legível não prova que um volume está montado, então `source_mount_status` permanece `not_verified`. Confirme que o original foi movido, e não que está offline.
+- **Códigos de saída:** 75 significa que outro trabalho detém o bloqueio da biblioteca; 1 significa que o bloqueio é inutilizável. A prévia não toma bloqueio.
 
-`sidecar_facet` identifica explicitamente `photo.ext.facet.xmp`; pacotes alternativos não listados também são recusados. Os planos salvos são privados (0600 em POSIX). Um diretório legível não prova que o volume está montado: `source_mount_status` continua `not_verified`; o operador deve confirmar uma movimentação real em vez de armazenamento offline.
+Veja [Relink a missing photo](RELINK.md) para o contrato completo e exemplos.

@@ -849,7 +849,7 @@ class TestRetainedCacheCoResidency:
 
     def test_retained_cache_and_running_pass_fit_the_container(
             self, manager, monkeypatch):
-        """The 16 GiB case ``docs/DEPLOYMENT.md`` recommends as the CPU floor.
+        """A 16 GiB container on the CPU profile.
 
         Retention starts at pass 3 and, once the cache survives into the next
         chunk, reaches 14.0 GB declared against a 5.0 GB planned capacity --
