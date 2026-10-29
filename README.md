@@ -5,7 +5,7 @@
 Facet is a local photo-analysis and culling engine. It scores each image across 9 dimensions — from aesthetic quality to face sharpness — then lets you browse, cull, and organize through a web gallery. Everything runs on your machine; no cloud, accounts, or API keys.
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue)
-![Angular](https://img.shields.io/badge/Angular-21-dd0031)
+![Angular](https://img.shields.io/badge/Angular-22-dd0031)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -16,7 +16,7 @@ Facet is a local photo-analysis and culling engine. It scores each image across 
 
 ## How It Works
 
-1. **Scan** — Point Facet at a folder of photos. Each image is analyzed for quality, composition, and faces. Supports JPG, HEIF/HEIC/HIF (Canon HDR PQ `.HIF` stills are decoded with the SMPTE ST 2084 PQ transfer function and tone-mapped to SDR sRGB automatically), 10 RAW formats (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF), and PNG, GIF, WebP, BMP, TIFF, and AVIF stills (AVIF needs a Pillow built with AVIF support, native from 11.3), plus JPEG XL (`.jxl`) through the existing `imagecodecs` dependency, included in standard installs and Docker. A RAW LibRaw can't decode — such as a Lightroom "Merge to HDR/Panorama" DNG (`-HDR.dng`, `-Pano.dng`) or a camera newer than the installed LibRaw — falls back to its largest embedded preview via `exiftool` (needs a preview at least 1024 px on the long edge; scores then come from that preview, not a full RAW decode). Lightroom Classic 13+ merges (and Enhance) store that preview as JPEG XL; Facet decodes it directly.
+1. **Scan** — Point Facet at a folder of photos. Each image is analyzed for quality, composition, and faces. Supports JPEG, HEIF/HEIC, 10 RAW formats, JPEG XL, AVIF, PNG, WebP, TIFF and more — see [supported file types](docs/README.md#supported-file-types).
 2. **Browse** — Open the web gallery to explore your library with filters, search, and multiple view modes.
 3. **Cull** — Facet detects bursts, flags blinks, groups similar photos, and surfaces top picks. Exposure brackets and panorama/HDR sets are recognized and kept whole rather than culled apart.
 
@@ -35,7 +35,7 @@ Hover over any photo to see its score breakdown and EXIF data in the gallery's s
 ### Cull
 
 - **Burst detection** — groups rapid-fire shots and auto-selects the best one based on sharpness, quality, and blink detection
-- **Sequence protection** — exposure brackets, panorama sweeps, and HDR panoramas (`--detect-sequences` / `--detect-panoramas`) are recognized as deliberate multi-frame sets and kept whole: the culling darkroom starts every frame of a set kept and never reduces it to a single "winner"
+- **Sequence protection** — exposure brackets, panoramas and HDR panoramas (`--detect-sequences` / `--detect-panoramas`) are recognized as sets; the culling darkroom starts every frame of a set as kept
 - **Similarity groups** — finds visually similar photos across the library, regardless of when they were taken
 - **Scenes** — groups a shoot into chronological "scenes" by capture-time gaps, so you cull in story order; tap to mark and confirm to reject
 - **Auto-cull** — one button culls a whole scope (all groups, or bursts / similars / scenes only, optionally narrowed to an album or date window) with a dry-run preview, a keeper budget, and an optional Highlights album
@@ -76,8 +76,8 @@ Hover over any photo to see its score breakdown and EXIF data in the gallery's s
 </details>
 
 **Workflow tips:**
-- The **`/timeline`** view drills down years → months → a day calendar — click a day to open the gallery filtered to that date. There's no sort here; for picking the best shots from a trip, use **`/capsules`** below instead, which runs a diversity pass over a date range you can save as an album.
-- The **`/capsules`** view generates themed diaporamas (journeys, "Faces of", seasonal, golden) you can save as albums.
+- **`/timeline`** drills down years → months → days; click a day to open the gallery on that date.
+- **`/capsules`** builds themed slideshows (journeys, "Faces of", seasonal, golden) you can save as albums — the better choice for picking a trip's best shots.
 - The gallery hides blinks, non-lead bursts, and duplicates by default. When the **"N photos hidden by current filters"** banner appears, click "Show all" to expand the view.
 
 ### Organize
@@ -101,7 +101,7 @@ Hover over any photo to see its score breakdown and EXIF data in the gallery's s
 - **Statistics** — dashboards for equipment usage, category breakdown, shooting timeline, and metric correlations
 - **AI critique** — score breakdown showing each metric's contribution; VLM natural-language assessment `[GPU]` `[16gb/24gb]`
 - **Weight tuning** — per-category weight editor with live score preview. A/B photo comparison learns from your choices and suggests optimized weights.
-- **Scoring contexts** — control *which* category a photo is scored as, separately from the weight sliders that only tune the category once it's picked: reorder the global category priority, apply a named context (Action/Stage, Portrait Session, Wildlife, …) per album, or set a sticky per-photo category override that survives every recompute.
+- **Scoring contexts** — choose *which* category a photo is scored as: reorder category priority, apply a named context (Action/Stage, Portrait Session, Wildlife, …) per album, or pin a category on one photo.
 - **My Taste sort** — sort the gallery by the personal ranker's learned score, with a confidence badge showing learned coverage and held-out accuracy
 - **Learning from labels** — culling decisions, star ratings, favorites, and rejections feed the weight optimizer (`--sync-label-comparisons`, `--mine-insights`)
 - **Snapshots** — save, restore, and compare weight configurations
@@ -134,7 +134,7 @@ Hover over any photo to see its score breakdown and EXIF data in the gallery's s
 - **Client proofing** — a shared album can run in proofing mode: clients heart photos and leave comments with just the link (plus an optional PIN), fully isolated from your own ratings
 - **Phone auto-upload** — point PhotoSync or any WebDAV app at the built-in `/dav` inbox; `--watch` scores new shots as they arrive
 - **Photo frames & kiosks** — a token-guarded endpoint feeds your curated best shots to smart photo frames and Home Assistant dashboards
-- **AI agents (MCP)** — an on-by-default [Model Context Protocol](https://modelcontextprotocol.io/) endpoint (switch it off with `viewer.mcp.enabled`) lets MCP-capable assistants search and inspect the library with the gallery's filters, using revocable personal tokens; depending on the token's level, an assistant can also rate, tag, organise and cull photos (destructive actions preview first and need a confirmation)
+- **AI agents (MCP)** — a [Model Context Protocol](https://modelcontextprotocol.io/) endpoint (on by default, `viewer.mcp.enabled`) lets assistants search the library with revocable personal tokens. Higher token levels can rate, tag, organise and cull; destructive actions preview first and need confirmation
 - **Portfolio export** `[Edition]` — render an album into a self-contained static HTML gallery (no CDN references, works offline) you can drop on any web host
 - **Social crops** `[Edition]` — full-resolution exports framed on the detected subject for square, portrait and story aspect presets
 - **Photo download** — download individual photos or selections from the gallery
@@ -160,7 +160,11 @@ Hover over any photo to see its score breakdown and EXIF data in the gallery's s
 
 ## What you need
 
-Most of Facet runs on **any machine (CPU)** — scoring, face detection, culling, the gallery, search, albums and metadata export all work without a GPU. On **Apple Silicon**, Facet automatically uses PyTorch's Metal (`mps`) backend for Torch models, and the `auto` profile is sized from your total unified memory — a 32 GB Mac reaches the `16gb` profile, a 48 GB one the `24gb` profile; InsightFace remains on ONNX Runtime's CPU provider. An **NVIDIA GPU** (with the `16gb` or `24gb` profile) unlocks the strongest models: TOPIQ aesthetic scoring, SigLIP 2 embeddings, VLM tagging, AI captions and critique, and subject saliency. No local GPU? Point the VLM tagging/captions/critique at a remote **Ollama** or **OpenAI-compatible** server via `vlm_backend` in `scoring_config.json` — those features then work on the CPU `legacy`/`8gb` profiles too. In the viewer, editing actions (ratings, faces, culling) need the **edition password**, and triggering scans needs `viewer.features.show_scan_button: true` plus the **superadmin** role in multi-user mode, or edition access on a single-user install.
+- **Any machine (CPU)** runs most of Facet: scoring, faces, culling, the gallery, search, albums and metadata export.
+- **Apple Silicon** uses the Metal (`mps`) backend automatically. The `auto` profile follows unified memory: 32 GB reaches `16gb`, 48 GB reaches `24gb`.
+- **An NVIDIA GPU** on the `16gb`/`24gb` profiles unlocks the strongest models: TOPIQ, SigLIP 2, VLM tagging, AI captions and critique, subject saliency.
+- **No GPU?** Point VLM tagging, captions and critique at a remote **Ollama** or **OpenAI-compatible** server with `vlm_backend` in `scoring_config.json`.
+- **Editing in the viewer** (ratings, faces, culling) needs the **edition password**. The Scan button needs `viewer.features.show_scan_button: true` and edition access (the **superadmin** role in multi-user mode).
 
 → Full per-feature requirements (GPU, VRAM profile, optional packages, auth): **[Installation › Feature requirements](docs/INSTALLATION.md#feature-requirements)**.
 
@@ -173,7 +177,7 @@ Facet scores, ranks, and culls a local photo library and serves a gallery to bro
 - have a large local library and want to find your best shots and cull bursts and near-duplicates;
 - want quality, composition, and face scoring you can tune to your own taste (it learns from your A/B comparisons);
 - prefer self-hosted and private — no cloud upload, no account, no subscription;
-- already edit in Lightroom, darktable, digiKam or immich — Facet writes ratings, labels, keywords, captions and named-face regions to `.xmp` sidecars (originals untouched by default) and can optionally embed them in-file for JPEG/HEIC/TIFF/PNG/DNG (the gallery "Write metadata to file" action or `--export-sidecars --embed-originals`), and reads external edits back with `--import-sidecars`. For Lightroom specifically, the `facet.lrplugin` plug-in adds a two-way flow on top of that: it can fill in star ratings from Facet's scores, pick/reject burst frames, group bursts/brackets/panoramas into collections and keywords from a downloaded manifest, and export your own Lightroom flags/ratings/labels back into Facet.
+- already edit in Lightroom, darktable, digiKam or Immich — Facet writes ratings, labels, keywords, captions and face regions to `.xmp` sidecars (originals stay untouched unless you ask for embedding: the gallery's "Write metadata to file" action or `--export-sidecars --embed-originals`) and reads edits back with `--import-sidecars`. A `facet.lrplugin` Lightroom plug-in adds a two-way flow. See [Interop](docs/INTEROP.md).
 
 **Probably not for you if you want:**
 
@@ -232,6 +236,7 @@ First time here? Follow the **[Getting Started](docs/GETTING_STARTED.md)** walkt
 | [Scoring](docs/SCORING.md) | Categories, weights, tuning guide |
 | [Face Recognition](docs/FACE_RECOGNITION.md) | Face workflow, clustering, person management |
 | [Viewer](docs/VIEWER.md) | Web gallery features and usage |
+| [API](docs/API.md) | Viewer HTTP API reference |
 | [Interop](docs/INTEROP.md) | Round-tripping ratings/tags with Lightroom, Capture One, digiKam, darktable |
 | [Immich](docs/IMMICH.md) | Syncing ratings and favorites with Immich, plus the inbound webhook |
 | [Relink](docs/RELINK.md) | Relink moved photos |
@@ -245,4 +250,4 @@ First time here? Follow the **[Getting Started](docs/GETTING_STARTED.md)** walkt
 
 ### Licensing
 
-Facet's own code is MIT. Some of the default models are **not** licensed for commercial use: pyiqa (TOPIQ, LIQE and friends) and the InsightFace weights are non-commercial. The `licensing.mode: commercial` setting restricts Facet to permissively licensed models: restricted components are never imported or downloaded, and each slot is routed to a permissive replacement (see [Licensing](docs/CONFIGURATION.md#licensing)). See [Third-party models and licences](docs/THIRD_PARTY_MODELS.md).
+Facet's own code is MIT. Some default models are **non-commercial**: pyiqa (TOPIQ, LIQE, …) and the InsightFace weights. Set `licensing.mode: commercial` to use only permissively licensed replacements ([Licensing](docs/CONFIGURATION.md#licensing), [Third-party models](docs/THIRD_PARTY_MODELS.md)).
