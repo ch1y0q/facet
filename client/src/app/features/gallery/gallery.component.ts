@@ -1258,8 +1258,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
   }
 
   /** The review-progress card: on in the user menu, counts loaded, and not closed in this tab. */
+  /** An empty scope has nothing to review, so it gets no "0 of 0" card. */
   protected readonly reviewProgressShown = computed(() =>
-    this.store.reviewProgressVisible() && !!this.store.reviewProgress() && !this.noticeClosed('review_progress'));
+    this.store.reviewProgressVisible() && !!this.store.reviewProgress()?.total && !this.noticeClosed('review_progress'));
   protected readonly reviewBookmarkShown = computed(() => !!this.store.reviewBookmark() && !this.noticeClosed('review_bookmark'));
   protected readonly hiddenNoticeShown = computed(() => this.showHiddenBanner() && !this.noticeClosed('hidden'));
   protected readonly restoreNoticeShown = computed(() => this.canRestoreHidden() && !this.noticeClosed('restore_hidden'));
