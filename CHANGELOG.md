@@ -6,8 +6,12 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
-- **Regroup manual photo stacks.** Preview combining existing stacks or moving only selected photos, inspect the remaining source groups, choose a cover and order, and Undo the complete change. The larger editor shows a focused preview and preserves exclusions when switching policies.
+- **Review selected photos in a full-page stack editor.** The selection toolbar opens `/stacks/edit` with a zoomable preview and persistent filmstrip. Combine existing stacks or move only selected photos, inspect source effects, choose a cover and order, and save while staying on the page with Undo and Continue editing. Back returns to the original gallery or album.
 - **Open the stack editor with S.** The gallery shortcut is remappable and requires an explicit selection of 2–1000 photos and editing access. Existing saved S bindings are preserved; Stack stays unassigned until a free key is chosen.
+
+### Changed
+
+- **Suggested stacks use the full-page darkroom.** Review the current gallery scope in `/culling?mode=stacks` with zoom, loupe, compare and filmstrip; stack with S/Enter, skip with X, and Undo without changing review decisions or training. The header counts loaded suggestions, and the next batch loads after all loaded groups are decided. Editing access is required; Edit members remains a secondary dialog.
 
 ### Fixed
 

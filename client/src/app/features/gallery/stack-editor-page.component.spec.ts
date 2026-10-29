@@ -90,14 +90,31 @@ describe('manual stack workspace with Router, HTTP and Material', () => {
   });
   it('blocks native controls, modifiers, repeat, composing and every overlay from page shortcuts', async () => {
     await ready();
-    const blocked = [{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { isComposing: true }, { repeat: true }];
-    for (const init of blocked) document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, ...init }));
+    button('[data-stack-focus="/private/a.jpg"]').click(); await render();
+    const expectFirstFocused = () => {
+      expect(button('[data-stack-focus="/private/a.jpg"]').getAttribute('aria-pressed')).toBe('true');
+      expect(button('[data-stack-focus="/private/b.jpg"]').getAttribute('aria-pressed')).toBe('false');
+    };
+    const blocked = [{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { shiftKey: true },
+      { isComposing: true }, { keyCode: 229 }, { repeat: true }];
+    for (const init of blocked) {
+      button('[data-stack-focus="/private/a.jpg"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, ...init }));
+      await render(); expectFirstFocused();
+    }
     for (const kind of ['dialog', 'bottom_sheet', 'slideshow'] as const) {
       const clear = TestBed.inject(PageContextService).registerOverlay(kind);
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); clear();
+      button('[data-stack-focus="/private/a.jpg"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      await render(); expectFirstFocused(); clear();
     }
-    for (const key of ['Enter', ' ']) button('[data-stack-back]').dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
-    http.expectNone('/api/stacks/regroup/apply'); expect(root().querySelector('[data-stack-focus="/private/b.jpg"]')?.getAttribute('aria-pressed')).toBe('true');
+    for (const key of ['Enter', ' ']) {
+      button('[data-stack-back]').dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      await render(); expectFirstFocused();
+    }
+    http.expectNone('/api/stacks/regroup/apply');
+    button('[data-stack-focus="/private/a.jpg"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await render();
+    expect(button('[data-stack-focus="/private/b.jpg"]').getAttribute('aria-pressed')).toBe('true');
+    expect(button('[data-stack-focus="/private/a.jpg"]').getAttribute('aria-pressed')).toBe('false');
   });
   it('recovers a cancelled navigation through fresh server authorization', async () => {
     await ready(); await TestBed.inject(Router).navigateByUrl('/blocked'); harness.detectChanges();
