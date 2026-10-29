@@ -27,7 +27,10 @@ describe('HelpDialogComponent', () => {
 
   it('titles the dialog with the Help label so it has an accessible name', () => {
     const title = render({ key: null }).querySelector('h2[mat-dialog-title]');
-    expect(title?.textContent?.trim()).toBe(I18N.nav.help);
+    // The decorative icon lives inside the title but is aria-hidden, so the
+    // accessible name stays the Help label alone; textContent still shows both.
+    expect(title?.textContent?.trim()).toContain(I18N.nav.help);
+    expect(title?.querySelector('mat-icon')?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('falls back to the no-help text when the page set none', () => {

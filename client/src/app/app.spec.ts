@@ -1093,6 +1093,11 @@ describe('App', () => {
       expect(labels.at(-3)).toContain(I18N.gallery.card_actions.title);
       expect(labels.at(-2)).toContain(I18N.shortcuts.keymap_title);
       expect(labels.at(-1)).toContain(I18N.nav.help);
+      // The customisation group is separated from Help by a divider.
+      const content = document.querySelector('.mat-mdc-menu-panel .mat-mdc-menu-content')!;
+      const children = [...content.children];
+      const helpIndex = children.findIndex(c => c.tagName === 'BUTTON' && c.textContent!.includes(I18N.nav.help));
+      expect(children[helpIndex - 1].tagName).toBe('MAT-DIVIDER');
       items.at(-3)!.click();
       expect(openCardActions).toHaveBeenCalledOnce();
       items.at(-2)!.click();
