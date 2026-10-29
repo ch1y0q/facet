@@ -158,7 +158,7 @@ Il numero accanto a **Filtri** è il totale di tutti i filtri attivi. Un interva
 Nella scheda Revisione, la decisione e ogni gruppo (ad esempio Duplicati) è una riga che mostra il valore attuale (come Nascoste, Mostrate o Solo queste) e apre un menu di scelte, ciascuna con una spiegazione di una riga. Una riga lasciata sul valore predefinito non conta nel badge della scheda né dell'intestazione. *Solo* e *Nascoste* si escludono a vicenda. Finché è scelta una decisione, Scartate è bloccata e la sua descrizione ne spiega il motivo. Il pulsante a stella imposta una valutazione minima: ogni clic la aumenta di uno, e il clic dopo 5, o dopo un massimo arrivato da un link, la cancella. Condivide una riga con gli interruttori Preferiti e Monocromo, solo icona e con descrizioni al passaggio. Nelle schede Qualità e Soggetto, passare sul nome di un'impostazione spiega cosa viene valutato e da quale modello, e anche i controlli di Revisione hanno descrizioni al passaggio.
 
 <details><summary>Barra laterale dei filtri completa — tutte le sezioni espanse (clicca per vedere)</summary>
-<p align="center"><img src="screenshots/filter-sidebar-full.jpg" alt="Barra laterale dei filtri con tutte le sezioni espanse" width="360"></p>
+<p align="center"><img src="../screenshots/filter-sidebar-full.jpg" alt="Le cinque schede della barra laterale dei filtri affiancate: Sfoglia, Revisione, Qualità, Soggetto e Visualizzazione" width="900"></p>
 </details>
 
 ### Filtri primari

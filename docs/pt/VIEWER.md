@@ -158,7 +158,7 @@ O número junto a **Filtros** é o total de todos os filtros ativos. Um interval
 Na aba Revisão, a decisão e cada grupo (por exemplo Duplicatas) é uma linha que mostra o valor atual (como Ocultos, Mostrados ou Só estes) e abre um menu de opções, cada uma com uma explicação de uma linha. Uma linha deixada no valor padrão não conta no emblema da aba nem do cabeçalho. *Só* e *Ocultos* excluem-se mutuamente. Enquanto uma decisão está escolhida, Rejeitadas fica bloqueada, e a dica explica o motivo. O botão de estrela define uma avaliação mínima: cada clique a aumenta em um, e o clique depois de 5, ou depois de um máximo vindo de um link, a limpa. Ele divide uma linha com os interruptores Favoritos e Monocromático, só com ícone e com dicas. Nas abas Qualidade e Assunto, passar o mouse sobre o nome de uma configuração explica o que é pontuado e por qual modelo, e os controles de Revisão também têm dicas.
 
 <details><summary>Barra lateral de filtros completa — todas as seções expandidas (clique para ver)</summary>
-<p align="center"><img src="screenshots/filter-sidebar-full.jpg" alt="Filter sidebar with every section expanded" width="360"></p>
+<p align="center"><img src="../screenshots/filter-sidebar-full.jpg" alt="As cinco abas da barra lateral de filtros lado a lado: Explorar, Revisão, Qualidade, Assunto e Visualização" width="900"></p>
 </details>
 
 ### Filtros Primários

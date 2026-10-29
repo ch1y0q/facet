@@ -158,7 +158,7 @@ Die Zahl neben **Filter** ist die Summe aller aktiven Filter. Ein Min/Max-Bereic
 Im Tab Prüfen sind die Entscheidung und jede Gruppe (zum Beispiel Duplikate) eine Zeile mit ihrem aktuellen Wert (etwa Ausgeblendet, Eingeblendet oder Nur diese), die ein Menü mit Auswahlmöglichkeiten samt einzeiliger Erklärung öffnet. Eine Zeile mit ihrem Standardwert zählt nicht zum Abzeichen des Tabs oder der Kopfzeile. *Nur* und *Ausgeblendet* schließen sich gegenseitig aus. Solange eine Entscheidung gewählt ist, ist Abgelehnt gesperrt, und sein Tooltip nennt den Grund. Die Sterne-Schaltfläche setzt eine Mindestbewertung: Jeder Klick erhöht sie um eins, und der Klick nach 5 oder nach einem aus einem Link übernommenen Maximum löscht sie. Sie teilt sich eine Zeile mit den reinen Symbol-Schaltern Favoriten und Monochrom, die Tooltips haben. In den Tabs Qualität und Motiv erklärt das Überfahren des Namens einer Einstellung, was bewertet wird und von welchem Modell, und auch die Steuerelemente im Tab Prüfen haben Tooltips.
 
 <details><summary>Filter-Seitenleiste — alle Abschnitte aufgeklappt (zum Anzeigen klicken)</summary>
-<p align="center"><img src="screenshots/filter-sidebar-full.jpg" alt="Filter-Seitenleiste mit allen aufgeklappten Abschnitten" width="360"></p>
+<p align="center"><img src="../screenshots/filter-sidebar-full.jpg" alt="Die fünf Tabs der Filter-Seitenleiste nebeneinander: Durchsuchen, Prüfen, Qualität, Motiv und Anzeige" width="900"></p>
 </details>
 
 ### Primärfilter

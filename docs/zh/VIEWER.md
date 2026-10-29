@@ -158,7 +158,7 @@ python database.py --migrate-user-preferences --user alice
 在“审阅”标签页上，决定和每个分组（例如“重复项”）各是一行，显示当前值（如已隐藏、已显示或仅这些）并打开选项菜单，每个选项都有一行说明。保持默认值的行不计入标签页或标题栏的徽标。“仅”与“已隐藏”互相排斥。选择了决定时，“已拒绝”会被锁定，其提示会说明原因。星形按钮设置最低评分：每次点击加一，点到 5 之后再点一次，或在来自链接的最大值之后点击，会清除它。它与仅有图标、带提示的收藏和黑白开关共用一行。在“画质”和“主体”标签页上，悬停在设置名称上会说明评分内容及所用模型，审阅控件也有提示。
 
 <details><summary>完整的筛选侧边栏——所有分区均已展开（点击查看）</summary>
-<p align="center"><img src="../screenshots/filter-sidebar-full.jpg" alt="所有分区均已展开的筛选侧边栏" width="360"></p>
+<p align="center"><img src="../screenshots/filter-sidebar-full.jpg" alt="筛选侧边栏的五个标签页并排展示：浏览、审阅、画质、主体和显示" width="900"></p>
 </details>
 
 ### 主要筛选条件

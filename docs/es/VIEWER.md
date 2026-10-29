@@ -158,7 +158,7 @@ El número junto a **Filtros** es el total de todos los filtros activos. Un rang
 En la pestaña Revisión, la decisión y cada grupo (por ejemplo Duplicados) es una fila que muestra su valor actual (como Ocultos, Mostrados o Solo estos) y abre un menú de opciones, cada una con una explicación de una línea. Una fila que se deja en su valor por defecto no cuenta en la insignia de la pestaña ni de la cabecera. *Solo* y *Ocultos* se excluyen entre sí. Mientras hay una decisión elegida, Rechazadas queda bloqueada, y su información emergente explica por qué. El botón de estrella fija una valoración mínima: cada clic la sube en uno, y el clic después de 5, o después de un máximo llegado desde un enlace, la borra. Comparte fila con los interruptores Favoritos y Monocromo, solo con icono y con información emergente. En las pestañas Calidad y Sujeto, pasar el cursor sobre el nombre de un ajuste explica qué se puntúa y con qué modelo, y los controles de Revisión también tienen información emergente.
 
 <details><summary>Barra lateral de filtros completa: todas las secciones expandidas (haz clic para ver)</summary>
-<p align="center"><img src="../screenshots/filter-sidebar-full.jpg" alt="Filter sidebar with every section expanded" width="360"></p>
+<p align="center"><img src="../screenshots/filter-sidebar-full.jpg" alt="Las cinco pestañas de la barra lateral de filtros, una al lado de otra: Explorar, Revisión, Calidad, Sujeto y Visualización" width="900"></p>
 </details>
 
 ### Filtros principales

@@ -158,7 +158,7 @@ Le nombre à côté de **Filtres** est le total de tous les filtres actifs. Une 
 Dans l'onglet Tri, la décision et chaque série (par exemple Doublons) est une ligne affichant sa valeur actuelle (comme Masqués, Affichés ou Seulement ceux-ci) qui ouvre un menu de choix, chacun avec une explication d'une ligne. Une ligne laissée sur sa valeur par défaut ne compte pas dans le badge de l'onglet ni de l'en-tête. *Seulement* et *Masqués* s'excluent mutuellement. Tant qu'une décision est choisie, Rejetées est verrouillé, et son infobulle en donne la raison. Le bouton étoile définit une note minimale : chaque clic l'augmente d'un cran, et le clic après 5, ou après un maximum venu d'un lien, l'efface. Il partage une ligne avec les bascules Favoris et Monochrome, réduites à une icône et dotées d'infobulles. Dans les onglets Qualité et Sujet, survoler le nom d'un réglage explique ce qui est noté et par quel modèle, et les contrôles de Tri ont aussi des infobulles.
 
 <details><summary>Barre latérale de filtres complète — toutes les sections développées (cliquer pour voir)</summary>
-<p align="center"><img src="screenshots/filter-sidebar-full.jpg" alt="Filter sidebar with every section expanded" width="360"></p>
+<p align="center"><img src="../screenshots/filter-sidebar-full.jpg" alt="Les cinq onglets de la barre latérale de filtres côte à côte : Parcourir, Tri, Qualité, Sujet et Affichage" width="900"></p>
 </details>
 
 ### Filtres principaux
