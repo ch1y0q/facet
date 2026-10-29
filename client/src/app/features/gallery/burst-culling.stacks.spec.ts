@@ -212,7 +212,7 @@ describe('Suggested stacks routed darkroom', () => {
     const editing = page['editSuggestion'](burst); await settle();
     await vi.waitFor(() => expect(TestBed.inject(MatDialog).openDialogs).toHaveLength(1));
     const ref = TestBed.inject(MatDialog).openDialogs[0];
-    http.expectOne('/api/photos/by_paths').flush({ photos: group(2, paths).photos, missing: [] }); await settle();
+    await settle(); http.expectOne('/api/photos/by_paths').flush({ photos: group(2, paths).photos, missing: [] }); await settle();
     expect(ref.componentInstance.editor().paths()).toEqual(['/a.jpg', '/e.jpg']);
     ref.close(); await editing; await settle();
     const stacking = cull.stackSuggestion(burst, paths[1]);
@@ -228,7 +228,7 @@ describe('Suggested stacks routed darkroom', () => {
     const editing = page['editSuggestion'](cull.groups()[0]); await settle();
     await vi.waitFor(() => expect(TestBed.inject(MatDialog).openDialogs).toHaveLength(1));
     const ref = TestBed.inject(MatDialog).openDialogs[0];
-    http.expectOne('/api/photos/by_paths').flush({ photos: group(1, ['/b.jpg', '/a.jpg', '/e.jpg']).photos, missing: [] }); await settle();
+    await settle(); http.expectOne('/api/photos/by_paths').flush({ photos: group(1, ['/b.jpg', '/a.jpg', '/e.jpg']).photos, missing: [] }); await settle();
     const editor = ref.componentInstance.editor();
     expect(editor.paths()).toEqual(['/a.jpg', '/e.jpg']);
     await commands[0].undo(); await settle();
@@ -458,7 +458,7 @@ describe('Suggested stacks routed darkroom', () => {
       await vi.waitFor(() => expect(TestBed.inject(MatDialog).openDialogs).toHaveLength(1));
       const ref = TestBed.inject(MatDialog).openDialogs[0];
       const oldEditorUndo = ref.componentInstance.editor().data.onUndone;
-      http.expectOne('/api/photos/by_paths').flush({ photos: oldSecond.photos, missing: [] }); await settle();
+      await settle(); http.expectOne('/api/photos/by_paths').flush({ photos: oldSecond.photos, missing: [] }); await settle();
       page['openLightbox'](oldSecond, 0);
       const navigation = delayedNavigation(); await navigation.started; await settle();
       expect(cull.mode()).toBe('stacks'); expect(cull.cullWritesAllowed()).toBe(false);
@@ -740,7 +740,7 @@ describe('Suggested stacks routed darkroom', () => {
     const dialog = TestBed.inject(MatDialog);
     await vi.waitFor(() => expect(dialog.openDialogs).toHaveLength(1));
     const ref = dialog.openDialogs[0];
-    http.expectOne('/api/photos/by_paths').flush({ photos: ['/d.jpg', '/c.jpg'].map(path => ({ path, filename: path.slice(1) })), missing: [] });
+    await settle(); http.expectOne('/api/photos/by_paths').flush({ photos: ['/d.jpg', '/c.jpg'].map(path => ({ path, filename: path.slice(1) })), missing: [] });
     await settle();
     const remove = document.querySelector('[data-stack-remove="/c.jpg"]') as HTMLButtonElement;
     remove.click(); await settle();
@@ -759,7 +759,7 @@ describe('Suggested stacks routed darkroom', () => {
     await vi.waitFor(() => expect(TestBed.inject(MatDialog).openDialogs).toHaveLength(1));
     const ref = TestBed.inject(MatDialog).openDialogs[0];
     const callback = ref.componentInstance.editor().data.onUndone;
-    const photos = http.expectOne('/api/photos/by_paths');
+    await settle(); const photos = http.expectOne('/api/photos/by_paths');
     if (reason === 'identity') identity.set('other'); else edition.set(false);
     // Direct liveness checks must reject before the auth effect runs.
     photos.flush({ photos: captured.photos, missing: [] }); callback();
