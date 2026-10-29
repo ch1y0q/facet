@@ -1,4 +1,5 @@
-import { Component, input, output, viewChild, ElementRef, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, output, signal, viewChild, ElementRef, ChangeDetectionStrategy } from '@angular/core';
+import { MatAutocompleteModule, MatAutocompleteTrigger } from '@angular/material/autocomplete';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -7,6 +8,8 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { PersonThumbnailUrlPipe } from '../../pipes/thumbnail-url.pipe';
+import { PersonNameSuggestionsComponent } from '../person-name-suggestions/person-name-suggestions.component';
+import { PersonNameOption } from '../../utils/person-name';
 
 export interface Person {
   id: number;
@@ -28,6 +31,8 @@ export interface Person {
     MatTooltipModule,
     TranslatePipe,
     PersonThumbnailUrlPipe,
+    MatAutocompleteModule,
+    PersonNameSuggestionsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.Eager,
   template: `
@@ -102,8 +107,9 @@ export interface Person {
 
       <mat-card-content class="!px-3 !pt-2 !pb-2">
         <div class="flex items-center gap-1">
-          <!-- Checkbox -->
-          @if (canEdit()) {
+          <!-- Checkbox: not while the name line is open, where it is no use and its
+               focus halo sat beside the input. -->
+          @if (canEdit() && !isEditing()) {
             <mat-checkbox
               class="shrink-0 -ml-1.5"
               [checked]="isSelected()"
@@ -115,7 +121,7 @@ export interface Person {
           <!-- Name & count -->
           <div class="min-w-0 flex-1">
             @if (isEditing()) {
-              <div class="flex flex-wrap items-center justify-end gap-1"
+              <div class="flex flex-wrap items-center justify-end gap-1 outline-none"
                    role="presentation"
                    tabindex="-1"
                    (click)="$event.stopPropagation()"
@@ -123,19 +129,22 @@ export interface Person {
                    (dblclick)="$event.stopPropagation()">
                 <input
                   #nameInput
-                  class="min-w-24 flex-1 bg-transparent border-b border-current outline-none text-sm py-0.5"
+                  class="min-w-24 flex-1 h-7 bg-transparent border-0 border-b-2 border-[var(--mat-sys-outline-variant)] focus:border-[var(--mat-sys-primary)] !outline-none focus-visible:!outline-none text-sm"
                   [value]="person().name ?? ''"
-                  [attr.list]="nameListId()"
+                  [matAutocomplete]="suggestions.panel"
                   autocomplete="off"
-                  (keyup.enter)="onSave()"
+                  (input)="draft.set($any($event.target).value)"
+                  (keydown.enter)="onEnterDown()"
+                  (keyup.enter)="onEnterUp()"
                   (keyup.escape)="editCancel.emit()"
                   [attr.aria-label]="'persons.rename' | translate"
                 />
-                <button mat-icon-button class="!w-7 !h-7" [matTooltip]="'dialog.confirm' | translate" [attr.aria-label]="'dialog.confirm' | translate" (click)="onSave()">
-                  <mat-icon class="!text-base">check</mat-icon>
+                <app-person-name-suggestions #suggestions [options]="nameOptions()" [query]="draft()" />
+                <button mat-icon-button class="!w-7 !h-7 !p-0 !inline-flex items-center justify-center shrink-0" [matTooltip]="'dialog.confirm' | translate" [attr.aria-label]="'dialog.confirm' | translate" (click)="onSave()">
+                  <mat-icon class="!text-base !w-4 !h-4 !leading-4">check</mat-icon>
                 </button>
-                <button mat-icon-button class="!w-7 !h-7" [matTooltip]="'dialog.cancel' | translate" [attr.aria-label]="'dialog.cancel' | translate" (click)="editCancel.emit()">
-                  <mat-icon class="!text-base">close</mat-icon>
+                <button mat-icon-button class="!w-7 !h-7 !p-0 !inline-flex items-center justify-center shrink-0" [matTooltip]="'dialog.cancel' | translate" [attr.aria-label]="'dialog.cancel' | translate" (click)="editCancel.emit()">
+                  <mat-icon class="!text-base !w-4 !h-4 !leading-4">close</mat-icon>
                 </button>
               </div>
             }
@@ -185,10 +194,15 @@ export class PersonCardComponent {
   readonly isSelected = input(false);
   readonly isEditing = input(false);
   readonly canEdit = input(false);
-  /** Id of a page-level <datalist> of existing names, offered while typing a name. */
-  readonly nameListId = input<string | null>(null);
+  /** Existing names offered while typing one (with each person's face and photo count). */
+  readonly nameOptions = input<readonly PersonNameOption[]>([]);
 
   readonly nameInput = viewChild<ElementRef<HTMLInputElement>>('nameInput');
+  private readonly autocomplete = viewChild(MatAutocompleteTrigger);
+  /** What is typed in the name line, which filters the suggestions. */
+  protected readonly draft = signal('');
+  /** Set when an Enter keydown picked a suggestion, so its keyup does not also save. */
+  private enterPicked = false;
 
   readonly selected = output<number>();
   readonly viewPhotos = output<number>();
@@ -200,6 +214,19 @@ export class PersonCardComponent {
   readonly unhidden = output<number>();
   readonly split = output<number>();
   readonly findMore = output<number>();
+
+  protected onEnterDown(): void {
+    const trigger = this.autocomplete();
+    this.enterPicked = !!trigger?.panelOpen && !!trigger.activeOption;
+  }
+
+  protected onEnterUp(): void {
+    if (this.enterPicked) {
+      this.enterPicked = false;
+      return;
+    }
+    this.onSave();
+  }
 
   onSave(): void {
     const value = this.nameInput()?.nativeElement.value ?? '';

@@ -1686,6 +1686,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/face/{face_id}/unassign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Api Unassign Face
+         * @description Detach one face from its person.
+         *
+         *     ``/api/photo/unassign_person`` drops the person from every face in a photo;
+         *     this acts on the face the user clicked alone, so "Not X" on one of two
+         *     faces wrongly grouped as X leaves the other one where it is. A person left
+         *     with no face is deleted, as ``/api/photo/unassign_person`` does; the
+         *     response still names it in ``person_id``.
+         */
+        post: operations["api_unassign_face_api_face__face_id__unassign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/filter_options/apertures": {
         parameters: {
             query?: never;
@@ -2412,6 +2438,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/person/{person_id}/face_boxes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Api Person Face Boxes
+         * @description The person's normalised face boxes for a batch of photos.
+         *
+         *     The gallery outlines the focused person on every tile once it is filtered to
+         *     one person; asking ``GET /api/photo/faces`` per tile made one request per
+         *     thumbnail. Only faces assigned to ``person_id`` are returned. A path the
+         *     caller cannot see, an unknown one, and a photo with no trustworthy box for
+         *     the person are all omitted alike.
+         */
+        post: operations["api_person_face_boxes_api_person__person_id__face_boxes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/person/{person_id}/faces": {
         parameters: {
             query?: never;
@@ -2442,6 +2494,11 @@ export interface paths {
         /**
          * Api Person Possible Faces
          * @description Faces most like ``person_id``'s centroid, best first (same embedding model only).
+         *
+         *     Besides the faces, the response says why the list looks the way it does: ``counts`` of
+         *     the qualifying faces per owner class, ``best_similarity`` over everything scanned (so an
+         *     empty list can say how close the closest face came), and ``similar_groups``, other persons
+         *     whose centroid is close enough to merge wholesale.
          */
         get: operations["api_person_possible_faces_api_person__person_id__possible_faces_get"];
         put?: never;
@@ -2474,7 +2531,8 @@ export interface paths {
          *     ``named_only=true`` leaves out persons without a name, which the needs-naming
          *     list already shows.
          *     ``hidden_only=true`` returns the hidden ones alone (the persons page's Ignored
-         *     section).
+         *     section). It is ignored under ``sort=assignment``: the assignment rule wins,
+         *     so hidden persons never become assignment candidates.
          */
         get: operations["list_persons_api_persons_get"];
         put?: never;
@@ -2689,7 +2747,9 @@ export interface paths {
          * Rename Person
          * @description Rename a person (set or update their name).
          *
-         *     ``same_name_persons`` lists the other visible, non-hidden persons whose name is
+         *     ``face_count`` is this person's own stored count, the same measure as each
+         *     entry of ``same_name_persons``, so the viewer picks the largest merge target
+         *     like with like. ``same_name_persons`` lists the other visible, non-hidden persons whose name is
          *     the same ignoring case and surrounding spaces, largest first, so the viewer can
          *     offer to merge clusters of one person that clustering split apart. Nothing is
          *     merged here: two different people may share a name.
@@ -7399,6 +7459,28 @@ export interface components {
             /** Photo Path */
             photo_path: string;
         };
+        /** PersonFaceBoxesRequest */
+        PersonFaceBoxesRequest: {
+            /** Paths */
+            paths: string[];
+        };
+        /**
+         * PersonFaceBoxesResponse
+         * @description ``POST /api/person/{person_id}/face_boxes``.
+         *
+         *     Keyed by photo path. A path the caller cannot see, an unknown path, and a
+         *     photo where none of the person's faces has a trustworthy box are all absent
+         *     alike, so the map is no existence oracle.
+         */
+        PersonFaceBoxesResponse: {
+            /**
+             * Boxes
+             * @description Photo path -> the person's faces in it, each [x1, y1, x2, y2] normalised to the frame (0..1).
+             */
+            boxes: {
+                [key: string]: number[][];
+            };
+        };
         /** PersonFacesResponse */
         PersonFacesResponse: {
             /** Faces */
@@ -8113,6 +8195,12 @@ export interface components {
             distance: number;
             /** Face Id */
             face_id: number;
+            /**
+             * Owner
+             * @description In no group, in a group nobody has named, or in a named person.
+             * @enum {string}
+             */
+            owner: "ungrouped" | "unnamed_group" | "named";
             /** Person Id */
             person_id?: number | null;
             /** Person Name */
@@ -8122,13 +8210,31 @@ export interface components {
             /** Similarity */
             similarity: number;
         };
+        /**
+         * PossibleFaceCounts
+         * @description Scanned faces at or above ``min_similarity`` per owner class, whatever ``owners`` says.
+         */
+        PossibleFaceCounts: {
+            /** Named */
+            named: number;
+            /** Ungrouped */
+            ungrouped: number;
+            /** Unnamed Group */
+            unnamed_group: number;
+        };
         /** PossibleFacesResponse */
         PossibleFacesResponse: {
+            /**
+             * Best Similarity
+             * @description Highest similarity among every scanned face, below the threshold included; null when nothing was scanned.
+             */
+            best_similarity: number | null;
             /**
              * Candidates
              * @description Index count of faces in scope that the caller can see, before the embedding-dimension check.
              */
             candidates: number;
+            counts: components["schemas"]["PossibleFaceCounts"];
             /** Faces */
             faces: components["schemas"]["PossibleFace"][];
             /**
@@ -8136,6 +8242,11 @@ export interface components {
              * @description Rows actually scored against the centroid (after the embedding-dimension check).
              */
             faces_scanned: number;
+            /**
+             * Similar Groups
+             * @description Up to 10 visible, non-hidden persons of the same embedding model whose centroid is at least min_similarity alike, best first.
+             */
+            similar_groups: components["schemas"]["SimilarGroup"][];
         };
         /** PreviewScoreBody */
         PreviewScoreBody: {
@@ -8240,6 +8351,26 @@ export interface components {
              */
             name?: string;
         };
+        /**
+         * RenamePersonResponse
+         * @description ``POST /api/persons/{person_id}/rename``.
+         */
+        RenamePersonResponse: {
+            /**
+             * Face Count
+             * @description The renamed person's own stored face count.
+             */
+            face_count: number;
+            /** Name */
+            name: string;
+            /**
+             * Same Name Persons
+             * @description Other visible, non-hidden persons with the same name ignoring case and surrounding spaces, largest first. Nothing is merged.
+             */
+            same_name_persons: components["schemas"]["SameNamePerson"][];
+            /** Success */
+            success: boolean;
+        };
         /** RenderMigrationStatus */
         RenderMigrationStatus: {
             /** Pending */
@@ -8277,6 +8408,15 @@ export interface components {
             total: number;
             /** Undecided */
             undecided: number;
+        };
+        /** SameNamePerson */
+        SameNamePerson: {
+            /** Face Count */
+            face_count: number;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
         };
         /** SaveSnapshotBody */
         SaveSnapshotBody: {
@@ -8626,6 +8766,23 @@ export interface components {
             total: number;
             /** Written */
             written: number;
+        };
+        /**
+         * SimilarGroup
+         * @description Another person whose centroid looks like this person's.
+         */
+        SimilarGroup: {
+            /** Face Count */
+            face_count: number;
+            /**
+             * Name
+             * @description Null for a group nobody has named.
+             */
+            name?: string | null;
+            /** Person Id */
+            person_id: number;
+            /** Similarity */
+            similarity: number;
         };
         /**
          * SimilarPhotosResponse
@@ -9131,6 +9288,21 @@ export interface components {
             is_rejected: boolean;
             /** Star Rating */
             star_rating?: number | null;
+            /** Success */
+            success: boolean;
+        };
+        /**
+         * UnassignFaceResponse
+         * @description ``POST /api/face/{face_id}/unassign``.
+         */
+        UnassignFaceResponse: {
+            /** Face Id */
+            face_id: number;
+            /**
+             * Person Id
+             * @description The person the face was detached from; null when it had none.
+             */
+            person_id?: number | null;
             /** Success */
             success: boolean;
         };
@@ -11841,6 +12013,37 @@ export interface operations {
             };
         };
     };
+    api_unassign_face_api_face__face_id__unassign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                face_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnassignFaceResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     apertures_api_filter_options_apertures_get: {
         parameters: {
             query?: never;
@@ -12904,6 +13107,41 @@ export interface operations {
             };
         };
     };
+    api_person_face_boxes_api_person__person_id__face_boxes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                person_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonFaceBoxesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonFaceBoxesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     api_person_faces_api_person__person_id__faces_get: {
         parameters: {
             query?: never;
@@ -12944,6 +13182,8 @@ export interface operations {
                 path_prefix?: string | null;
                 date_from?: string | null;
                 date_to?: string | null;
+                /** @description Comma list drawn from ungrouped, unnamed_group, named: keep only faces with such an owner. Applied before the limit; counts ignore it. */
+                owners?: string | null;
             };
             header?: never;
             path: {
@@ -13371,7 +13611,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RenamePersonResponse"];
                 };
             };
             /** @description Validation Error */

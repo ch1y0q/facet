@@ -49,6 +49,10 @@ import type { CategoryOverrideResult } from './category-override-dialog.componen
 import { StackNavigatorComponent } from './stack-navigator.component';
 import { PhotoStackService } from '../../core/services/photo-stack.service';
 import { PhotoFaceLayerComponent } from './photo-face-layer.component';
+import { PersonFaceMenuComponent } from '../persons/person-face-menu.component';
+import {
+  FaceBoxMode, FACE_BOX_MODE_ICONS, FACE_BOX_MODE_LABELS, nextFaceBoxMode, readFaceBoxMode, writeFaceBoxMode,
+} from './face-box-mode';
 
 const SOCIAL_SOURCE_KEYS: Record<string, string> = {
   saliency: I18N.social_export.source.saliency,
@@ -56,15 +60,6 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
   center: I18N.social_export.source.center,
 };
 
-const SHOW_FACE_BOXES_KEY = 'facet_show_face_boxes';
-
-function readShowFaceBoxes(): boolean {
-  try {
-    return localStorage.getItem(SHOW_FACE_BOXES_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
 
 @Component({
   selector: 'app-photo-detail',
@@ -74,6 +69,7 @@ function readShowFaceBoxes(): boolean {
     MetricRankComponent,
     PhotoMetricsTabsComponent,
     PhotoFaceLayerComponent,
+    PersonFaceMenuComponent,
     MatIconModule,
     MatButtonModule,
     MatTooltipModule,
@@ -135,11 +131,11 @@ function readShowFaceBoxes(): boolean {
           </button>
         }
 
-        <button mat-icon-button (click)="toggleFaceBoxes()"
-          [attr.aria-pressed]="showFaceBoxes()"
-          [matTooltip]="(showFaceBoxes() ? I18N.photo_faces.hide_boxes : I18N.photo_faces.show_boxes) | translate"
-          [attr.aria-label]="(showFaceBoxes() ? I18N.photo_faces.hide_boxes : I18N.photo_faces.show_boxes) | translate">
-          <mat-icon>{{ showFaceBoxes() ? 'face' : 'face_retouching_off' }}</mat-icon>
+        <button mat-icon-button (click)="cycleFaceBoxMode()"
+          data-face-box-mode
+          [matTooltip]="faceBoxModeLabel() | translate"
+          [attr.aria-label]="faceBoxModeLabel() | translate">
+          <mat-icon>{{ faceBoxModeIcon() }}</mat-icon>
         </button>
 
         @if (auth.isEdition()) {
@@ -275,9 +271,10 @@ function readShowFaceBoxes(): boolean {
             [imageHeight]="p.image_height"
             [transform]="zoom.transform()"
             [canEdit]="auth.isEdition()"
-            [showAll]="showFaceBoxes()"
+            [mode]="faceBoxMode()"
             [focusPersonIds]="focusPersonIds()"
             (changed)="refreshPeople(p.path)" />
+          <app-person-face-menu [path]="p.path" [canEdit]="auth.isEdition()" (changed)="onPersonMenuChanged(p.path)" />
         </div>
 
         <!-- Info panel -->
@@ -511,7 +508,8 @@ function readShowFaceBoxes(): boolean {
               <div class="flex gap-3 flex-wrap">
                 @for (person of p.persons; track person.id) {
                   <button class="flex flex-col items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity"
-                          (click)="navigateToGallery('person_id', person.id)">
+                          data-person-avatar aria-haspopup="menu"
+                          (click)="openPersonMenu(person, $event)">
                     <img
                       [src]="person.id | personThumbnailUrl"
                       [alt]="person.name"
@@ -593,6 +591,8 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   private readonly keymap = inject(KeyboardMappingService);
   private readonly stacks = inject(PhotoStackService);
   private readonly stackNavigator = viewChild(StackNavigatorComponent);
+  private readonly faceLayer = viewChild(PhotoFaceLayerComponent);
+  private readonly personMenu = viewChild(PersonFaceMenuComponent);
   private memberRequest = 0;
   private memberPhoto: { photo: Photo; owner: string } | null = null;
   private readonly viewerOwner = this.auth.identity();
@@ -609,20 +609,19 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   protected readonly explainerCategories = signal<string[]>([]);
   protected readonly explainerTargetCategory = signal<string | null>(null);
 
-  // Face boxes: always shown (true) or on hover only. Remembered per browser.
-  protected readonly showFaceBoxes = signal(readShowFaceBoxes());
+  // Face boxes: off, on hover, or always shown. Remembered per browser.
+  protected readonly faceBoxMode = signal<FaceBoxMode>(readFaceBoxMode());
+  protected readonly faceBoxModeIcon = computed(() => FACE_BOX_MODE_ICONS[this.faceBoxMode()]);
+  protected readonly faceBoxModeLabel = computed(() => FACE_BOX_MODE_LABELS[this.faceBoxMode()]);
   /** The gallery's person filter: those persons' faces stay boxed while browsing them. */
   protected readonly focusPersonIds = computed(() =>
     (this.store.filters().person_id || '').split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0));
 
-  protected toggleFaceBoxes(): void {
-    const next = !this.showFaceBoxes();
-    this.showFaceBoxes.set(next);
-    try {
-      localStorage.setItem(SHOW_FACE_BOXES_KEY, next ? '1' : '0');
-    } catch {
-      // private window or blocked storage: the choice lasts for this page only
-    }
+  /** Hover, then always, then off, then hover again. */
+  protected cycleFaceBoxMode(): void {
+    const next = nextFaceBoxMode(this.faceBoxMode());
+    this.faceBoxMode.set(next);
+    writeFaceBoxMode(next);
   }
 
   // Download options
@@ -1161,6 +1160,20 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     } finally {
       this.generatingCaption.set(false);
     }
+  }
+
+  /**
+   * The Persons list opens the same menu as the photo's faces, on this photo's face
+   * of that person (its largest when several), so it works with the boxes off too.
+   */
+  protected openPersonMenu(person: { id: number; name: string | null }, event: Event): void {
+    const face = this.faceLayer()?.faceOf(person.id) ?? null;
+    this.personMenu()?.openBelow({ person: { id: person.id, name: person.name }, face }, event.currentTarget as HTMLElement);
+  }
+
+  protected async onPersonMenuChanged(path: string): Promise<void> {
+    await this.faceLayer()?.load(path);
+    await this.refreshPeople(path);
   }
 
   protected navigateToGallery(filter: string, value: string | number): void {

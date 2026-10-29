@@ -1,12 +1,5 @@
 import { Component, inject, input, signal, computed, effect, ChangeDetectionStrategy } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
-import { ApiService } from '../../../core/services/api.service';
-
-/** One row of ``GET /api/photo/faces`` as far as this overlay needs it. */
-interface FaceRow {
-  person_id?: number | null;
-  box?: number[] | null;
-}
+import { PersonFaceBoxesService } from './person-face-boxes.service';
 
 /** A face to outline, in the photo's pixel frame (the SVG's viewBox). */
 export interface FocusRect {
@@ -21,7 +14,8 @@ export interface FocusRect {
  * a gallery thumbnail so a cluster's photos show which face it is about. The
  * SVG's viewBox is the photo's own pixel frame and its aspect handling copies
  * the thumbnail's (``meet`` for a whole image, ``slice`` for an ``object-cover``
- * crop), so the outline lands on the face with no measuring.
+ * crop), so the outline lands on the face with no measuring. Boxes come from
+ * :class:`PersonFaceBoxesService`, which batches every tile into one request.
  */
 @Component({
   selector: 'app-face-focus-overlay',
@@ -42,7 +36,7 @@ export interface FocusRect {
   `,
 })
 export class FaceFocusOverlayComponent {
-  private readonly api = inject(ApiService);
+  private readonly faceBoxes = inject(PersonFaceBoxesService);
 
   readonly path = input.required<string>();
   /** The gallery's person filter: one id, or empty for none. */
@@ -52,7 +46,8 @@ export class FaceFocusOverlayComponent {
   /** True when the thumbnail is cropped to fill its tile (``object-cover``). */
   readonly cover = input(false);
 
-  private readonly rows = signal<FaceRow[]>([]);
+  /** The focused person's normalised boxes in this photo. */
+  private readonly boxes = signal<number[][]>([]);
 
   /** The filtered person's id when it is exactly one. */
   private readonly focusId = computed(() => (/^\d+$/.test(this.personId()) ? Number(this.personId()) : null));
@@ -62,9 +57,9 @@ export class FaceFocusOverlayComponent {
     const w = this.imageWidth();
     const h = this.imageHeight();
     if (id === null || !w || !h) return [];
-    return this.rows()
-      .filter((r): r is FaceRow & { box: number[] } => r.person_id === id && Array.isArray(r.box) && r.box.length === 4)
-      .map(({ box: [x1, y1, x2, y2] }) => ({ x: x1 * w, y: y1 * h, w: (x2 - x1) * w, h: (y2 - y1) * h }));
+    return this.boxes()
+      .filter((box) => Array.isArray(box) && box.length === 4)
+      .map(([x1, y1, x2, y2]) => ({ x: x1 * w, y: y1 * h, w: (x2 - x1) * w, h: (y2 - y1) * h }));
   });
 
   protected readonly viewBox = computed(() => {
@@ -77,20 +72,14 @@ export class FaceFocusOverlayComponent {
     effect(() => {
       const path = this.path();
       const id = this.focusId();
-      if (id === null) {
-        this.rows.set([]);
-        return;
-      }
-      void this.load(path);
+      this.boxes.set([]);
+      if (id === null) return;
+      void this.load(id, path);
     });
   }
 
-  private async load(path: string): Promise<void> {
-    try {
-      const res = await firstValueFrom(this.api.get<{ faces: FaceRow[] }>('/photo/faces', { path }));
-      if (path === this.path()) this.rows.set(res.faces ?? []);
-    } catch {
-      if (path === this.path()) this.rows.set([]);
-    }
+  private async load(id: number, path: string): Promise<void> {
+    const boxes = await this.faceBoxes.boxes(id, path);
+    if (path === this.path() && id === this.focusId()) this.boxes.set(boxes);
   }
 }

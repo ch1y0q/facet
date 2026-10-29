@@ -9,12 +9,16 @@ import { PersonCardComponent, Person } from './person-card.component';
   standalone: true,
   imports: [PersonCardComponent],
   changeDetection: ChangeDetectionStrategy.Eager,
-  template: `<app-person-card [person]="person()" [isEditing]="isEditing()" [canEdit]="canEdit()" />`,
+  template: `<app-person-card [person]="person()" [isEditing]="isEditing()" [canEdit]="canEdit()" [nameOptions]="nameOptions()" />`,
 })
 class TestHostComponent {
   person = signal<Person>({ id: 1, name: 'Alice', face_count: 5, face_thumbnail: true });
   isEditing = signal(false);
   canEdit = signal(false);
+  nameOptions = signal([
+    { id: 7, name: 'Anna', count: 12 },
+    { id: 8, name: 'Peter Salem', count: 1 },
+  ]);
 }
 
 describe('PersonCardComponent', () => {
@@ -65,6 +69,60 @@ describe('PersonCardComponent', () => {
     expect(emitted).toEqual([]);
   });
 
+  describe('the name line', () => {
+    beforeEach(() => {
+      host.isEditing.set(true);
+      host.canEdit.set(true);
+      fixture.detectChanges();
+    });
+
+    const input = () => fixture.nativeElement.querySelector('input:not([type="checkbox"])') as HTMLInputElement;
+
+    async function typeName(value: string): Promise<HTMLElement[]> {
+      input().focus();
+      input().value = value;
+      input().dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      return [...document.querySelectorAll('mat-option')] as HTMLElement[];
+    }
+
+    it('suggests names with the person face and photo count, filtered as the user types', async () => {
+      const options = await typeName('pet');
+      expect(options.length).toBe(1);
+      expect(options[0].textContent).toContain('Peter Salem');
+      expect(options[0].textContent).toContain('persons.name_suggestion_photos');
+      expect(options[0].querySelector('img')?.getAttribute('src')).toContain('8');
+    });
+
+    it('choosing a suggestion fills the name; Enter then saves it', async () => {
+      const emitted: { id: number; name: string }[] = [];
+      getCard().editSave.subscribe((v) => emitted.push(v));
+      const options = await typeName('an');
+      options[0].click();
+      fixture.detectChanges();
+      expect(input().value).toBe('Anna');
+      expect(emitted).toEqual([]);
+      input().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      input().dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter' }));
+      expect(emitted).toEqual([{ id: 1, name: 'Anna' }]);
+    });
+
+    it('hides the selection checkbox while the name line is open, and styles the input focus', () => {
+      expect(fixture.nativeElement.querySelector('mat-checkbox')).toBeNull();
+      expect(input().classList).toContain('focus:border-[var(--mat-sys-primary)]');
+      expect(input().classList).toContain('!outline-none');
+    });
+
+    it('centres the save and cancel glyphs in their 28 px buttons', () => {
+      const buttons = [...fixture.nativeElement.querySelectorAll('button')] as HTMLElement[];
+      const save = buttons.find((b) => b.querySelector('mat-icon')?.textContent?.trim() === 'check') as HTMLElement;
+      expect(save.classList).toContain('!p-0');
+      expect(save.classList).toContain('justify-center');
+    });
+  });
+
   it('should create with required person input', () => {
     const card = getCard();
     expect(card).toBeTruthy();
@@ -107,6 +165,10 @@ describe('PersonCardComponent', () => {
     const input = fixture.nativeElement.querySelector('input') as HTMLInputElement;
     expect(input.classList.contains('min-w-24')).toBe(true);
     expect(input.parentElement!.classList.contains('flex-wrap')).toBe(true);
+    // The global unlayered *:focus-visible outline beats layered utilities unless they are !important.
+    expect(input.classList).toContain('!outline-none');
+    expect(input.classList).toContain('focus-visible:!outline-none');
+    expect(input.classList).toContain('focus:border-[var(--mat-sys-primary)]');
   });
 
   it('onSave emits empty string when no input element exists', () => {

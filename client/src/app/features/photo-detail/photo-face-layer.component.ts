@@ -1,15 +1,10 @@
-import { Component, inject, input, output, signal, computed, effect, viewChild, ChangeDetectionStrategy } from '@angular/core';
-import { MatDialog } from '@angular/material/dialog';
-import { MatIconModule } from '@angular/material/icon';
-import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
-import { MatSnackBar } from '@angular/material/snack-bar';
-import { Router } from '@angular/router';
+import { Component, inject, input, output, signal, computed, effect, viewChild, DestroyRef, ChangeDetectionStrategy } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
-import { I18nService } from '../../core/services/i18n.service';
-import { GalleryStore } from '../gallery/gallery.store';
+import { FaceBoxMode } from './face-box-mode';
+import { PersonFaceMenuComponent } from '../persons/person-face-menu.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
-import { i18nKeys, I18N } from '../../core/i18n/keys';
+import { i18nKeys } from '../../core/i18n/keys';
 
 /** One row of ``GET /api/photo/faces``. */
 export interface PhotoFaceRow {
@@ -37,10 +32,25 @@ export interface DrawnFace {
 
 /** Label size as a fraction of the frame's longer edge, so it reads the same at any resolution. */
 const LABEL_SCALE = 0.022;
+/** A press that travels this far (CSS px) is a pan, not a click on the face. */
+export const FACE_CLICK_SLOP_PX = 5;
+/**
+ * How long a still click waits before opening the face menu. The menu's backdrop
+ * would swallow the second click of a double-click, so the open waits long enough
+ * for a double-click (the zoom reset) to cancel it.
+ */
+export const FACE_MENU_DELAY_MS = 250;
+
+/** Where and with what the current press on a face started. */
+interface FacePress {
+  x: number;
+  y: number;
+  touch: boolean;
+}
 
 /**
  * Faces drawn over the photo-detail image: boxes appear while the pointer is over
- * the photo (or always, with ``showAll``; a focused person's always), red while unnamed, a face's name on hovering that face, and clicking a face (edition
+ * the photo (or always, in ``always`` mode; a focused person's always; none in ``off``), red while unnamed, a face's name on hovering that face, and clicking a face (edition
  * mode) opens a menu to change its person, take it off its person, or find more
  * faces like that person. Any face in a cluster, named or not, also offers its
  * cluster's photos, in read-only mode too; an unnamed face there says that naming
@@ -50,10 +60,16 @@ const LABEL_SCALE = 0.022;
  * like the ``object-contain`` image beneath it and shares its zoom transform:
  * boxes land on the faces with no measuring. Boxes come pre-normalised from the
  * server, which drops any whose stored dimensions cannot be trusted.
+ *
+ * Each face is a focusable button (Enter or Space opens its menu). Pointer
+ * presses bubble to the zoom directive, so panning and the double-click reset
+ * work when started on a face; only a click that stayed within
+ * ``FACE_CLICK_SLOP_PX`` opens the menu. A finger cannot hover, so on touch a
+ * tap opens the menu only when the box is visible (``always`` mode or a focused person).
  */
 @Component({
   selector: 'app-photo-face-layer',
-  imports: [MatIconModule, MatMenuModule, TranslatePipe],
+  imports: [PersonFaceMenuComponent, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.Eager,
   host: { class: 'contents' },
   template: `
@@ -62,22 +78,46 @@ const LABEL_SCALE = 0.022;
         class="absolute inset-0 w-full h-full pointer-events-none"
         [attr.viewBox]="vb"
         preserveAspectRatio="xMidYMid meet"
-        [style.transform]="transform()"
-        aria-hidden="true">
+        [style.transform]="transform()">
         @for (f of faces(); track f.id) {
+          <!-- Pointer gestures are left to bubble, so a pan or a double-click reset
+               started on a face still reaches the zoom directive; only a click that
+               did not move opens the menu. -->
           <g
-            class="group/face pointer-events-auto cursor-pointer"
-            (pointerdown)="$event.stopPropagation()"
-            (dblclick)="$event.stopPropagation()"
-            (click)="onFaceClick(f, $event)">
+            class="group/face pointer-events-auto cursor-pointer outline-none"
+            role="button"
+            tabindex="0"
+            [attr.aria-label]="f.name || (I18N.photo_faces.unknown | translate)"
+            (pointerdown)="onFacePointerDown($event)"
+            (click)="onFaceClick(f, $event)"
+            (dblclick)="cancelPendingOpen()"
+            (keydown.enter)="onFaceKey(f, $event)"
+            (keydown.space)="onFaceKey(f, $event)">
             <title>{{ f.name || (I18N.photo_faces.unknown | translate) }}</title>
+            <!-- Dark outline under the coloured stroke, so it reads on any background. -->
             <rect
+              [attr.x]="f.x" [attr.y]="f.y" [attr.width]="f.w" [attr.height]="f.h"
+              fill="transparent"
+              stroke="black"
+              stroke-opacity="0.7"
+              [attr.stroke-width]="(f.focus ? 4 : 2) + 2"
+              vector-effect="non-scaling-stroke"
+              class="transition-opacity group-hover/face:opacity-100 group-focus-visible/face:opacity-100 group-focus-visible/face:stroke-[length:10px]"
+              [class.opacity-0]="!showAll() && !f.focus"
+              [class.group-hover/photo:opacity-60]="!showAll() && !f.focus"
+              [class.opacity-100]="showAll() || f.focus" />
+            <!-- Unnamed faces are dashed as well as red, so colour is not the only cue.
+                 Keyboard focus thickens the stroke and turns it blue, a cue that holds
+                 even when the box is already fully shown. -->
+            <rect
+              data-face
               [attr.x]="f.x" [attr.y]="f.y" [attr.width]="f.w" [attr.height]="f.h"
               fill="transparent"
               [attr.stroke]="f.name ? 'white' : '#ef4444'"
               [attr.stroke-width]="f.focus ? 4 : 2"
+              [attr.stroke-dasharray]="f.name ? null : '6 4'"
               vector-effect="non-scaling-stroke"
-              class="transition-opacity group-hover/face:opacity-100"
+              class="transition-opacity group-hover/face:opacity-100 group-focus-visible/face:opacity-100 group-focus-visible/face:stroke-[length:6px] group-focus-visible/face:stroke-sky-400"
               [class.opacity-0]="!showAll() && !f.focus"
               [class.group-hover/photo:opacity-60]="!showAll() && !f.focus"
               [class.opacity-100]="showAll() || f.focus" />
@@ -91,7 +131,8 @@ const LABEL_SCALE = 0.022;
               paint-order="stroke"
               font-family="sans-serif"
               font-weight="600"
-              class="transition-opacity select-none group-hover/face:opacity-100"
+              aria-hidden="true"
+              class="transition-opacity select-none group-hover/face:opacity-100 group-focus-visible/face:opacity-100"
               [class.opacity-0]="!showAll() && !f.focus"
               [class.opacity-100]="showAll() || f.focus">
               {{ f.name || (I18N.photo_faces.unknown | translate) }}
@@ -100,55 +141,12 @@ const LABEL_SCALE = 0.022;
         }
       </svg>
     }
-    <div class="fixed w-0 h-0" [style.left.px]="menuX()" [style.top.px]="menuY()" [matMenuTriggerFor]="faceMenu"></div>
-    <mat-menu #faceMenu="matMenu">
-      @if (menuFace(); as f) {
-        <div class="px-4 py-2 text-xs opacity-70 truncate max-w-[16rem]">
-          {{ f.name || (I18N.photo_faces.unknown | translate) }}
-        </div>
-        @if (f.personId) {
-          <button mat-menu-item (click)="viewPhotos(f)">
-            <mat-icon>photo_library</mat-icon>
-            {{ (f.name ? I18N.photo_faces.view_photos : I18N.photo_faces.view_group_photos) | translate:{ name: f.name || '' } }}
-          </button>
-        }
-        @if (canEdit()) {
-          <button mat-menu-item (click)="changePerson(f)">
-            <mat-icon>manage_accounts</mat-icon>
-            {{ (f.personId ? I18N.photo_faces.change_person : I18N.photo_faces.name_face) | translate }}
-          </button>
-          @if (f.personId) {
-            <button mat-menu-item (click)="usePicture(f)">
-              <mat-icon>account_circle</mat-icon>
-              {{ (f.name ? I18N.photo_faces.use_picture : I18N.photo_faces.use_group_picture) | translate:{ name: f.name || '' } }}
-            </button>
-            <button mat-menu-item (click)="findMore(f)">
-              <mat-icon>person_search</mat-icon>
-              {{ I18N.photo_faces.find_more | translate:{ name: f.name || '' } }}
-            </button>
-            <button mat-menu-item (click)="notThisPerson(f)">
-              <mat-icon>person_remove</mat-icon>
-              {{ I18N.photo_faces.not_person | translate:{ name: f.name || '' } }}
-            </button>
-          }
-        } @else if (!f.personId) {
-          <button mat-menu-item disabled>
-            <mat-icon>lock</mat-icon>
-            {{ I18N.photo_faces.name_needs_edition | translate }}
-          </button>
-        }
-      }
-    </mat-menu>
+    <app-person-face-menu [path]="path()" [canEdit]="canEdit()" (changed)="afterChange()" (closed)="menuFace.set(null)" />
   `,
 })
 export class PhotoFaceLayerComponent {
   protected readonly I18N = i18nKeys();
   private readonly api = inject(ApiService);
-  private readonly dialog = inject(MatDialog);
-  private readonly snackBar = inject(MatSnackBar);
-  private readonly i18n = inject(I18nService);
-  private readonly store = inject(GalleryStore);
-  private readonly router = inject(Router);
 
   readonly path = input.required<string>();
   readonly imageWidth = input<number | null>(null);
@@ -156,23 +154,28 @@ export class PhotoFaceLayerComponent {
   /** The image's zoom/pan transform, so the boxes stay on the faces. */
   readonly transform = input('');
   readonly canEdit = input(false);
-  /** Show every box and name all the time, not only on hover. */
-  readonly showAll = input(false);
+  /**
+   * ``hover`` (default) shows boxes under the pointer or focus, ``always`` keeps every
+   * box and name shown, ``off`` draws nothing, so the layer is inert: no hover, no
+   * menu, nothing in the tab order.
+   */
+  readonly mode = input<FaceBoxMode>('hover');
+  protected readonly showAll = computed(() => this.mode() === 'always');
   /** Persons whose faces stay boxed (thicker) and named, e.g. the gallery's person filter. */
   readonly focusPersonIds = input<readonly number[]>([]);
   /** Emitted after a face changed person, so the page can refresh the photo's people. */
   readonly changed = output<void>();
 
-  private readonly menuTrigger = viewChild.required(MatMenuTrigger);
+  private readonly menu = viewChild.required(PersonFaceMenuComponent);
   private readonly rows = signal<PhotoFaceRow[]>([]);
   protected readonly menuFace = signal<DrawnFace | null>(null);
-  protected readonly menuX = signal(0);
-  protected readonly menuY = signal(0);
+  private press: FacePress | null = null;
+  private pendingOpen: ReturnType<typeof setTimeout> | null = null;
 
   protected readonly viewBox = computed(() => {
     const w = this.imageWidth();
     const h = this.imageHeight();
-    return w && h && this.faces().length > 0 ? `0 0 ${w} ${h}` : null;
+    return this.mode() !== 'off' && w && h && this.faces().length > 0 ? `0 0 ${w} ${h}` : null;
   });
 
   protected readonly labelSize = computed(() =>
@@ -205,6 +208,10 @@ export class PhotoFaceLayerComponent {
   });
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => this.cancelPendingOpen());
+    effect(() => {
+      if (this.mode() === 'off') this.cancelPendingOpen();
+    });
     effect(() => {
       const path = this.path();
       void this.load(path);
@@ -220,75 +227,78 @@ export class PhotoFaceLayerComponent {
     }
   }
 
+  onFacePointerDown(event: PointerEvent): void {
+    // Not stopped: the zoom directive needs it to start a pan.
+    this.press = {
+      x: event.clientX,
+      y: event.clientY,
+      touch: event.pointerType === 'touch' || (!event.pointerType && hoverless()),
+    };
+  }
+
   onFaceClick(face: DrawnFace, event: MouseEvent): void {
+    const press = this.press;
+    this.press = null;
+    if (press) {
+      if (Math.hypot(event.clientX - press.x, event.clientY - press.y) >= FACE_CLICK_SLOP_PX) return;
+      // A tap on a box the user cannot see is a tap on the photo.
+      if (press.touch && !this.showAll() && !face.focus) return;
+    }
     event.stopPropagation();
+    this.cancelPendingOpen();
+    // The second click of a double-click: leave it to the zoom reset.
+    if (event.detail > 1) return;
+    const { clientX, clientY } = event;
+    this.pendingOpen = setTimeout(() => {
+      this.pendingOpen = null;
+      this.openMenuAt(face, clientX, clientY);
+    }, FACE_MENU_DELAY_MS);
+  }
+
+  /** Drop a still click's menu open that has not fired yet. Not stopped: the zoom directive resets on dblclick. */
+  cancelPendingOpen(): void {
+    if (this.pendingOpen !== null) clearTimeout(this.pendingOpen);
+    this.pendingOpen = null;
+  }
+
+  onFaceKey(face: DrawnFace, event: Event): void {
+    event.preventDefault();
+    this.cancelPendingOpen();
+    const el = event.currentTarget as HTMLElement | SVGElement | null;
+    const rect = el?.getBoundingClientRect();
+    this.openMenuAt(face, rect ? rect.left + rect.width / 2 : 0, rect ? rect.top + rect.height / 2 : 0, el);
+  }
+
+  private openMenuAt(face: DrawnFace, x: number, y: number, origin: HTMLElement | SVGElement | null = null): void {
     this.menuFace.set(face);
-    this.menuX.set(event.clientX);
-    this.menuY.set(event.clientY);
-    this.menuTrigger().openMenu();
+    this.menu().open({
+      person: face.personId === null ? null : { id: face.personId, name: face.name },
+      face: { id: face.id },
+    }, x, y, origin);
   }
 
-  /** Open the gallery on every photo of this face's person, named or not. */
-  viewPhotos(face: DrawnFace): void {
-    if (face.personId === null) return;
-    void this.router.navigate(['/'], { queryParams: { person_id: String(face.personId) } });
-  }
-
-  /** Make this face the picture on its person's card. */
-  async usePicture(face: DrawnFace): Promise<void> {
-    if (face.personId === null) return;
-    try {
-      await firstValueFrom(this.api.post(`/person/${face.personId}/avatar`, { face_id: face.id }));
-      this.snackBar.open(this.i18n.t(I18N.photo_faces.picture_set), '', { duration: 2000 });
-      await this.store.reloadPersonOptions();
-    } catch {
-      this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
+  /** The photo's face of ``personId``, the largest box when it has several; null when it has none. */
+  faceOf(personId: number): { id: number } | null {
+    let best: PhotoFaceRow | null = null;
+    let bestArea = -1;
+    for (const r of this.rows()) {
+      if (r.person_id !== personId) continue;
+      const area = Array.isArray(r.box) && r.box.length === 4 ? (r.box[2] - r.box[0]) * (r.box[3] - r.box[1]) : 0;
+      if (area > bestArea) {
+        best = r;
+        bestArea = area;
+      }
     }
+    return best ? { id: best.id } : null;
   }
 
-  async changePerson(face: DrawnFace): Promise<void> {
-    const { PersonSelectorDialogComponent } = await import('../gallery/person-selector-dialog.component');
-    const ref = this.dialog.open(PersonSelectorDialogComponent, { width: '95vw', maxWidth: '400px' });
-    const result = await firstValueFrom(ref.afterClosed()) as
-      | { kind: 'select'; person: { id: number; name: string | null } }
-      | { kind: 'create'; name: string }
-      | undefined;
-    if (!result) return;
-    const path = this.path();
-    let ok: boolean;
-    if (result.kind === 'create') {
-      ok = (await this.store.createPerson(result.name, [face.id], path)) !== null;
-    } else {
-      ok = await this.store.assignFace(face.id, result.person.id, path, result.person.name ?? '');
-    }
-    this.snackBar.open(
-      this.i18n.t(ok ? I18N.notifications.faces_assigned : I18N.errors.action_failed), '', { duration: ok ? 2000 : 3000 });
-    if (ok) await this.afterChange();
-  }
-
-  async notThisPerson(face: DrawnFace): Promise<void> {
-    if (face.personId === null) return;
-    await this.store.unassignPerson(this.path(), face.personId);
-    await this.afterChange();
-  }
-
-  async findMore(face: DrawnFace): Promise<void> {
-    if (face.personId === null) return;
-    const { FindMoreFacesDialogComponent } = await import('../persons/find-more-faces-dialog.component');
-    const ref = this.dialog.open(FindMoreFacesDialogComponent, {
-      data: { personId: face.personId, personName: face.name },
-      width: '95vw',
-      maxWidth: '720px',
-    });
-    const result = await firstValueFrom(ref.afterClosed()) as { added: number } | undefined;
-    if (result && result.added > 0) {
-      this.snackBar.open(this.i18n.t(I18N.persons.find_more_added, { count: result.added }), '', { duration: 2000 });
-      await this.afterChange();
-    }
-  }
-
-  private async afterChange(): Promise<void> {
+  protected async afterChange(): Promise<void> {
     await this.load();
     this.changed.emit();
   }
+}
+
+/** True on a device whose primary pointer cannot hover (a phone or tablet). */
+function hoverless(): boolean {
+  return typeof window !== 'undefined' && !!window.matchMedia?.('(hover: none)').matches;
 }

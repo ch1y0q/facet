@@ -38,7 +38,6 @@ import { ActivatedRoute, NavigationStart, Router, RouterOutlet } from '@angular/
 import { filter, firstValueFrom } from 'rxjs';
 import { GalleryStore, BatchResult, REVIEW_RESUME_NAVIGATION } from './gallery.store';
 import { NoticeDismissals, NoticeKind, readNoticeDismissals, saveNoticeDismissals, withDismissal } from './notice-dismiss.util';
-import { PersonNamingBarComponent } from './person-naming-bar.component';
 import { Photo } from '../../shared/models/photo.model';
 import { isPageShortcutBlocked, isTypingContext } from '../../shared/utils/keyboard';
 import { KeyboardMappingService } from '../../core/services/keyboard-mapping.service';
@@ -110,7 +109,6 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
   selector: 'app-gallery',
   imports: [
     NgTemplateOutlet,
-    PersonNamingBarComponent,
     MatSidenavModule,
     MatProgressSpinnerModule,
     MatIconModule,
@@ -319,11 +317,6 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
               }
             </div>
           }
-        }
-
-        <!-- One person in view: who it is, and (edition) a name field to settle it here -->
-        @if (singlePersonId(); as personId) {
-          <app-person-naming-bar [personId]="personId" [canEdit]="auth.isEdition()" />
         }
 
         <!-- Photo grid / mosaic -->
@@ -645,6 +638,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                 <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility_off</mat-icon>
                 <span id="notice-text-hidden" class="flex-1">
                   {{ I18N.gallery.hidden_banner.message | translate:{ n: store.hiddenSummary().total } }}
+                  @if (hiddenReasons()) { ({{ hiddenReasons() }}) }
                 </span>
                 <button mat-button class="!min-w-0" (click)="store.showAllHidden()">
                   {{ I18N.gallery.hidden_banner.show_all | translate }}
@@ -902,11 +896,6 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly keymap = inject(KeyboardMappingService);
   /** The user's hover-button layout for every card, from localStorage. */
   protected readonly cardActions = this.cardActionsService.config;
-  /** The person the gallery is filtered to, when it is exactly one (``person_id=95``). */
-  protected readonly singlePersonId = computed(() => {
-    const raw = this.store.filters().person_id;
-    return /^\d+$/.test(raw ?? '') ? Number(raw) : null;
-  });
   protected readonly scan = inject(ScanService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly bottomSheet = inject(MatBottomSheet);
@@ -1211,6 +1200,20 @@ export class GalleryComponent implements OnInit, OnDestroy {
       observer.disconnect();
       this.noticeInsetPx.set(0);
     });
+  });
+
+  /** Why photos are hidden, in words: "287 burst repeat(s), 23 blink(s)...". */
+  protected readonly hiddenReasons = computed(() => {
+    this.i18n.translations();
+    const h = this.store.hiddenSummary();
+    const reasons: [number, string][] = [
+      [h.bursts, I18N.gallery.hidden_banner.reason_bursts],
+      [h.blinks, I18N.gallery.hidden_banner.reason_blinks],
+      [h.duplicates, I18N.gallery.hidden_banner.reason_duplicates],
+      [h.brackets, I18N.gallery.hidden_banner.reason_brackets],
+      [h.panoramas, I18N.gallery.hidden_banner.reason_panoramas],
+    ];
+    return reasons.filter(([n]) => n > 0).map(([n, key]) => this.i18n.t(key, { n })).join(', ');
   });
 
   /** Show the hidden-photos banner when filters are hiding rows and at least one is on. */
