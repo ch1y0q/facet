@@ -1,3 +1,4 @@
+import english from '../../../../../i18n/translations/en.json';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient, withXhr } from '@angular/common/http';
@@ -30,7 +31,6 @@ describe('StackDialog HTTP workflow', () => {
       provideHttpClient(withXhr()), provideHttpClientTesting(),
       { provide: STACK_EDITOR_HOST, useValue: { data, presentation: 'dialog', keydown$: NEVER, closing$: NEVER, setBusy: vi.fn(),
          finish: (result: string) => (close as (value?: unknown) => void)(result === 'saved' ? true : result === 'skip' ? SKIP_SUGGESTION : undefined), invalidate: close } },
-      { provide: I18nService, useValue: { translations: signal({}), t: (key: string) => key } },
       { provide: Router, useValue: { url: '/gallery', events, navigate: vi.fn() } },
       { provide: AuthService, useValue: { identity, isEdition: signal(true) } },
       { provide: GalleryStore, useValue: { pinnedPaths: signal(null), refreshPaths: refresh, restoreSelection: vi.fn(), showPaths: vi.fn(async () => []), loadError: signal(false), photos: signal(stack.members.map(m => ({ path: m.path }))) } },
@@ -66,6 +66,27 @@ describe('StackDialog HTTP workflow', () => {
     expect((fixture.nativeElement as HTMLElement).querySelector('[data-stack-member-count]')?.textContent?.trim()).toBe('stacks.member_count_plural');
     fixture.componentInstance.paths.set([paths[0]]); fixture.detectChanges();
     expect((fixture.nativeElement as HTMLElement).querySelector('[data-stack-member-count]')?.textContent?.trim()).toBe('stacks.member_count');
+    fixture.destroy();
+  });
+
+  it('renders the shipped translated count after each explicit Reject and Undo', async () => {
+    create();
+    const i18n = TestBed.inject(I18nService); i18n.locale.set('en');
+    const loading = i18n.load(); http.expectOne('/api/i18n/en').flush(english); await loading;
+    const fixture = TestBed.createComponent(StackEditorComponent); fixture.detectChanges();
+    http.expectOne('/api/stacks/s1').flush(stack); await fixture.whenStable(); fixture.detectChanges();
+    const editor = fixture.componentInstance;
+    for (const [index, path] of ['/b.jpg', '/a.jpg'].entries()) {
+      editor.focusMember(path); fixture.detectChanges();
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('[data-stack-reject]')!.click();
+      http.expectOne(request => request.url === '/api/photo' && request.params.get('path') === path)
+        .flush({ path, is_rejected: true }); await fixture.whenStable(); fixture.detectChanges();
+      expect((fixture.nativeElement as HTMLElement).querySelector('[data-stack-excluded]')?.textContent?.trim())
+        .toBe(`${index + 1} rejected and excluded from draft`);
+    }
+    await register.mock.calls[1][0].undo(); await fixture.whenStable(); fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector('[data-stack-excluded]')?.textContent?.trim())
+      .toBe('1 rejected and excluded from draft');
     fixture.destroy();
   });
 

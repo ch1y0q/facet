@@ -2994,7 +2994,7 @@
     "manual_empty": "Wählen Sie 2–1000 Fotos in der Galerie für einen Stapel aus. Öffnen Sie die Auswahl erneut, falls sie nicht mehr verfügbar ist.",
     "reject_focused": "Aktives Foto ablehnen und aus dem Stapel ausschließen (R)",
     "reject_excluded": "Foto abgelehnt und aus Entwurf ausgeschlossen",
-    "reject_count": "{{ count }} abgelehnt und aus Entwurf ausgeschlossen",
+    "reject_count": "{count} abgelehnt und aus Entwurf ausgeschlossen",
     "reject_help": "R lehnt das aktive Foto sofort ab und schließt es aus dem Entwurf aus. Rückgängig stellt Sichtung und Mitgliedschaft wieder her. Die Gruppierung wartet auf Speichern; Verlassen ohne Speichern macht Ablehnen nicht rückgängig.",
     "manual_help": "Prüfen Sie Fotos, wählen Sie ein Titelbild und ordnen oder entfernen Sie Mitglieder. Kombinieren Sie Stapel oder verschieben Sie nur ausgewählte Fotos. Speichern bleibt zur Ergebnisprüfung und zum Rückgängigmachen über die Benachrichtigung auf dieser Seite. Weiter bearbeiten lädt den aktuellen Zustand. Pfeiltasten blättern; nutzen Sie die Zoomtaste, das Mausrad oder einen Doppelklick auf die Vorschau zum Zoomen. R lehnt das aktive Foto sofort ab und schließt es aus dem Entwurf aus. Rückgängig stellt Sichtung und Mitgliedschaft wieder her. Die Gruppierung wartet auf Speichern; Verlassen ohne Speichern macht Ablehnen nicht rückgängig.",
     "back_gallery": "Zurück zur Galerie",

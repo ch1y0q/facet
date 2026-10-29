@@ -1,3 +1,4 @@
+import english from '../../../../../i18n/translations/en.json';
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
@@ -64,7 +65,6 @@ describe('Suggested stacks routed darkroom', () => {
         { path: '', component: GalleryDestination }, { path: 'album/:id', component: GalleryDestination }]),
       { provide: AuthService, useValue: { identity, isEdition: edition } },
       { provide: GalleryStore, useValue: { config: () => null, refreshPaths: async () => undefined } },
-      { provide: I18nService, useValue: { t: (key: string) => key, translations: () => ({}) } },
       { provide: AssistantChangesService, useValue: { batch$: changes } },
       { provide: UndoService, useValue: { register: (command: UndoableCommand) => commands.push(command) } },
     ] });
@@ -72,6 +72,24 @@ describe('Suggested stacks routed darkroom', () => {
     harness = await RouterTestingHarness.create();
   });
   afterEach(() => { try { http.verify(); } finally { TestBed.resetTestingModule(); } });
+
+  it('renders the shipped translated exclusion count as Reject adds and Undo restores frames', async () => {
+    const i18n = TestBed.inject(I18nService);
+    i18n.locale.set('en');
+    const loading = i18n.load(); http.expectOne('/api/i18n/en').flush(english); await loading;
+    await enter(); batch({ suggestions: [group(1, ['/b.jpg', '/a.jpg', '/e.jpg'])] }); await settle();
+    key('Enter'); await settle();
+    for (const [index, path] of ['/b.jpg', '/a.jpg'].entries()) {
+      key('r'); await settle();
+      http.expectOne(request => request.url === '/api/photo' && request.params.get('path') === path)
+        .flush({ path, is_rejected: true }); await settle();
+      expect(dom().querySelector('[data-stack-excluded]')?.textContent?.trim())
+        .toBe(`${index + 1} rejected and excluded from draft`);
+    }
+    await commands[1].undo(); await settle();
+    expect(dom().querySelector('[data-stack-excluded]')?.textContent?.trim())
+      .toBe('1 rejected and excluded from draft');
+  });
 
   it('rejects a nonfirst focused frame explicitly, stacks only survivors and keeps source proposal immutable', async () => {
     await enter(); batch({ suggestions: [group(1, ['/b.jpg', '/a.jpg', '/e.jpg'])] }); await settle();
@@ -108,6 +126,87 @@ describe('Suggested stacks routed darkroom', () => {
     key('s'); await settle();
     const write = http.expectOne('/api/stacks'); expect(write.request.body.paths).toEqual(['/b.jpg', '/a.jpg']);
     write.flush({}, { status: 500, statusText: 'Failed' }); await settle();
+  });
+
+  it.each(['stack', 'skip'])('retains only live exclusions across batches and restores them after retrying %s Undo', async action => {
+    await enter();
+    for (let index = 0; index < 4; index++) {
+      const paths = [`/${index}-a.jpg`, `/${index}-b.jpg`, `/${index}-c.jpg`];
+      batch({ suggestions: [group(index + 10, paths)] }); await settle();
+      const source = cull.groups()[0];
+      const rejecting = cull.rejectStackPhoto(source, paths[0]);
+      http.expectOne(request => request.url === '/api/photo').flush({ path: paths[0], is_rejected: true });
+      expect(await rejecting).toBe(true); await settle();
+      expect(Object.keys(cull.stackExcluded())).toEqual([paths[0]]);
+      expect(cull.reviewDraft(source).excluded()).toEqual(new Set([paths[0]]));
+      const completing = action === 'stack' ? cull.stackSuggestion(source, paths[1]) : cull.skipSuggestion(source);
+      const write = http.expectOne(action === 'stack' ? '/api/stacks' : '/api/stacks/suggestions/dismissals');
+      expect(write.request.body.paths).toEqual(action === 'stack' ? paths.slice(1) : paths);
+      write.flush(action === 'stack' ? { undo: { entry_id: 100 + index } } : null);
+      expect(await completing).toBe(true); await settle();
+      expect(cull.groups()).toHaveLength(0);
+      expect(Object.keys(cull.stackExcluded())).toEqual([]);
+      const undo = commands.at(-1)!;
+      const undoUrl = action === 'stack' ? `/api/organization_history/${100 + index}/revert`
+        : `/api/stacks/suggestions/dismissals/membership-${index + 10}`;
+      const failed = undo.undo();
+      http.expectOne(undoUrl).flush({}, { status: 409, statusText: 'Conflict' });
+      await expect(failed).rejects.toThrow(); await settle();
+      expect(cull.groups()).toHaveLength(0); expect(Object.keys(cull.stackExcluded())).toEqual([]);
+      const retrying = undo.undo(); http.expectOne(undoUrl).flush({}); await retrying; await settle();
+      expect(cull.groups()[0].photos.map(photo => photo.path)).toEqual(paths);
+      expect(cull.stackDrafts()[cull.groupKey(source)].paths).toEqual(paths.slice(1));
+      expect(Object.keys(cull.stackExcluded())).toEqual([paths[0]]);
+      const completedAgain = cull.skipSuggestion(cull.groups()[0]);
+      const skip = http.expectOne('/api/stacks/suggestions/dismissals');
+      expect(skip.request.body.paths).toEqual(paths); skip.flush(null);
+      expect(await completedAgain).toBe(true); await settle();
+      expect(Object.keys(cull.stackExcluded())).toEqual([]);
+    }
+    batch({ suggestions: [] }); await settle();
+    // Re-completing the restored proposal after this snapshot began requires one fresh read.
+    batch({ suggestions: [] }); await settle();
+    expect(cull.groups()).toHaveLength(0); expect(http.match(() => true)).toHaveLength(0);
+  });
+
+  it('shares exclusions with a later overlapping burst after Skip Undo and retains them when the duplicate completes again', async () => {
+    const paths = ['/b.jpg', '/a.jpg', '/e.jpg'];
+    await enter(); batch({ suggestions: [group(1, paths)] }); await settle();
+    const original = cull.groups()[0];
+    const rejecting = cull.rejectStackPhoto(original, paths[0]);
+    http.expectOne(request => request.url === '/api/photo').flush({ path: paths[0], is_rejected: true });
+    expect(await rejecting).toBe(true);
+    const skipping = cull.skipSuggestion(original);
+    http.expectOne('/api/stacks/suggestions/dismissals').flush(null); expect(await skipping).toBe(true); await settle();
+    batch({ suggestions: [{ ...group(2, paths), kind: 'burst' }] }); await settle();
+    const burst = cull.groups()[0];
+    // A later proposal is a fresh draft until the earlier excluded proposal is restored.
+    expect(cull.reviewDraft(burst).excluded().size).toBe(0);
+    const undoing = commands.at(-1)!.undo();
+    http.expectOne('/api/stacks/suggestions/dismissals/membership-1').flush({}); await undoing; await settle();
+    expect(cull.groups()).toHaveLength(2);
+    expect(cull.reviewDraft(burst).excluded()).toEqual(new Set([paths[0]]));
+    const anotherReject = cull.rejectStackPhoto(burst, paths[1]);
+    http.expectOne(request => request.url === '/api/photo').flush({ path: paths[1], is_rejected: true });
+    expect(await anotherReject).toBe(true); await settle();
+    expect(cull.reviewDraft(original).excluded()).toEqual(new Set(paths.slice(0, 2)));
+    await commands.at(-1)!.undo(); await settle();
+    expect(cull.reviewDraft(original).excluded()).toEqual(new Set([paths[0]]));
+    expect(cull.reviewDraft(burst).excluded()).toEqual(new Set([paths[0]]));
+    const again = cull.skipSuggestion(original);
+    const skip = http.expectOne('/api/stacks/suggestions/dismissals'); expect(skip.request.body.paths).toEqual(paths);
+    skip.flush(null); expect(await again).toBe(true); await settle();
+    expect(cull.stackDrafts()[cull.groupKey(burst)].paths).toEqual(paths.slice(1));
+    const editing = page['editSuggestion'](burst); await settle();
+    await vi.waitFor(() => expect(TestBed.inject(MatDialog).openDialogs).toHaveLength(1));
+    const ref = TestBed.inject(MatDialog).openDialogs[0];
+    http.expectOne('/api/photos/by_paths').flush({ photos: group(2, paths).photos, missing: [] }); await settle();
+    expect(ref.componentInstance.editor().paths()).toEqual(['/a.jpg', '/e.jpg']);
+    ref.close(); await editing; await settle();
+    const stacking = cull.stackSuggestion(burst, paths[1]);
+    const write = http.expectOne('/api/stacks'); expect(write.request.body.paths).toEqual(paths.slice(1));
+    write.flush({ undo: { entry_id: 90 } }); expect(await stacking).toBe(true); await settle();
+    expect(Object.keys(cull.stackExcluded())).toEqual([]); batch({ suggestions: [] }); await settle();
   });
 
   it('shares explicit exclusions and Undo with the secondary Material editor, including after dismissal', async () => {

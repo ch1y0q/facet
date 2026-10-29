@@ -2994,7 +2994,7 @@
     "manual_empty": "Selecciona entre 2 y 1000 fotos en la galería para crear una pila. Vuelve a abrir la selección si ya no está disponible.",
     "reject_focused": "Rechazar la foto activa y excluirla de la pila (R)",
     "reject_excluded": "Foto rechazada y excluida del borrador",
-    "reject_count": "{{ count }} rechazadas y excluidas del borrador",
+    "reject_count": "{count} rechazadas y excluidas del borrador",
     "reject_help": "R rechaza la foto activa de inmediato y la excluye del borrador. Deshacer restaura su decisión y pertenencia. La agrupación espera a Guardar; salir sin guardar no deshace Rechazar.",
     "manual_help": "Revisa las fotos, elige una portada y ordena o quita miembros. Combina pilas o mueve solo las fotos seleccionadas. Guardar mantiene esta página para revisar el resultado y deshacer desde la notificación. Seguir editando carga el estado actual. Las flechas recorren las fotos; usa el botón de zoom, la rueda o haz doble clic en la vista previa para ampliar. R rechaza la foto activa de inmediato y la excluye del borrador. Deshacer restaura su decisión y pertenencia. La agrupación espera a Guardar; salir sin guardar no deshace Rechazar.",
     "back_gallery": "Volver a la galería",

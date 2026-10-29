@@ -2994,7 +2994,7 @@
     "manual_empty": "Select 2–1000 photos in the gallery to create a stack. Reopen the selection if it is no longer available.",
     "reject_focused": "Reject focused photo and exclude from stack (R)",
     "reject_excluded": "Photo rejected and excluded from draft",
-    "reject_count": "{{ count }} rejected and excluded from draft",
+    "reject_count": "{count} rejected and excluded from draft",
     "reject_help": "R rejects the focused photo immediately and excludes it from the draft. Undo restores its review and draft membership. Grouping waits for Save; leaving without saving does not undo Reject.",
     "manual_help": "Review selected photos, choose a cover and arrange or remove members. Combine existing stacks or move only selected photos. After saving, review the result here or undo using the notification. Continue editing loads the latest state. Arrow keys browse photos; use the zoom button, scroll or double-click the preview to zoom. R rejects the focused photo immediately and excludes it from the draft. Undo restores its review and draft membership. Grouping waits for Save; leaving without saving does not undo Reject.",
     "back_gallery": "Back to gallery",

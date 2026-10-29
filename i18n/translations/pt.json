@@ -2994,7 +2994,7 @@
     "manual_empty": "Selecione de 2 a 1000 fotos na galeria para criar uma pilha. Reabra a seleção se já não estiver disponível.",
     "reject_focused": "Rejeitar a foto ativa e excluí-la da pilha (R)",
     "reject_excluded": "Foto rejeitada e excluída do rascunho",
-    "reject_count": "{{ count }} rejeitadas e excluídas do rascunho",
+    "reject_count": "{count} rejeitadas e excluídas do rascunho",
     "reject_help": "R rejeita imediatamente a foto ativa e exclui-a do rascunho. Desfazer restaura a decisão e a pertença. O agrupamento espera por Guardar; sair sem guardar não desfaz Rejeitar.",
     "manual_help": "Reveja as fotos, escolha uma capa e ordene ou remova membros. Combine pilhas ou mova apenas as fotos selecionadas. Guardar mantém esta página para rever o resultado e desfazer pela notificação. Continuar a editar carrega o estado atual. As setas percorrem as fotos; use o botão de zoom, a roda ou faça duplo clique na pré-visualização para ampliar. R rejeita imediatamente a foto ativa e exclui-a do rascunho. Desfazer restaura a decisão e a pertença. O agrupamento espera por Guardar; sair sem guardar não desfaz Rejeitar.",
     "back_gallery": "Voltar à galeria",

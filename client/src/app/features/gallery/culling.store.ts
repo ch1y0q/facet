@@ -23,6 +23,8 @@ import type { Photo } from '../../shared/models/photo.model';
 interface LoadedStackSuggestion {
   epoch: number;
   membership: string;
+  /** Private draft state lives only as long as this loaded proposal or its Undo callback. */
+  rejected: WritableSignal<ReadonlyMap<string, object>>;
 }
 
 export interface CullingGroupsResponse {
@@ -226,8 +228,15 @@ export class CullingStore {
 
   readonly mode = signal<'cull' | 'stacks'>('cull');
   readonly stackBusy = signal(false);
-  readonly stackExcluded = signal<Record<string, boolean>>(Object.create(null));
-  private readonly stackRejectTokens = new Map<string, object>();
+  /** Project only live rows; completed proposal state is retained weakly with its provenance. */
+  readonly stackExcluded = computed<Record<string, boolean>>(() => {
+    const excluded: Record<string, boolean> = Object.create(null);
+    for (const group of this.groups()) {
+      const rejected = this.suggestionProvenance.get(group)?.rejected();
+      if (rejected) for (const path of rejected.keys()) excluded[path] = true;
+    }
+    return excluded;
+  });
   readonly stackDrafts = computed(() => Object.fromEntries(this.groups().map(group => {
     const paths = group.photos.filter(photo => !this.stackExcluded()[photo.path]).map(photo => photo.path);
     return [this.groupKey(group), { paths, excludedCount: group.photos.length - paths.length }];
@@ -266,7 +275,7 @@ export class CullingStore {
     this.stackSession = this.stacks.context();
     this.stackBatchPending = null;
     this.stackRefillVersion = 0;
-    this.stackDecisions.clear(); this.stackBusy.set(false); this.stackExcluded.set(Object.create(null)); this.stackRejectTokens.clear();
+    this.stackDecisions.clear(); this.stackBusy.set(false);
     this.completedSuggestions = new WeakMap();
     this.stackBatchCompletions = null;
     this.batchFull.set(false);
@@ -279,7 +288,7 @@ export class CullingStore {
     this.visitEpoch++;
     this.stackSession = null;
     this.stackBatchPending = null;
-    this.stackDecisions.clear(); this.stackBusy.set(false); this.stackExcluded.set(Object.create(null)); this.stackRejectTokens.clear();
+    this.stackDecisions.clear(); this.stackBusy.set(false);
     this.completedSuggestions = new WeakMap();
     this.stackBatchCompletions = null;
     this.mode.set('cull');
@@ -333,7 +342,7 @@ export class CullingStore {
             group_id: group.group_id, type: group.kind, best_path: group.cover_path,
             count: group.paths.length, reason: '', suggestionKey: group.key, photos: group.photos,
           };
-          this.suggestionProvenance.set(row, { epoch, membership: this.suggestionMembership(row) });
+          this.suggestionProvenance.set(row, { epoch, membership: this.suggestionMembership(row), rejected: signal(new Map<string, object>()) });
           return row;
         });
         // Undo can restore an earlier batch while this request is running. Retain it and dedupe by both identities.
@@ -346,6 +355,7 @@ export class CullingStore {
             return true;
           })];
         });
+        this.shareStackExclusions();
         this.totalGroups.set(this.groups().length);
         this.totalPages.set(1);
         this.currentPage.set(1);
@@ -389,6 +399,7 @@ export class CullingStore {
 
   reviewDraft(group: CullingGroup): StackReviewDraft {
     const epoch = this.visitEpoch;
+    const provenance = this.suggestionProvenance.get(group);
     const live = () => this.stackVisitCurrent(epoch) && !!this.loadedSuggestion(group);
     return {
       current: live,
@@ -399,16 +410,40 @@ export class CullingStore {
       },
       unlock: () => { if (this.stackVisitCurrent(epoch)) this.stackBusy.set(false); },
       exclude: path => {
-        if (!live() || !group.photos.some(photo => photo.path === path)) throw new Error('Stack draft expired');
-        const token = {}; this.stackRejectTokens.set(path, token);
-        this.stackExcluded.update(excluded => Object.assign(Object.create(null), excluded, { [path]: true }));
+        if (!live() || !provenance || !group.photos.some(photo => photo.path === path)) throw new Error('Stack draft expired');
+        const token = {};
+        provenance.rejected.update(rejected => new Map(rejected).set(path, token));
+        this.shareStackExclusions();
         return () => {
-          if (!live() || this.stackRejectTokens.get(path) !== token) return;
-          this.stackRejectTokens.delete(path);
-          this.stackExcluded.update(excluded => { const next = Object.assign(Object.create(null), excluded); delete next[path]; return next; });
+          if (!live() || provenance.rejected().get(path) !== token) return;
+          for (const owner of new Set([provenance, ...this.groups().map(item => this.suggestionProvenance.get(item))])) {
+            if (owner?.rejected().get(path) === token) {
+              owner.rejected.update(rejected => { const next = new Map(rejected); next.delete(path); return next; });
+            }
+          }
         };
       },
     };
+  }
+
+  /** Undo can restore a previous batch beside a newer overlapping detector proposal. */
+  private shareStackExclusions(): void {
+    const rejected = new Map<string, object>();
+    for (const group of this.groups()) {
+      const owner = this.suggestionProvenance.get(group);
+      if (owner) for (const [path, token] of owner.rejected()) rejected.set(path, token);
+    }
+    if (!rejected.size) return;
+    for (const group of this.groups()) {
+      const owner = this.suggestionProvenance.get(group);
+      if (!owner) continue;
+      const missing = group.photos.filter(photo => rejected.has(photo.path) && !owner.rejected().has(photo.path));
+      if (missing.length) owner.rejected.update(current => {
+        const next = new Map(current);
+        for (const photo of missing) next.set(photo.path, rejected.get(photo.path)!);
+        return next;
+      });
+    }
   }
 
   async rejectStackPhoto(group: CullingGroup, path: string): Promise<boolean> {
@@ -492,6 +527,7 @@ export class CullingStore {
     if (!this.groups().some(item => this.suggestionIdentity(item) === this.suggestionIdentity(completed))) {
       this.groups.update(groups => [completed, ...groups]);
     }
+    this.shareStackExclusions();
     this.totalGroups.set(this.groups().length);
     this.completedSuggestions.delete(provenance);
   }
