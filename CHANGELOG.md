@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **A people-naming workflow** (draft; wants wider use before it settles). On the photo page, face boxes show names (red while unnamed) and an off / on hover / always switch; clicking a box or a person avatar opens a menu to change or name that face, find more faces of the person, see all of its photos, or ignore it. The persons page splits into Named and Needs naming tabs, the sort applies to the active tab, and ignoring a person (staff, strangers) shows a 10-second Undo and moves it to a restorable Ignored section. In the gallery, each person filter chip shows the person's photo with a rename pencil and the same menu; name entry suggests existing people with their photos, and naming a person after another offers to merge them, picking the namesakes from photo tiles. Find more faces filters by who owns each face (ungrouped, unnamed groups, named people) with counts, has a five-level match threshold, marks Strong and Possible matches, offers similar groups to merge whole, and says why nothing matched.
+
 ### Changed
 
 - **The CPU Docker image pins torch.** It installs torch 2.11.0 and torchvision 0.26.0 from the CPU wheel index, the release the default CUDA image ships, instead of whatever the index serves on the day of the build. `CPU_TORCH_VERSION` and `CPU_TORCHVISION_VERSION` override them.
