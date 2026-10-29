@@ -4,6 +4,8 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+## [1.27.0] "Trombinoscope" — 2026-10-29
+
 ### Added
 
 - **Reject a photo while stacking.** Use Reject or R for the focused frame in the stack editor or Suggested stacks darkroom. Rejection persists immediately and excludes that frame from the grouping draft; Undo restores its prior review and draft membership without replacing later order or cover choices. Stack saves only remaining members, while Skip keeps its original proposal scope.
