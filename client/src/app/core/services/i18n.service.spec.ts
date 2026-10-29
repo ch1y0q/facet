@@ -112,7 +112,7 @@ describe('I18nService', () => {
     const loading = service.load(); httpTesting.expectOne(`/api/i18n/${locale}`).flush(bundle); await loading;
     const one = service.t('stacks.reject_count', { count: 1 });
     const two = service.t('stacks.reject_count', { count: 2 });
-    expect(one).toMatch(/^1(?: |张)/); expect(two).toMatch(/^2(?: |张)/);
+    expect(one).toMatch(/(?:^|\s)1(?=\s|张|$)/); expect(two).toMatch(/(?:^|\s)2(?=\s|张|$)/);
     expect(one).not.toMatch(/[{}]/); expect(two).not.toMatch(/[{}]/);
     expect(one).not.toBe(two);
   });
