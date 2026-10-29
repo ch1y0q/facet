@@ -2529,7 +2529,7 @@ python facet.py --recompute-text   # 重新读取整个图库
 
 在开放安装（没有 `viewer.password`）上：
 - `/mcp` 只提供一个只读匿名密钥，它不会展示开放的 `/api` 本来没有展示的任何内容。
-- 新令牌为 `readonly`，除非 `viewer.trusted_local_editing` 允许为来自同一台机器的请求使用完全编辑令牌。
+- 新令牌为 `readonly`，除非已开启 `viewer.trusted_local_editing`，或会话已用 `viewer.edition_password` 登录：两者都可创建完全编辑令牌，但该令牌仅对来自同一台机器的请求具有编辑权限。
 - 令牌只能在运行 Facet 的电脑上创建、列出和吊销（设置了 `viewer.edition_password` 时，也可在编辑会话中进行）。
 
 ```json

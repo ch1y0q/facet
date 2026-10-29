@@ -68,7 +68,7 @@ cd client && npx ng serve
 - **`viewer.password`** 决定谁可以*浏览*。留空表示任何人都可浏览整个照片库；设置后，用户必须先登录。
 - **`viewer.edition_password`** 是所有编辑操作的前提：评分、收藏与拒绝、选片、相册、人物与人脸管理、比较模式、权重与优先级修改以及导出。留空（出厂默认）时，安装为**只读**：编辑会被 `403` 拒绝（“Set viewer.edition_password to enable editing”）。
 
-按需 AI 生成（描述、VLM 点评）同样需要编辑密码。没有它时，你只能看到已缓存的内容（`source: "edition_required"` 或 `vlm_available: false`）。未设置编辑密码时，图库也会隐藏已有的星级、收藏和拒绝徽标，与已加密安装上没有编辑权限的查看者一致。
+按需 AI 生成（描述、VLM 点评）同样需要编辑密码。没有它时，你只能看到已缓存的内容（`source: "none"` 或 `vlm_available: false`）。未设置编辑密码时，图库也会隐藏已有的星级、收藏和拒绝徽标，与已加密安装上没有编辑权限的查看者一致。
 
 设置 `viewer.edition_password` 之后请重启查看器：配置不会热重载。
 
@@ -625,17 +625,17 @@ python database.py --migrate-user-preferences --user alice
 
 ### VLM 点评 `[GPU]` `[16gb/24gb]`
 
-使用已配置的 VLM（Qwen3.5-2B 或 Qwen3.5-4B）给出结合上下文的点评。需要 16gb 或 24gb 配置档，`viewer.features.show_vlm_critique` 设为 `true`（默认），以及编辑会话来生成。没有编辑权限时，只显示已缓存的点评，且 `vlm_available` 为 `false`。
+使用已配置的 VLM（Qwen3.5-2B 或 Qwen3.5-4B）给出结合上下文的点评。需要 16gb 或 24gb 配置档，`viewer.features.show_vlm_critique` 设为 `true`（默认），以及编辑会话来生成。没有编辑权限时，只显示已缓存的点评，且 `vlm_available` 为 `false`。对话框通过 `POST /api/critique/vlm` 生成（仅限编辑权限；同一张照片的并发请求共用一次生成）；`GET /api/critique` 只读取缓存，从不生成、翻译或写入。
 
 - 提示词（`critique.vlm`）包含评分拆解、已保存与重新计算的评分、检测到的情况和 EXIF。
-- 回复按**观察 / 评价 / 建议**呈现。结果按照片缓存（`photos.vlm_critique`）并按需翻译，**重新生成**会重新计算。
+- 回复按**观察 / 评价 / 建议**呈现。结果按照片缓存（`photos.vlm_critique`）并在编辑会话以目标语言打开时翻译（随后保存，之后按已保存内容提供），**重新生成**会重新计算。没有编辑会话时，除非已有保存的译文，否则看到的是未翻译的文本。
 - 它基于已存储的缩略图运行，因此 RAW 文件也能正常点评。
 
 **“为什么是这个评分”可视化叠加层。** 当 `viewer.features.show_saliency_overlay` 开启（默认 `true`）时，点评对话框有**显示叠加层**。它把 BiRefNet 显著性图绘制为热力图（`GET /api/saliency_overlay`），再加上由已存储关键点得到的人脸框和眼睛标记（`GET /api/photo/face_markers`）。睁眼时框为绿色，闭眼时为琥珀色。热力图为缩略图分辨率，因此只是近似。在无法生成显著性掩膜的配置档上，该开关会隐藏。
 
 ## AI 照片描述 `[GPU]` `[16gb/24gb]` `[Edition]`
 
-为任意照片获取自然语言描述。描述在首次请求时由编辑会话生成，随后缓存在 `caption` 列中。在编辑模式下可以在照片详情中修改描述。开放的只读安装从不生成描述。
+为任意照片获取自然语言描述。描述在首次请求时由编辑会话生成，随后缓存在 `caption` 列中。在编辑模式下可以在照片详情中修改描述。开放的只读安装从不生成描述。 `POST /api/caption` 负责生成（并翻译）；`GET /api/caption` 只返回已保存的描述或译文，从不生成、翻译或写入。
 
 也可通过 CLI 批量生成和翻译：
 

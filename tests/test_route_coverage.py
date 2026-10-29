@@ -139,6 +139,8 @@ POST_ROUTES = [
     ('/api/photo/set_rating', {'photo_path': '/nonexistent.jpg', 'rating': 3}),
     ('/api/photo/toggle_favorite', {'photo_path': '/nonexistent.jpg'}),
     ('/api/photo/toggle_rejected', {'photo_path': '/nonexistent.jpg'}),
+    ('/api/critique/vlm', {'path': '/nonexistent.jpg'}),
+    ('/api/caption', {'path': '/nonexistent.jpg'}),
     ('/api/photos/key_subjects', {'paths': []}),
     ('/api/person/1/face_boxes', {'paths': ['/nonexistent.jpg']}),
     ('/api/face/987654321/unassign', {}),
