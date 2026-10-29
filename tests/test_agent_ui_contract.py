@@ -102,7 +102,7 @@ def test_ui_show_culling_plan_is_an_edition_write_free_tool():
 
 def test_the_tab_may_report_the_plan_refusals():
     from api.agent.ui_tools import TAB_ERROR_CODES
-    assert {"unsaved_decisions", "plan_changed", "plan_load_failed", "navigation_refused"} <= TAB_ERROR_CODES
+    assert {"unsaved_decisions", "plan_changed", "plan_load_failed", "stack_mode_active", "navigation_refused"} <= TAB_ERROR_CODES
 
 
 def test_the_navigating_tools_describe_the_leave_culling_refusal():

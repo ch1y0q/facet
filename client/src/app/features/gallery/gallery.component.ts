@@ -1,3 +1,4 @@
+import { STACK_EDITOR_HISTORY } from './stack-editor-history';
 import {
   Component,
   ChangeDetectorRef,
@@ -638,6 +639,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
                 <mat-icon class="opacity-70 !text-base !w-5 !h-5">visibility_off</mat-icon>
                 <span id="notice-text-hidden" class="flex-1">
                   {{ I18N.gallery.hidden_banner.message | translate:{ n: store.hiddenSummary().total } }}
+                  @if (hiddenReasons()) { ({{ hiddenReasons() }}) }
                 </span>
                 <button mat-button class="!min-w-0" (click)="store.showAllHidden()">
                   {{ I18N.gallery.hidden_banner.show_all | translate }}
@@ -718,7 +720,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
           <!-- Mobile: single Actions trigger opening a touch-friendly bottom sheet -->
           @if (auth.isEdition()) {
             <button mat-icon-button data-create-stack (click)="createStack()" [disabled]="!canCreateStack()"
-              [matTooltip]="(canCreateStack() ? I18N.stacks.create : I18N.stacks.explicit_only) | translate"
+              [matTooltip]="(canCreateStack() ? (stackShortcut() ? I18N.shortcuts.stack_hint : I18N.stacks.create) : I18N.stacks.explicit_only) | translate:{ key: stackShortcut() }"
               [attr.aria-label]="I18N.stacks.create | translate"><mat-icon>photo_library</mat-icon></button>
           }
           <button mat-icon-button class="md:!hidden" (click)="openActionsSheet()" [disabled]="downloading()" [matTooltip]="I18N.gallery.selection.actions | translate" [attr.aria-label]="I18N.gallery.selection.actions | translate">
@@ -1201,6 +1203,20 @@ export class GalleryComponent implements OnInit, OnDestroy {
     });
   });
 
+  /** Why photos are hidden, in words: "287 burst repeat(s), 23 blink(s)...". */
+  protected readonly hiddenReasons = computed(() => {
+    this.i18n.translations();
+    const h = this.store.hiddenSummary();
+    const reasons: [number, string][] = [
+      [h.bursts, I18N.gallery.hidden_banner.reason_bursts],
+      [h.blinks, I18N.gallery.hidden_banner.reason_blinks],
+      [h.duplicates, I18N.gallery.hidden_banner.reason_duplicates],
+      [h.brackets, I18N.gallery.hidden_banner.reason_brackets],
+      [h.panoramas, I18N.gallery.hidden_banner.reason_panoramas],
+    ];
+    return reasons.filter(([n]) => n > 0).map(([n, key]) => this.i18n.t(key, { n })).join(', ');
+  });
+
   /** Show the hidden-photos banner when filters are hiding rows and at least one is on. */
   readonly showHiddenBanner = computed(() => {
     const f = this.store.filters();
@@ -1257,8 +1273,9 @@ export class GalleryComponent implements OnInit, OnDestroy {
   }
 
   /** The review-progress card: on in the user menu, counts loaded, and not closed in this tab. */
+  /** An empty scope has nothing to review, so it gets no "0 of 0" card. */
   protected readonly reviewProgressShown = computed(() =>
-    this.store.reviewProgressVisible() && !!this.store.reviewProgress() && !this.noticeClosed('review_progress'));
+    this.store.reviewProgressVisible() && !!this.store.reviewProgress()?.total && !this.noticeClosed('review_progress'));
   protected readonly reviewBookmarkShown = computed(() => !!this.store.reviewBookmark() && !this.noticeClosed('review_bookmark'));
   protected readonly hiddenNoticeShown = computed(() => this.showHiddenBanner() && !this.noticeClosed('hidden'));
   protected readonly restoreNoticeShown = computed(() => this.canRestoreHidden() && !this.noticeClosed('restore_hidden'));
@@ -2303,9 +2320,19 @@ export class GalleryComponent implements OnInit, OnDestroy {
 
   protected readonly canCreateStack = computed(() => this.auth.isEdition() && !this.viewScoped() && this.selectionCount() >= STACK_MIN_MEMBERS && this.selectionCount() <= STACK_MAX_MEMBERS);
 
+  protected readonly stackShortcut = computed(() => this.keymap.keymap().stack.toUpperCase());
+  private stackOpening = false;
+
   protected async createStack(): Promise<void> {
-    if (!this.canCreateStack()) return;
-    await this.launchStack({ paths: [...this.selectedPaths()], activePath: this.store.focusedPath() });
+    if (!this.canCreateStack() || this.stackOpening || this.parked || this.store.slideshowActive() || this.dialog.openDialogs.length) return;
+    this.stackOpening = true;
+    try {
+      const paths = [...this.selectedPaths()];
+      const focused = this.store.focusedPath();
+      await this.router.navigate(['/stacks/edit'], { state: { [STACK_EDITOR_HISTORY]: {
+        version: 1, identity: this.auth.identity(), paths, activePath: focused && paths.includes(focused) ? focused : undefined, returnUrl: this.router.url,
+      } } });
+    } finally { this.stackOpening = false; }
   }
 
   protected async openStack(photo: Photo): Promise<void> {
@@ -2316,20 +2343,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
   protected async openStackSuggestions(): Promise<void> {
     const filters = this.store.filterPayload();
     if (!filters || !this.auth.isEdition()) return;
-    const session = this.stacks.context();
-    const scope = JSON.stringify(filters);
-    const { StackSuggestionsDialogComponent } = await import('./stack-suggestions-dialog.component');
-    if (this.destroyRef.destroyed || !session() || this.pinned()
-      || JSON.stringify(this.store.filterPayload()) !== scope || this.dialog.openDialogs.length
-      || !this.auth.isEdition()) return;
-    this.dialog.open(StackSuggestionsDialogComponent, { width: '96vw', maxWidth: '1400px', height: '92vh', data: { filters } });
-  }
-
-  private async launchStack(data: import('./stack-dialog.component').StackDialogData): Promise<void> {
-    const session = this.stacks.context();
-    const { StackDialogComponent } = await import('./stack-dialog.component');
-    if (this.destroyRef.destroyed || !session()) return;
-    this.dialog.open(StackDialogComponent, { data, width: '900px', maxWidth: '96vw' });
+    if (!this.store.canScopeSelectionToView() || this.pinned()) return;
+    await this.router.navigate(['/culling'], {
+      queryParams: { mode: 'stacks', filters: JSON.stringify(filters), return: this.router.url },
+    });
   }
 
   protected downloadPhoto(photo: Photo): void {
@@ -2837,16 +2854,22 @@ export class GalleryComponent implements OnInit, OnDestroy {
   }
 
   /** Focuses the search (the toolbar's, else the sidebar's), toggles the
-   *  filter sidebar, switches grid/mosaic — the three view-level toggles
-   *  that had no keyboard path. The keys come from the user's key mapping
+   *  filter sidebar, switches grid/mosaic, or opens the selected-photo stack
+   *  editor. The keys come from the user's key mapping
    *  (the keyboard settings dialog); typing contexts and open dialogs bow
    *  out, matching the select-all shortcut's guards, and so does the
    *  slideshow: it is an inline overlay, not a MatDialog, so the dialog
    *  query below cannot see it. */
   protected onGalleryShortcut(event: KeyboardEvent): void {
-    if (this.parked || this.store.slideshowActive()) return;
+    if (this.parked || this.store.slideshowActive() || event.defaultPrevented) return;
     if (isPageShortcutBlocked(event)) return;
 
+    if (this.keymap.matches(event, 'stack')) {
+      if (event.repeat || event.isComposing || event.keyCode === 229 || !this.canCreateStack()) return;
+      event.preventDefault();
+      void this.createStack();
+      return;
+    }
     if (this.keymap.matches(event, 'focusSearch')) {
       const search = this.toolbarSearch()?.nativeElement;
       if (!search) return;

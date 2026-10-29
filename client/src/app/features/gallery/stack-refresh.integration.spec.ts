@@ -1,10 +1,11 @@
-import { signal } from '@angular/core';
+import { ApplicationRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpRequest, provideHttpClient, withInterceptors, withXhr } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter, Router, NavigationEnd } from '@angular/router';
 import { MATERIAL_ANIMATIONS, provideNativeDateAdapter } from '@angular/material/core';
 import { MatDialog } from '@angular/material/dialog';
+import { MatTooltip } from '@angular/material/tooltip';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { NEVER, Subject, filter, firstValueFrom, take, of } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
@@ -15,6 +16,12 @@ import { makePhoto } from '../../../testing/photo.fixture';
 import { GalleryComponent } from './gallery.component';
 import { GalleryStore } from './gallery.store';
 import { App } from '../../app';
+import { KeyboardMappingService, DEFAULT_KEYMAP } from '../../core/services/keyboard-mapping.service';
+import { StackDialogComponent } from './stack-dialog.component';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { StackEditorPageComponent } from './stack-editor-page.component';
+import { STACK_EDITOR_HISTORY } from './stack-editor-history';
+import { Location } from '@angular/common';
 import { ThemeService } from '../../core/services/theme.service';
 
 const counts = { total: 2, undecided: 2, kept: 0, rejected: 0 };
@@ -87,6 +94,166 @@ describe('stack representative repairs through rendered gallery and HTTP', () =>
     localStorage.clear(); sessionStorage.clear();
   });
 
+
+  describe('Stack shortcut through document/grid and HTTP', () => {
+    let routed: RouterTestingHarness;
+    beforeEach(async () => {
+      TestBed.inject(Router).resetConfig([{ path: 'stacks/edit', component: StackEditorPageComponent }]);
+      routed = await RouterTestingHarness.create();
+      document.body.appendChild(fixture.nativeElement);
+    });
+    const key = (init: KeyboardEventInit = {}, target: EventTarget = document) => {
+      const event = new KeyboardEvent('keydown', { key: 's', bubbles: true, cancelable: true, ...init });
+      target.dispatchEvent(event);
+      return event;
+    };
+    const select = () => { store.toggleSelection(rows[0]); store.toggleSelection(rows[1]); fixture.detectChanges(); };
+    const noEditor = () => {
+      expect(document.querySelector('app-stack-dialog')).toBeNull();
+      http.expectNone('/api/stacks/regroup/preview');
+    };
+    const closeEditor = async () => {
+      TestBed.inject(MatDialog).closeAll();
+      routed.fixture.destroy();
+      await fixture.whenStable();
+    };
+    afterEach(async () => { await closeEditor(); });
+
+    it.each(['document', 'grid'])('opens one editor via %s with exactly the explicit paths and never writes on S', async target => {
+      select();
+      // Stacking does not depend on the rating-controls feature.
+      store.config.update(value => value ? { ...value, features: { ...value.features, show_rating_controls: false } } : value);
+      const node = target === 'document' ? document : fixture.nativeElement.querySelector('[role="grid"]');
+      expect(node).not.toBeNull();
+      const event = key({}, node);
+      key({}, node); // Two immediate presses cannot start duplicate navigations.
+      expect(event.defaultPrevented).toBe(true);
+      await vi.waitFor(() => expect(TestBed.inject(Router).url).toBe('/stacks/edit'));
+      routed.detectChanges();
+      fixture.detectChanges();
+      const request = http.expectOne('/api/stacks/regroup/preview');
+      expect(request.request.body).toEqual({ selected_paths: rows.map(row => row.path), mode: 'combine' });
+      request.flush({ selected_paths: rows.map(row => row.path), mode: 'combine', paths: rows.map(row => row.path),
+        cover_path: rows[0].path, source_stacks: [], unstacked_paths: rows.map(row => row.path),
+        affected_paths: rows.map(row => row.path), expected_state: 'a'.repeat(64) });
+      await fixture.whenStable(); fixture.detectChanges(); routed.detectChanges();
+      expect(document.querySelectorAll('app-stack-dialog')).toHaveLength(0);
+      expect(routed.routeNativeElement?.querySelector('[data-stack-save]')).not.toBeNull();
+      expect((TestBed.inject(Location).getState() as Record<string, unknown>)[STACK_EDITOR_HISTORY]).toEqual({ version: 1, identity: auth.identity(), paths: rows.map(row => row.path), activePath: undefined, returnUrl: '/' });
+      http.expectNone('/api/stacks/regroup/apply');
+      http.expectNone('/api/stacks');
+    });
+
+    it('routes the toolbar maximum of 1000 explicitly selected photos without a dialog', async () => {
+      const paths = Array.from({ length: 1000 }, (_, index) => `/selected/${index}.jpg`);
+      store.selectedPaths.set(new Set(paths)); fixture.detectChanges();
+      fixture.nativeElement.querySelector('[data-create-stack]').click();
+      await vi.waitFor(() => expect(TestBed.inject(Router).url).toBe('/stacks/edit')); routed.detectChanges();
+      const request = http.expectOne('/api/stacks/regroup/preview'); expect(request.request.body.selected_paths).toEqual(paths);
+      expect(TestBed.inject(MatDialog).openDialogs).toHaveLength(0);
+      request.flush({}, { status: 403, statusText: 'Unavailable' }); await fixture.whenStable();
+    });
+
+    it.each(['S', '+'])('honours the case-insensitive or shifted printable binding %s', async pressed => {
+      select();
+      if (pressed === '+') expect(TestBed.inject(KeyboardMappingService).setKey('stack', '+')).toBeNull();
+      expect(key({ key: pressed, shiftKey: true }).defaultPrevented).toBe(true);
+      await vi.waitFor(() => expect(TestBed.inject(Router).url).toBe('/stacks/edit'));
+      routed.detectChanges();
+      fixture.detectChanges();
+      const request = http.expectOne('/api/stacks/regroup/preview');
+      expect(request.request.body.selected_paths).toEqual(rows.map(row => row.path));
+      request.flush({}, { status: 500, statusText: 'Failed' });
+      await fixture.whenStable();
+    });
+
+    it.each([{ repeat: true }, { isComposing: true }, { keyCode: 229 }, { ctrlKey: true }, { metaKey: true }, { altKey: true }])('preserves modified/repeated/composing S: %j', async init => {
+      select();
+      expect(key(init).defaultPrevented).toBe(false);
+      await fixture.whenStable(); noEditor();
+    });
+
+    it.each(['input', 'textarea', 'select', 'editable', 'menu'])('suppresses S in a %s typing context', async kind => {
+      select();
+      const target = document.createElement(['editable', 'menu'].includes(kind) ? 'div' : kind);
+      if (kind === 'editable') Object.defineProperty(target, 'isContentEditable', { value: true });
+      if (kind === 'menu') target.setAttribute('role', 'menu');
+      document.body.appendChild(target);
+      try { expect(key({}, target).defaultPrevented).toBe(false); await fixture.whenStable(); noEditor(); }
+      finally { target.remove(); }
+    });
+
+    it.each(['none', 'one', 'whole-view', 'too-many', 'readonly', 'slideshow', 'parked'])('suppresses S for %s', async state => {
+      if (state !== 'none') select();
+      if (state === 'one') store.toggleSelection(rows[1]);
+      if (state === 'whole-view') store.selectWholeView();
+      if (state === 'too-many') store.selectedPaths.set(new Set(Array.from({ length: 1001 }, (_, i) => `/p${i}.jpg`)));
+      if (state === 'readonly') auth.status.update(status => ({ ...status!, edition_authenticated: false, user_role: 'viewer' }));
+      if (state === 'slideshow') store.slideshowActive.set(true);
+      if (state === 'parked') fixture.componentInstance['parked'] = true;
+      expect(key().defaultPrevented).toBe(false);
+      await fixture.whenStable(); noEditor();
+    });
+
+    it('stands down for a real Material dialog and native button activation', async () => {
+      select();
+      const ref = TestBed.inject(MatDialog).open(StackDialogComponent, { data: { paths: rows.map(row => row.path) } });
+      TestBed.inject(ApplicationRef).tick();
+      http.expectOne('/api/stacks/regroup/preview').flush({}, { status: 500, statusText: 'Failed' });
+      await fixture.whenStable();
+      expect(key().defaultPrevented).toBe(false);
+      expect(document.querySelectorAll('app-stack-dialog')).toHaveLength(1);
+      http.expectNone('/api/stacks/regroup/preview');
+      ref.close(); await fixture.whenStable();
+      const button = fixture.nativeElement.querySelector('[data-create-stack]')!;
+      expect(key({ key: 'Enter' }, button).defaultPrevented).toBe(false);
+      expect(key({ key: ' ' }, button).defaultPrevented).toBe(false);
+      noEditor();
+    });
+
+    it('fires only the saved competing action when Stack is unassigned', async () => {
+      select();
+      TestBed.inject(KeyboardMappingService).keymap.set({ ...DEFAULT_KEYMAP, toggleSidebar: 's', stack: '' });
+      fixture.detectChanges();
+      expect(store.filterDrawerOpen()).toBe(false);
+      expect(key().defaultPrevented).toBe(true);
+      expect(store.filterDrawerOpen()).toBe(true);
+      await fixture.whenStable(); noEditor();
+      const button = fixture.debugElement.queryAllNodes(node => node.nativeNode?.hasAttribute?.('data-create-stack'))[0];
+      expect(button.injector.get(MatTooltip).message).toBe('stacks.create {"key":""}');
+    });
+
+    it('does not navigate when the gallery is already parked', async () => {
+      select(); fixture.componentInstance['parked'] = true;
+      expect(key().defaultPrevented).toBe(false);
+      await fixture.whenStable(); noEditor();
+    });
+
+    it('ignores an event already consumed by another control', async () => {
+      select();
+      const event = new KeyboardEvent('keydown', { key: 's', bubbles: true, cancelable: true });
+      event.preventDefault(); document.dispatchEvent(event);
+      await fixture.whenStable(); noEditor();
+    });
+
+    it('honours remapping and displays the actual key in the toolbar tooltip', async () => {
+      select();
+      const mapping = TestBed.inject(KeyboardMappingService);
+      expect(mapping.setKey('stack', 'g')).toBeNull();
+      fixture.detectChanges();
+      expect(key().defaultPrevented).toBe(false);
+      await fixture.whenStable(); noEditor();
+      const button = fixture.debugElement.queryAllNodes(node => node.nativeNode?.hasAttribute?.('data-create-stack'))[0];
+      expect(button).toBeDefined();
+      // The real translated tooltip includes the currently mapped binding.
+      expect(button.injector.get(MatTooltip).message).toContain('G');
+      key({ key: 'g' });
+      await vi.waitFor(() => expect(TestBed.inject(Router).url).toBe('/stacks/edit'));
+      routed.detectChanges();
+      fixture.detectChanges(); http.expectOne('/api/stacks/regroup/preview').flush({}, { status: 500, statusText: 'Failed' });
+      await fixture.whenStable();
+    });
+  });
 
   it('stack badge opens the normal viewer directly without opening the editor or replacing scope', async () => {
     const router = TestBed.inject(Router);
