@@ -1,10 +1,19 @@
-import { InjectionToken } from '@angular/core';
+import { InjectionToken, Signal } from '@angular/core';
 import { Observable } from 'rxjs';
 
+/** A secondary editor shares explicit exclusions with its original, authorized proposal. */
+export interface StackReviewDraft {
+  excluded: Signal<ReadonlySet<string>>;
+  current: () => boolean;
+  exclude: (path: string) => () => void;
+  lock: () => boolean;
+  unlock: () => void;
+}
 export interface StackEditorData {
   stackId?: string;
   paths?: string[];
   activePath?: string | null;
+  reviewDraft?: StackReviewDraft;
   /** Explicit selection only; never materialize a whole-view selection. */
   selectedPaths?: string[];
   skippable?: boolean;

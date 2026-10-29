@@ -31,6 +31,7 @@ export const CULLING_SHORTCUT_SECTIONS: { titleKey: string; rows: CullingShortcu
 ];
 
 export const STACK_DARKROOM_SHORTCUTS: CullingShortcutRow[] = [
+  { keys: ['R'], labelKey: 'stacks.reject_focused' },
   { keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' },
   { keys: ['S', 'Enter'], labelKey: 'stacks.stack_cover' },
   { keys: ['X'], labelKey: 'stacks.suggestion_skip' },
@@ -47,5 +48,6 @@ export const STACK_SHORTCUT_SECTIONS = [
 ];
 
 export const MANUAL_STACK_SHORTCUT_SECTIONS = [{ titleKey: 'stacks.create', rows: [
+  { keys: ['R'], labelKey: 'stacks.reject_focused' },
   { keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' },
 ] }];

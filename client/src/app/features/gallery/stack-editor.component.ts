@@ -24,6 +24,7 @@ import { reconcileRegroupDraft, regroupSourceEffects } from './stack-regroup-sta
 import { STACK_EDITOR_HOST } from './stack-editor-host';
 import { SyncedZoomComponent, FIT_ZOOM } from './synced-zoom.component';
 import { PageContextService } from '../../core/agent/page-context.service';
+import { StackReviewActionsService } from './stack-review-actions.service';
 import { STACK_MAX_MEMBERS, STACK_MIN_MEMBERS } from './stack-limits';
 
 const MUTATION_FAILURE: Record<number, 'conflict' | 'unavailable'> = { 409: 'conflict', 404: 'unavailable', 403: 'unavailable' };
@@ -77,6 +78,7 @@ function captureDateKey(date: string | null | undefined): string {
           <p data-stack-member-count>{{ paths().length | pluralKey:I18N.stacks.member_count:I18N.stacks.member_count_plural | translate:{ count: paths().length } }}</p>
           @if (regrouping()) { <p>{{ I18N.stacks.regroup_counts | translate:{ selected: explicitPaths().length, effective: paths().length } }}</p> }
         </div>
+        @if (rejectedCount()) { <p role="status" data-stack-excluded class="text-sm mb-1">{{ I18N.stacks.reject_count | translate:{ count: rejectedCount() } }}</p> }
         @if (extraCount()) { <p class="text-sm mb-2" role="status">{{ extraCount() | pluralKey:I18N.stacks.regroup_extra:I18N.stacks.regroup_extra_plural | translate:{ count: extraCount() } }}</p> }
         @if (sourceEffects().length) {
           <section class="rounded-lg border border-current/20 p-3 text-sm mb-3 shrink-0" [attr.aria-label]="I18N.stacks.regroup_sources | translate">
@@ -107,6 +109,9 @@ function captureDateKey(date: string | null | undefined): string {
           </div>
           <div class="shrink-0 flex items-center justify-between gap-2 my-1 min-w-0">
             <span class="text-sm truncate" [title]="path">{{ path | filename }}</span>
+            @if (editable() && !saved()) {
+              <button mat-icon-button data-stack-reject (click)="rejectFocused()" [disabled]="saving() || loading()" [attr.aria-label]="I18N.stacks.reject_focused | translate" [matTooltip]="I18N.stacks.reject_focused | translate" aria-keyshortcuts="R"><mat-icon aria-hidden="true">block</mat-icon></button>
+            }
             @if (page && editable() && !saved()) {
               <div class="flex shrink-0">
                 <ng-container [ngTemplateOutlet]="coverButton" [ngTemplateOutletContext]="{ $implicit: path }" />
@@ -187,12 +192,17 @@ export class StackEditorComponent implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly store = inject(GalleryStore);
   private readonly actions = inject(StackActionsService);
+  private readonly reviewActions = inject(StackReviewActionsService);
+  private readonly rejectExclusions = new Map<string, object>();
+  readonly rejectedCount = signal(0);
+  private readonly sharedRestores = new Map<string, () => void>();
+  private coverVersion = 0;
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly session = this.stacks.context();
   private readonly initialEdition = this.auth.isEdition();
   private readonly cancelLoad = new Subject<void>();
-  private retryAction: 'load' | 'save' | 'unstack' | 'add' | { open: string } = 'load';
+  private retryAction: 'load' | 'save' | 'unstack' | 'add' | { open: string } | { reject: string } = 'load';
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
   private readonly thumbnails = viewChildren<ElementRef<HTMLButtonElement>>('thumbnail');
   private closing = false;
@@ -236,6 +246,7 @@ export class StackEditorComponent implements OnInit {
 
   constructor() {
     effect(() => { this.focused(); this.zoom.set({ ...FIT_ZOOM }); });
+    effect(() => { this.data.reviewDraft?.excluded(); this.ready(); this.syncReviewDraft(); });
     this.host.keydown$.pipe(takeUntilDestroyed()).subscribe(event => this.onKeydown(event));
     this.host.closing$.pipe(takeUntilDestroyed()).subscribe(() => this.clearPrivateState());
     this.router.events.pipe(takeUntilDestroyed()).subscribe(event => {
@@ -243,7 +254,7 @@ export class StackEditorComponent implements OnInit {
     });
     effect(() => {
       this.auth.identity();
-      if (!this.session() || this.auth.isEdition() !== this.initialEdition) this.invalidate();
+      if (!this.session() || this.auth.isEdition() !== this.initialEdition || this.data.reviewDraft && !this.data.reviewDraft.current()) this.invalidate();
     });
   }
 
@@ -255,11 +266,11 @@ export class StackEditorComponent implements OnInit {
   }
   ngOnInit(): void { void this.load(); }
   private canMutateDraft(): boolean { return this.current() && this.canEditDraft(); }
-  private current(): boolean { return !this.destroyRef.destroyed && !this.closing && this.session() && this.auth.isEdition() === this.initialEdition; }
+  private current(): boolean { return !this.destroyRef.destroyed && !this.closing && this.session() && this.auth.isEdition() === this.initialEdition && (!this.data.reviewDraft || this.data.reviewDraft.current()); }
   private clearPrivateState(): void {
     this.closing = true; this.loadSequence++; this.cancelLoad.next();
     this.paths.set([]); this.stack.set(null); this.explicitPaths.set([]); this.preview.set(null);
-    this.previewCurrent.set(false); this.excluded.clear(); this.focused.set(''); this.cover.set('');
+    this.previewCurrent.set(false); this.excluded.clear(); this.sharedRestores.clear(); this.rejectExclusions.clear(); this.rejectedCount.set(0); this.focused.set(''); this.cover.set('');
     this.ready.set(false); this.saved.set(false); this.error.set(null); this.loading.set(false); this.saving.set(false);
     this.zoom.set({ ...FIT_ZOOM });
   }
@@ -294,7 +305,7 @@ export class StackEditorComponent implements OnInit {
         this.cover.set(this.data.activePath && paths.includes(this.data.activePath) ? this.data.activePath : (this.data.paths?.[0] ?? paths[0]));
       }
       this.focused.set(this.paths().includes(this.data.activePath ?? '') ? this.data.activePath! : this.cover());
-      this.ready.set(true);
+      this.ready.set(true); this.syncReviewDraft();
     } catch { if (this.current() && sequence === this.loadSequence) this.error.set('error'); }
     finally { if (this.current() && sequence === this.loadSequence) this.loading.set(false); }
   }
@@ -327,7 +338,10 @@ export class StackEditorComponent implements OnInit {
     this.mode.set(mode); void this.loadPreview();
   }
   retry(): void {
-    if (typeof this.retryAction === 'object') void this.openMember(this.retryAction.open);
+    if (typeof this.retryAction === 'object') {
+      if ('reject' in this.retryAction) void this.rejectFocused(this.retryAction.reject);
+      else void this.openMember(this.retryAction.open);
+    }
     else if (this.retryAction === 'add') void this.addSelected();
     else if (this.retryAction === 'unstack' && this.error() === 'error') void this.unstack();
     else if (this.retryAction === 'save' && this.error() === 'error') void this.save();
@@ -340,8 +354,11 @@ export class StackEditorComponent implements OnInit {
     if (!this.current() || this.saving() || event.defaultPrevented || isTypingContext(event)
       || event.repeat || this.page && this.pageContext.overlays().length > 0
       || event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
-      || !['ArrowLeft', 'ArrowRight'].includes(event.key)
-      || (event.target as HTMLElement | null)?.closest('[role="slider"], [role="radiogroup"], input, select')) return;
+      || !['ArrowLeft', 'ArrowRight', 'r', 'R'].includes(event.key)
+      || (event.target instanceof HTMLElement ? event.target : null)?.closest('[role="slider"], [role="radiogroup"], input, select')) return;
+    if (event.key.toLowerCase() === 'r') {
+      event.preventDefault(); event.stopPropagation(); void this.rejectFocused(); return;
+    }
     const index = this.paths().indexOf(this.focused());
     const next = this.paths()[index + (event.key === 'ArrowRight' ? 1 : -1)];
     event.preventDefault(); event.stopPropagation();
@@ -357,7 +374,7 @@ export class StackEditorComponent implements OnInit {
     if (this.regrouping() && status !== undefined && [403, 404, 409, 422].includes(status)) this.previewCurrent.set(false);
   }
 
-  setCover(path: string): void { if (this.canMutateDraft() && this.paths().includes(path)) this.cover.set(path); }
+  setCover(path: string): void { if (this.canMutateDraft() && this.paths().includes(path)) { this.coverVersion++; this.cover.set(path); } }
   move(index: number, delta: number): void {
     if (!this.canMutateDraft()) return;
     const paths = [...this.paths()]; const target = index + delta;
@@ -377,6 +394,68 @@ export class StackEditorComponent implements OnInit {
     if (this.focused() === path || removedHasFocus) this.focused.set(next);
     if (removedHasFocus) (nextButton ?? this.closeButton()?.nativeElement)?.focus();
     if (this.cover() === path) this.cover.set(this.paths()[0] ?? '');
+  }
+  private syncReviewDraft(): void {
+    const incoming = this.data.reviewDraft?.excluded();
+    if (!incoming || !this.current() || !this.ready() || this.saved()) return;
+    for (const path of incoming) {
+      if (!this.sharedRestores.has(path) && this.paths().includes(path)) this.sharedRestores.set(path, this.excludeRejectedMember(path));
+    }
+    for (const [path, restore] of this.sharedRestores) {
+      if (!incoming.has(path)) { restore(); this.sharedRestores.delete(path); }
+    }
+  }
+
+  private excludeRejectedMember(path: string): () => void {
+    const before = [...this.paths()]; const oldCover = this.cover();
+    const index = before.indexOf(path); const token = {};
+    this.rejectExclusions.set(path, token); this.rejectedCount.set(this.rejectExclusions.size);
+    this.excluded.add(path);
+    this.paths.set(before.filter(member => member !== path));
+    if (this.focused() === path) this.focused.set(before[index + 1] ?? before[index - 1] ?? '');
+    if (oldCover === path) this.cover.set(this.paths()[0] ?? '');
+    const fallback = this.cover(); const coverVersion = this.coverVersion;
+    return () => {
+      if (!this.current() || this.saved() || this.rejectExclusions.get(path) !== token) return;
+      this.rejectExclusions.delete(path); this.rejectedCount.set(this.rejectExclusions.size);
+      this.excluded.delete(path);
+      if (this.regrouping() && !this.preview()?.paths.includes(path)) return;
+      if (this.paths().includes(path)) return;
+      const paths = [...this.paths()];
+      const previous = before.slice(0, index).reverse().find(member => paths.includes(member));
+      const following = before.slice(index + 1).find(member => paths.includes(member));
+      paths.splice(previous ? paths.indexOf(previous) + 1 : following ? paths.indexOf(following) : paths.length, 0, path);
+      this.paths.set(paths);
+      if (oldCover === path && this.cover() === fallback && this.coverVersion === coverVersion) this.cover.set(path);
+      if (!this.focused()) this.focused.set(path);
+    };
+  }
+
+  async rejectFocused(path = this.focused()): Promise<void> {
+    if (!this.current() || !this.editable() || !this.ready() || this.saved() || this.saving() || this.loading()
+      || !this.paths().includes(path)) return;
+    const shared = this.data.reviewDraft;
+    const live = () => this.current() && this.editable() && !this.saved() && (!shared || shared.current());
+    if (!live() || shared && !shared.lock()) return;
+    this.saving.set(true); this.host.setBusy(true); this.error.set(null); this.retryAction = { reject: path };
+    try {
+      await this.reviewActions.reject(path, {
+        session: this.session, live,
+        beginUndo: () => {
+          if (shared?.current() && !shared.lock()) return false;
+          if (!live()) return true;
+          if (this.saving() || this.loading()) { shared?.unlock(); return false; }
+          this.saving.set(true); this.host.setBusy(true); return true;
+        },
+        endUndo: () => { shared?.unlock(); if (live()) { this.saving.set(false); this.host.setBusy(false); } },
+        exclude: () => {
+          if (!shared) return this.excludeRejectedMember(path);
+          const restore = shared.exclude(path); this.syncReviewDraft();
+          return () => { restore(); this.syncReviewDraft(); };
+        },
+      });
+    } catch { if (live()) this.error.set('error'); }
+    finally { shared?.unlock(); if (live()) { this.saving.set(false); this.host.setBusy(false); } }
   }
   async addSelected(): Promise<void> {
     if (!this.canMutateDraft()
@@ -401,6 +480,8 @@ export class StackEditorComponent implements OnInit {
         const draft = reconcileRegroupDraft(preview, { paths, cover: this.cover() }, this.excluded);
         this.preview.set(preview); this.paths.set(draft.paths); this.cover.set(draft.cover); this.previewCurrent.set(true);
       } else this.paths.set(paths);
+      for (const path of additions) { this.rejectExclusions.delete(path); this.excluded.delete(path); }
+      this.rejectedCount.set(this.rejectExclusions.size);
     } catch (failure) { if (this.current() && sequence === this.loadSequence) this.showFailure(failure); }
     finally { if (this.current() && sequence === this.loadSequence) this.loading.set(false); }
   }
@@ -445,6 +526,8 @@ export class StackEditorComponent implements OnInit {
     await this.mutate(this.stacks.unstack(stack), 'unstack');
   }
   private async mutate(request: Observable<StackMutation>, action: 'create' | 'update' | 'unstack'): Promise<void> {
+    const shared = this.data.reviewDraft;
+    if (shared && !shared.lock()) return;
     this.saving.set(true); this.error.set(null); this.host.setBusy(true);
     const paths = [...new Set([...(this.stack()?.members.map(member => member.path) ?? []), ...this.paths()])];
     try {
@@ -458,6 +541,7 @@ export class StackEditorComponent implements OnInit {
         this.retryAction = action === 'unstack' ? 'unstack' : 'save'; this.showFailure(failure);
       }
     } finally {
+      shared?.unlock();
       if (this.current()) { this.saving.set(false); this.host.setBusy(false); }
     }
   }

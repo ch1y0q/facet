@@ -91,17 +91,18 @@ describe('App', () => {
       const rows = sections.flatMap(section => section.rows);
       expect(rows.some(row => row.keys.includes('S') && row.labelKey === 'stacks.stack_cover')).toBe(true);
       expect(rows.some(row => row.keys.includes('X'))).toBe(true);
+      expect(rows.some(row => row.keys.includes('R') && row.labelKey === 'stacks.reject_focused')).toBe(true);
       expect(rows.map(row => row.labelKey)).not.toContain('culling.shortcuts.keep');
       expect(rows.map(row => row.labelKey)).not.toContain('culling.shortcuts.reject');
       expect(rows.map(row => row.labelKey)).not.toContain('culling.shortcuts.toggle');
     });
 
-    it('shows manual editor help without suggested or culling decisions', () => {
+    it('shows manual editor navigation and explicit Reject without culling decisions', () => {
       const { app } = createApp('/stacks/edit');
       (app as any).openHelpDialog();
       const open = TestBed.inject(MatDialog).open as unknown as ReturnType<typeof vi.fn>;
       const sections = open.mock.calls[0][1].data.shortcutSections;
-      expect(sections).toEqual([{ titleKey: 'stacks.create', rows: [{ keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' }] }]);
+      expect(sections).toEqual([{ titleKey: 'stacks.create', rows: [{ keys: ['R'], labelKey: 'stacks.reject_focused' }, { keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' }] }]);
     });
 
     it('lists the remapped reject key on a gallery route, not the default', () => {

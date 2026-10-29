@@ -51,6 +51,51 @@ describe('manual stack workspace with Router, HTTP and Material', () => {
     harness.detectChanges();
   }
   async function ready() { await open(); http.expectOne('/api/stacks/regroup/preview').flush(preview); await render(); }
+  it('uses the rendered Reject control and actual snackbar Undo without saving grouping', async () => {
+    await ready(); button('[data-stack-reject]').click();
+    const read = http.expectOne(request => request.url === '/api/photo'); expect(read.request.params.get('path')).toBe(paths[1]);
+    read.flush({ path: paths[1], is_kept: true, star_rating: 4 }); await render();
+    http.expectOne('/api/photos/batch_review').flush({ success: true, count: 1, undo_entry_id: 91 }); await render();
+    expect(root().querySelector(`[data-stack-focus="${paths[1]}"]`)).toBeNull();
+    expect(button('[data-stack-save]').disabled).toBe(true);
+    expect(TestBed.inject(UserActivityJournal).since().items).toEqual([expect.objectContaining({ kind: 'reject', paths: [paths[1]], value: true })]);
+    const undo = document.querySelector<HTMLButtonElement>('mat-snack-bar-container button')!; expect(undo).not.toBeNull(); undo.click();
+    http.expectOne('/api/organization_history/91/revert').flush({ changed: 1 }); await render();
+    expect(root().querySelector(`[data-stack-focus="${paths[1]}"]`)).not.toBeNull();
+    expect(button('[data-stack-save]').disabled).toBe(false); http.expectNone('/api/stacks/regroup/apply');
+  });
+  it('keeps R out of native controls, overlays, repeated and modified events, then rejects the focused frame', async () => {
+    await ready();
+    for (const init of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }, { shiftKey: true }, { isComposing: true }, { keyCode: 229 }, { repeat: true }]) {
+      button('[data-stack-reject]').dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true, ...init }));
+    }
+    for (const kind of ['dialog', 'bottom_sheet', 'slideshow'] as const) {
+      const clear = TestBed.inject(PageContextService).registerOverlay(kind);
+      button('[data-stack-reject]').dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true })); clear();
+    }
+    const control = document.createElement('input'); root().append(control);
+    control.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true })); control.remove();
+    http.expectNone(request => request.url === '/api/photo');
+    button('[data-stack-reject]').dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true }));
+    http.expectOne(request => request.url === '/api/photo').flush({ path: paths[1], is_rejected: true }); await render();
+    http.expectNone('/api/photos/batch_review'); expect(root().querySelector(`[data-stack-focus="${paths[1]}"]`)).toBeNull();
+  });
+  it.each(['read', 'write'])('does not revive a departed workspace after Reject %s completes through the real Router', async phase => {
+    await ready(); button('[data-stack-reject]').click();
+    let pending = http.expectOne(request => request.url === '/api/photo');
+    if (phase === 'write') {
+      pending.flush({ path: paths[1], is_kept: true }); await render();
+      pending = http.expectOne('/api/photos/batch_review');
+    }
+    await TestBed.inject(Router).navigateByUrl('/album/17'); await render();
+    pending.flush(phase === 'write' ? { count: 1, undo_entry_id: 92 } : { path: paths[1] }); await render();
+    expect(TestBed.inject(Router).url).toBe('/album/17');
+    expect(root().querySelector('[data-stack-reject], [data-stack-focus]')).toBeNull();
+    expect(TestBed.inject(UserActivityJournal).since().items.filter(entry => entry.kind === 'reject')).toEqual([]);
+    expect(TestBed.inject(GalleryStore).refreshPaths).not.toHaveBeenCalled();
+    expect(document.querySelector('mat-snack-bar-container')).toBeNull();
+    http.expectNone('/api/photos/batch_review');
+  });
   it('authorizes history before exposing private names and uses a real page zoom workspace', async () => {
     await open(); expect(root().textContent).not.toContain('a.jpg'); expect(root().querySelector('img')).toBeNull();
     http.expectOne('/api/stacks/regroup/preview').flush(preview); await render();
