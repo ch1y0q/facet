@@ -88,9 +88,9 @@ All endpoints here use the [batch target contract](#conventions).
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/persons` | List all persons. Search also matches ASCII decimal IDs; non-ASCII digits such as `١` or `１２` match names literally |
+| `GET /api/persons` | List all persons. Search also matches ASCII decimal IDs; non-ASCII digits such as `١` or `１２` match names literally. `named_only=true` leaves out unnamed persons (the persons page does this while Needs naming is shown); `hidden_only=true` lists only the ignored (hidden) ones |
 | `POST /api/persons` | Create a person, optionally attaching faces (edition-gated). Body `{name, face_ids}` |
-| `GET /api/persons/needs_naming?min_faces=N` | Unnamed auto-clustered persons with `face_count >= N` (default `viewer.persons.needs_naming_min_faces`) |
+| `GET /api/persons/needs_naming?min_faces=N` | Unnamed (no or blank name), non-hidden persons with `face_count >= N`, from clustering or a split (default `viewer.persons.needs_naming_min_faces`). Each carries `same_name_persons`: other visible persons with the same name ignoring case and spaces, so the viewer can offer a merge |
 | `POST /api/persons/{id}/rename` | Rename a person |
 | `POST /api/persons/{id}/assign_faces` | Bulk-attach faces; emptied old persons are auto-deleted (edition-gated). Body `{face_ids, tolerant?, only_unassigned?}`. `tolerant: true` assigns what it can and reports `missing`, `already`, `skipped_model`, `skipped_hidden`, `skipped_assigned`, `assigned_count`. `only_unassigned: true` skips faces owned by another person and requires `tolerant: true` (else `422`) |
 | `POST /api/persons/{id}/split` | Split some faces into a new person (edition-gated). Body `{face_ids, name}` |

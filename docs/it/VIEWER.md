@@ -460,7 +460,7 @@ Il menu a tendina elenca le persone con le miniature dei volti. Cliccane una per
 
 ### Galleria della persona
 
-Clicca il nome di una persona per vedere tutte le sue foto su `/person/<id>`.
+Clicca il nome di una persona per vedere tutte le sue foto su `/person/<id>`. Nella pagina Gestisci persone, un doppio clic su una scheda (con nome, senza nome in «Da nominare» o ignorata) apre la galleria sulle foto di quella persona; i doppi clic su campo nome, casella e pulsanti restano a loro.
 
 **Nominare dalla galleria.** Quando la galleria è filtrata su una persona (`?person_id=95`), una barra sopra la griglia mostra chi è («Senza nome n. 95» per un cluster senza nome) e quante foto. In modalità modifica ha un campo nome con suggerimenti: dopo aver controllato le foto, scrivi un nuovo nome per nominare la persona, oppure scegli il nome di una persona esistente (maiuscole e spazi ignorati) per spostarvi tutti i volti dopo una conferma (`POST /api/persons/merge`); la galleria passa poi a quella persona. Quando le opzioni di nascondimento della galleria tengono fuori vista alcune foto della persona, la barra lo dice («2 di 3 foto mostrate · 1 nascoste (1 ripetizione di raffica)») con **Mostra tutto**, per controllare ogni volto prima di nominare; **Nascondi di nuovo** ripristina le opzioni.
 
@@ -475,7 +475,7 @@ Aprila dal pulsante nell'intestazione o da `/persons`:
 | **Rinomina** | Clicca il nome della persona per modificarlo in linea |
 | **Dividi** | Apri i volti di una persona, seleziona un sottoinsieme, dividilo in una nuova persona |
 | **Trova altri volti** | Il pulsante di ricerca sulla scheda di una persona elenca i volti che le somigliano, i più simili per primi (confrontati con il centroide della persona tramite `GET /api/person/{id}/possible_faces`). Seleziona quelli giusti e aggiungili. L'aggiunta ricalcola il centroide, quindi il giro successivo è ordinato in base a ciò che hai appena confermato; i volti lasciati deselezionati non vengono più proposti finché la finestra resta aperta. **Tutti i volti** cerca anche negli altri cluster, **Solo non assegnati** solo tra i volti non raggruppati. Un volto che appartiene a una persona con un altro nome mostra quel nome e non è mai preselezionato; uno che appartiene a una persona con lo stesso nome, un cluster separato, è preselezionato come un volto non assegnato |
-| **Nascondi** | Nasconde un gruppo dall'elenco delle persone, dai filtri e dai suggerimenti di unione (reversibile) |
+| **Ignora** | Ignorare un cluster (personale, sconosciuti): il pulsante ⊘ di una scheda, anche sulle schede «Da nominare». Le persone ignorate escono da elenco, «Da nominare», filtri, suggerimenti di unione e ricerca volti, e compaiono in una sezione richiudibile **Ignorate** con **Ripristina** (`GET /api/persons?hidden_only=true`). Stesso flag `is_hidden` di prima |
 
 ### Volti sulla foto
 

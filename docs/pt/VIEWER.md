@@ -460,7 +460,7 @@ O menu suspenso lista as pessoas com miniaturas de rostos. Clique em uma para fi
 
 ### Galeria de Pessoa
 
-Clique no nome de uma pessoa para ver todas as suas fotos em `/person/<id>`.
+Clique no nome de uma pessoa para ver todas as suas fotos em `/person/<id>`. Na página Gerenciar pessoas, um clique duplo em um cartão (com nome, sem nome em "Precisa de nome" ou ignorado) abre a galeria com as fotos dessa pessoa; cliques duplos no campo de nome, na caixa de seleção e nos botões continuam com eles.
 
 **Nomear pela galeria.** Quando a galeria está filtrada por uma pessoa (`?person_id=95`), uma barra acima da grade mostra quem é ("Sem nome n.º 95" para um cluster sem nome) e quantas fotos. No modo de edição ela tem um campo de nome com sugestões: depois de revisar as fotos, digite um nome novo para nomear a pessoa, ou escolha o nome de uma pessoa existente (sem diferenciar maiúsculas e espaços) para mover todos os rostos para ela após confirmar (`POST /api/persons/merge`); a galeria então passa para essa pessoa. Quando as opções de ocultação da galeria deixam algumas fotos da pessoa fora de vista, a barra informa ("2 de 3 fotos exibidas · 1 ocultas (1 repetição de rajada)") com **Mostrar tudo**, para revisar cada rosto antes de nomear; **Ocultar de novo** restaura as opções.
 
@@ -475,7 +475,7 @@ Abra-a pelo botão no cabeçalho ou por `/persons`:
 | **Renomear** | Clique no nome da pessoa para editar na própria linha |
 | **Dividir** | Abra os rostos de uma pessoa, selecione um subconjunto e divida-o em uma nova pessoa |
 | **Encontrar mais rostos** | O botão de busca no cartão de uma pessoa lista os rostos parecidos com ela, os mais parecidos primeiro (comparados ao centroide da pessoa por `GET /api/person/{id}/possible_faces`). Marque os corretos e adicione-os. Adicionar recalcula o centroide, então a próxima rodada é ordenada pelo que você acabou de confirmar; os rostos deixados desmarcados não são oferecidos de novo enquanto a caixa de diálogo estiver aberta. **Todos os rostos** busca também em outros clusters, **Somente não atribuídos** apenas entre os rostos não agrupados. Um rosto que pertence a uma pessoa de outro nome mostra esse nome e nunca vem pré-marcado; um que pertence a uma pessoa de mesmo nome, um cluster separado, vem pré-marcado como um rosto não atribuído |
-| **Ocultar** | Oculte um grupo da lista de pessoas, dos filtros e das sugestões de mesclagem (reversível) |
+| **Ignorar** | Ignorar um cluster (equipe, desconhecidos): o botão ⊘ de um cartão, também nos cartões "Precisa de nome". Pessoas ignoradas saem da lista, de "Precisa de nome", dos filtros, das sugestões de mesclagem e da busca de rostos, e aparecem numa seção recolhível **Ignoradas** com **Restaurar** (`GET /api/persons?hidden_only=true`). Mesmo sinalizador `is_hidden` de antes |
 
 ### Marcar um rosto esquecido
 ### Rostos na foto

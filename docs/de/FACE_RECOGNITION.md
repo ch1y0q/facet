@@ -430,6 +430,8 @@ Die Seite „Personen verwalten“ listet große unbenannte Cluster in einem Abs
 **Zu benennen** auf, jeweils mit einem Namensfeld. Ein Cluster erscheint dort, wenn er
 mindestens `viewer.persons.needs_naming_min_faces` Gesichter hat (Standard `5`).
 
+Unbenannt heißt ohne oder mit leerem Namen, ob der Cluster aus dem Clustering oder einer Aufteilung stammt; ausgeblendete (ignorierte) Personen fehlen. Solange der Abschnitt angezeigt wird (Bearbeitungsmodus), listet das Personenraster darunter nur benannte Personen, sodass jede Person einmal erscheint.
+
 ### Seite mit Zusammenführungsvorschlägen
 
 Zugriff über `/merge-suggestions` oder die Schaltfläche „Zusammenführungsvorschläge“ auf der Seite „Personen verwalten“:

@@ -460,7 +460,7 @@ La liste déroulante présente les personnes avec leurs miniatures de visage. Cl
 
 ### Galerie d'une personne
 
-Cliquez sur le nom d'une personne pour voir toutes ses photos sur `/person/<id>`.
+Cliquez sur le nom d'une personne pour voir toutes ses photos sur `/person/<id>`. Sur la page Gérer les personnes, un double-clic sur une carte (nommée, non nommée dans « À nommer », ou ignorée) ouvre la galerie sur les photos de cette personne ; les doubles-clics sur le champ de nom, la case et les boutons leur restent réservés.
 
 **Nommer depuis la galerie.** Quand la galerie est filtrée sur une personne (`?person_id=95`), une barre au-dessus de la grille indique qui c'est (« Sans nom n° 95 » pour un cluster sans nom) et le nombre de photos. En mode édition, elle propose un champ de nom avec suggestions : après avoir vérifié les photos, saisissez un nouveau nom pour nommer la personne, ou choisissez le nom d'une personne existante (casse et espaces ignorés) pour y déplacer tous ses visages après confirmation (`POST /api/persons/merge`) ; la galerie passe alors à cette personne. Quand les options de masquage de la galerie cachent certaines photos de la personne, la barre l'indique (« 2 photos affichées sur 3 · 1 masquée (1 répétition de rafale) ») avec **Tout afficher**, pour vérifier chaque visage avant de nommer ; **Masquer à nouveau** rétablit les options.
 
@@ -475,7 +475,7 @@ Ouvrez-la depuis le bouton de l'en-tête ou `/persons` :
 | **Renommer** | Cliquez sur le nom de la personne pour le modifier sur place |
 | **Scinder** | Ouvrez les visages d'une personne, sélectionnez-en un sous-ensemble, scindez-le en une nouvelle personne |
 | **Trouver d'autres visages** | Le bouton de recherche de la carte d'une personne liste les visages qui lui ressemblent, les plus proches en premier (comparés au centroïde de la personne par `GET /api/person/{id}/possible_faces`). Cochez les bons et ajoutez-les. L'ajout recalcule le centroïde, donc le tour suivant est classé selon ce que vous venez de confirmer ; les visages laissés décochés ne sont plus proposés tant que la boîte de dialogue reste ouverte. **Tous les visages** cherche aussi dans les autres clusters, **Non attribués uniquement** seulement parmi les visages non regroupés. Un visage appartenant à une personne d'un autre nom affiche ce nom et n'est jamais précoché ; un visage appartenant à une personne du même nom, un cluster séparé, est précoché comme un visage non attribué |
-| **Masquer** | Masque un groupe de la liste des personnes, des filtres et des suggestions de fusion (réversible) |
+| **Ignorer** | Ignorer un cluster (personnel, inconnus) : le bouton ⊘ d'une carte, aussi sur les cartes « À nommer ». Les personnes ignorées quittent la liste, « À nommer », les filtres, les suggestions de fusion et la recherche de visages, et sont listées dans une section repliable **Ignorés** avec **Rétablir** (`GET /api/persons?hidden_only=true`). Même indicateur `is_hidden` qu'avant |
 
 ### Visages sur la photo
 

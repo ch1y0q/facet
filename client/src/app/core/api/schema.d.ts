@@ -2471,6 +2471,10 @@ export interface paths {
          *     confer no visibility: hidden (even with include_hidden), deleted and
          *     inaccessible candidates stay out. In assignment order, ``face_count`` is
          *     computed from visible photos; other orders return the stored library count.
+         *     ``named_only=true`` leaves out persons without a name, which the needs-naming
+         *     list already shows.
+         *     ``hidden_only=true`` returns the hidden ones alone (the persons page's Ignored
+         *     section).
          */
         get: operations["list_persons_api_persons_get"];
         put?: never;
@@ -2598,7 +2602,10 @@ export interface paths {
         };
         /**
          * Api Persons Needs Naming
-         * @description List unnamed auto-clustered persons with face_count >= min_faces (default from config).
+         * @description List unnamed, non-hidden persons with face_count >= min_faces (default from config).
+         *
+         *     Unnamed means no name or a blank one, whether the person came from clustering or
+         *     from a split, so every person still waiting for a name is listed here once.
          */
         get: operations["api_persons_needs_naming_api_persons_needs_naming_get"];
         put?: never;
@@ -2681,6 +2688,11 @@ export interface paths {
         /**
          * Rename Person
          * @description Rename a person (set or update their name).
+         *
+         *     ``same_name_persons`` lists the other visible, non-hidden persons whose name is
+         *     the same ignoring case and surrounding spaces, largest first, so the viewer can
+         *     offer to merge clusters of one person that clustering split apart. Nothing is
+         *     merged here: two different people may share a name.
          */
         post: operations["rename_person_api_persons__person_id__rename_post"];
         delete?: never;
@@ -12984,6 +12996,8 @@ export interface operations {
                 sort?: string;
                 include_hidden?: boolean;
                 recent_ids?: string;
+                named_only?: boolean;
+                hidden_only?: boolean;
             };
             header?: never;
             path?: never;

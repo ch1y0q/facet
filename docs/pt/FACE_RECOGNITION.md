@@ -423,6 +423,8 @@ A página Gerenciar pessoas lista os clusters grandes sem nome em uma seção
 **Precisa de nome**, cada um com um campo de nome. Um cluster aparece ali quando tem pelo menos
 `viewer.persons.needs_naming_min_faces` rostos (padrão `5`).
 
+Sem nome significa sem nome ou com um nome em branco, venha o cluster do agrupamento ou de uma divisão; pessoas ocultas (ignoradas) ficam de fora. Enquanto a seção é mostrada (modo de edição), a grade de pessoas abaixo lista só as pessoas com nome, de modo que cada pessoa aparece uma vez.
+
 ### Página Sugestões de mesclagem
 
 Acesse por `/merge-suggestions` ou pelo botão "Sugestões de mesclagem" na página Gerenciar pessoas:

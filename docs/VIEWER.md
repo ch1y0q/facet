@@ -460,7 +460,7 @@ The dropdown lists persons with face thumbnails. Click one to filter the gallery
 
 ### Person Gallery
 
-Click a person's name to see all their photos at `/person/<id>`.
+Click a person's name to see all their photos at `/person/<id>`. On the Manage Persons page, double-clicking a person card (named, unnamed in Needs naming, or ignored) opens the gallery on that person's photos; double-clicks on the name field, checkbox and buttons are left to them.
 
 **Naming from the gallery.** When the gallery is filtered to one person (`?person_id=95`), a bar above the grid shows who it is ("Unnamed #95" for an unnamed cluster) and how many photos. In edition mode it has a name field with suggestions: after reviewing the photos, type a new name to name the person, or pick an existing person's name (case and spaces ignored) to move all of this person's faces into that one after a confirm (`POST /api/persons/merge`); the gallery then switches to that person. When the gallery's hide toggles keep some of the person's photos out of view, the bar says so ("2 of 3 photos shown · 1 hidden (1 burst repeat)") with **Show all**, so every face can be reviewed before naming; **Hide repeats again** restores the toggles.
 
@@ -475,7 +475,7 @@ Open it from the header button or `/persons`:
 | **Rename** | Click person name to edit inline. Naming it after another person, ignoring case, offers to merge every cluster of that name into the largest, which keeps its spelling; decline to keep namesakes apart |
 | **Split** | Open a person's faces, select a subset, split them into a new person |
 | **Find more faces** | The person-search button on a person card lists faces that look like that person, best match first (scored against the person's centroid by `GET /api/person/{id}/possible_faces`). Tick the right ones and add them. Adding recomputes the centroid, so the next round is ranked against what you just confirmed; faces you leave unticked are not offered again while the dialog is open. **All faces** searches every face, including other named persons'; **Unnamed only** searches the faces nobody has named yet, whether in an unnamed cluster or in none (`scope=unnamed`). A face owned by a differently named person shows that name and is never pre-ticked; one owned by a person of the same name, a split-off cluster, is pre-ticked like an unassigned face |
-| **Hide** | Hide a cluster from the persons list, filters, and merge suggestions (reversible) |
+| **Ignore** | Ignore a cluster (staff, strangers): the ⊘ button on a card, also on Needs naming cards. Ignored persons leave the persons list, Needs naming, filters, merge suggestions and Find more, and are listed in a collapsible **Ignored** section with **Restore** (`GET /api/persons?hidden_only=true`). Same `is_hidden` flag as before |
 
 ### Faces on the photo
 

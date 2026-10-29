@@ -423,6 +423,8 @@ La pagina Gestisci persone elenca i cluster numerosi senza nome in una sezione *
 ciascuno con un campo nome. Un cluster vi compare quando ha almeno
 `viewer.persons.needs_naming_min_faces` volti (predefinito `5`).
 
+Senza nome significa nome assente o vuoto, che il cluster venga dal raggruppamento o da una divisione; le persone nascoste (ignorate) sono escluse. Finché la sezione è mostrata (modalità modifica), la griglia delle persone sotto elenca solo le persone con nome, così ognuna compare una volta.
+
 ### Pagina Suggerimenti di unione
 
 Accessibile tramite `/merge-suggestions` o il pulsante "Suggerimenti di unione" nella pagina Gestisci persone:

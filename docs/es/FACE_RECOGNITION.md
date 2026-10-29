@@ -424,6 +424,8 @@ La página de gestión de personas muestra los clústeres grandes sin nombre en 
 **Por nombrar**, cada uno con un campo de nombre. Un clúster aparece allí cuando tiene al menos
 `viewer.persons.needs_naming_min_faces` rostros (por defecto `5`).
 
+Sin nombre significa sin nombre o con uno en blanco, venga el clúster del agrupamiento o de una división; las personas ocultas (ignoradas) quedan fuera. Mientras la sección se muestra (modo edición), la cuadrícula de personas de debajo lista solo las personas con nombre, así cada persona aparece una vez.
+
 ### Página de sugerencias de fusión
 
 Accede mediante `/merge-suggestions` o el botón "Merge Suggestions" en la página de gestión de personas:

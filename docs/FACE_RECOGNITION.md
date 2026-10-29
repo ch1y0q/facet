@@ -423,6 +423,8 @@ The Manage Persons page lists large unnamed clusters in a **Needs naming**
 section, each with a name field. A cluster appears there when it has at least
 `viewer.persons.needs_naming_min_faces` faces (default `5`).
 
+Unnamed means no name or a blank one, whether the cluster came from clustering or a split; hidden (ignored) persons are left out. While the section is shown (edition mode), the person grid below lists named persons only, so each person appears once.
+
 ### Merge Suggestions Page
 
 Access via `/merge-suggestions` or the "Merge Suggestions" button on the Manage Persons page:

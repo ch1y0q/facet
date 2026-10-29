@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **A people-naming workflow** (draft; wants wider use before it settles). On the photo page, face boxes show names on hover (red while unnamed); clicking one changes or names that face, finds more faces of that person, or opens all of its photos, and a toggle keeps the boxes shown. On the persons page, Needs naming lists every unnamed person with photos, find-more and ignore buttons, the grid below lists only named people, name entry suggests existing names, and naming a person after another one offers to merge the clusters. People can be ignored (staff, strangers) into a restorable Ignored section. A gallery filtered to one person shows a naming bar and outlines that person's face on each thumbnail; double-clicking a person card opens its photos.
+
 ### Fixed
 
 - **Header and phone layouts no longer crush their controls.** Below 1680 px the secondary destinations move into a More menu, so the gallery search and Type selector keep their width and the culling filters stop scrolling; on phones the nav and culling bars lose their scrollbars, person rename boxes fit their tiles, long camera names no longer cut off the stats legend, and the photo page keeps room for the filename
