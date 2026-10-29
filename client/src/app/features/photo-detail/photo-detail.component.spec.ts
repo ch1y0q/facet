@@ -1786,8 +1786,9 @@ describe('PhotoDetailComponent', () => {
     // this component's signal, so a caption edited in the lightbox was shown
     // back at its pre-edit value in the grid tooltip that carries it.
     it('generateCaption puts the generated caption in the store', async () => {
-      mockApi.get.mockImplementation((url: string) =>
-        url === '/caption' ? of({ caption: 'a generated caption' }) : of(samplePhoto));
+      mockApi.get.mockImplementation(() => of(samplePhoto));
+      mockApi.post.mockImplementation((url: string) =>
+        url === '/caption' ? of({ caption: 'a generated caption' }) : of({}));
       createComponent();
       seedGrid({ caption: 'stale' });
 
@@ -1802,8 +1803,9 @@ describe('PhotoDetailComponent', () => {
     // photo's caption on whichever tile the user had moved on to.
     it('generateCaption drops a response that arrives after the user moved on', async () => {
       const captions = new Subject<{ caption: string }>();
-      mockApi.get.mockImplementation((url: string) =>
-        url === '/caption' ? captions.asObservable() : of(samplePhoto));
+      mockApi.get.mockImplementation(() => of(samplePhoto));
+      mockApi.post.mockImplementation((url: string) =>
+        url === '/caption' ? captions.asObservable() : of({}));
       createComponent();
       seedGrid({ caption: 'stale' });
 
@@ -1818,8 +1820,9 @@ describe('PhotoDetailComponent', () => {
     });
 
     it('generateCaption refetches the config when generation fails', async () => {
+      mockApi.post.mockImplementation((url: string) =>
+        url === '/caption' ? throwError(() => new Error('503')) : of({}));
       mockApi.get.mockImplementation((url: string) => {
-        if (url === '/caption') return throwError(() => new Error('503'));
         if (url === '/config') return of({ features: { show_captions: false } });
         return of(samplePhoto);
       });

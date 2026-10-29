@@ -1094,7 +1094,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   protected async generateCaption(path: string): Promise<void> {
     this.generatingCaption.set(true);
     try {
-      const res = await firstValueFrom(this.api.get<{ caption: string }>('/caption', { path }));
+      const res = await firstValueFrom(this.api.post<{ caption: string }>('/caption', { path }));
       const p = this.photo();
       // Generation is slow enough to outlive the photo that started it, and the
       // store write now carries a mis-targeted apply out to the grid as well --

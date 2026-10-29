@@ -2532,7 +2532,7 @@ Exposes the tools described in [AI Agents (MCP)](AGENTS.md) at `POST /mcp`: read
 
 On an open install (no `viewer.password`):
 - `/mcp` serves only a read-only anonymous key, which shows nothing the open `/api` does not.
-- A new token is `readonly`, unless `viewer.trusted_local_editing` allows a Full-editing token for same-machine requests.
+- A new token is `readonly`, unless `viewer.trusted_local_editing` is on or the session is logged in with `viewer.edition_password`: either can mint a Full-editing token, which edits only for same-machine requests.
 - Tokens can be created, listed and revoked only from the computer running Facet (or in an edition session when `viewer.edition_password` is set).
 
 ```json

@@ -2549,7 +2549,7 @@ Stellt die in [KI-Agenten (MCP)](AGENTS.md) beschriebenen Werkzeuge unter `POST 
 Bei einer offenen Installation (ohne `viewer.password`):
 
 - `/mcp` liefert nur einen schreibgeschützten anonymen Schlüssel, der nichts zeigt, was die offene `/api` nicht ohnehin zeigt.
-- Ein neues Token ist `readonly`, außer `viewer.trusted_local_editing` erlaubt ein Token mit voller Bearbeitung für Anfragen vom selben Rechner.
+- Ein neues Token ist `readonly`, außer `viewer.trusted_local_editing` ist aktiv oder die Sitzung ist mit `viewer.edition_password` angemeldet: Beide können ein Token mit voller Bearbeitung erzeugen, das nur bei Anfragen vom selben Rechner bearbeitet.
 - Tokens lassen sich nur auf dem Rechner erstellen, auflisten und widerrufen, auf dem Facet läuft (oder in einer Bearbeitungssitzung, wenn `viewer.edition_password` gesetzt ist).
 
 ```json

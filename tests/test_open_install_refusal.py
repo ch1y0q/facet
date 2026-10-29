@@ -161,6 +161,8 @@ EXPECTED_EDITION_ROUTES = frozenset({
     ('POST', '/api/persons/{person_id}/rename'),
     ('POST', '/api/persons/{person_id}/split'),
     ('POST', '/api/persons/{person_id}/unhide'),
+    ('POST', '/api/caption'),
+    ('POST', '/api/critique/vlm'),
     ('POST', '/api/photo/assign_all_faces'),
     ('POST', '/api/photo/clear_junk'),
     ('POST', '/api/photo/delete'),

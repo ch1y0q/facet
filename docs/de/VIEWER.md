@@ -68,7 +68,7 @@ Zwei Passwörter steuern den Zugriff:
 - **`viewer.password`** entscheidet, wer *stöbern* darf. Leer heißt: Jeder kann die gesamte Bibliothek durchsuchen. Ist es gesetzt, müssen sich Benutzer zuerst anmelden.
 - **`viewer.edition_password`** ist für jede Bearbeitung erforderlich: Bewertungen, Favoriten und Ablehnungen, Aussortieren, Alben, Personen- und Gesichtsverwaltung, Vergleichsmodus, Gewichts- und Prioritätsänderungen sowie Exporte. Leer (der ausgelieferte Standard) macht die Installation **schreibgeschützt**: Bearbeitungen werden mit `403` abgelehnt („Set viewer.edition_password to enable editing“).
 
-KI-Erzeugung auf Anfrage (Bildbeschreibungen, VLM-Kritiken) braucht ebenfalls das Bearbeitungspasswort. Ohne es erhalten Sie nur, was bereits im Cache liegt (`source: "edition_required"` oder `vlm_available: false`). Ohne Bearbeitungspasswort blendet die Galerie zudem vorhandene Sterne-, Favoriten- und Ablehnungs-Badges aus, wie bei Betrachtern ohne Edition auf einer passwortgeschützten Installation.
+KI-Erzeugung auf Anfrage (Bildbeschreibungen, VLM-Kritiken) braucht ebenfalls das Bearbeitungspasswort. Ohne es erhalten Sie nur, was bereits im Cache liegt (`source: "none"` oder `vlm_available: false`). Ohne Bearbeitungspasswort blendet die Galerie zudem vorhandene Sterne-, Favoriten- und Ablehnungs-Badges aus, wie bei Betrachtern ohne Edition auf einer passwortgeschützten Installation.
 
 Starten Sie den Viewer nach dem Setzen von `viewer.edition_password` neu: Die Konfiguration wird nicht im laufenden Betrieb neu geladen.
 
@@ -616,17 +616,17 @@ Der Dialog unterscheidet außerdem ein Foto, das *noch nicht bewertet* ist, von 
 
 ### VLM-Kritik `[GPU]` `[16gb/24gb]`
 
-Nutzt das konfigurierte VLM (Qwen3.5-2B oder Qwen3.5-4B) für eine kontextbezogene Kritik. Erfordert das Profil 16gb oder 24gb, `viewer.features.show_vlm_critique` auf `true` (der Standard) und eine Bearbeitungssitzung zum Erzeugen. Ohne Edition wird nur eine zwischengespeicherte Kritik gezeigt, und `vlm_available` ist `false`.
+Nutzt das konfigurierte VLM (Qwen3.5-2B oder Qwen3.5-4B) für eine kontextbezogene Kritik. Erfordert das Profil 16gb oder 24gb, `viewer.features.show_vlm_critique` auf `true` (der Standard) und eine Bearbeitungssitzung zum Erzeugen. Ohne Edition wird nur eine zwischengespeicherte Kritik gezeigt, und `vlm_available` ist `false`. Der Dialog erzeugt über `POST /api/critique/vlm` (nur Edition; gleichzeitige Anfragen für ein Foto teilen sich eine einzige Erzeugung); `GET /api/critique` liest nur den Cache und erzeugt, übersetzt oder schreibt nie.
 
 - Der Prompt (`critique.vlm`) enthält die Wertungsaufschlüsselung, gespeicherte und neu berechnete Wertungen, erkannte Bedingungen und EXIF.
-- Die Antwort lautet **Beobachtung / Bewertung / Vorschläge**. Sie wird pro Foto zwischengespeichert (`photos.vlm_critique`), bei Bedarf übersetzt, und **Neu erzeugen** berechnet sie neu.
+- Die Antwort lautet **Beobachtung / Bewertung / Vorschläge**. Sie wird pro Foto zwischengespeichert (`photos.vlm_critique`), übersetzt, wenn eine Bearbeitungssitzung sie in der Zielsprache öffnet (dann gespeichert und danach unverändert ausgeliefert), und **Neu erzeugen** berechnet sie neu. Ohne Bearbeitungssitzung sehen Sie den unübersetzten Text, es sei denn, es liegt bereits eine gespeicherte Übersetzung vor.
 - Sie läuft auf dem gespeicherten Vorschaubild, daher funktionieren RAW-Dateien.
 
 **Visuelles „Warum diese Bewertung“-Overlay.** Ist `viewer.features.show_saliency_overlay` an (Standard `true`), hat der Kritikdialog **Overlay anzeigen**. Es zeichnet die BiRefNet-Salienzkarte als Heatmap (`GET /api/saliency_overlay`) sowie Gesichtsrahmen und Augenmarker aus gespeicherten Landmarken (`GET /api/photo/face_markers`). Rahmen sind grün bei offenen Augen, bernsteinfarben bei einem Blinzeln. Die Heatmap hat Vorschaubild-Auflösung und ist daher ungefähr. Der Schalter ist bei Profilen ausgeblendet, die keine Salienzmaske erzeugen können.
 
 ## KI-Bildbeschreibung `[GPU]` `[16gb/24gb]` `[Edition]`
 
-Erhalten Sie für jedes Foto eine Bildunterschrift in natürlicher Sprache. Eine Bearbeitungssitzung erzeugt sie bei der ersten Anfrage; danach liegt sie in der Spalte `caption` im Cache. Bearbeiten Sie Bildunterschriften in der Fotodetailansicht (Bearbeitungsmodus). Eine offene, schreibgeschützte Installation erzeugt nie eine.
+Erhalten Sie für jedes Foto eine Bildunterschrift in natürlicher Sprache. Eine Bearbeitungssitzung erzeugt sie bei der ersten Anfrage; danach liegt sie in der Spalte `caption` im Cache. Bearbeiten Sie Bildunterschriften in der Fotodetailansicht (Bearbeitungsmodus). Eine offene, schreibgeschützte Installation erzeugt nie eine. `POST /api/caption` erzeugt (und übersetzt) sie; `GET /api/caption` liefert nur die gespeicherte Bildunterschrift oder Übersetzung und erzeugt, übersetzt oder schreibt nie.
 
 Massenerzeugung und Übersetzung über die CLI:
 

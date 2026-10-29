@@ -68,7 +68,7 @@ Dos contraseñas controlan el acceso:
 - **`viewer.password`** decide quién puede *explorar*. Vacía, cualquiera puede explorar toda la biblioteca. Definida, los usuarios deben iniciar sesión primero.
 - **`viewer.edition_password`** es necesaria para cualquier edición: valoraciones, favoritos y rechazos, descarte, álbumes, gestión de personas y rostros, modo de comparación, cambios de pesos y prioridades, y exportaciones. Vacía (el valor predeterminado distribuido), la instalación queda en **solo lectura**: las ediciones se rechazan con `403` ("Set viewer.edition_password to enable editing").
 
-La generación de IA bajo demanda (leyendas, críticas VLM) también necesita la contraseña de edición. Sin ella solo obtienes lo que ya está en caché (`source: "edition_required"` o `vlm_available: false`). Sin contraseña de edición, la galería también oculta las insignias de estrellas, favoritos y rechazos existentes, igual que para los visores sin edición en una instalación protegida con contraseña.
+La generación de IA bajo demanda (leyendas, críticas VLM) también necesita la contraseña de edición. Sin ella solo obtienes lo que ya está en caché (`source: "none"` o `vlm_available: false`). Sin contraseña de edición, la galería también oculta las insignias de estrellas, favoritos y rechazos existentes, igual que para los visores sin edición en una instalación protegida con contraseña.
 
 Reinicia el visor tras definir `viewer.edition_password`: la configuración no se recarga en caliente.
 
@@ -616,17 +616,17 @@ El diálogo también distingue una foto *aún sin puntuar* de otra cuya *puntuac
 
 ### Crítica con VLM `[GPU]` `[16gb/24gb]`
 
-Usa el VLM configurado (Qwen3.5-2B o Qwen3.5-4B) para una crítica con contexto. Necesita el perfil 16gb o 24gb, `viewer.features.show_vlm_critique` en `true` (el valor por defecto) y una sesión de edición para generarla. Sin edición, solo se muestra una crítica en caché y `vlm_available` es `false`.
+Usa el VLM configurado (Qwen3.5-2B o Qwen3.5-4B) para una crítica con contexto. Necesita el perfil 16gb o 24gb, `viewer.features.show_vlm_critique` en `true` (el valor por defecto) y una sesión de edición para generarla. Sin edición, solo se muestra una crítica en caché y `vlm_available` es `false`. El diálogo genera mediante `POST /api/critique/vlm` (solo edición; las peticiones simultáneas para una misma foto comparten una sola generación); `GET /api/critique` solo lee la caché y nunca genera, traduce ni escribe.
 
 - El prompt (`critique.vlm`) incluye el desglose de la puntuación, las puntuaciones almacenada y recalculada, las condiciones detectadas y el EXIF.
-- La respuesta se lee como **Observación / Valoración / Sugerencias**. Se guarda en caché por foto (`photos.vlm_critique`), se traduce bajo demanda, y **Regenerar** la recalcula.
+- La respuesta se lee como **Observación / Valoración / Sugerencias**. Se guarda en caché por foto (`photos.vlm_critique`), se traduce cuando una sesión de edición la abre en el idioma de destino (luego se guarda y se sirve tal cual), y **Regenerar** la recalcula. Sin una sesión de edición ves el texto sin traducir, salvo que ya exista una traducción guardada.
 - Se ejecuta sobre la miniatura almacenada, así que los archivos RAW funcionan.
 
 **Superposición visual de "por qué esta puntuación".** Con `viewer.features.show_saliency_overlay` activado (por defecto `true`), el diálogo de crítica tiene **Mostrar superposición**. Dibuja el mapa de saliencia de BiRefNet como mapa de calor (`GET /api/saliency_overlay`), además de los cuadros de rostro y las marcas de ojos a partir de los puntos de referencia almacenados (`GET /api/photo/face_markers`). Los cuadros son verdes con los ojos abiertos y ámbar con un parpadeo. El mapa de calor tiene la resolución de la miniatura, así que es aproximado. El interruptor se oculta en los perfiles que no pueden producir una máscara de saliencia.
 
 ## Subtitulado con IA `[GPU]` `[16gb/24gb]` `[Edition]`
 
-Obtén una leyenda en lenguaje natural para cualquier foto. Una sesión de edición la genera en la primera petición; después se guarda en caché en la columna `caption`. Edita las leyendas en el detalle de la foto (modo de edición). Una instalación abierta de solo lectura nunca genera una.
+Obtén una leyenda en lenguaje natural para cualquier foto. Una sesión de edición la genera en la primera petición; después se guarda en caché en la columna `caption`. Edita las leyendas en el detalle de la foto (modo de edición). Una instalación abierta de solo lectura nunca genera una. `POST /api/caption` la genera (y la traduce); `GET /api/caption` solo devuelve la leyenda o la traducción guardada y nunca genera, traduce ni escribe.
 
 Generación y traducción masivas desde la CLI:
 
