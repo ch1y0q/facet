@@ -6,6 +6,8 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **The user menu separates Help from the tools above it.** The customisation items (review progress, card buttons, shortcuts) ran straight into Help with no divider; a divider now precedes Help, matching the menu's other group breaks.
+- **The customize-shortcuts dialog header aligns.** The title drew ~11px below its icon tile, and the dialog offered a scrollbar for four pixels of hidden content; title and icon now share one centred line and the content no longer scrolls.
 - **Header and phone layouts no longer crush their controls.** Below 1680 px the secondary destinations move into a More menu, so the gallery search and Type selector keep their width and the culling filters stop scrolling; on phones the nav and culling bars lose their scrollbars, person rename boxes fit their tiles, long camera names no longer cut off the stats legend, and the photo page keeps room for the filename
 - **Stack browsing keeps the image in place.** Moving between known stack members preserves the thumbnail strip's measured space while fresh membership loads, without retaining old navigation controls.
 
