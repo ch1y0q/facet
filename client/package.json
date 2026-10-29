@@ -37,7 +37,7 @@
     "@angular/service-worker": "22.2.3",
     "@mcp-b/webmcp-polyfill": "6.0.3",
     "@types/leaflet": "1.9.22",
-    "chart.js": "4.5.1",
+    "chart.js": "4.6.1",
     "chartjs-adapter-date-fns": "3.0.0",
     "date-fns": "4.4.0",
     "leaflet": "1.9.4",
