@@ -687,4 +687,59 @@ describe('Suggested stacks routed darkroom', () => {
       await settle();
     }
   });
+  it('reenters exact stack scope on a reused normal culling component', async () => {
+    await enter(); batch(); await settle();
+    const router = TestBed.inject(Router);
+    await router.navigateByUrl('/culling');
+    for (const request of http.match(() => true)) request.flush(request.request.url.includes('/culling-groups')
+      ? { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 } : {});
+    await settle(); expect(cull.mode()).toBe('cull');
+    await router.navigateByUrl(url()); await settle();
+    expect(harness.routeDebugElement!.componentInstance).toBe(page);
+    expect(cull.mode()).toBe('stacks'); expect(cull.cullWritesAllowed()).toBe(false);
+    expect(dom().querySelector('[data-testid="stack-review-header"]')).not.toBeNull();
+    batch(); await settle(); expect(cull.groups()).toHaveLength(2);
+    expect(http.match(request => request.url.includes('/culling-groups'))).toHaveLength(0);
+  });
+
+  it.each([200, 409, 500])('settles an HTTP %s redetection start after cancelled normal-cull navigation', async status => {
+    page = await harness.navigateByUrl('/culling', BurstCullingComponent);
+    cull = harness.routeDebugElement!.injector.get(CullingStore);
+    for (const request of http.match(() => true)) request.flush(request.request.url.includes('/culling-groups')
+      ? { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 } : {});
+    await settle(); cull.droppedApplied.set(new Set(['7_panorama'])); await settle();
+    const redetect = [...dom().querySelectorAll<HTMLButtonElement>('button')]
+      .find(button => button.textContent?.includes('panorama.settings.redetect'))!;
+    redetect.click(); const request = http.expectOne('/api/scan/detect_panoramas');
+    expect(await TestBed.inject(Router).navigateByUrl('/blocked')).toBe(false);
+    vi.useFakeTimers();
+    try {
+      request.flush({}, status === 200 ? {} : { status, statusText: 'failed' }); await settle();
+      if (status !== 200) {
+        expect(page['detecting']()).toBe(false); expect(redetect.disabled).toBe(false);
+        expect(page['detectMessage']()).toBe(status === 409 ? 'culling.panorama.rerun_busy' : 'culling.panorama.rerun_failed');
+        redetect.click(); http.expectOne('/api/scan/detect_panoramas').flush({}); await settle();
+      }
+      expect(page['detecting']()).toBe(true);
+      await vi.advanceTimersByTimeAsync(2000);
+      http.expectOne('/api/scan/recompute_status').flush({ running: false, kind: 'detect_panoramas', exit_code: 0 });
+      await settle(); expect(page['detecting']()).toBe(false);
+      expect(page['detectMessage']()).toBe('culling.panorama.rerun_done');
+      expect(cull.droppedApplied().size).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('discards a redetection start reply after entering a new stack visit on the same component', async () => {
+    page = await harness.navigateByUrl('/culling', BurstCullingComponent);
+    cull = harness.routeDebugElement!.injector.get(CullingStore);
+    for (const request of http.match(() => true)) request.flush(request.request.url.includes('/culling-groups')
+      ? { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 } : {});
+    await settle(); cull.droppedApplied.set(new Set(['7_panorama'])); await settle();
+    const starting = page['rerunDetection'](); const request = http.expectOne('/api/scan/detect_panoramas');
+    await TestBed.inject(Router).navigateByUrl(url()); batch(); await settle();
+    request.flush({}); await starting; await settle();
+    expect(cull.mode()).toBe('stacks'); expect(page['detecting']()).toBe(false);
+    expect(page['detectPollTimer']).toBeNull(); expect(http.match('/api/scan/recompute_status')).toHaveLength(0);
+  });
+
 });

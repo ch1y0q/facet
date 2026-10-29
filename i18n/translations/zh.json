@@ -1775,6 +1775,7 @@
     "add_photos": "添加到相册",
     "photos_added": "照片已添加到相册",
     "save_smart": "保存为智能相册",
+    "save_smart_tooltip": "将当前筛选条件保存为智能相册，它会持续收集所有符合条件的照片",
     "smart_save_failed": "智能相册筛选条件未保存",
     "smart_album": "智能相册",
     "smart_tooltip": "智能相册：自动收集符合已保存筛选条件的照片",

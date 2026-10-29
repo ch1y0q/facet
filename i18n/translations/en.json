@@ -1775,6 +1775,7 @@
     "add_photos": "Add to Album",
     "photos_added": "Photos added to album",
     "save_smart": "Save as Smart Album",
+    "save_smart_tooltip": "Save the current filters as a smart album, which keeps gathering every photo that matches them",
     "smart_save_failed": "Smart album filters were not saved",
     "smart_album": "Smart Album",
     "smart_tooltip": "Smart album — automatically gathers photos matching a saved filter",

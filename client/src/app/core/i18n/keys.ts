@@ -1789,6 +1789,7 @@ export const I18N = {
     add_photos: "albums.add_photos",
     photos_added: "albums.photos_added",
     save_smart: "albums.save_smart",
+    save_smart_tooltip: "albums.save_smart_tooltip",
     smart_save_failed: "albums.smart_save_failed",
     smart_album: "albums.smart_album",
     smart_tooltip: "albums.smart_tooltip",

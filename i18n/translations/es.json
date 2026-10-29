@@ -1775,6 +1775,7 @@
     "add_photos": "Anadir al album",
     "photos_added": "Fotos anadidas al album",
     "save_smart": "Guardar como album inteligente",
+    "save_smart_tooltip": "Guardar los filtros actuales como álbum inteligente, que sigue reuniendo cada foto que coincida",
     "smart_save_failed": "No se han guardado los filtros del álbum inteligente",
     "smart_album": "Album inteligente",
     "smart_tooltip": "Álbum inteligente — reúne automáticamente las fotos que coinciden con un filtro guardado",
