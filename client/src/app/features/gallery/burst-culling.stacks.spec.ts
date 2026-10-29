@@ -127,7 +127,7 @@ describe('Suggested stacks routed darkroom', () => {
     http.expectOne(request => request.url === '/api/photo').flush({ path: '/a.jpg', is_kept: true }); await settle();
     http.expectOne('/api/photos/batch_review').flush({ count: 1, undo_entry_id: 28 }); await settle();
     expect(editor.paths()).toEqual(['/b.jpg', '/e.jpg']);
-    ref.close(); await editing; await settle();
+    document.querySelector<HTMLElement>('.cdk-overlay-backdrop')!.click(); await editing; await settle();
     expect(cull.stackExcluded()['/a.jpg']).toBe(true);
     const undoing = commands[1].undo(); http.expectOne('/api/organization_history/28/revert').flush({ changed: 1 }); await undoing; await settle();
     expect(cull.stackExcluded()['/a.jpg']).toBeUndefined();

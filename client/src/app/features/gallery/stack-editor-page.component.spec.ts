@@ -78,6 +78,22 @@ describe('manual stack workspace with Router, HTTP and Material', () => {
     http.expectOne(request => request.url === '/api/photo').flush({ path: paths[1], is_rejected: true }); await render();
     http.expectNone('/api/photos/batch_review'); expect(root().querySelector(`[data-stack-focus="${paths[1]}"]`)).toBeNull();
   });
+  it.each(['read', 'write'])('does not revive a departed workspace after Reject %s completes through the real Router', async phase => {
+    await ready(); button('[data-stack-reject]').click();
+    let pending = http.expectOne(request => request.url === '/api/photo');
+    if (phase === 'write') {
+      pending.flush({ path: paths[1], is_kept: true }); await render();
+      pending = http.expectOne('/api/photos/batch_review');
+    }
+    await TestBed.inject(Router).navigateByUrl('/album/17'); await render();
+    pending.flush(phase === 'write' ? { count: 1, undo_entry_id: 92 } : { path: paths[1] }); await render();
+    expect(TestBed.inject(Router).url).toBe('/album/17');
+    expect(root().querySelector('[data-stack-reject], [data-stack-focus]')).toBeNull();
+    expect(TestBed.inject(UserActivityJournal).since().items.filter(entry => entry.kind === 'reject')).toEqual([]);
+    expect(TestBed.inject(GalleryStore).refreshPaths).not.toHaveBeenCalled();
+    expect(document.querySelector('mat-snack-bar-container')).toBeNull();
+    http.expectNone('/api/photos/batch_review');
+  });
   it('authorizes history before exposing private names and uses a real page zoom workspace', async () => {
     await open(); expect(root().textContent).not.toContain('a.jpg'); expect(root().querySelector('img')).toBeNull();
     http.expectOne('/api/stacks/regroup/preview').flush(preview); await render();
