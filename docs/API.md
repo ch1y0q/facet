@@ -33,7 +33,8 @@ Developers: `cd client && npm run gen:api` regenerates the client types in `clie
 | `GET /api/type_counts?hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Photo counts per type for the sidebar chips (`hide_*` fallback applies) |
 | `GET /api/similar_photos/{path}` | Similar photos (modes: `visual`, `color`, `person`). Errors: `422` for `limit` outside 1–500, negative `offset`, or `min_similarity` outside 0–1 |
 | `GET /api/search?q=&limit=&threshold=&scope=` | Semantic text-to-image search; `scope=text` = OCR/caption text only. Omitted `threshold` uses the active encoder's `models.*.search_threshold_percent` (`/api/config`'s `search_threshold_default`); an explicit value, including `0.0`, overrides it. Only used when an embedding search runs (`scope != 'text'`) |
-| `GET /api/critique?path=&mode=&refresh=` | AI critique (rule-based or VLM). `refresh=true` regenerates the cached VLM critique (edition session only; otherwise `vlm_available: false`) |
+| `GET /api/critique?path=&mode=&lang=` | AI critique (rule-based, or with `mode=vlm` plus the cached VLM critique). Read-only: never generates, translates or writes; `vlm_available` says whether `POST /api/critique/vlm` can produce one for this caller |
+| `POST /api/critique/vlm` | Generate and store the VLM critique (edition mode). Body: `path`, `lang`, `refresh` (regenerate a cached one). Concurrent requests for one photo share a single generation |
 | `GET /api/ranker/status` | Personal-ranker status for the "My Taste" sort (learned coverage %, held-out accuracy) |
 | `GET /api/config` | Viewer configuration |
 
@@ -132,7 +133,8 @@ All endpoints here use the [batch target contract](#conventions).
 |----------|-------------|
 | `GET /api/memories?date=` | Photos taken on this date in previous years |
 | `GET /api/memories/check` | Check if memories exist for a date |
-| `GET /api/caption?path=` | Get the AI caption; an edition session generates it on first request (otherwise `source: "edition_required"`) |
+| `GET /api/caption?path=&lang=` | Get the stored AI caption (or stored translation). Read-only: never generates, translates or writes; `source: "none"` when nothing is stored |
+| `POST /api/caption` | Generate, translate and store the AI caption (edition mode). Body: `path`, `lang`. Concurrent requests for one photo share a single generation |
 | `PUT /api/caption` | Update photo caption (edition mode) |
 | `GET /api/timeline?cursor=&limit=&direction=&hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Paginated timeline photos (`hide_*` fallback applies) |
 | `GET /api/timeline/dates?year=&month=&hide_blinks=&hide_bursts=&hide_duplicates=&hide_brackets=&hide_panoramas=` | Available dates for navigation |

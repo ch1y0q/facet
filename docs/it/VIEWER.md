@@ -68,7 +68,7 @@ Due password controllano l'accesso:
 - **`viewer.password`** decide chi può *sfogliare*. Vuota, chiunque può sfogliare l'intera libreria. Impostata, gli utenti devono prima accedere.
 - **`viewer.edition_password`** è richiesta per ogni modifica: valutazioni, preferiti e scarti, selezione, album, gestione di persone e volti, modalità di confronto, modifiche a pesi e priorità, ed esportazioni. Vuota (il valore predefinito fornito), l'installazione è **in sola lettura**: le modifiche vengono rifiutate con `403` ("Set viewer.edition_password to enable editing").
 
-Anche la generazione IA su richiesta (didascalie, critiche VLM) richiede la password di modifica. Senza, ottieni solo ciò che è già in cache (`source: "edition_required"` o `vlm_available: false`). Senza password di modifica, la galleria nasconde anche i badge esistenti di stelle, preferiti e scarti, come fa per i visualizzatori senza modifica su un'installazione protetta da password.
+Anche la generazione IA su richiesta (didascalie, critiche VLM) richiede la password di modifica. Senza, ottieni solo ciò che è già in cache (`source: "none"` o `vlm_available: false`). Senza password di modifica, la galleria nasconde anche i badge esistenti di stelle, preferiti e scarti, come fa per i visualizzatori senza modifica su un'installazione protetta da password.
 
 Riavvia la galleria dopo aver impostato `viewer.edition_password`: la configurazione non viene ricaricata a caldo.
 
@@ -616,17 +616,17 @@ La finestra distingue anche una foto *non ancora valutata* da una il cui *punteg
 
 ### Critica VLM `[GPU]` `[16gb/24gb]`
 
-Usa il VLM configurato (Qwen3.5-2B o Qwen3.5-4B) per una critica sensibile al contesto. Richiede il profilo 16gb o 24gb, `viewer.features.show_vlm_critique` impostato su `true` (il valore predefinito) e una sessione di modifica per generarla. Senza modifica, viene mostrata solo una critica in cache e `vlm_available` è `false`.
+Usa il VLM configurato (Qwen3.5-2B o Qwen3.5-4B) per una critica sensibile al contesto. Richiede il profilo 16gb o 24gb, `viewer.features.show_vlm_critique` impostato su `true` (il valore predefinito) e una sessione di modifica per generarla. Senza modifica, viene mostrata solo una critica in cache e `vlm_available` è `false`. La finestra genera tramite `POST /api/critique/vlm` (solo modifica; le richieste simultanee per una stessa foto condividono una sola generazione); `GET /api/critique` legge soltanto la cache e non genera, non traduce e non scrive mai.
 
 - Il prompt (`critique.vlm`) include la scomposizione del punteggio, i punteggi salvati e ricalcolati, le condizioni rilevate e l'EXIF.
-- La risposta si legge come **Osservazione / Valutazione / Suggerimenti**. Viene messa in cache per foto (`photos.vlm_critique`), tradotta su richiesta, e **Rigenera** la ricalcola.
+- La risposta si legge come **Osservazione / Valutazione / Suggerimenti**. Viene messa in cache per foto (`photos.vlm_critique`), tradotta quando una sessione di modifica la apre nella lingua di destinazione (poi salvata e servita così com'è), e **Rigenera** la ricalcola. Senza una sessione di modifica vedi il testo non tradotto, a meno che non esista già una traduzione salvata.
 - Funziona sulla miniatura memorizzata, quindi i file RAW vanno bene.
 
 **Overlay visivo "perché questo punteggio".** Con `viewer.features.show_saliency_overlay` attivo (predefinito `true`), la finestra della critica ha **Mostra overlay**. Disegna la mappa di salienza BiRefNet come mappa di calore (`GET /api/saliency_overlay`), più i riquadri dei volti e i segnalini degli occhi dai punti di riferimento memorizzati (`GET /api/photo/face_markers`). I riquadri sono verdi per occhi aperti, ambra per occhi chiusi. La mappa di calore ha la risoluzione della miniatura, quindi è approssimativa. L'interruttore si nasconde sui profili che non possono produrre una maschera di salienza.
 
 ## Didascalie IA `[GPU]` `[16gb/24gb]` `[Edition]`
 
-Ottieni una didascalia in linguaggio naturale per qualsiasi foto. Una sessione di modifica la genera alla prima richiesta; poi viene messa in cache nella colonna `caption`. Modifica le didascalie nel dettaglio foto (modalità di modifica). Un'installazione aperta in sola lettura non ne genera mai.
+Ottieni una didascalia in linguaggio naturale per qualsiasi foto. Una sessione di modifica la genera alla prima richiesta; poi viene messa in cache nella colonna `caption`. Modifica le didascalie nel dettaglio foto (modalità di modifica). Un'installazione aperta in sola lettura non ne genera mai. `POST /api/caption` la genera (e la traduce); `GET /api/caption` restituisce solo la didascalia o la traduzione salvata e non genera, non traduce e non scrive mai.
 
 Generazione e traduzione di gruppo dalla CLI:
 

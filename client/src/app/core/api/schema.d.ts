@@ -512,13 +512,12 @@ export interface paths {
         };
         /**
          * Api Caption
-         * @description Get an AI-generated caption for a photo.
+         * @description Get the stored AI caption for a photo. Strictly read-only.
          *
-         *     Returns a cached caption if available, otherwise generates one via VLM.
-         *     Returns 503 if no cached caption exists and VLM is unavailable.
-         *
-         *     If ``lang`` matches the configured ``target_language``, returns the
-         *     translated caption (generating and caching it on-demand if needed).
+         *     Never generates, translates or writes. With ``lang`` matching the configured
+         *     ``target_language`` the stored translation is returned when there is one,
+         *     otherwise the stored caption. ``source`` is ``none`` when no caption is
+         *     stored; ``POST /api/caption`` produces one.
          */
         get: operations["api_caption_api_caption_get"];
         /**
@@ -528,7 +527,15 @@ export interface paths {
          *     Clears the cached translation so it gets regenerated on next request.
          */
         put: operations["api_update_caption_api_caption_put"];
-        post?: never;
+        /**
+         * Api Generate Caption
+         * @description Generate and store the AI caption for a photo (edition mode required).
+         *
+         *     A stored caption is kept as is. Concurrent requests for the same photo share
+         *     one generation. When ``lang`` matches the configured ``target_language`` the
+         *     caption is also translated and the translation stored.
+         */
+        post: operations["api_generate_caption_api_caption_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1147,18 +1154,42 @@ export interface paths {
         };
         /**
          * Api Critique
-         * @description Get AI critique for a photo's score.
+         * @description Get AI critique for a photo's score. Strictly read-only.
          *
          *     Modes:
          *       - rule: Fast rule-based analysis (always available)
-         *       - vlm: VLM-powered natural language critique (requires GPU + a profile
-         *         with a VLM tagging model). The generated text is cached per photo;
-         *         ``refresh=true`` regenerates it. When ``lang`` matches the configured
-         *         ``translation.target_language``, the critique is translated.
+         *       - vlm: the rule critique plus the VLM critique already cached for the
+         *         photo (and its stored translation when ``lang`` selects one). Nothing is generated,
+         *         translated or written here: ``vlm_available`` tells the client whether
+         *         ``POST /api/critique/vlm`` can produce one for this caller.
          */
         get: operations["api_critique_api_critique_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/critique/vlm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Api Generate Vlm Critique
+         * @description Generate (or, with ``refresh``, regenerate) and store the VLM critique.
+         *
+         *     Edition only. Concurrent requests for the same photo share one generation.
+         *     When ``lang`` matches ``translation.target_language`` the critique is also
+         *     translated and the translation stored.
+         */
+        post: operations["api_generate_vlm_critique_api_critique_vlm_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5690,6 +5721,13 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** CaptionGenerate */
+        CaptionGenerate: {
+            /** Lang */
+            lang?: string | null;
+            /** Path */
+            path: string;
+        };
         /** CaptionUpdate */
         CaptionUpdate: {
             /** Caption */
@@ -5970,6 +6008,18 @@ export interface components {
             cover_path: string;
             /** Paths */
             paths: string[];
+        };
+        /** CritiqueVlmRequest */
+        CritiqueVlmRequest: {
+            /** Lang */
+            lang?: string | null;
+            /** Path */
+            path: string;
+            /**
+             * Refresh
+             * @default false
+             */
+            refresh?: boolean;
         };
         /** CullApplyRequest */
         CullApplyRequest: {
@@ -7058,6 +7108,8 @@ export interface components {
             vlm_critique?: string | null;
             /** Vlm Source */
             vlm_source?: string | null;
+            /** Vlm Translation Missing */
+            vlm_translation_missing?: boolean | null;
             /**
              * Weaknesses
              * @default []
@@ -10279,6 +10331,39 @@ export interface operations {
             };
         };
     };
+    api_generate_caption_api_caption_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaptionGenerate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaCaptionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     report_client_error_api_client_errors_post: {
         parameters: {
             query?: never;
@@ -11159,13 +11244,45 @@ export interface operations {
                 path: string;
                 mode?: string;
                 lang?: string | null;
-                refresh?: boolean;
             };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaCritiqueResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_generate_vlm_critique_api_critique_vlm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CritiqueVlmRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
