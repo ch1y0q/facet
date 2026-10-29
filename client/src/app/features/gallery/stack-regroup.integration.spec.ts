@@ -314,4 +314,59 @@ describe('shared regroup editor through Material, Router and HTTP', () => {
     expect(register).not.toHaveBeenCalled();
   });
 
+  it.each([['unstack', 503], ['unstack', 409], ['save', 503], ['save', 409]] as const)(
+    'retries only the failed member read after %s fails with %i', async (action, status) => {
+      const ref = TestBed.inject(MatDialog).open(StackDialogComponent, stackDialogConfig({ stackId: source.id }));
+      fixture.detectChanges(); http.expectOne('/api/stacks/source').flush(source); await render();
+      if (action === 'save') {
+        button('[data-stack-cover="/c.jpg"]').click(); button('[data-stack-save]').click();
+      } else {
+        [...root().querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent?.trim() === 'stacks.unstack')!.click();
+      }
+      const write = http.expectOne(request => request.method === (action === 'save' ? 'PUT' : 'DELETE'));
+      write.flush({}, { status, statusText: 'Failed' }); await render();
+      if (status === 409) {
+        button('[data-stack-retry]').click();
+        http.expectOne('/api/stacks/source').flush({ ...source, revision: 8 }); await render();
+      }
+      button('button[aria-label^="stacks.open_member"]').click();
+      http.expectOne(request => request.url === '/api/photo' && request.params.get('path') === '/a.jpg')
+        .flush({}, { status: 503, statusText: 'Read failed' }); await render();
+      // Moving focus must not change which failed read Retry recovers.
+      button('[data-stack-focus="/b.jpg"]').click(); await render();
+      button('[data-stack-retry]').click();
+      const read = http.expectOne(request => request.url === '/api/photo' && request.params.get('path') === '/a.jpg');
+      expect(read.request.method).toBe('GET');
+      http.expectNone(request => request.method !== 'GET');
+      read.flush({}, { status: 503, statusText: 'Read failed again' }); await render();
+      const navigate = vi.spyOn(TestBed.inject(PhotoStackService), 'navigateMember').mockResolvedValue(true);
+      button('[data-stack-retry]').click();
+      http.expectOne(request => request.url === '/api/photo' && request.params.get('path') === '/a.jpg').flush({ path: '/a.jpg' });
+      await render();
+      expect(navigate).toHaveBeenCalledWith('/a.jpg', { path: '/a.jpg' }, expect.any(Function), false);
+      expect(TestBed.inject(UserActivityJournal).since().items).toHaveLength(0);
+      expect(register).not.toHaveBeenCalled(); expect(refresh).not.toHaveBeenCalled();
+      expect(ref.componentInstance).toBeNull();
+    });
+
+  it.each([false, true])('journals the actual final contributors after excluding a source (contributes=%s)', async contributes => {
+    TestBed.inject(MatDialog).open(StackDialogComponent, stackDialogConfig({ paths: ['/a.jpg', '/d.jpg', '/e.jpg'] }));
+    fixture.detectChanges();
+    http.expectOne('/api/stacks/regroup/preview').flush({ ...preview,
+      selected_paths: ['/a.jpg', '/d.jpg', '/e.jpg'], paths: [...preview.paths, '/e.jpg'],
+      affected_paths: [...preview.paths, '/e.jpg'], unstacked_paths: ['/d.jpg', '/e.jpg'] }); await render();
+    for (const path of contributes ? ['/b.jpg', '/c.jpg'] : ['/a.jpg', '/b.jpg', '/c.jpg']) {
+      button(`[data-stack-remove="${path}"]`).click(); await render();
+    }
+    button('[data-stack-save]').click();
+    const request = http.expectOne('/api/stacks/regroup/apply');
+    const affected = contributes ? [...preview.paths, '/e.jpg'] : ['/d.jpg', '/e.jpg'];
+    expect(request.request.body.paths).toEqual(contributes ? ['/a.jpg', '/d.jpg', '/e.jpg'] : ['/d.jpg', '/e.jpg']);
+    request.flush({ stack: source, undo: { entry_id: 77 }, changed: true, affected_paths: affected }); await render();
+    expect(TestBed.inject(UserActivityJournal).since().items).toEqual([
+      expect.objectContaining({ kind: 'stack', value: contributes ? 'update' : 'create', paths: affected }),
+    ]);
+    expect(refresh).toHaveBeenCalledTimes(1); expect(register).toHaveBeenCalledTimes(1);
+  });
+
 });

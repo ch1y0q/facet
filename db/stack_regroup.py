@@ -121,12 +121,19 @@ def apply_regroup(conn: sqlite3.Connection, owner: str, selected_paths: list[str
         raise stacks.StackError('Stack membership changed; refresh the preview')
     if not set(paths).issubset(preview['paths']):
         raise stacks.StackError('Destination must contain only previewed photos', 422)
-    sources, affected = preview['source_stacks'], preview['affected_paths']
+    # Validate the complete preview above, but mutate only sources contributing
+    # to the final destination. Wholly excluded groups keep their own revisions
+    # and must not become dependencies of this operation's whole-stack Undo.
+    chosen = set(paths)
+    sources = [source for source in preview['source_stacks']
+               if any(member['path'] in chosen for member in source['members'])]
+    touched = chosen | {member['path'] for source in sources for member in source['members']}
+    affected = [path for path in preview['affected_paths'] if path in touched]
+    before = {path: before[path] for path in affected}
     if (len(sources) == 1 and paths == [m['path'] for m in sources[0]['members']]
             and cover_path == sources[0]['cover_path']):
         _previews(conn, sources)
         return dict(stack=sources[0], undo=None, affected_paths=affected, changed=False)
-    chosen = set(paths)
     residuals = [(source, [m['path'] for m in source['members'] if m['path'] not in chosen])
                  for source in sources]
     destination = sources[0]['id'] if len(sources) == 1 and len(residuals[0][1]) < 2 else str(uuid.uuid4())

@@ -159,7 +159,7 @@ export class StackDialogComponent implements OnInit {
   private readonly session = this.stacks.context();
   private readonly initialEdition = this.auth.isEdition();
   private readonly cancelLoad = new Subject<void>();
-  private retryAction: 'load' | 'save' | 'unstack' | 'add' = 'load';
+  private retryAction: 'load' | 'save' | 'unstack' | 'add' | { open: string } = 'load';
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
   private readonly thumbnails = viewChildren<ElementRef<HTMLButtonElement>>('thumbnail');
   private closing = false;
@@ -223,7 +223,7 @@ export class StackDialogComponent implements OnInit {
     if (this.regrouping()) { await this.loadPreview(); return; }
     if (!this.current() || this.saving()) return;
     const sequence = ++this.loadSequence;
-    this.loading.set(true); this.ready.set(false); this.error.set(null);
+    this.loading.set(true); this.ready.set(false); this.error.set(null); this.retryAction = 'load';
     try {
       if (this.data.stackId) {
         const stack = await firstValueFrom(this.stacks.get(this.data.stackId).pipe(takeUntil(this.cancelLoad), takeUntilDestroyed(this.destroyRef)));
@@ -277,7 +277,8 @@ export class StackDialogComponent implements OnInit {
     this.mode.set(mode); void this.loadPreview();
   }
   retry(): void {
-    if (this.retryAction === 'add') void this.addSelected();
+    if (typeof this.retryAction === 'object') void this.openMember(this.retryAction.open);
+    else if (this.retryAction === 'add') void this.addSelected();
     else if (this.retryAction === 'unstack' && this.error() === 'error') void this.unstack();
     else if (this.retryAction === 'save' && this.error() === 'error') void this.save();
     else void this.load();
@@ -358,13 +359,13 @@ export class StackDialogComponent implements OnInit {
     this.store.restoreSelection(this.stack()?.members.map(member => member.path) ?? this.paths()); this.dialog.close();
   }
   async openMember(path: string): Promise<void> {
-    if (!this.current() || this.saving() || !this.paths().includes(path)) return;
+    if (!this.current() || this.saving() || this.loading() || !this.paths().includes(path)) return;
     const allowed = () => {
       const pinned = this.store.pinnedPaths();
       return pinned === null || pinned.includes(path);
     };
     if (!allowed()) return;
-    this.saving.set(true); this.error.set(null);
+    this.saving.set(true); this.error.set(null); this.retryAction = { open: path };
     try {
       const photo = await firstValueFrom(this.api.get<Photo>('/photo', { path }).pipe(takeUntil(this.cancelLoad), takeUntilDestroyed(this.destroyRef)));
       if (!this.current() || !allowed()) return;
@@ -377,7 +378,11 @@ export class StackDialogComponent implements OnInit {
     if (!this.current() || !this.ready() || !this.editable() || !this.valid() || !this.dirty() || this.saving() || this.loading()) return;
     const preview = this.preview();
     if (this.regrouping()) {
-      if (preview && this.previewCurrent()) await this.mutate(this.stacks.regroup(preview, this.paths(), this.cover()), preview.source_stacks.length ? 'update' : 'create');
+      if (preview && this.previewCurrent()) {
+        const chosen = new Set(this.paths());
+        const contributes = preview.source_stacks.some(source => source.members.some(member => chosen.has(member.path)));
+        await this.mutate(this.stacks.regroup(preview, this.paths(), this.cover()), contributes ? 'update' : 'create');
+      }
       return;
     }
     const stack = this.stack();

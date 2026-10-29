@@ -483,3 +483,106 @@ def test_http_database_errors_and_history_limits_are_safe_and_atomic(conn, http_
     assert refused.status_code == 500 and refused.headers['cache-control'] == 'no-store'
     assert '/private/server/path' not in refused.text
     assert state(conn) == before
+
+
+@pytest.mark.parametrize('mode', ['combine', 'selected'])
+def test_excluded_sources_do_not_prevent_exact_stack_noop(conn, mode):
+    original = create(conn, ['b', 'a', 'c'], 'a')
+    excluded = create(conn, ['d', 'e'])
+    draft = preview(conn, ['a', 'b', 'c', 'd', 'f'], mode)
+    before, changes = state(conn), conn.total_changes
+    result = apply(conn, draft, ['b', 'a', 'c'], 'a')
+    assert result['changed'] is False and result['undo'] is None
+    assert result['stack'] == original
+    assert conn.total_changes == changes
+    assert state(conn) == before
+    assert stacks.get_stack(conn, 'alice', excluded['id']) == excluded
+
+
+@pytest.mark.parametrize('mode', ['combine', 'selected'])
+@pytest.mark.parametrize('remaining', [0, 1, 2])
+def test_only_contributing_source_is_changed_and_id_reuse_depends_on_residual(conn, mode, remaining):
+    original = create(conn, list('abcd')[:2 + remaining])
+    excluded = create(conn, ['e', 'f'])
+    draft = preview(conn, ['a', 'b', 'e', 'g', 'h'], mode)
+    excluded_before = history.snapshot(conn, 'stack', 'alice', ['e', 'f', 'h'])
+    result = apply(conn, draft, ['b', 'g', 'a'], 'b')
+    assert (result['stack']['id'] == original['id']) is (remaining < 2)
+    assert member_paths(result['stack']) == ['b', 'g', 'a']
+    assert set(result['affected_paths']) == set(list('abcd')[:2 + remaining] + ['g'])
+    assert stacks.get_stack(conn, 'alice', excluded['id']) == excluded
+    assert history.snapshot(conn, 'stack', 'alice', ['e', 'f', 'h']) == excluded_before
+    if remaining == 2:
+        assert member_paths(stacks.get_stack(conn, 'alice', original['id'])) == ['c', 'd']
+    elif remaining == 1:
+        assert stacks.get_stack_by_photo(conn, 'alice', 'c') is None
+    changes = json.loads(conn.execute('SELECT payload FROM organization_history WHERE id=?',
+                                     (result['undo']['entry_id'],)).fetchone()[0])
+    assert {change['path'] for change in changes} == set(result['affected_paths'])
+
+
+@pytest.mark.parametrize('mode', ['combine', 'selected'])
+@pytest.mark.parametrize('final', [['b', 'a'], ['g', 'h']])
+def test_http_excluded_source_edits_do_not_block_undo(conn, http_client, mode, final):
+    client = http_client(CurrentUser(user_id='alice', edition_authenticated=True))
+    original = create(conn, ['a', 'b'], owner='')
+    excluded = create(conn, ['c', 'd'], owner='')
+    body = dict(selected_paths=['a', 'b', 'c', 'g', 'h'], mode=mode)
+    draft = client.post('/api/stacks/regroup/preview', json=body).json()
+    before = history.snapshot(conn, 'stack', '', ['c', 'd'])
+    response = client.post('/api/stacks/regroup/apply', json={**body, 'paths': final,
+        'cover_path': final[0], 'expected_state': draft['expected_state']})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result['changed'] is True and set(result['affected_paths']) == set(final)
+    assert history.snapshot(conn, 'stack', '', ['c', 'd']) == before
+    if final == ['b', 'a']:
+        assert result['stack']['id'] == original['id']
+    else:
+        assert stacks.get_stack(conn, '', original['id']) == original
+    edited = client.put('/api/stacks/' + excluded['id'], json={
+        'paths': ['d', 'c'], 'cover_path': 'd', 'expected_revision': excluded['revision']})
+    assert edited.status_code == 200, edited.text
+    undone = client.post(f"/api/organization_history/{result['undo']['entry_id']}/revert?kind=stack")
+    assert undone.status_code == 200, undone.text
+    assert undone.json()['changed'] == 2
+    assert client.get('/api/stacks/' + excluded['id']).json() == edited.json()['stack']
+    assert stacks.get_stack(conn, '', original['id'])['members'] == original['members']
+    assert stacks.get_stack_by_photo(conn, '', 'g') is None
+    assert stacks.get_stack_by_photo(conn, '', 'h') is None
+
+
+@pytest.mark.parametrize('mode', ['combine', 'selected'])
+def test_excluded_sources_still_require_current_preview_and_full_visibility(conn, mode):
+    create(conn, ['a', 'b'])
+    excluded = create(conn, ['c', 'd'])
+    draft = preview(conn, ['a', 'b', 'c'], mode)
+    before = state(conn)
+    with pytest.raises(stacks.StackError):
+        apply(conn, draft, ['a', 'b'], 'a', visibility_sql='photos.path != ?', visibility_params=('d',))
+    assert state(conn) == before
+    with conn:
+        conn.execute('BEGIN IMMEDIATE')
+        stacks.update_stack(conn, 'alice', excluded['id'], ['d', 'c'], 'd', excluded['revision'])
+    before = state(conn)
+    with pytest.raises(stacks.StackError):
+        apply(conn, draft, ['a', 'b'], 'a')
+    assert state(conn) == before
+
+
+@pytest.mark.parametrize('mode', ['combine', 'selected'])
+def test_http_excluded_sources_leave_identical_stack_unchanged(conn, http_client, mode):
+    client = http_client(CurrentUser(user_id='alice', edition_authenticated=True))
+    original = create(conn, ['b', 'a'], 'a', owner='')
+    create(conn, ['c', 'd'], owner='')
+    body = dict(selected_paths=['a', 'b', 'c', 'e'], mode=mode)
+    draft = client.post('/api/stacks/regroup/preview', json=body).json()
+    before = state(conn)
+    response = client.post('/api/stacks/regroup/apply', json={**body, 'paths': ['b', 'a'],
+        'cover_path': 'a', 'expected_state': draft['expected_state']})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result['changed'] is False and result['undo'] is None
+    assert result['stack']['id'] == original['id'] and result['stack']['revision'] == original['revision']
+    assert result['affected_paths'] == ['b', 'a']
+    assert state(conn) == before
