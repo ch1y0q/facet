@@ -34,25 +34,23 @@ import { KEYMAP_ACTIONS, KeymapConfig, KeyboardMappingService } from '../../../c
     </h2>
     <mat-dialog-content class="!px-6 !pb-1 !overflow-hidden">
       <p class="text-xs opacity-60 mt-0 mb-3">{{ I18N.shortcuts.keymap_hint | translate }}</p>
-      <div class="flex flex-col gap-1">
+      <div class="flex flex-col gap-0.5">
         @for (action of KEYMAP_ACTIONS; track action.id) {
-          <div class="flex items-center gap-3 py-0.5">
-            <span [id]="'keymap-label-' + action.id" class="flex-1 text-sm">{{ action.labelKey | translate }}</span>
-            <button
-              type="button"
-              mat-stroked-button
-              [id]="'keymap-key-' + action.id"
-              [attr.aria-labelledby]="'keymap-label-' + action.id + ' keymap-key-' + action.id"
-              class="!min-w-[3.5rem] !px-3 !py-0.5 !rounded-md font-mono text-xs"
-              [class.!border-[var(--mat-sys-primary)]]="capturing() === action.id"
-              (click)="startCapture(action.id, $event)">
-              @if (capturing() === action.id) {
+          <button type="button" data-keymap-row
+                  class="w-full flex items-center gap-3 px-2.5 py-1.5 rounded-lg text-left transition-colors hover:bg-[var(--mat-sys-surface-container)]"
+                  [class.!bg-[var(--mat-sys-surface-container)]]="capturing() === action.id"
+                  (click)="startCapture(action.id, $event)">
+            <span class="flex-1 text-sm">{{ action.labelKey | translate }}</span>
+            @if (capturing() === action.id) {
+              <kbd class="px-2 py-1 rounded-md border border-[var(--mat-sys-primary)] bg-[var(--mat-sys-surface-container-high)] font-mono text-xs text-[var(--mat-sys-primary)] min-w-[3.5rem] text-center animate-pulse">
                 {{ I18N.shortcuts.press_key | translate }}
-              } @else {
+              </kbd>
+            } @else {
+              <kbd class="px-2 py-1 rounded-md border border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface-container-high)] font-mono text-xs min-w-[3.5rem] text-center">
                 {{ keyLabels()[action.id] }}
-              }
-            </button>
-          </div>
+              </kbd>
+            }
+          </button>
         }
       </div>
       <p role="status" class="text-xs text-[var(--mat-sys-error)] mb-0" [class.mt-2]="error()">
