@@ -152,7 +152,7 @@ def apply_regroup(conn: sqlite3.Connection, owner: str, selected_paths: list[str
     # Use the same shape/encoding as history.record, including unchanged residual
     # members. A whole stack edit cannot be split into independently undone parts.
     revision = conn.execute('SELECT revision+1 FROM organization_clock WHERE id=1').fetchone()[0]
-    after = {p: [] for p in affected}
+    after: dict[str, list[str | int]] = {p: [] for p in affected}
     for stack_id, members, cover in groups:
         after.update({path: [stack_id, cover, position] for position, path in enumerate(members)})
     changes = [dict(path=path, before=before[path]['values'], after=after[path], revision=revision)
