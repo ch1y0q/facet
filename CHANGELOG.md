@@ -21,6 +21,11 @@ All notable changes to Facet are documented in this file.
 
 ### Fixed
 
+- **Relink no longer refuses files whose timestamps were preserved on Windows.** The receipt compared a creation time read through an open handle with one read by path, which differ on NTFS for any file copied with its times preserved, so a legitimate relink answered "Destination changed while hashing".
+- **Cull, move, RAW download and export keep a companion's on-disk filename on Windows.** A companion RAW or `.xmp` sidecar found through a case-insensitive alias (`r1.cr2` for `r1.CR2`) was renamed to the alias spelling; the leaf now keeps the directory entry's spelling, as RAW companions already did on macOS.
+- **Sidecar-export status no longer answers "not found" during a progress write on Windows.** Reading a receipt that is being republished is retried for about 50 ms.
+- **Configuration files are read as UTF-8 on Windows.** The shipped defaults, the operator's `scoring_config.json`, the secret file and the bundled schemas were decoded with the locale code page, which garbled a non-ASCII path such as a library folder name.
+- **The InsightFace CPU-fallback warning names a CUDA-major mismatch.** When the installed ONNX Runtime wheel is built for a different CUDA major than PyTorch, the warning says so (the doctor already did) next to the repair command.
 - **The user menu separates Help from the tools above it.** The customisation items (review progress, card buttons, shortcuts) ran straight into Help with no divider; a divider now precedes Help, matching the menu's other group breaks.
 - **The customize-shortcuts dialog header aligns.** The title drew ~11px below its icon tile, and the dialog offered a scrollbar for four pixels of hidden content; title and icon now share one centred line and the content no longer scrolls.
 - **Header and phone layouts no longer crush their controls.** Below 1680 px the secondary destinations move into a More menu, so the gallery search and Type selector keep their width and the culling filters stop scrolling; on phones the nav and culling bars lose their scrollbars, person rename boxes fit their tiles, long camera names no longer cut off the stats legend, and the photo page keeps room for the filename

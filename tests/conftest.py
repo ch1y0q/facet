@@ -364,6 +364,10 @@ def seed_photos_prefix():
     prefixes: list[str] = []
 
     def seed(prefix, rows):
+        # Cleanup deletes by prefix: a row outside it would leak into the shared DB
+        # (a hard-coded "/" against backslash paths on Windows did exactly that).
+        for row in rows:
+            assert row["path"].startswith(prefix), f"{row['path']!r} is outside the seeded prefix {prefix!r}"
         prefixes.append(prefix)
         for row in rows:
             cols = list(row.keys())
@@ -582,7 +586,7 @@ def initialize_photo_database(conn):
     with tempfile.TemporaryDirectory() as directory:
         db_path = os.path.join(directory, "schema.db")
         init_database(db_path)
-        with sqlite3.connect(db_path) as source:
+        with contextlib.closing(sqlite3.connect(db_path)) as source:
             source.backup(conn)
 # ---------------------------------------------------------------------------
 # Agent (MCP) app: REAL auth, REAL lifespan

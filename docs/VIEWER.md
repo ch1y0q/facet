@@ -359,7 +359,7 @@ When an assistant connected through [AI Agents (MCP)](AGENTS.md) shows you an ex
 - **Every run starts as a dry run.** You see a preview before anything is written; move/trash run only with an explicit `dry_run=false`.
 - **The server picks the files from each photo's own state.** Copy acts only on keeps, move/trash only on rejects. Anything else is reported as `excluded_by_state`. The client cannot hand over a list of files to delete.
 - **Companions are opt-in.** Rejecting a JPEG does not take its RAW unless you tick **Include companion RAW / XMP** (`include_companions`).
-- On macOS, companion RAW files keep their on-disk names, including uppercase extensions.
+- On macOS and Windows, companion RAW files keep their on-disk names, including uppercase extensions; on Windows, `.xmp` sidecars do too.
 
 **Trash rejects availability.** The "Trash rejects" option appears only when `viewer.cull.allow_trash` is on *and* the `send2trash` package is installed (`/api/config` reports `cull.trash_available: true`). Otherwise the dialog says why: "the `send2trash` package is not installed" or "an administrator disabled trashing".
 

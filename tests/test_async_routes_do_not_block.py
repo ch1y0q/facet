@@ -134,6 +134,18 @@ def offline_place_search(monkeypatch):
     monkeypatch.setattr(place_search, '_fetch', lambda *_: {'type': 'FeatureCollection', 'features': []})
 
 
+@pytest.fixture(autouse=True)
+def pinned_vram_profile(monkeypatch):
+    """Resolve the CPU profile whatever GPU the machine has, as CI does.
+
+    On a 16 GB box 'auto' selects a VLM profile: ``/api/caption`` then reaches the
+    file lookup (404 instead of 503) and ``/api/critique/vlm`` and ``/api/search``
+    load real models.
+    """
+    from api import model_cache
+    monkeypatch.setattr(model_cache, '_resolved_profile', 'legacy')
+
+
 def _user_app(user):
     app = create_app()
     for dep in (require_edition, require_auth, require_authenticated, require_superadmin,
@@ -262,7 +274,7 @@ EXPECTED_NON_2XX = {
     # The route-coverage request names a face id that does not exist, so the
     # handler's visibility check answers 404 after the body has started.
     ('POST', '/api/face/987654321/unassign'): 404,
-    # The seeded row has no file on disk, so there is no image to caption.
+    # VLM unavailable: the pinned legacy profile has no captioner.
     ('POST', '/api/caption'): 503,
 }
 
