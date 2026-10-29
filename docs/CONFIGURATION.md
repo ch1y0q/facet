@@ -1597,7 +1597,7 @@ Web gallery display and behavior.
 | `max_tags` | `20` | Max tags |
 | `min_photos_for_person` | `10` | Hide persons with fewer photos from dropdown |
 | **persons** | | |
-| `needs_naming_min_faces` | `5` | Minimum faces for a cluster to appear under "Needs naming" in `/persons` |
+| `needs_naming_min_faces` | `5` | Minimum faces for a cluster to appear under "Needs naming" in `/persons`; `1` lists every unnamed person |
 | **raw_processor** | | |
 | `darktable.executable` | `"darktable-cli"` | darktable-cli binary name or absolute path |
 | `darktable.profiles` | `[]` | Array of named darktable export profiles (see below) |

@@ -1533,6 +1533,16 @@ describe('GalleryComponent', () => {
       expect(mockStore.showAllHidden).toHaveBeenCalled();
     });
 
+    it('the hidden-photos notice lists only the reasons with a non-zero count', () => {
+      const text = stack(render())!.querySelector('[role="status"]')!.textContent!;
+      const reasons = I18N.gallery.hidden_banner;
+      expect(text).toContain(reasons.reason_bursts);
+      expect(text).toContain(reasons.reason_brackets);
+      expect(text).not.toContain(reasons.reason_blinks);
+      expect(text).not.toContain(reasons.reason_duplicates);
+      expect(text).not.toContain(reasons.reason_panoramas);
+    });
+
     it('renders the restore twin once Show all has been used', () => {
       mockStore.hiddenSummary.set({ total: 0, blinks: 0, bursts: 0, duplicates: 0, brackets: 0, panoramas: 0 });
       mockStore.hiddenFiltersStash.set({

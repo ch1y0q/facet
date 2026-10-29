@@ -44,10 +44,11 @@ import { galleryShortcutSection } from './features/gallery/gallery-shortcuts';
 import { KeyboardMappingDialogComponent } from './shared/components/keyboard-mapping-dialog/keyboard-mapping-dialog.component';
 import { KeyboardMappingService } from './core/services/keyboard-mapping.service';
 import { AssistantActivityChipComponent } from './features/agent/assistant-activity-chip.component';
+import { PersonFilterChipComponent } from './features/gallery/person-filter-chip.component';
 import { CONNECT_ASSISTANT_DIALOG_ID } from './core/agent/page-context.service';
 import { SortOptionIconPipe } from './shared/pipes/sort-option-icon.pipe';
 import { SortGroupKeyPipe } from './shared/pipes/sort-group-key.pipe';
-import { PersonThumbnailUrlPipe, ThumbnailUrlPipe } from './shared/pipes/thumbnail-url.pipe';
+import { ThumbnailUrlPipe } from './shared/pipes/thumbnail-url.pipe';
 import { SlideshowComponent } from './features/gallery/slideshow.component';
 import { Photo, normalisePhotoFlagsAll } from './shared/models/photo.model';
 import { DateRangeFilterComponent } from './shared/components/date-range-filter/date-range-filter.component';
@@ -130,6 +131,7 @@ export class EditionDialogComponent {
   imports: [
     DecimalPipe,
     AssistantActivityChipComponent,
+    PersonFilterChipComponent,
     RouterOutlet,
     RouterLink,
     RouterLinkActive,
@@ -148,7 +150,6 @@ export class EditionDialogComponent {
     TranslatePipe,
     SortGroupKeyPipe,
     SortOptionIconPipe,
-    PersonThumbnailUrlPipe,
     ThumbnailUrlPipe,
     MatSliderModule,
     NgTemplateOutlet,

@@ -146,6 +146,8 @@ POST_ROUTES = [
     ('/api/critique/vlm', {'path': '/nonexistent.jpg'}),
     ('/api/caption', {'path': '/nonexistent.jpg'}),
     ('/api/photos/key_subjects', {'paths': []}),
+    ('/api/person/1/face_boxes', {'paths': ['/nonexistent.jpg']}),
+    ('/api/face/987654321/unassign', {}),
     ('/api/photos/batch_favorite', {'photo_paths': ['/nonexistent.jpg']}),
     ('/api/photos/batch_rating', {'photo_paths': ['/nonexistent.jpg'], 'rating': 3}),
     ('/api/lightroom/manifest', {'paths': ['/nonexistent.jpg']}),

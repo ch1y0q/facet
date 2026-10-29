@@ -1593,7 +1593,7 @@ Exibição e comportamento da galeria web.
 | `max_tags` | `20` | Máximo de tags |
 | `min_photos_for_person` | `10` | Oculta do menu suspenso pessoas com menos fotos |
 | **persons** | | |
-| `needs_naming_min_faces` | `5` | Mínimo de faces para que um cluster apareça em "Precisa de nome" de `/persons` |
+| `needs_naming_min_faces` | `5` | Mínimo de faces para que um cluster apareça em "Precisa de nome" de `/persons`; `1` lista todas as pessoas sem nome |
 | **raw_processor** | | |
 | `darktable.executable` | `"darktable-cli"` | Nome do binário darktable-cli ou caminho absoluto |
 | `darktable.profiles` | `[]` | Array de perfis de exportação darktable nomeados (veja abaixo) |
