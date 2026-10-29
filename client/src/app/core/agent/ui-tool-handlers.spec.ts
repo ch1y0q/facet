@@ -108,6 +108,31 @@ describe('UI tool registry and handlers', () => {
     await registry.load();
   });
 
+  describe('Suggested stacks assistant isolation', () => {
+    it.each(['ui_show_culling_group', 'ui_show_culling_plan'])('refuses %s before changing the held plan or navigating', async name => {
+      edition = true;
+      const plan = TestBed.inject(AssistantCullPlanService);
+      const pin = { digest: 'held', request: { group_by: 'burst' as const } };
+      plan.setPin(pin);
+      TestBed.inject(PageContextService).register('culling', () => ({ mode: 'stacks' }));
+      const result = await run(name, name === 'ui_show_culling_plan'
+        ? { plan_digest: 'new', request: { group_by: 'burst' } } : { type: 'burst', group_id: 1 });
+      expect(result).toMatchObject({ ok: false, error: 'stack_mode_active' });
+      expect(plan.pin()).toEqual(pin);
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('reports stack mode without the held culling decisions', async () => {
+      edition = true;
+      TestBed.inject(PageContextService).register('culling', () => ({ mode: 'stacks' }));
+      const result = await run('ui_get_context');
+      expect(result).toMatchObject({ ok: true, data: {
+        culling: { mode: 'stacks' }, page: { id: 'culling', mode: 'stacks' },
+      } });
+      expect((result as { data: { culling: unknown } }).data.culling).toEqual({ mode: 'stacks' });
+    });
+  });
+
   describe('registry', () => {
     it('has a handler for every contract entry and a contract entry for every handler', () => {
       const handlers = createUiToolHandlers({

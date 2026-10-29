@@ -2323,13 +2323,10 @@ export class GalleryComponent implements OnInit, OnDestroy {
   protected async openStackSuggestions(): Promise<void> {
     const filters = this.store.filterPayload();
     if (!filters || !this.auth.isEdition()) return;
-    const session = this.stacks.context();
-    const scope = JSON.stringify(filters);
-    const { StackSuggestionsDialogComponent } = await import('./stack-suggestions-dialog.component');
-    if (this.destroyRef.destroyed || !session() || this.pinned()
-      || JSON.stringify(this.store.filterPayload()) !== scope || this.dialog.openDialogs.length
-      || !this.auth.isEdition()) return;
-    this.dialog.open(StackSuggestionsDialogComponent, { width: '96vw', maxWidth: '1400px', height: '92vh', data: { filters } });
+    if (!this.store.canScopeSelectionToView() || this.pinned()) return;
+    await this.router.navigate(['/culling'], {
+      queryParams: { mode: 'stacks', filters: JSON.stringify(filters), return: this.router.url },
+    });
   }
 
   private async launchStack(data: import('./stack-dialog.component').StackDialogData): Promise<void> {

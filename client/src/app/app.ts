@@ -39,7 +39,7 @@ import { CapsuleFiltersService } from './features/capsules/capsule-filters.servi
 import { TranslatePipe } from './shared/pipes/translate.pipe';
 import { CardActionsDialogComponent } from './features/gallery/card-actions-dialog.component';
 import { HelpDialogComponent } from './shared/components/help-dialog/help-dialog.component';
-import { CULLING_SHORTCUT_SECTIONS } from './features/gallery/culling-shortcuts';
+import { CULLING_SHORTCUT_SECTIONS, STACK_SHORTCUT_SECTIONS } from './features/gallery/culling-shortcuts';
 import { galleryShortcutSection } from './features/gallery/gallery-shortcuts';
 import { KeyboardMappingDialogComponent } from './shared/components/keyboard-mapping-dialog/keyboard-mapping-dialog.component';
 import { KeyboardMappingService } from './core/services/keyboard-mapping.service';
@@ -206,7 +206,7 @@ export class App implements OnInit {
    *  guaranteed to see the active route. */
   protected openHelpDialog(): void {
     const shortcuts = this.url().split('?')[0].startsWith('/culling')
-      ? CULLING_SHORTCUT_SECTIONS
+      ? (this.router.parseUrl(this.url()).queryParams['mode'] === 'stacks' ? STACK_SHORTCUT_SECTIONS : CULLING_SHORTCUT_SECTIONS)
       : this.isGalleryRoute() ? [galleryShortcutSection(this.keymap.keymap())] : [];
     this.dialog.open(HelpDialogComponent, {
       width: '32rem', autoFocus: false,

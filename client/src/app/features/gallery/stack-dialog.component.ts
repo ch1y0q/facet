@@ -30,6 +30,7 @@ export interface StackDialogData {
   selectedPaths?: string[];
   /** Opened from a stack suggestion: too few members left offers to skip the suggestion instead. */
   skippable?: boolean;
+  onUndone?: () => void;
 }
 
 /** Editor result asking the suggestion review to skip the group it was opened on. */
@@ -399,6 +400,7 @@ export class StackDialogComponent implements OnInit {
     try {
       const applied = await this.actions.commit(request, {
         paths, action, labelKey: this.I18N.stacks.saved, session: this.session, live: () => this.current(),
+        onUndone: this.data.onUndone,
       });
       if (applied) this.dialog.close(true);
     } catch (failure) {
