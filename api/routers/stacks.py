@@ -8,9 +8,11 @@ from api.auth import CurrentUser, is_multi_user_enabled, require_authenticated, 
 from api.database import get_db
 from api.db_helpers import after_commit, get_visibility_clause, is_locked_error, retry_on_locked
 from api.models.stacks import (CreateStack, PhotoStack, StackMutation, UpdateStack,
+                               StackRegroupApply, StackRegroupMutation, StackRegroupPreview,
+                               StackRegroupPreviewRequest,
                                StackSuggestionDismissal, StackSuggestionsRequest,
                                StackSuggestionsResponse)
-from db import stack_suggestions as suggestion_store, stacks
+from db import stack_regroup, stack_suggestions as suggestion_store, stacks
 from db.maintenance import evict_derived_stats_cache
 
 router = APIRouter(tags=['stacks'])
@@ -81,6 +83,27 @@ def update_stack(stack_id: str, body: UpdateStack, user: CurrentUser = Depends(r
 @retry_on_locked()
 def delete_stack(stack_id: str, expected_revision: int = Query(gt=0), user: CurrentUser = Depends(require_edition)):
     return _mutate(user, stacks.delete_stack, stack_id, expected_revision)
+
+
+@router.post('/api/stacks/regroup/preview', response_model=StackRegroupPreview)
+def preview_stack_regroup(body: StackRegroupPreviewRequest, response: Response,
+                          user: CurrentUser = Depends(require_authenticated)):
+    response.headers['Cache-Control'] = 'no-store'
+    try:
+        with get_db() as conn, conn:
+            conn.execute('BEGIN')
+            return stack_regroup.preview_regroup(conn, stack_owner(user.user_id), body.selected_paths, body.mode, **_scope(user))
+    except stacks.StackError as exc:
+        raise HTTPException(exc.status, str(exc), headers={'Cache-Control': 'no-store'}) from exc
+
+
+@router.post('/api/stacks/regroup/apply', response_model=StackRegroupMutation)
+@retry_on_locked()
+def apply_stack_regroup(body: StackRegroupApply, response: Response,
+                        user: CurrentUser = Depends(require_edition)):
+    response.headers['Cache-Control'] = 'no-store'
+    return _mutate(user, stack_regroup.apply_regroup, body.selected_paths, body.mode,
+                   body.paths, body.cover_path, body.expected_state)
 
 
 @router.post('/api/stacks/suggestions', response_model=StackSuggestionsResponse)
