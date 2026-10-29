@@ -341,7 +341,7 @@ Quando um assistente ligado através de [Agentes de IA (MCP)](AGENTS.md) lhe mos
 - **Toda execução começa como simulação.** Você vê uma prévia antes de qualquer gravação; mover/descartar só rodam com um `dry_run=false` explícito.
 - **O servidor escolhe os arquivos a partir do estado de cada foto.** Copiar age apenas sobre as mantidas, mover/descartar apenas sobre as rejeitadas. Tudo o mais é reportado como `excluded_by_state`. O cliente não pode entregar uma lista de arquivos a excluir.
 - **Os acompanhantes são opcionais.** Rejeitar um JPEG não leva o seu RAW, a menos que você marque **Incluir RAW/XMP acompanhante** (`include_companions`).
-- No macOS, os arquivos RAW acompanhantes mantêm os nomes no disco, incluindo extensões em maiúsculas.
+- No macOS e no Windows, os arquivos RAW acompanhantes e os sidecars `.xmp` mantêm os nomes no disco, incluindo extensões em maiúsculas.
 
 **Disponibilidade de "Descartar rejeitadas".** A opção "Descartar rejeitadas" só aparece com `viewer.cull.allow_trash` ligado *e* o pacote `send2trash` instalado (`/api/config` informa `cull.trash_available: true`). Caso contrário, o diálogo diz por quê: "o pacote `send2trash` não está instalado" ou "um administrador desativou a lixeira".
 

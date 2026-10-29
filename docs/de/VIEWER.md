@@ -341,7 +341,7 @@ Zeigt Ihnen ein über [KI-Agenten (MCP)](AGENTS.md) verbundener Assistent eine e
 - **Jeder Lauf beginnt als Trockenlauf.** Sie sehen eine Vorschau, bevor etwas geschrieben wird; Verschieben/Papierkorb laufen nur mit einem ausdrücklichen `dry_run=false`.
 - **Der Server wählt die Dateien anhand des Status jedes Fotos.** Kopieren wirkt nur auf Behaltene, Verschieben/Papierkorb nur auf Abgelehnte. Alles andere wird als `excluded_by_state` gemeldet. Der Client kann keine Liste zu löschender Dateien übergeben.
 - **Begleitdateien sind optional.** Das Ablehnen eines JPEGs nimmt sein RAW nicht mit, solange Sie nicht **RAW/XMP-Begleitdatei einbeziehen** (`include_companions`) ankreuzen.
-- Unter macOS behalten RAW-Begleitdateien ihre Dateinamen auf dem Datenträger, einschließlich großgeschriebener Erweiterungen.
+- Unter macOS und Windows behalten RAW-Begleitdateien und `.xmp`-Sidecars ihre Dateinamen auf dem Datenträger, einschließlich großgeschriebener Erweiterungen.
 
 **Verfügbarkeit von „Abgelehnte in den Papierkorb“.** Die Option erscheint nur, wenn `viewer.cull.allow_trash` an ist *und* das Paket `send2trash` installiert ist (`/api/config` meldet `cull.trash_available: true`). Andernfalls nennt der Dialog den Grund: „das Paket `send2trash` ist nicht installiert“ oder „ein Administrator hat den Papierkorb deaktiviert“.
 

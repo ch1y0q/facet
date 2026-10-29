@@ -341,7 +341,7 @@ python database.py --migrate-user-preferences --user alice
 - **每次运行都从试运行开始。** 写入任何内容之前你会先看到预览；移动/回收站只在显式传入 `dry_run=false` 时才会执行。
 - **服务器根据每张照片自身的状态挑选文件。** 复制只作用于保留照片，移动/回收站只作用于拒绝照片。其他一切都计入 `excluded_by_state`。客户端无法提交要删除的文件清单。
 - **配套文件需主动开启。** 拒绝一张 JPEG 不会连带它的 RAW，除非你勾选**包含配套的 RAW／XMP 文件**（`include_companions`）。
-- 在 macOS 上，配套 RAW 文件保留磁盘上的文件名，包括大写扩展名。
+- 在 macOS 和 Windows 上，配套 RAW 文件和 `.xmp` 附属文件保留磁盘上的文件名，包括大写扩展名。
 
 **“将淘汰照片移入回收站”的可用性。** 只有当 `viewer.cull.allow_trash` 已开启，*并且*已安装 `send2trash` 包时，才会出现“将淘汰照片移入回收站”选项（`/api/config` 报告 `cull.trash_available: true`）。否则对话框会说明原因：“未安装 `send2trash` 软件包”或“管理员已禁用回收站功能”。
 
