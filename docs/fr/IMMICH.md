@@ -2,11 +2,14 @@
 
 > 🌐 [English](../IMMICH.md) · **Français** · [Deutsch](../de/IMMICH.md) · [Italiano](../it/IMMICH.md) · [Español](../es/IMMICH.md) · [Português](../pt/IMMICH.md) · [简体中文](../zh/IMMICH.md)
 
-Facet et [Immich](https://immich.app/) remplissent des rôles différents sur les mêmes photos. Immich est la bibliothèque : il ingère, sauvegarde et sert les photos à votre téléphone. Facet est le jugement : il note, classe et trie les photos. Cette page relie les deux pour que les verdicts de Facet apparaissent sous forme de notes et de favoris dans Immich, et pour qu'un envoi vers Immich signale à Facet qu'un nouveau travail l'attend.
+[Immich](https://immich.app/) stocke, sauvegarde et sert vos photos. Facet les note, les classe et les trie. Cette page relie les deux :
 
-Le lien est exclusivement REST dans les deux sens. Facet ne touche jamais à la base de données d'Immich, et Immich ne touche jamais à celle de Facet.
+- Les notes et favoris de Facet apparaissent dans Immich.
+- Un envoi vers Immich signale à Facet qu'un nouveau travail l'attend.
 
-**Facet exige Immich ≥ 3.0.** Les serveurs plus anciens rejettent la sémantique de notation dont Facet dépend : `null` pour effacer une note et `-1` pour en marquer une comme rejetée. Sur un serveur 2.x, l'effacement est refusé et des notes obsolètes restent bloquées indéfiniment sur vos ressources.
+Les deux sens n'utilisent que l'API REST d'Immich. Aucun des deux outils ne touche à la base de données de l'autre.
+
+**Facet exige Immich ≥ 3.0.** Facet efface une note avec `null` et marque un rejet avec `-1`. Un serveur 2.x refuse l'effacement, si bien que des notes obsolètes restent sur vos ressources.
 
 ---
 
@@ -18,7 +21,7 @@ Le lien est exclusivement REST dans les deux sens. Facet ne touche jamais à la 
 - [Étape 3 — mettre en correspondance les chemins](#étape-3--mettre-en-correspondance-les-chemins)
 - [Étape 4 — tester, puis pousser](#étape-4--tester-puis-pousser)
 - [Pousser les rejets](#pousser-les-rejets)
-- [Piles manuelles : import et envoi](#piles-manuelles--import-et-envoi)
+- [Piles manuelles : import et envoi](#piles-manuelles-import-et-envoi)
 - [Le webhook entrant](#le-webhook-entrant)
 - [Diagnostic dans le visualiseur](#diagnostic-dans-le-visualiseur)
 - [Référence de configuration](#référence-de-configuration)
@@ -28,11 +31,12 @@ Le lien est exclusivement REST dans les deux sens. Facet ne touche jamais à la 
 
 ## Comment les deux voient le même fichier
 
-Tout ce qui suit repose sur une seule idée : **la même photo sur le disque, vue depuis deux conteneurs**.
+Facet et Immich voient le même fichier sur le disque sous des chemins différents :
 
-Facet connaît une photo par son chemin absolu sur la machine qui exécute l'analyse — `/mnt/photos/2026/07/IMG_1234.jpg`. Immich connaît ce même fichier par son propre `originalPath`, c'est-à-dire ce à quoi ce fichier ressemble *depuis l'intérieur du conteneur Immich* — souvent `/usr/src/app/upload/…` pour les ressources envoyées, ou le point de montage que vous avez donné à une bibliothèque externe.
+- **Facet** utilise le chemin absolu sur la machine qui exécute l'analyse, p. ex. `/mnt/photos/2026/07/IMG_1234.jpg`.
+- **Immich** utilise son `originalPath` : le chemin tel qu'il est vu *depuis l'intérieur du conteneur Immich*. C'est souvent `/usr/src/app/upload/…` pour les envois, ou le point de montage d'une bibliothèque externe.
 
-Aucun des deux côtés ne peut deviner la vue de l'autre, vous indiquez donc une bonne fois à Facet la réécriture de préfixe (`immich.path_map`), et toute résolution dans les deux sens y passe. Une fois que c'est correct, le reste est mécanique ; si c'est incorrect, tout rapporte silencieusement « unmatched » — voir [Dépannage](#dépannage).
+Vous indiquez une fois à Facet la réécriture de préfixe, dans `immich.path_map`. Toute résolution y passe. Si elle est incorrecte, tout rapporte « unmatched » — voir [Dépannage](#dépannage).
 
 ```
 Facet path                              Immich originalPath
@@ -40,11 +44,11 @@ Facet path                              Immich originalPath
 └──── facet_prefix ────┘                └────── immich_prefix ──────┘
 ```
 
-La correspondance est utilisée dans les deux sens : en sortie (`--immich-sync` traduit un chemin Facet pour trouver la ressource) et en entrée (le webhook traduit l'`originalPath` d'Immich pour retrouver la photo).
+La correspondance fonctionne dans les deux sens. `--immich-sync` l'utilise pour trouver la ressource Immich d'un chemin Facet. Le webhook l'utilise pour trouver la photo Facet d'un `originalPath` Immich.
 
 ## Étape 1 — partager la bibliothèque avec Immich
 
-La configuration la plus propre est une **bibliothèque externe** : Immich lit les photos là où elles se trouvent déjà, plutôt que d'en posséder une seconde copie. Facet analyse le même répertoire de son côté.
+La configuration la plus simple est une **bibliothèque externe** Immich : Immich lit les photos là où elles se trouvent déjà, et Facet analyse le même répertoire.
 
 1. Dans Immich, allez dans **Administration → External Libraries → Create Library**, choisissez le propriétaire, et ajoutez un chemin d'import pointant vers le répertoire tel que le conteneur Immich le voit.
 2. Assurez-vous que ce répertoire est monté (bind mount) en lecture seule dans le conteneur Immich. Dans `docker-compose.yml` :
@@ -62,15 +66,15 @@ La configuration la plus propre est une **bibliothèque externe** : Immich lit 
    python facet.py /mnt/photos
    ```
 
-Les deux outils détiennent désormais une ligne par fichier. Rien n'est dupliqué sur le disque.
+Aucun fichier n'est dupliqué sur le disque.
 
-Si à la place vous envoyez normalement vers Immich (sauvegarde automatique mobile, l'uploader web) et que vous pointez Facet vers le propre répertoire d'upload d'Immich, l'intégration fonctionne exactement de la même façon — seuls les préfixes diffèrent. Dans ce cas, c'est Immich qui possède l'organisation des fichiers, donc relancez l'analyse Facet après chaque envoi (ou utilisez `--watch`).
+Vous pouvez aussi envoyer vers Immich comme d'habitude (sauvegarde mobile, uploader web) et pointer Facet vers le répertoire d'upload d'Immich. Seuls les préfixes changent. Relancez l'analyse Facet après les envois, ou utilisez `--watch`.
 
 ## Étape 2 — créer une clé API
 
 Dans Immich : **cliquez sur votre avatar → Account Settings → API Keys → New API Key**.
 
-Immich ≥ 3.0 permet de restreindre la portée d'une clé. La synchronisation notes/favoris utilise les portées suivantes ; les piles nécessitent les permissions supplémentaires décrites ci-dessous :
+Immich ≥ 3.0 permet de restreindre une clé à certaines portées. La synchronisation notes/favoris nécessite celles-ci (les piles manuelles en demandent davantage, voir plus bas) :
 
 | Portée | Ce que Facet en fait |
 |-------|-------------------------|
@@ -81,9 +85,9 @@ Immich ≥ 3.0 permet de restreindre la portée d'une clé. La synchronisation n
 | `album.create` | Créer l'album de coups de cœur la première fois |
 | `albumAsset.create` | Ajouter des photos à l'album de coups de cœur |
 
-Omettez les trois derniers si vous laissez `push.top_picks_album` vide — Facet ne touche aux albums que lorsque ce nom est défini.
+Vous pouvez omettre les trois portées d'album si `push.top_picks_album` est vide. Facet ne touche aux albums que lorsque ce nom est défini.
 
-La clé est envoyée en en-tête `x-api-key` à chaque requête. Placez-la dans `scoring_config.json` :
+Facet envoie la clé dans un en-tête `x-api-key`. Placez-la dans `scoring_config.json` :
 
 ```json
 "immich": {
@@ -92,11 +96,15 @@ La clé est envoyée en en-tête `x-api-key` à chaque requête. Placez-la dans 
 }
 ```
 
-> **Une remarque sur `PUT /api/assets`.** Facet écrit les notes avec `PUT /api/assets`, que le document OpenAPI d'Immich marque comme *deprecated*. Les alias `PATCH` de remplacement sont annoncés mais **absents de la spécification publiée** ; il n'y a donc rien vers quoi migrer pour l'instant — `PUT` reste le seul point d'accès qui existe réellement, et Facet continue de l'utiliser. Chaque route Immich que Facet touche vit dans `ImmichClient` (`sync/immich.py`), donc le jour où les routes `PATCH` sortiront, le changement tiendra dans une seule classe.
+> **Remarque :** Facet écrit les notes avec `PUT /api/assets`. Immich le marque comme obsolète, mais son remplaçant n'est pas encore publié ; Facet continue donc de l'utiliser.
 
 ## Étape 3 — mettre en correspondance les chemins
 
-Ajoutez une paire par racine que vous partagez. La première correspondance littérale de préfixe de chaîne l'emporte ; les limites de répertoire ne sont pas déduites. Terminez les préfixes de répertoire par `/` et placez les correspondances étroites avant les correspondances larges :
+Ajoutez une paire par racine partagée. Règles :
+
+- La première correspondance de préfixe l'emporte. C'est une comparaison de chaîne simple, pas de répertoire.
+- Terminez les préfixes de répertoire par `/`.
+- Placez les correspondances étroites avant les correspondances larges.
 
 ```json
 "immich": {
@@ -115,9 +123,9 @@ Deux racines, deux paires :
 ]
 ```
 
-Laissez l'exemple fourni par défaut (`{"facet_prefix": "", "immich_prefix": ""}`) tel quel et les chemins passent inchangés — ce n'est correct que lorsque Facet et Immich voient réellement des chemins absolus identiques, ce qui est le cas si vous exécutez Facet dans l'espace de noms du conteneur Immich, et presque jamais autrement.
+L'exemple fourni par défaut (`{"facet_prefix": "", "immich_prefix": ""}`) laisse les chemins inchangés. Cela ne fonctionne que si Facet et Immich voient des chemins absolus identiques, ce qui est rare sauf si Facet s'exécute dans le conteneur Immich.
 
-Pour lire la vraie valeur, ouvrez n'importe quelle photo dans Immich, appuyez sur `i` pour afficher le panneau d'informations, et comparez le chemin de fichier qui y est indiqué avec le chemin que Facet rapporte pour la même photo.
+Pour trouver la vraie valeur, ouvrez une photo dans Immich et appuyez sur `i` pour afficher le panneau d'informations. Comparez son chemin de fichier avec le chemin que Facet affiche pour la même photo.
 
 ## Étape 4 — tester, puis pousser
 
@@ -132,20 +140,20 @@ python facet.py --immich-sync --dry-run
 python facet.py --immich-sync
 ```
 
-La synchronisation rapporte `matched` / `unmatched` / `updated` / `skipped (unrated)` / `identity_conflicts` / albums créés. Un premier lancement avec un nombre élevé de `unmatched` signifie presque toujours que la correspondance des chemins est incorrecte — voir [Dépannage](#dépannage). En simulation, `updated` compte les modifications vérifiées prévues ; aucune donnée distante ni aucun état de synchronisation local n’est écrit.
+La synchronisation rapporte `matched` / `unmatched` / `updated` / `skipped (unrated)` / `identity_conflicts` / albums créés. Lors d'une simulation, `updated` compte les ressources qui changeraient, et rien n'est écrit. Un nombre élevé de `unmatched` au premier lancement signifie presque toujours que la correspondance des chemins est incorrecte — voir [Dépannage](#dépannage).
 
 Ce qui est poussé :
 
-- **Notes en étoiles 1–5** → le `rating` d'Immich. Une photo que vous n'avez jamais notée ne pousse rien.
+- **Notes en étoiles 1–5** → le `rating` d'Immich. Une photo non notée ne pousse rien.
 - **Favoris** → l'`isFavorite` d'Immich.
-- **Effacements.** Si vous avez noté une photo 5, synchronisé, puis réinitialisé sa note, la synchronisation suivante envoie `rating: null` pour qu'Immich l'oublie aussi. Facet se souvient de ce qu'il a poussé en dernier (dans la table annexe `stats_cache`) précisément pour que cette transition ne soit pas perdue. C'est `null`, jamais `0` — Immich v3 rejette purement et simplement `0`, et un seul lot rejeté interrompt toute la synchronisation.
-- **Un album de coups de cœur facultatif**, rempli à partir de `push.top_picks_min_rating`, lorsque `push.top_picks_album` en nomme un.
+- **Effacements.** Si vous avez noté une photo, synchronisé, puis réinitialisé sa note, la synchronisation suivante envoie `rating: null` pour qu'Immich l'efface aussi. Facet se souvient de ce qu'il a poussé en dernier (dans `stats_cache`) pour cela. Il envoie `null`, jamais `0` : Immich v3 rejette `0`, et un seul lot rejeté interrompt toute la synchronisation.
+- **Un album de coups de cœur** (facultatif), rempli avec les photos notées au moins `push.top_picks_min_rating`, lorsque `push.top_picks_album` est défini.
 
-En mode multi-utilisateurs, `--immich-sync --user alice` pousse les notes `user_preferences` d'Alice au lieu des colonnes globales, et suit son état dans sa propre portée.
+En mode multi-utilisateurs, `--immich-sync --user alice` pousse les notes propres à Alice (`user_preferences`) au lieu des notes globales, et suit son état de synchronisation séparément.
 
 ## Pousser les rejets
 
-Désactivé par défaut. Activez-le et une photo que vous avez rejetée dans la chambre noire de Facet reçoit le propre marqueur de rejet d'Immich :
+Désactivé par défaut. Quand il est activé, une photo que vous rejetez dans la vue de tri de Facet reçoit le marqueur de rejet d'Immich :
 
 ```json
 "immich": {
@@ -159,36 +167,65 @@ Désactivé par défaut. Activez-le et une photo que vous avez rejetée dans la 
 
 Avec `push.rejected` activé :
 
-- Une photo rejetée pousse `rating: -1`, la valeur qu'Immich v3 utilise pour « rejeté ».
-- **Le rejet l'emporte sur les étoiles.** Une photo à 5 étoiles mais rejetée pousse `-1`, pas `5` — vous l'avez jetée, et c'est ce fait qui mérite d'être reflété.
-- **Annuler le rejet l'efface.** Une photo qui a poussé `-1` et dont le rejet est ensuite annulé pousse à la place sa note en étoiles actuelle, ou `rating: null` si elle n'en a aucune. Même mécanisme d'état suivi que pour tout autre effacement.
+- Une photo rejetée pousse `rating: -1`, la valeur « rejeté » d'Immich v3.
+- **Le rejet l'emporte sur les étoiles.** Une photo à 5 étoiles mais rejetée pousse `-1`, pas `5`.
+- **Annuler le rejet l'efface.** La photo pousse alors sa note en étoiles actuelle, ou `rating: null` si elle n'en a aucune.
 - Une photo rejetée ne rejoint jamais l'album de coups de cœur.
-- `push.ratings: false` le supprime. `-1` est une écriture de note, donc une configuration qui a désactivé l'envoi des notes n'en voit pas une se réintroduire en douce.
+- `push.ratings: false` le désactive aussi, puisque `-1` est une note.
 
-Laissez-le désactivé si d'autres personnes (ou votre téléphone) consultent la bibliothèque Immich : un `-1` y est visible, et « rejetée dans Facet » est un jugement de travail que vous ne voulez peut-être pas diffuser.
+Laissez-le désactivé si d'autres personnes (ou votre téléphone) consultent la bibliothèque Immich : elles verront le `-1`.
 
-## Piles manuelles : import et envoi
+## Piles manuelles : import et envoi
 
-Les piles utilisent un **plan puis une application explicites en CLI locale**, avec `--config`, `--db` et `--user` existants. En multi-utilisateur, nommez un utilisateur existant. La clé Immich globale n'est exposée ni au web, ni aux assistants/MCP, ni au webhook pour les piles. La synchronisation notes/favoris reste inchangée. Immich **≥ 3.0** est requis avec vérification des capacités ; ajoutez `user.read` et `stack.read` à `asset.read`, puis `stack.create` et `asset.update` pour l'envoi. La v1 ne demande ni `stack.update` ni `stack.delete`.
+Les piles manuelles ont leur propre flux de **plan/application en CLI locale**, avec les options habituelles `--config`, `--db` et `--user`. La synchronisation notes/favoris n'est pas affectée.
 
-L'aperçu ne modifie aucun côté et ne migre pas la base. Vérifiez son empreinte SHA-256 avant l'application. `--stack-id UUID`, répétable, limite les piles du côté source. `--stack-plan-out` crée atomiquement un nouveau JSON privé (POSIX `0600`), sans écrasement. Limites : **1000 piles, 1000 membres par pile, 20000 membres au total et 16 MiB** ; réduisez avec `--stack-id`. Sous Windows, choisissez un dossier de sortie dont l’ACL limite l’accès à votre compte ; les bits de mode POSIX ne garantissent pas la confidentialité des fichiers Windows.
+Prérequis :
 
-Chaque membre importé doit correspondre uniquement à une photo indexée, visible, disponible et appartenant au compte distant. L'envoi vérifie aussi tous les membres avant de créer une pile distante entièrement non groupée. Un membre absent/ambigu fait ignorer tout le groupe, jamais un sous-ensemble. Un ensemble de membres et une couverture identiques permettent d'adopter le lien durable à l'application. Chevauchement partiel, couverture ou membres différents, ou désempilage divergent : conflit/groupe ignoré ; aucune pile locale ou distante existante n'est modifiée. L'ordre au-delà de la couverture ne fait pas l'aller-retour. Pas de synchronisation bidirectionnelle automatique, de sondage ni de propagation du désempilage.
+- Immich **≥ 3.0** (Facet vérifie aussi la prise en charge des piles à l'exécution).
+- Permissions de la clé : `user.read` et `stack.read` en plus de `asset.read` ; l'envoi nécessite aussi `stack.create` et `asset.update`. `stack.update` et `stack.delete` ne sont pas nécessaires.
+- Les installations multi-utilisateurs doivent nommer un utilisateur existant.
+- La clé Immich n'est jamais utilisée par les opérations de piles depuis la visionneuse web, les assistants (MCP) ou le webhook d'envoi.
 
-Plans, liens et reçus privés sont liés au serveur, compte distant, propriétaire local et empreinte de correspondance des chemins ; tout changement invalide leur réutilisation. Les reçus conservent résultats et identifiants distants sans identifiants de connexion. L'application revalide avant chaque pile puis relit membres/couverture après écriture. Une réponse de création perdue impose une réconciliation avant réessai ; aucun envoi incertain n'est répété aveuglément. L'annulation s'arrête entre piles ; une application explicite ultérieure réconcilie les reçus. Immich n'a pas de compare-and-swap pour la création : un autre client peut intervenir après la dernière vérification. La postvalidation ne garantit ni atomicité distribuée ni annulation automatique. Les tests utilisent un faux serveur HTTP local, sans certifier un déploiement Immich réel.
+Flux de travail :
+
+1. Aperçu. Il est en lecture seule des deux côtés et ne migre pas la base.
+2. Examinez le plan et son empreinte SHA-256.
+3. Appliquez explicitement.
+
+Options et limites :
+
+- `--stack-id UUID` (répétable) limite l'exécution à ces piles source.
+- `--stack-plan-out` écrit un nouveau fichier JSON privé (mode POSIX `0600`) et refuse d'écraser.
+- Un plan contient au plus **1000 groupes, 1000 membres par groupe, 20000 membres au total et 16 MiB**. Utilisez `--stack-id` pour le réduire.
+- Sous Windows, choisissez un dossier de sortie dont l'ACL limite l'accès à votre compte ; les bits de mode POSIX n'y protègent pas le fichier.
+
+Règles de correspondance :
+
+- Chaque membre doit correspondre à exactement une photo indexée, visible et en ligne appartenant au compte distant. Un membre absent ou ambigu fait ignorer tout le groupe.
+- L'envoi ne crée une pile qu'à partir de ressources distantes qui ne sont pas encore empilées.
+- Une correspondance exacte des membres et de la couverture relie les deux piles à l'application.
+- Les chevauchements partiels, les couvertures différentes, les membres modifiés et les cas empilés d'un seul côté sont ignorés comme conflits. Les piles existantes ne sont jamais mises à jour.
+- Seule la couverture fait l'aller-retour ; l'ordre des autres membres, non.
+- Il n'y a pas de synchronisation bidirectionnelle automatique, de sondage ni de propagation du désempilage.
+
+Les plans, liens et reçus sont liés au serveur, au compte distant, au propriétaire local et à la correspondance des chemins. Changez l'un d'eux et l'ancien plan ne s'applique plus. Les reçus conservent les résultats et les identifiants de ressources distantes, jamais d'identifiants de connexion.
+
+L'application revérifie chaque groupe avant d'écrire et le relit ensuite. Si une réponse de création est perdue, Facet la réconcilie avant tout réessai au lieu de la renvoyer. L'annulation s'arrête entre les groupes ; une application ultérieure reprend à partir des reçus.
+
+> **Avertissement :** Immich ne peut pas créer une pile de façon conditionnelle. Un autre client peut modifier les ressources entre la dernière vérification de Facet et l'écriture, et Facet ne peut pas l'annuler.
 
 ## Le webhook entrant
 
-Tout ce qui précède va de Facet vers Immich. Le webhook, lui, est le sens inverse : Immich indique à Facet qu'une ressource vient de changer, et Facet répond immédiatement avec ce qu'il en sait.
+Le webhook fonctionne dans l'autre sens : Immich indique à Facet qu'une ressource a changé, et Facet répond avec ce qu'il en sait.
 
-**Il est désactivé par défaut et ne déclenche jamais d'analyse.** Un webhook est un appel non authentifié par session en provenance d'un autre démon ; laisser un tel appel déclencher du travail GPU donnerait à quiconque possède le jeton un moyen de mettre votre machine à genoux. Voici ce qu'il fait à la place :
+**Il est désactivé par défaut et ne déclenche jamais d'analyse.** À la place :
 
-- **Photo connue et notée** → sa note/son favori est repoussé immédiatement vers Immich, sur-le-champ, sous forme de mise à jour d'une seule ressource. C'est ce qui referme la boucle après une analyse : notez une photo, envoyez-la, et la note atterrit dans Immich sans attendre le prochain `--immich-sync`.
-- **Photo inconnue ou pas encore notée** → le chemin est mémorisé dans une liste d'attente bornée et dédupliquée, et le prochain `--immich-sync` la journalise. Rien n'est analysé.
+- **Photo connue et notée** → Facet repousse immédiatement sa note et son favori vers Immich. Notez une photo, envoyez-la, et la note atterrit dans Immich sans attendre `--immich-sync`.
+- **Photo inconnue ou pas encore notée** → Facet ajoute le chemin à une liste d'attente bornée, et le prochain `--immich-sync` la journalise.
 
 ### Activer
 
-Le jeton est un secret partagé, il vit donc dans l'environnement, jamais dans `scoring_config.json` (ce fichier est réécrit sur place par plusieurs points d'accès et lisible par tout le monde sur la plupart des installations). La configuration nomme la *variable* ; la variable détient la *valeur*.
+Le jeton est un secret : il vit donc dans une variable d'environnement, pas dans `scoring_config.json` (ce fichier est lisible par tout le monde sur la plupart des installations). La configuration nomme la variable ; la variable détient la valeur.
 
 1. Générez un jeton et exportez-le partout où la visionneuse démarre — votre unité systemd, `docker-compose.yml`, ou votre profil de shell :
 
@@ -210,30 +247,30 @@ Le jeton est un secret partagé, il vit donc dans l'environnement, jamais dans `
 
 3. Redémarrez la visionneuse (`python viewer.py`).
 
-Un `token_env` vide, ou une variable non définie ou vide, désactive entièrement le point d'accès — il renvoie **404**, exactement comme `frame.tokens` et `upload.username`. Il n'existe aucun état intermédiaire.
+Si `token_env` est vide, ou si la variable est non définie ou vide, le point d'accès est désactivé et renvoie **404** (comme `frame.tokens` et `upload.username`).
 
 ### Diriger Immich vers le webhook
 
 Dans Immich ≥ 3.0 : **Administration → Workflows → Create Workflow**.
 
-1. **Trigger** — choisissez l'événement de ressource que vous voulez répercuter. `Asset uploaded` est celui qui est utile ; ajoutez `Asset updated` si vous voulez aussi que les modifications redéclenchent l'événement.
+1. **Trigger** — `Asset uploaded`. Ajoutez `Asset updated` si les modifications doivent aussi le déclencher.
 2. **Action** — choisissez **Webhook**.
 3. **URL** — `http://facet.local:5000/api/immich/webhook`, avec une adresse que le conteneur Immich peut réellement atteindre. Si les deux tournent dans Docker sur un même hôte, c'est le nom du service (`http://facet:5000/…`), pas `localhost`.
-4. **Header** — nom `x-facet-token`, valeur le jeton que vous avez généré. Le nom doit correspondre à `webhook.header` ; renommez les deux ensemble si votre installation a besoin d'un nom différent. `Authorization: Bearer <token>` est aussi accepté, pour les proxys qui n'offrent que cela.
+4. **Header** — nom `x-facet-token`, valeur votre jeton. Le nom doit correspondre à `webhook.header`. `Authorization: Bearer <token>` est aussi accepté, pour les proxys qui n'offrent que cela.
 5. Enregistrez, puis envoyez une photo pour confirmer.
 
 ### Ce que renvoie le point d'accès
 
 | Statut | Signification |
 |--------|---------|
-| `202` | Corps compris. Le récapitulatif JSON compte les ressources de *cette* livraison : `received` / `pushed` / `skipped` / `pending` / `unmatched` / `failed`. |
-| `204` | JSON valide, mais aucune ressource reconnue par Facet. Journalisé, pas une erreur — la forme du payload appartient à Immich, qui peut la faire évoluer. |
-| `400` | Le corps n'était pas du JSON du tout. |
+| `202` | Accepté. Le JSON compte les ressources de cette livraison : `received` / `pushed` / `skipped` / `pending` / `unmatched` / `failed`. |
+| `204` | JSON valide, mais aucune ressource reconnue par Facet. Journalisé, pas une erreur. |
+| `400` | Le corps n'était pas du JSON. |
 | `401` | Aucun jeton dans la requête. |
 | `403` | Mauvais jeton. |
 | `404` | La fonctionnalité est désactivée (aucun jeton configuré). |
 
-Facet lit `originalPath` dans les objets, listes et enveloppes `asset` / `data` / `items` / `assets`. Un `id` fourni est relu sur le serveur configuré, puis comparé au chemin exact et au propriétaire/à la bibliothèque sélectionnés avant toute mise à jour. Une incohérence compte comme `failed`.
+Facet lit `originalPath` où qu'il se trouve dans le payload : une ressource seule, `{"asset": {…}}`, une liste, ou n'importe lequel de ces cas sous `data` / `items` / `assets`. Si le payload contient l'`id` de la ressource, Facet la récupère dans Immich et vérifie son chemin et son propriétaire/sa bibliothèque avant la mise à jour. Une incohérence compte comme `failed`.
 
 Les chemins en attente sont rapportés par la synchronisation suivante :
 
@@ -241,18 +278,24 @@ Les chemins en attente sont rapportés par la synchronisation suivante :
 WARNING  Immich webhook saw an asset Facet has not scored: /mnt/photos/2026/08/IMG_9999.jpg
 ```
 
-Analysez ces photos (`python facet.py /mnt/photos`) et elles disparaissent de la liste à la synchronisation suivante. La liste est plafonnée à `max_pending` entrées, les plus anciennes étant supprimées en premier, si bien qu'un Immich bavard ne peut jamais la faire grossir sans limite.
+Analysez ces photos (`python facet.py /mnt/photos`) et elles quittent la liste à la synchronisation suivante. La liste garde au plus `max_pending` entrées et supprime les plus anciennes en premier.
 
 ### Notes de sécurité
 
-- Le jeton est comparé à temps constant. Un jeton erroné produit un simple `403`, sans aucun indice temporel.
-- Servez la visionneuse en HTTPS si Immich l'atteint via un chemin moins sûr qu'un réseau bridge privé — le jeton voyage dans un en-tête à chaque envoi.
-- Effectuez la rotation en changeant ensemble la variable d'environnement et l'en-tête du workflow Immich, puis en redémarrant la visionneuse.
-- Le webhook lit les colonnes de note globales, donc en mode multi-utilisateurs il reflète la note partagée/globale, pas la surcouche d'un utilisateur en particulier. Si ce sont des notes par utilisateur que vous voulez dans Immich, laissez le webhook désactivé et utilisez `--immich-sync --user <nom>` sur une planification récurrente.
+- Le jeton est comparé à temps constant ; un jeton erroné reçoit un simple `403`, sans indice temporel.
+- Servez la visionneuse en HTTPS sauf si Immich l'atteint par un réseau privé : le jeton voyage dans un en-tête à chaque envoi.
+- Pour effectuer la rotation du jeton, changez ensemble la variable d'environnement et l'en-tête du workflow Immich, puis redémarrez la visionneuse.
+- Le webhook pousse la note globale, pas celle d'un utilisateur en particulier. Pour des notes par utilisateur dans Immich, laissez le webhook désactivé et lancez `--immich-sync --user <nom>` selon un calendrier.
 
 ## Diagnostic dans le visualiseur
 
-Dans le menu utilisateur, ouvrez **Diagnostic Immich**. En multi-utilisateur, seuls les superadministrateurs y accèdent ; en mono-utilisateur, il faut un accès édition verrouillé ou une édition locale approuvée. **Tester la connexion** lit uniquement la version et l’accès au compte, sans écriture distante. La couverture des chemins porte sur 200 photos indexées au maximum et ne vérifie pas les éléments distants. L’état enregistré peut dater d’une ancienne configuration. La version ne confirme pas les permissions des piles. Aucune clé ni chemin du serveur n’est renvoyé.
+Dans le menu utilisateur, ouvrez **Diagnostic Immich**. En multi-utilisateur, il faut un accès superadministrateur ; en mono-utilisateur, un accès édition (ou une édition locale approuvée).
+
+- Rien n'est lu depuis Immich avant que vous ne cliquiez sur **Tester la connexion**. Le test lit la version du serveur et l'accès au compte, et n'écrit rien.
+- La couverture des chemins vérifie au plus 200 photos indexées. Elle ne confirme pas que chacune correspond à une ressource Immich.
+- L'heure de dernière synchronisation peut précéder un changement du serveur configuré.
+- La vérification de version ne contrôle pas les permissions des piles.
+- Les identifiants et les chemins du serveur ne sont jamais affichés.
 
 ## Référence de configuration
 
@@ -287,79 +330,84 @@ Le bloc `immich` complet, avec les valeurs par défaut fournies :
 |-----|---------|---------|
 | `url` | `""` | URL de base d'Immich, `http` ou `https`. Une barre oblique finale est retirée. |
 | `api_key` | `""` | Clé API, envoyée comme `x-api-key`. Vide interrompt toute synchronisation avec une erreur explicite. |
-| `owner_id` | `""` | Identifiant exact du propriétaire Immich ; vide désactive ce filtre. Un champ absent ne satisfait pas une sélection explicite. |
-| `library_id` | `""` | Identifiant exact de la bibliothèque Immich ; vide désactive le filtre, sans sélectionner une bibliothèque null. |
-| `path_map` | une paire vide | Réécritures de préfixe entre les chemins Facet et les valeurs `originalPath` d'Immich. La première correspondance l'emporte ; utilisé dans les deux sens. |
+| `owner_id` | `""` | Ne retient que les ressources ayant exactement cet `ownerId` Immich. |
+| `library_id` | `""` | Ne retient que les ressources de cette `libraryId` Immich exacte. Vide signifie n'importe quelle bibliothèque. |
+| `path_map` | une paire vide | Réécritures de préfixe entre les chemins Facet et l'`originalPath` d'Immich. La première correspondance l'emporte ; utilisé dans les deux sens. |
 | `push.ratings` | `true` | Pousse les notes en étoiles 1–5 (et leurs effacements). |
 | `push.favorites` | `true` | Pousse `isFavorite` (et son effacement). |
 | `push.rejected` | `false` | Pousse `rating: -1` pour les photos rejetées dans Facet. Nécessite `push.ratings`. |
 | `push.top_picks_album` | `""` | Nom de l'album à remplir. Vide signifie que Facet ne touche jamais aux albums. |
 | `push.top_picks_min_rating` | `4` | Note en étoiles minimale pour cet album. |
-| `webhook.token_env` | `""` | Nom de la variable d'environnement contenant le secret du webhook. Vide ⇒ le point d'accès renvoie 404. |
+| `webhook.token_env` | `""` | Variable d'environnement contenant le secret du webhook. Vide désactive le point d'accès. |
 | `webhook.header` | `"x-facet-token"` | En-tête dans lequel Immich envoie le jeton. |
-| `webhook.max_pending` | `500` | Plafond de la liste des chemins mémorisés mais non notés. |
+| `webhook.max_pending` | `500` | Longueur maximale de la liste des chemins en attente (non notés). |
 | `timeout_seconds` | `30` | Délai d'expiration HTTP par requête. |
 
 ## Dépannage
 
 ### Tout revient en `unmatched`
 
-La correspondance des chemins est incorrecte — c'est de loin la panne la plus fréquente.
+La correspondance des chemins est incorrecte. C'est de loin la panne la plus fréquente.
 
 1. Ouvrez une photo dans Immich et appuyez sur `i`. Notez le chemin dans le panneau d'informations.
 2. Retrouvez le chemin de cette même photo dans Facet (le panneau de détail de la galerie, ou `sqlite3 photos.db "SELECT path FROM photos LIMIT 5"`).
-3. Les deux partagent un *suffixe*. Ce qui diffère, c'est le préfixe, et ces deux préfixes sont exactement `facet_prefix` et `immich_prefix`.
+3. Les deux chemins se terminent de la même façon. Les parties qui diffèrent sont votre `facet_prefix` et votre `immich_prefix`.
 
 Pièges courants :
 
-- **Une barre oblique finale manquante.** `"/mnt/photos"` → `"/usr/src/app/external"` réécrit aussi `/mnt/photosXYZ/a.jpg`. Terminez toujours les deux préfixes par `/`.
-- **Chemin hôte contre chemin conteneur.** Le chemin Immich est ce que voit le *conteneur*. `docker compose exec immich-server ls /usr/src/app/external` tranche la question.
-- **Liens symboliques et montages liés (bind mounts).** Immich stocke le chemin qu'il a parcouru. Si votre bibliothèque est atteinte via un lien symbolique d'un seul côté, les chaînes diffèrent même si le fichier est unique.
-- **Casse et Unicode.** La comparaison est exacte. Une bibliothèque sur un partage insensible à la casse peut contenir à la fois `/Photos/` et `/photos/` ; seule l'orthographe stockée correspond.
-- **Immich n'a pas encore indexé le fichier.** Lancez **Scan All Libraries** et vérifiez que la ressource existe bien dans Immich avant d'incriminer la correspondance.
+- **Une barre oblique finale manquante.** `"/mnt/photos"` → `"/usr/src/app/external"` réécrit aussi `/mnt/photosXYZ/a.jpg`. Terminez les deux préfixes par `/`.
+- **Chemin hôte contre chemin conteneur.** Le chemin Immich est ce que voit le *conteneur*. Vérifiez avec `docker compose exec immich-server ls /usr/src/app/external`.
+- **Liens symboliques et montages liés (bind mounts).** Immich stocke le chemin qu'il a parcouru. Un lien symbolique d'un seul côté fait différer les chaînes.
+- **Casse et Unicode.** La comparaison est exacte. Sur un partage insensible à la casse, `/Photos/` et `/photos/` ne correspondent pas l'un à l'autre.
+- **Immich n'a pas encore indexé le fichier.** Lancez **Scan All Libraries** et vérifiez que la ressource existe dans Immich.
 
-`--immich-sync --dry-run` nomme les 20 premiers chemins non appariés dans le journal ; cette liste identifie généralement le mauvais préfixe au premier coup d'œil.
+`--immich-sync --dry-run` journalise les 20 premiers chemins non appariés, ce qui révèle généralement le mauvais préfixe.
 
 ### `--immich-test` échoue
 
 - `Unsupported Immich URL scheme` — `url` a besoin de `http://` ou `https://`.
 - `HTTP 401` — la clé API est incorrecte ou a été révoquée.
-- `HTTP 403` — la clé est valide mais lui manque `server.about`. Recréez-la avec les six portées ci-dessus.
+- `HTTP 403` — il manque `server.about` à la clé. Recréez-la avec les six portées ci-dessus.
 - Connexion refusée / délai dépassé — le port est incorrect, ou Facet ne peut pas atteindre le conteneur. Testez avec `curl -H "x-api-key: …" http://immich.local:2283/api/server/about` depuis la machine qui exécute Facet.
 
 ### Le webhook renvoie 404
 
-La fonctionnalité est désactivée. Soit `webhook.token_env` est vide, soit la variable qu'il nomme est non définie ou vide *dans l'environnement propre de la visionneuse*. L'exporter dans votre shell interactif ne change rien pour une visionneuse gérée par systemd ou Docker — définissez-la dans le fichier d'unité ou le fichier compose, puis redémarrez.
+La fonctionnalité est désactivée : `webhook.token_env` est vide, ou la variable qu'il nomme est non définie ou vide *dans l'environnement de la visionneuse*. L'exporter dans votre shell ne l'atteint pas si la visionneuse est lancée par systemd ou Docker. Définissez-la dans le fichier d'unité ou le fichier compose, puis redémarrez.
 
 ### Le webhook renvoie 401 ou 403
 
-`401` signifie qu'aucun jeton n'est arrivé : le nom d'en-tête envoyé par Immich ne correspond pas à `webhook.header`. `403` signifie qu'un jeton est arrivé mais qu'il était erroné — comparez la valeur d'en-tête du workflow avec la variable d'environnement, caractère par caractère.
+`401` : aucun jeton n'est arrivé, donc le nom d'en-tête envoyé par Immich ne correspond pas à `webhook.header`. `403` : le jeton est erroné. Comparez la valeur d'en-tête du workflow avec la variable d'environnement.
 
 ### `ModuleNotFoundError: No module named 'sync'`
 
-Le serveur démarre et semble sain, mais le webhook échoue seulement quand Immich l'appelle réellement, et `--immich-sync` échoue d'emblée. Vérifiez avec :
+Le serveur semble sain, mais le webhook échoue quand Immich l'appelle et `--immich-sync` échoue d'emblée. Vérifiez avec :
 
 ```bash
 docker run --rm --entrypoint python ghcr.io/ncoevoet/facet:latest -c "import sync.immich"
 ```
 
-Un `ModuleNotFoundError: No module named 'sync'` signifie que votre image est antérieure au correctif — `sync/` manquait de la construction Docker. Récupérez l'image actuelle, ou reconstruisez-la depuis un dépôt qui inclut le correctif.
+Si vous obtenez `ModuleNotFoundError: No module named 'sync'`, votre image Docker est trop ancienne. Récupérez l'image actuelle ou reconstruisez-la depuis un dépôt à jour.
 
 ### Les notes se poussent, mais pas les effacements
 
-Facet n'envoie un effacement que pour une photo qu'il a réellement poussée auparavant ; cette mémoire vit dans `stats_cache`, dans la base de données de Facet. Restaurer une base de données plus ancienne (ou repartir d'une base neuve) la fait perdre, et une note effacée pendant cet intervalle ne sera pas désactivée dans Immich. Re-notez puis re-effacez la photo, ou corrigez-la directement dans Immich.
+Facet n'efface qu'une note qu'il a déjà poussée, et il s'en souvient dans `stats_cache`, dans la base de données de Facet. Restaurer une base plus ancienne, ou en utiliser une neuve, perd cette mémoire : une note effacée pendant cet intervalle reste dans Immich. Re-notez puis re-effacez la photo, ou corrigez-la dans Immich.
 
 ### Les notes apparaissent sur les mauvaises photos
 
-Les chemins correspondant à plusieurs identifiants distants, ou plusieurs chemins Facet ciblant le même chemin distant, sont refusés et comptés dans `identity_conflicts`. Aucun changement ni état de synchronisation confirmé pour ces chemins ; les photos sans ambiguïté peuvent continuer. Corrigez les racines ou sélectionnez `owner_id` et `library_id`, puis réessayez.
+Facet ignore les correspondances ambiguës et les signale comme `identity_conflicts` :
 
-Les contrôles d’identité utilisent l’URL et la clé API configurées. Les réponses doivent contenir `id` et `originalPath` ; les champs doivent correspondre aux portées de propriétaire et de bibliothèque choisies. Un ID de webhook est vérifié en lisant l’asset et toutes les pages de recherche du chemin exact : un doublon, un ID différent ou une pagination invalide empêche la modification. Une réponse réussie confirme l’acceptation HTTP ; les traitements de métadonnées peuvent rester en attente.
+- un chemin Facet qui correspond à plusieurs ressources Immich
+- plusieurs chemins Facet qui désignent le même chemin Immich
 
-Les lots webhook refusent les entrées concernées si plusieurs chemins Facet revendiquent la même cible ou le même ID distant. Toutes les identités sont résolues avant toute écriture ; les alias incohérents comptent comme `failed` et ne confirment aucun état d’envoi.
+Rien n'est écrit pour ces chemins ; les autres photos se synchronisent normalement.
+
+Un lot de webhook est plus strict : si plusieurs chemins Facet revendiquent la même cible ou le même identifiant de ressource, chaque entrée éligible du lot est refusée et comptée comme `failed`. Corrigez les racines qui se chevauchent dans `path_map`, ou renseignez `owner_id` et `library_id`, puis réessayez. Ne devinez pas le propriétaire à partir du nom d'une personne ou du chemin.
+
+Les réponses d'Immich doivent contenir `id` et `originalPath`, et correspondre au propriétaire et à la bibliothèque configurés. Une mise à jour réussie signifie qu'Immich l'a acceptée ; son propre traitement de métadonnées en arrière-plan peut encore être en cours.
 
 ### `rating: 0 is not valid`
 
-Le serveur Immich est antérieur à la version 3.0. Mettez-le à niveau — la sémantique d'effacement de Facet a besoin de `null`, et `push.rejected` a besoin de `-1` ; il n'existe aucun repli qui fonctionne sur la 2.x.
+Le serveur Immich est antérieur à la version 3.0. Mettez-le à niveau — la sémantique d'effacement de Facet a besoin de `null`, et `push.rejected` a besoin de `-1` ; il n'existe aucun repli qui fonctionne sur la 2.x.
 
 ---
 

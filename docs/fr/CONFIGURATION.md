@@ -2,7 +2,7 @@
 
 > 🌐 [English](../CONFIGURATION.md) · **Français** · [Deutsch](../de/CONFIGURATION.md) · [Italiano](../it/CONFIGURATION.md) · [Español](../es/CONFIGURATION.md) · [Português](../pt/CONFIGURATION.md) · [简体中文](../zh/CONFIGURATION.md)
 
-Chaque réglage est fourni dans `config/scoring_config.default.json` puis surchargé, clé par clé, depuis votre propre `scoring_config.json` — voir [Valeurs par défaut et votre surcharge](#valeurs-par-défaut-et-votre-surcharge). Après modification, exécutez `python facet.py --recompute-average` pour mettre à jour les scores (aucun GPU requis).
+Chaque réglage est livré dans `config/scoring_config.default.json`. Votre propre `scoring_config.json` le surcharge clé par clé — voir [Valeurs par défaut et votre surcharge](#valeurs-par-défaut-et-votre-surcharge). Après une modification, lancez `python facet.py --recompute-average` pour mettre à jour les scores (pas de GPU nécessaire).
 
 ## Table des matières
 
@@ -49,14 +49,9 @@ Chaque réglage est fourni dans `config/scoring_config.default.json` puis surcha
 
 ## Valeurs par défaut et votre surcharge
 
-`scoring_config.json` ne contient **que ce que vous avez modifié**. Tout ce que Facet
-fournit vit dans `config/scoring_config.default.json`, et votre fichier est résolu
-par-dessus celui-ci : tout ce que vous omettez conserve la valeur livrée. Une toute
-nouvelle installation n'a aucun `scoring_config.json` et fonctionne entièrement sur les
-valeurs par défaut.
+`scoring_config.json` ne contient **que ce que vous avez modifié**. Facet le résout par-dessus `config/scoring_config.default.json` : tout ce que vous omettez garde la valeur livrée. Une installation neuve n'a pas de `scoring_config.json` et fonctionne avec les valeurs par défaut.
 
-Ainsi, pour augmenter le poids esthétique des portraits et définir un mot de passe
-d'édition, le fichier complet est :
+Pour augmenter le poids esthétique des portraits et définir un mot de passe d'édition, le fichier complet est :
 
 ```json
 {
@@ -65,69 +60,30 @@ d'édition, le fichier complet est :
 }
 ```
 
-Deux règles régissent la manière dont les deux sont combinés :
+Comment les deux fichiers se combinent :
 
-- **Les objets fusionnent clé par clé.** `{"performance": {"mmap_size_mb": 4096}}`
-  change ce seul réglage et laisse `cache_size_mb`, ainsi que toute autre clé de
-  `performance`, à sa valeur livrée.
-- **Les tableaux remplacent en bloc.** Si votre fichier comporte un tableau
-  `categories`, il remplace entièrement celui livré — il n'est pas fusionné catégorie
-  par catégorie. C'est délibéré : `categories` est évalué au premier qui correspond
-  dans l'ordre de priorité, et `scoring_contexts.*.promote` est lu dans l'ordre où vous
-  l'écrivez, si bien que fusionner les tableaux élément par élément réordonnerait
-  silencieusement la notation. C'est aussi le seul moyen de **supprimer** quelque
-  chose : une catégorie que vous omettez de votre tableau disparaît, alors qu'un
-  tableau fusionné continuerait à la renvoyer.
+- **Les objets fusionnent clé par clé.** `{"performance": {"mmap_size_mb": 4096}}` change ce seul réglage ; `cache_size_mb` et toutes les autres clés `performance` gardent leurs valeurs livrées.
+- **Les tableaux remplacent en bloc.** Un tableau `categories` dans votre fichier remplace entièrement celui livré. L'ordre compte (`categories` est en premier-qui-correspond-gagne, `scoring_contexts.*.promote` est lu dans l'ordre), et omettre une catégorie de votre tableau la supprime.
 
-  Conséquence pratique : changer un seul poids dans une seule catégorie signifie que
-  votre fichier les porte toutes. Copiez le tableau `categories` depuis
-  `config/scoring_config.default.json`, modifiez-le et conservez-le — les quelque 1500
-  autres lignes de la configuration livrée restent hors de votre fichier.
+Pour changer un poids dans une catégorie, copiez le tableau `categories` entier depuis `config/scoring_config.default.json`, modifiez-le et gardez-le dans votre fichier.
 
 ### Mettre à niveau une installation existante
 
-Rien à faire : un `scoring_config.json` complet issu d'une version antérieure se
-résout sur lui-même et continue de fonctionner. Mais vos propres modifications sont
-invisibles au milieu de 3700 lignes de valeurs livrées, et les réglages que vous n'avez
-jamais choisis restent figés à la valeur qu'ils avaient au moment où vous avez copié le
-fichier.
+Rien à faire : un `scoring_config.json` complet issu d'une version antérieure fonctionne toujours. Toute écriture de Facet dans le fichier (enregistrement des poids ou des priorités dans la visionneuse, changement d'un seuil de panorama, première connexion qui met à niveau un mot de passe en clair, scan où `validate_weights` corrige des poids) le réécrit sous forme de surcharge et supprime toute clé égale à la valeur livrée.
 
-Vous n'avez rien à faire non plus pour que cela arrive : toute écriture dans
-`scoring_config.json` réécrit déjà le fichier entier comme la surcharge qu'il est, en
-supprimant toute clé encore identique au défaut livré, pas seulement celle qu'elle
-visait à changer. Enregistrer des poids ou une priorité de catégorie depuis
-l'interface du viewer le fait. Un changement de seuil panoramique aussi, la première
-connexion réussie avec un mot de passe en clair (qui est promu en hash dans cette même
-écriture), et même un scan ordinaire, si `validate_weights` corrige les poids d'une
-catégorie au passage.
+Pour le compacter à la demande, avec une copie de sauvegarde `0600` faite au préalable :
 
 ```bash
 python database.py --compact-config
 ```
 
-fait la même compaction à la demande, plutôt que d'attendre que la prochaine écriture
-la déclenche. L'opération est sans perte — le fichier se résout ensuite sur exactement
-la même configuration — et son véritable avantage restant est la sauvegarde : il prend
-une copie en `0600` du fichier avant d'écrire. Toutes les écritures ne le font pas ;
-le chemin de scan (`ScoringConfig.save_config`) n'en prend aucune, volontairement (voir
-sa docstring dans `config/scoring_config.py:481`), donc préférez `--compact-config`
-quand vous voulez une sauvegarde enregistrée plutôt que de compter sur l'écriture qui
-s'exécutera ensuite.
+Le résultat se résout exactement en la même configuration.
 
-> **Le compromis, dit franchement.** Une fois qu'une valeur est supprimée parce
-> qu'elle correspondait au défaut, une future version de Facet qui change ce défaut
-> change aussi votre comportement — et c'est n'importe quelle écriture, pas seulement
-> `--compact-config`, qui la supprime. C'est précisément le but — c'est ainsi que les
-> nouveaux réglages vous parviennent sans que vous ayez à éditer votre fichier. La
-> seule chose qui fixe réellement une valeur contre un futur changement de défaut est
-> de la définir à quelque chose de *différent* du défaut livré : une valeur qui
-> correspond simplement au défaut ne peut pas survivre dans le fichier — la prochaine
-> écriture la supprime, qu'il s'agisse d'une compaction volontaire ou non.
-
+> **Remarque :** Une valeur égale à la valeur livrée ne reste pas dans votre fichier. Si une version ultérieure change cette valeur par défaut, votre comportement change aussi. Pour figer une valeur, elle doit différer de la valeur par défaut.
 
 ## Utilisateurs
 
-Mode multi-utilisateur optionnel. Lorsque la clé `users` est présente (avec au moins un utilisateur), l'authentification par mot de passe unique est remplacée par une connexion par utilisateur.
+Mode multi-utilisateur optionnel. Lorsque la clé `users` contient au moins un utilisateur, une connexion par utilisateur remplace l'authentification par mot de passe unique.
 
 ```json
 {
@@ -156,14 +112,19 @@ Mode multi-utilisateur optionnel. Lorsque la clé `users` est présente (avec au
 
 | Champ | Type | Description |
 |-------|------|-------------|
-| `password_hash` | chaîne | Empreinte PBKDF2-HMAC-SHA256 (`salt_hex:dk_hex`). Générée par la commande `--add-user`. |
+| `password_hash` | string | Hachage PBKDF2-HMAC-SHA256 (`salt_hex:dk_hex`), généré par `--add-user` |
 | `display_name` | chaîne | Affiché dans l'en-tête de l'interface |
 | `role` | chaîne | `user`, `admin` ou `superadmin` |
-| `directories` | tableau | Répertoires photo privés de cet utilisateur. Règles de correspondance des entrées : voir [Répertoires partagés](#répertoires-partagés) |
+| `directories` | array | Dossiers de photos privés de cet utilisateur (correspondance : voir [Dossiers partagés](#répertoires-partagés)) |
 
 ### Répertoires partagés
 
-La clé `shared_directories` (au même niveau que les objets utilisateur) liste les répertoires visibles par tous les utilisateurs. Les entrées de `directories` et `shared_directories` sont comparées aux chemins que le scanner a stockés. La casse ASCII est ignorée sous Windows et macOS, et pour les entrées UNC ou à lettre de lecteur sur tout hôte. Sur les autres hôtes (Linux, par exemple), la casse compte : écrivez chaque entrée exactement comme le scanner l'a stockée. Limites connues : une différence de casse hors ASCII, et un lecteur réseau mappé sur un hôte qui ne peut pas le résoudre. Une entrée vide n'accorde rien.
+`shared_directories` (au même niveau que les objets utilisateur) liste les dossiers que tous les utilisateurs peuvent voir. Les entrées de `directories` et de `shared_directories` sont comparées aux chemins enregistrés par le scanner :
+
+- La casse ASCII est ignorée sous Windows et macOS, et pour les entrées UNC ou à lettre de lecteur sur n'importe quel hôte.
+- Ailleurs (Linux, par exemple) la casse compte : écrivez chaque entrée exactement comme le scanner l'a enregistrée.
+- Non gérés : les différences de casse non ASCII, et un lecteur réseau mappé que l'hôte ne sait pas résoudre.
+- Une entrée vide n'accorde rien.
 
 ### Rôles
 
@@ -175,26 +136,26 @@ La clé `shared_directories` (au même niveau que les objets utilisateur) liste 
 
 ### Ajouter des utilisateurs
 
-Les utilisateurs sont créés uniquement via la ligne de commande — il n'existe ni interface ni API d'inscription :
+Les utilisateurs se créent uniquement depuis la CLI ; il n'y a ni interface ni API d'inscription :
 
 ```bash
 python database.py --add-user alice --role superadmin --display-name "Alice"
 # Demande un mot de passe, écrit l'empreinte dans scoring_config.json
 ```
 
-Après l'ajout d'un utilisateur, modifiez `scoring_config.json` pour configurer ses `directories`.
+Modifiez ensuite `scoring_config.json` pour définir leurs `directories`.
 
 ### Rétrocompatibilité
 
-- Absence de clé `users` = mode mono-utilisateur historique (comportement inchangé)
-- `viewer.password` et `viewer.edition_password` sont ignorés en mode multi-utilisateur
-- Les notes existantes dans la table `photos` restent valables en mode mono-utilisateur ; utilisez `--migrate-user-preferences` pour les copier
+- Pas de clé `users` = mode mono-utilisateur (comportement inchangé).
+- `viewer.password` et `viewer.edition_password` sont ignorés en mode multi-utilisateur.
+- Les notes existantes de la table `photos` restent pour le mode mono-utilisateur ; `--migrate-user-preferences` les copie.
 
 ---
 
 ## Analyse
 
-Contrôle le comportement d'analyse des répertoires.
+Contrôle les dossiers que le scan parcourt.
 
 ```json
 {
@@ -207,16 +168,22 @@ Contrôle le comportement d'analyse des répertoires.
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `skip_hidden_directories` | `true` | Ignorer les répertoires commençant par `.` lors de l'analyse des photos |
-| `skip_directories` | `["@eaDir", "#recycle", "#snapshot", "@Recycle"]` | Globs de noms de répertoires (`fnmatch`, sensibles à la casse, appliqués au nom du dossier à toute profondeur) exclus de l'analyse : `@eaDir` de Synology (ses miniatures `SYNOPHOTO_THUMB_*.jpg` ne sont pas des photos), `#recycle`, `#snapshot`, `@Recycle` de QNAP. Votre liste remplace entièrement celle par défaut ; `[]` désactive l'exclusion par nom. La racine de l'analyse n'est jamais exclue. Les photos déjà indexées depuis ces dossiers restent dans la base |
+| `skip_hidden_directories` | `true` | Ignorer les dossiers dont le nom commence par `.` |
+| `skip_directories` | `["@eaDir", "#recycle", "#snapshot", "@Recycle"]` | Motifs de noms de dossier ignorés à toute profondeur |
+
+Remarques sur `skip_directories` :
+- Les motifs utilisent `fnmatch`, sont sensibles à la casse et ne portent que sur le nom du dossier.
+- Les valeurs par défaut couvrent `@eaDir` de Synology (ses miniatures `SYNOPHOTO_THUMB_*.jpg`), `#recycle`, `#snapshot` et `@Recycle` de QNAP.
+- Votre liste remplace celle par défaut ; `[]` désactive l'exclusion par nom. La racine du scan n'est jamais ignorée.
+- Les photos déjà indexées depuis ces dossiers restent dans la base de données.
 
 ---
 
 ## Catégories
 
-Tableau de définitions de catégories. Voir [Notation](SCORING.md) pour la documentation détaillée des catégories.
+Tableau de définitions de catégories. Voir [Évaluation](SCORING.md) pour le guide complet des catégories.
 
-Chaque catégorie possède :
+Chaque catégorie possède :
 - `name` - Identifiant de la catégorie
 - `priority` - Plus la valeur est faible, plus la priorité est élevée (évaluée en premier)
 - `filters` - Conditions de correspondance
@@ -224,17 +191,17 @@ Chaque catégorie possède :
 - `modifiers` - Ajustements de comportement
 - `tags` - Vocabulaire CLIP pour la correspondance par étiquettes
 
-> **Poids de forme et d'harmonie colorimétrique.** Le bloc `weights` de chaque catégorie porte cinq clés de métriques explicables — `symmetry_percent`, `balance_percent`, `edge_entropy_percent`, `fractal_percent` et `color_harmony_percent` — renseignées par `--recompute-form`. Elles sont livrées à `0` dans chaque catégorie, si bien que les agrégats restent identiques au bit près jusqu'à ce que vous en pondériez une (relancez alors `--recompute-average`). La somme des poids d'une catégorie doit toujours faire 100.
+> **Poids de forme et d'harmonie des couleurs.** Les `weights` de chaque catégorie ont cinq clés remplies par `--recompute-form` : `symmetry_percent`, `balance_percent`, `edge_entropy_percent`, `fractal_percent` et `color_harmony_percent`. Elles sont livrées à `0`, donc les scores ne changent pas tant que vous n'en pondérez pas une (puis lancez `--recompute-average`). Les poids totalisent toujours 100.
 
-> **`quality_percent` compte dans `aesthetic`.** La métrique de qualité n'a pas de score propre : le `quality_percent` d'une catégorie est donc ajouté à son `aesthetic_percent` avant le calcul. Les poids totalisent toujours 100. Voir [SCORING.md](SCORING.md).
+> **`quality_percent` compte pour `aesthetic`.** La qualité n'a pas de score propre : `quality_percent` est donc ajouté à `aesthetic_percent` avant le calcul. Voir [SCORING.md](SCORING.md).
 
-> **La catégorie `astro` fournie exige une image sombre.** Outre l'un de ses tags, elle exige `luminance_max: 0.30` (luminance moyenne d'au plus 0,30) : une scène lumineuse étiquetée `aurora` ou `stars` n'est pas `astro`. Les tableaux sont remplacés en bloc (voir [Valeurs par défaut et votre surcharge](#valeurs-par-défaut-et-votre-surcharge)) : un `scoring_config.json` avec son propre tableau `categories` garde sa propre entrée `astro` et ne reçoit pas ce filtre. Ajoutez `"luminance_max": 0.30` à `astro.filters`, ou supprimez le tableau. `python facet.py --doctor` affiche un « Config notice » quand votre entrée `astro` n'a pas de `luminance_max`. Lancez ensuite `--recompute-average` (après une mise à jour, lancez d'abord `--recompute-silhouette`, puis `--recompute-average` deux fois ; voir [COMMANDS.md](COMMANDS.md)).
+> **La catégorie `astro` livrée exige une image sombre.** Outre l'un de ses tags, elle requiert `luminance_max: 0.30` (luminance moyenne d'au plus 0.30), si bien qu'une scène lumineuse taguée `aurora` ou `stars` n'est pas `astro`. Si votre `scoring_config.json` a son propre tableau `categories`, son entrée `astro` ne reçoit pas ce filtre : ajoutez `"luminance_max": 0.30` sous `astro.filters`, ou supprimez le tableau. `python facet.py --doctor` affiche un « Config notice » lorsque `astro` n'a pas de `luminance_max`. Lancez ensuite `--recompute-average` (après une mise à niveau : d'abord `--recompute-silhouette`, puis `--recompute-average` deux fois ; voir [COMMANDS.md](COMMANDS.md)).
 
 ---
 
 ## Contextes de notation
 
-Un contexte de notation est un **delta** nommé appliqué à l'ordre de priorité global des `categories` ci-dessus — il promeut une courte liste de catégories en tête et en exclut d'autres purement et simplement, en laissant tout le reste dans son ordre de priorité existant. Il existe parce que la priorité est globale et partagée, mais la catégorie qui *devrait* l'emporter varie selon la séance photo : une photo de danse à contre-jour taguée `sports` est captée par `silhouette` (priorité 42) bien avant que `sports` (priorité 71) ne soit atteinte, et les curseurs de poids ne peuvent rien y faire — ils régissent la façon dont la catégorie *sélectionnée* est notée, pas laquelle est sélectionnée.
+Un contexte d'évaluation change la catégorie qui l'emporte pour un album ou une photo. Il fait passer quelques catégories en tête de l'ordre global de `categories` et en exclut d'autres ; les restantes gardent leur ordre de priorité. Utilisez-le quand l'ordre global choisit la mauvaise catégorie pour une séance : une image de danse à contre-jour taguée `sports` est captée par `silhouette` (priorité 42) avant `sports` (priorité 71). Les curseurs de poids n'y peuvent rien, car ils ne changent que la façon dont la catégorie sélectionnée est notée.
 
 ```json
 {
@@ -258,13 +225,18 @@ Un contexte de notation est un **delta** nommé appliqué à l'ordre de priorit�
 | Champ | Description |
 |-------|-------------|
 | `label_key` | Clé i18n pour le nom d'affichage du contexte |
-| `promote` | Noms de catégorie déplacés en tête de l'ordre d'évaluation, dans l'ordre donné |
-| `excluded` | Noms de catégorie entièrement retirés de l'évaluation (jamais retenus sous ce contexte) |
-| `suggest_from_moments` | Valeurs `narrative_moment` qui suggèrent ce contexte pour un album — lues par `GET /api/albums/{id}/suggested_context` (voir [VIEWER.md](VIEWER.md)) |
+| `promote` | Catégories placées en tête de l'ordre d'évaluation, dans l'ordre indiqué |
+| `excluded` | Catégories jamais retenues sous ce contexte |
+| `suggest_from_moments` | Valeurs de `narrative_moment` qui suggèrent ce contexte pour un album (`GET /api/albums/{id}/suggested_context`, voir [VIEWER.md](VIEWER.md)) |
 
-**Ordre effectif** = `promote` (dans l'ordre) → l'ordre de priorité global moins les noms promus et exclus → `default` (la catégorie de repli, priorité 999) en dernier. Un nom présent à la fois dans `promote` et dans `excluded` est entièrement retiré de l'ordre — c'est `excluded` qui l'emporte, l'entrée `promote` n'est pas honorée. `default` elle-même ne peut jamais être promue ni exclue. Ne passer aucun contexte, ou un nom de contexte inconnu, retombe sur le simple ordre de priorité global (avec un avertissement journalisé pour un nom inconnu) ; la liste résolue `[(category_name, CategoryFilter)]` est mise en cache par nom de contexte pour la durée de vie de la configuration chargée (`ScoringConfig.resolve_context_order`). `python facet.py --validate-categories` signale (sans faire échouer le chargement) tout nom `promote`/`excluded` qui ne correspond à aucune catégorie réelle, tout nom présent dans les deux, ainsi que toute entrée `suggest_from_moments` qui n'est pas une clé de `narrative_moments.event_types.<default_event_type>` — une faute de frappe dans l'un de ces champs échoue sinon silencieusement.
+**Ordre effectif** = `promote` (dans l'ordre) → l'ordre de priorité global sans les noms promus et exclus → `default` (la catégorie fourre-tout, priorité 999) en dernier.
 
-Préréglages livrés par défaut — `default` est un delta vide, si bien que le comportement existant reste inchangé tant qu'un contexte n'est pas explicitement attribué :
+- Un nom présent à la fois dans `promote` et `excluded` est exclu.
+- `default` ne peut jamais être promu ni exclu.
+- Sans contexte, ou avec un nom inconnu, l'ordre global simple est utilisé (un nom inconnu journalise un avertissement).
+- `python facet.py --validate-categories` signale les noms de catégorie inconnus, les noms présents dans les deux listes et les entrées `suggest_from_moments` qui ne sont pas des clés de `narrative_moments.event_types.<default_event_type>`. Sinon, les fautes de frappe passent inaperçues.
+
+Préréglages livrés (`default` est vide, donc rien ne change tant que vous n'assignez pas de contexte) :
 
 | Contexte | Promeut | Exclut | Suggéré à partir des moments |
 |---------|----------|----------|------------------------|
@@ -278,7 +250,7 @@ Préréglages livrés par défaut — `default` est un delta vide, si bien que l
 
 ### Ajouter votre propre contexte
 
-Les préréglages fournis ne forment pas un ensemble fermé : ajoutez une clé sous `scoring_contexts` et vous obtenez un contexte comme les autres — il se résout, il s'attribue à un album, et son delta se modifie depuis l'onglet **Contexte de notation**. Rien n'est à déclarer dans le code.
+Ajoutez une clé sous `scoring_contexts` et elle fonctionne comme un préréglage livré : vous pouvez l'assigner à un album et la modifier dans l'onglet **Contexte de notation**.
 
 ```json
 {
@@ -293,29 +265,45 @@ Les préréglages fournis ne forment pas un ensemble fermé : ajoutez une clé 
 }
 ```
 
-Une nuance toutefois : `label_key` est recherchée dans les paquets i18n, et une clé absente retombe désormais sur le **`name`** propre au contexte (par exemple `dance_comp`) plutôt que sur un chemin brut à points — un contexte personnalisé reste lisible dans le sélecteur, dans toutes les langues, même avant d'avoir une traduction. Ajoutez la clé aux six paquets `i18n/translations/*.json` pour lui donner un libellé correctement localisé plutôt que le simple nom.
+Si `label_key` n'a pas de traduction, le sélecteur affiche le **`name`** du contexte (par ex. `dance_comp`). Ajoutez la clé aux six bundles `i18n/translations/*.json` pour obtenir un libellé localisé.
 
 ### Modifier un contexte
 
-`PUT /api/config/scoring_contexts/{name}` (réservé au mode édition) réécrit le delta d'un seul contexte depuis l'onglet **Contexte de notation** de la visionneuse — faites glisser la tête promue dans l'ordre voulu (ou utilisez les boutons Monter/Descendre), cliquez sur une catégorie pour basculer son exclusion, enregistrez. Le corps est `{"promote": [nom, ...], "excluded": [nom, ...]}`. Seuls ces deux champs sont modifiables : `label_key` et `suggest_from_moments` restent exactement tels quels, et tous les autres contextes sont laissés intacts. **L'interface ne propose délibérément que l'édition du delta** — un contexte ne porte jamais d'ordre complet autonome, si bien que les catégories non promues conservent toujours l'ordre de priorité global et qu'une catégorie ajoutée plus tard ne peut jamais manquer silencieusement dans six listes distinctes.
+Dans l'onglet **Contexte de notation** de la visionneuse (réservé à l'édition, `PUT /api/config/scoring_contexts/{name}`), glissez ou déplacez des catégories dans la liste promue, cliquez sur une catégorie pour basculer son exclusion, puis enregistrez.
 
-L'écriture est rejetée par un 400 nommant le fautif lorsque le contexte n'existe pas, lorsqu'une entrée de `promote`/`excluded` ne correspond à aucune catégorie existante, lorsque `default` apparaît dans l'une des deux listes (c'est la catégorie de repli épinglée : elle ne peut être ni promue ni exclue), ou lorsque `promote` répète un nom (son ordre est signifiant, un doublon serait donc ambigu). Lister la même catégorie dans **les deux** listes reste accepté — `excluded` l'emporte et l'entrée `promote` est abandonnée, exactement comme documenté ci-dessus — et un doublon à l'intérieur d'`excluded` est fusionné plutôt que rejeté, puisqu'il s'agit d'un ensemble. Chaque écriture prend la même copie de sauvegarde horodatée et élaguée `.backup.<timestamp>` et prend le même verrou que les writers de priorité et de poids, si bien que des enregistrements de configuration concurrents ne peuvent pas s'annuler mutuellement. `resolve_context_order` met son résultat en cache par instance de `ScoringConfig`, et chaque lecteur en construit une nouvelle à chaque requête : il n'y a donc aucun cache d'ordre à invalider après une écriture.
-
-Comme une réorganisation des priorités, modifier un contexte ne touche pas en soi la `category` stockée d'une photo — lancez un recalcul ensuite (voir [Modifier les priorités nécessite un recalcul](#réorganiser-la-priorité-globale)) ; l'onglet propose un bouton **Recalculer maintenant** précisément pour cela.
+- Seuls `promote` et `excluded` sont modifiables ; `label_key`, `suggest_from_moments` et les autres contextes restent tels quels.
+- Un enregistrement est refusé lorsque le contexte n'existe pas, lorsqu'une entrée n'est pas une catégorie existante, lorsque `default` figure dans l'une des listes, ou lorsque `promote` répète un nom. Un nom présent dans les deux listes est accepté (`excluded` l'emporte) ; une répétition dans `excluded` est fusionnée.
+- Chaque enregistrement conserve une copie `.backup.<timestamp>` horodatée de la configuration.
+- Modifier un contexte ne recatégorise pas les photos : lancez ensuite un recalcul (voir [Changer les priorités exige un recalcul](#réorganiser-la-priorité-globale)). L'onglet propose un bouton **Recalculer maintenant**.
 
 ### Assigner un contexte
 
-Un contexte de notation s'attribue **par album** via `PUT /api/albums/{id}/scoring_context` (réservé au mode édition), qui écrit la colonne `scoring_context` de l'album et matérialise la même valeur dans `photo_scoring_overrides.scoring_context` pour chaque photo qui est membre **à cet instant précis**, en laissant de côté tout membre dont le remplacement a été défini manuellement (`source = 'manual'`) — une attribution d'album ne convertit jamais silencieusement le choix manuel d'une photo en un contexte venant de l'album. Le compteur `conflicts` de la réponse indique combien de membres non manuels portaient déjà un contexte différent (le dernier enregistrement l'emporte), `manual_skipped` indique combien de membres manuels ont été laissés intacts, et `updated` indique combien ont réellement été écrites. Un album manuel résout son appartenance à partir de ses lignes `album_photos` ; un album intelligent (`is_smart`) n'en a aucune, son appartenance est donc résolue en évaluant son `smart_filter_json` enregistré sur la base de données en direct (`_resolve_album_member_paths`, qui reflète la branche intelligente de `_fetch_album_photos`). C'est la **définition de filtre** de l'album, pas la vue galerie : `smart_filter_json` ne porte que le filtre choisi par l'utilisateur (tri, personne, etc.) et exclut délibérément les préférences d'affichage `hide_blinks`/`hide_bursts`/`hide_duplicates`/`hide_rejected` de la galerie (globales, modifiables en cours d'exécution via `viewer.defaults`, et ne faisant pas partie de la définition propre de l'album), si bien que `updated` peut légitimement dépasser le nombre de photos que la propre vue galerie de l'album affiche lorsque ces bascules sont activées — une photo suiveuse de rafale par ailleurs correspondante reste un membre à part entière. Un album intelligent dont le filtre ne correspond actuellement à rien renvoie `updated: 0` avec un `warning`. Dans tous les cas, l'attribution est un instantané, pas un abonnement : pour un album manuel, une photo ajoutée *par la suite* via `append_album_photos` hérite bien automatiquement du contexte (en laissant également de côté les membres manuels), mais une photo qui correspond *plus tard* au filtre d'un album intelligent n'hérite **pas** rétroactivement du contexte — seul un nouvel appel à `PUT` réattribue le contexte aux membres du moment. `DELETE /api/albums/{id}/scoring_context` efface le `scoring_context` de l'album et annule l'attribution sur exactement les membres que cet album avait marqués (`source = 'album:<id>'`), sans toucher au remplacement manuel propre à une photo. Retirer des photos précises d'un album (`DELETE /api/albums/{id}/photos`) annule de la même façon l'attribution de cet album sur exactement ces photos, sauf lorsqu'une photo retirée est *encore* membre d'un autre album qui déclare lui-même un contexte — une seule colonne `source` ne peut pas représenter une appartenance à plusieurs albums, donc cette photo est réattribuée avec le contexte de cet autre album plutôt que d'être laissée sans catégorie (cette redérivation se limite aux photos de la requête de retrait ; une suppression d'album complète ou un effacement explicite du contexte ne le tente pas, car vérifier chaque photo effacée par rapport à chaque autre album déclarant un contexte n'est pas borné pour l'appartenance complète d'un album intelligent). Retirer des photos d'un album intelligent est sans effet (`album_photos` ne porte aucune ligne pour lui, et les photos retirées restent généralement membres). `GET /api/albums/{id}/suggested_context` propose un contexte à partir du `narrative_moment` dominant de l'album (résolu de la même façon, `_resolve_album_member_paths`), mappé via `suggest_from_moments`, accompagné du `share` du moment dominant dans l'album — cet appel n'écrit rien ; l'attribution ci-dessus doit toujours être appelée explicitement.
+Assignez un contexte **par album** avec `PUT /api/albums/{id}/scoring_context` (réservé à l'édition).
 
-Pour une photo isolée récalcitrante, un **remplacement de catégorie** est l'échappatoire — non pas un contexte, mais une attribution directe de catégorie : `POST /api/comparison/override_category` (réservé au mode édition) valide le nom de catégorie par rapport à la configuration et l'enregistre dans `photo_scoring_overrides.category_override` ; `POST /api/comparison/clear_category_override` le supprime, laissant de nouveau l'évaluation des filtres décider au prochain recalcul.
+- Il s'applique à chaque photo de l'album à ce moment-là, sauf aux photos dont vous avez défini le contexte à la main.
+- Une photo ajoutée plus tard à un album manuel hérite du contexte. Une nouvelle photo correspondant au filtre d'un album intelligent n'en hérite pas ; appelez de nouveau `PUT` pour le réappliquer.
+- Un album intelligent utilise son filtre enregistré, pas les bascules de masquage de la galerie ; il peut donc couvrir plus de photos que sa vue de galerie n'en montre.
+- `DELETE /api/albums/{id}/scoring_context` retire le contexte des photos que cet album a définies. Les choix manuels restent.
+- Retirer des photos d'un album (`DELETE /api/albums/{id}/photos`) leur retire le contexte de cet album. Une photo encore dans un autre album ayant un contexte prend le contexte de cet album.
+- `GET /api/albums/{id}/suggested_context` propose un contexte d'après le `narrative_moment` dominant de l'album, via `suggest_from_moments`. Il ne modifie rien.
 
-Les deux leviers sont conservés dans une seule table annexe, `photo_scoring_overrides(photo_path PK, scoring_context, category_override, source, created_at, created_by)`, plutôt que comme des colonnes de `photos` — `save_photo`/`save_photos_batch` écrivent les lignes de photo avec `INSERT OR REPLACE` (`processing/scorer.py`), ce qui supprimerait silencieusement toute nouvelle colonne de cette ligne au prochain rescan. `Facet._determine_photo_category` de `processing/scorer.py` est le point de passage unique qui résout les deux, aussi bien sur le chemin de scan que sur `--recompute-average` : un `category_override` valide l'emporte purement et simplement ; sinon, `ScoringConfig.determine_category(photo_data, context=scoring_context)` évalue l'ordre effectif du contexte. Un filtre numérique échoue toujours lorsque la valeur EXIF sous-jacente est manquante ou ininterprétable, quel que soit le contexte — voir [Notation — le piège des données EXIF manquantes](SCORING.md#le-piège-des-données-exif-manquantes) pour le cas `sports`/`shutter_speed_max` que la seule promotion ne peut pas corriger.
+Pour une seule photo récalcitrante, utilisez un **remplacement de catégorie** : `POST /api/comparison/override_category` (réservé à l'édition) définit directement la catégorie, et `POST /api/comparison/clear_category_override` la retire. Un remplacement l'emporte sur tout contexte.
+
+Les remplacements et les contextes survivent aux nouveaux scans. Un filtre numérique échoue toujours lorsque sa valeur EXIF est absente, quel que soit le contexte — voir [Évaluation — le piège de l'EXIF manquant](SCORING.md#le-piège-des-données-exif-manquantes).
 
 ### Réorganiser la priorité globale
 
-`GET|POST /api/config/category_priorities` (réservé au mode édition) lit et réécrit l'ordre de base sur lequel chaque contexte applique son delta. `POST` prend `{"order": [name, ...]}` — une permutation à ensemble égal de tous les noms de catégorie hors `default` — et **permute le multi-ensemble de priorités existant selon le nouvel ordre** plutôt que de le renuméroter (p. ex. 10/20/30) : cela garde les nombres de priorité documentés pertinents et garantit l'unicité par construction. `default` (priorité 999) reste fixé en dernière position et n'est pas concerné par la réorganisation. Chaque écriture prend d'abord une copie horodatée `.backup.<timestamp>` de `scoring_config.json`, et cet écrivain partage un verrou avec l'éditeur de poids (`update_category_weights`) — la précédente lecture-modification-écriture non protégée permettait à un enregistrement concurrent de l'un d'écraser silencieusement les modifications de l'autre.
+`GET|POST /api/config/category_priorities` (réservé à l'édition) lit et enregistre l'ordre global dont part chaque contexte. La visionneuse réordonne les numéros de priorité existants au lieu de les renuméroter.
 
-**Modifier les priorités nécessite un recalcul.** La réorganisation elle-même ne touche la `category` stockée d'aucune photo — lancez `python facet.py --recompute-average`, ou déclenchez `POST /api/scan/recompute` depuis la visionneuse (réservé au mode édition) puis interrogez `GET /api/scan/recompute_status`. `update_all_aggregates` émet des lignes `@FACET_PROGRESS` (auparavant réservées à `tqdm`), ce qui permet d'alimenter une barre de progression. Un recalcul maintient une seule et longue transaction d'écriture sur toute la table `photos`, si bien que `--recompute-average`/`--recompute-category` acquièrent, pour toute leur durée, un `facet.LibraryLock` inter-processus (un fichier horodaté par PID `<db_dir>/.facet_cache/library.lock`), et pas seulement le verrou en mémoire de la visionneuse : un recalcul en ligne de commande se refuse d'emblée si un scan est déjà en cours, un scan en ligne de commande se refuse d'emblée si un recalcul est déjà en cours, et les points d'accès de la visionneuse (`POST /api/scan/start`, `POST /api/scan/recompute`) consultent ce même fichier de verrou et renvoient 409 en nommant le détenteur (type, pid, origine) avant de démarrer — une tâche lancée depuis un terminal et une tâche déclenchée par la visionneuse ne peuvent donc plus entrer en collision et mourir avec `SQLITE_BUSY`. Un détenteur qui plante est détecté immédiatement via une vérification de vivacité du PID au niveau du système d'exploitation, si bien qu'un verrou périmé se répare de lui-même plutôt que de bloquer les tâches suivantes. Il reste une lacune : scan contre scan en ligne de commande, où deux scans concurrents lancés depuis un terminal ne reçoivent encore qu'un avertissement, pas un refus (choix délibéré ; `--resume` continue de refuser sans exception). Si `normalization.per_category` est activé, voir [Normalisation](#normalisation) pour comprendre pourquoi même un recalcul unique et sans conflit peut nécessiter deux passages.
+- `default` (priorité 999) reste en dernier et ne peut pas être déplacé.
+- Une catégorie dont la priorité est absente ou en double reçoit à l'enregistrement une valeur neuve au-delà du maximum actuel.
+- Chaque enregistrement conserve une copie `.backup.<timestamp>` horodatée de `scoring_config.json` ; les 20 plus récentes sont conservées.
+
+**Changer les priorités exige un recalcul.** Un réordonnancement ne change pas la `category` stockée des photos. Lancez `python facet.py --recompute-average`, ou démarrez `POST /api/scan/recompute` depuis la visionneuse (réservé à l'édition) et suivez `GET /api/scan/recompute_status`.
+
+- Un recalcul et un scan ne peuvent pas s'exécuter en même temps : la CLI refuse, et la visionneuse indique quelle tâche détient la bibliothèque.
+- Deux scans lancés depuis un terminal ne provoquent qu'un avertissement (`--resume` refuse).
+- Avec `normalization.per_category` activé, un recalcul peut devoir être exécuté deux fois — voir [Normalisation](#normalisation).
 
 ---
 
@@ -415,7 +403,7 @@ Contrôle l'analyse de l'exposition et la détection des écrêtages.
 |---------|--------|-------------|
 | `shadow_clip_threshold_percent` | `15` | Signaler si > 15 % des pixels sont noir pur |
 | `highlight_clip_threshold_percent` | `10` | Signaler si > 10 % des pixels sont blanc pur |
-| `silhouette_detection` | `true` | Si `true`, une photo marquée `is_silhouette` ignore la pénalité d'écrêtage dans son score agrégé. Le drapeau lui-même n'est pas configurable : il provient d'une règle fixe fondée sur le visage (voir [SCORING.md](SCORING.md)) |
+| `silhouette_detection` | `true` | Si `true`, une photo marquée `is_silhouette` ignore la pénalité d'écrêtage dans son score agrégé. Le drapeau lui-même n'est pas configurable : il provient d'une règle fixe fondée sur le visage (voir [SCORING.md](SCORING.md)) |
 
 ---
 
@@ -445,7 +433,8 @@ Pénalités de score pour les problèmes techniques.
 | `oversaturation_threshold` | `0.9` | Seuil de saturation moyenne |
 | `oversaturation_penalty_points` | `0.5` | Pénalité de sursaturation |
 
-**Formule de pénalité de bruit :**
+**Formule de pénalité de bruit :**
+
 ```
 penalty = min(noise_max_penalty_points, (noise_sigma - threshold) * noise_penalty_per_sigma)
 ```
@@ -474,7 +463,7 @@ Contrôle la façon dont les métriques brutes sont mises à l'échelle entre 0 
 | `per_category` | `true` | Normalisation propre à chaque catégorie |
 | `category_min_samples` | `50` | Nombre minimal de photos pour la normalisation par catégorie |
 
-**Un seul recalcul ne suffit pas à converger quand `per_category` est activé.** `compute_percentiles_per_category` (`config/percentile_normalizer.py`) regroupe les photos par la colonne `photos.category` *actuellement stockée*, et s'exécute une seule fois, en amont, avant que `update_all_aggregates` ne redétermine et ne réécrive la catégorie de chaque photo pour la nouvelle configuration. Ainsi, après tout changement susceptible de déplacer des photos entre catégories — réorganisation des priorités, affectation ou suppression d'un contexte de notation, ajout ou suppression d'une dérogation de catégorie — le premier `--recompute-average` normalise chaque photo par rapport à des centiles regroupés selon son **ancienne** catégorie, et non celle qui va lui être attribuée. Relancez `--recompute-average` une seconde fois pour que les centiles par catégorie soient calculés à partir de la colonne `category` désormais correcte ; ce n'est qu'alors que les scores normalisés se stabilisent.
+> **Remarque :** Avec `per_category` activé, un seul recalcul ne suffit pas à stabiliser. Les percentiles sont groupés par la catégorie *stockée* de chaque photo avant que le recalcul ne la réattribue. Après un changement qui déplace des photos entre catégories (priorités, contexte d'évaluation, remplacement de catégorie), lancez `--recompute-average` deux fois.
 
 ---
 
@@ -571,22 +560,22 @@ Sélectionne les modèles utilisés selon le profil VRAM.
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `vram_profile` | `"auto"` | Profil actif (`auto`, `legacy`, `8gb`, `16gb`, `24gb`) |
-| `keep_in_ram` | `"auto"` | Conserver les modèles en RAM entre les blocs multi-pass (`"auto"`, `"always"`, `"never"`). `auto` vérifie la RAM disponible avant la mise en cache. |
-| `ram_cache_reserve_gb` | `4.0` (optionnel, absent du fichier fourni) | RAM disponible (Go) que le cache de modèles doit laisser libre à côté d'un modèle qu'il conserve. Avec `"auto"`, un modèle n'est conservé en RAM que tant que la RAM disponible est supérieure à sa taille déclarée plus cette réserve ; `"always"` saute la vérification et `"never"` ne met rien en cache. Une valeur plus petite met plus de modèles en cache, une plus grande laisse plus de place au reste de l'hôte. Doit être un nombre >= 0 ; toute autre valeur (une chaîne, un négatif, `true`) arrête le scan au démarrage avec une erreur qui nomme la clé. Sous pression mémoire, le cache rend des modèles jusqu'à ce que cette quantité de RAM soit disponible, en commençant par le modèle dont on aura besoin le plus tard, au lieu de se vider entièrement (voir [Fonctionnement du multi-pass](#fonctionnement-du-multi-pass)) |
-| `profiles.*.supplementary_pyiqa` | `["topiq_iaa", "topiq_nr_face", "liqe"]` | Modèles PyIQA à exécuter pour ce profil (vide pour `legacy`) |
-| `profiles.*.saliency_enabled` | `true` (16gb/24gb) | Exécuter la saillance du sujet BiRefNet pour ce profil |
+| `vram_profile` | `"auto"` | Profil actif (`auto`, `legacy`, `8gb`, `16gb`, `24gb`) ; `FACET_VRAM_PROFILE` le surcharge (voir ci-dessous) |
+| `keep_in_ram` | `"auto"` | Garder les modèles en RAM entre les blocs multi-pass (`"auto"`, `"always"`, `"never"`) ; `auto` vérifie d'abord la RAM libre |
+| `ram_cache_reserve_gb` | `4.0` (optionnel, absent du fichier livré) | RAM (Go) à laisser libre à côté d'un modèle en cache sous `"auto"` |
+| `profiles.*.supplementary_pyiqa` | `["topiq_iaa", "topiq_nr_face", "liqe"]` | Modèles PyIQA à exécuter pour ce profil (les quatre profils exécutent l’ensemble complet) |
+| `profiles.*.saliency_enabled` | `true` (tous les profils) | Exécuter la saillance du sujet BiRefNet pour ce profil |
 | `clip.model_name` | `"google/siglip2-so400m-patch16-naflex"` | Modèle d'embedding SigLIP 2 NaFlex (16gb/24gb) |
 | `clip.backend` | `"transformers"` | `"transformers"` (SigLIP 2 NaFlex) ou `"open_clip"` (legacy) |
 | `clip.embedding_dim` | `1152` | Dimensions de l'embedding (1152 pour SigLIP 2) |
-| `clip.tag_threshold_percent` | `8` | Similarité cosinus minimale pour une correspondance d'**étiquette** avec le tagger SigLIP 2 des profils `16gb`/`24gb` (scan, `--recompute-tags`, `tag_existing.py`). **Pas** le seuil de recherche sémantique ci-dessous. Remplace `similarity_threshold_percent`, qui n'est plus lu |
-| `clip.search_threshold_percent` | `5` | Seuil de similarité cosinus pour la recherche sémantique de `GET /api/search` (exposé via `/api/config` sous `search_threshold_default`), **pas** le seuil de correspondance d'étiquette ci-dessus. Doit être un nombre entier compris entre `0` et `50` — le curseur de la barre latérale de la galerie s'arrête à 50, et la conversion en pourcentage côté client (`Math.round(search_threshold_default * 100)`) n'est sans perte que pour un entier. Calibré sur un échantillon de validation de 34 lignes d'embeddings SigLIP 2 réels (issue #145) : la valeur par défaut admet les 21 vrais positifs connus **et** 3 des 13 négatifs connus — un choix délibéré en faveur du rappel plutôt que de la précision. Une valeur plus stricte de `5,5%` n'aurait admis aucun négatif, mais a été rejetée car la personne ayant signalé le problème avait mesuré une correspondance réelle à `0.051` de similarité cosinus sur sa propre bibliothèque ; exclure une correspondance réelle confirmée a été jugé pire que laisser passer quelques négatifs, d'autant que le curseur 0-50% de la galerie permet de resserrer (ou desserrer) une recherche donnée après coup. |
+| `clip.tag_threshold_percent` | `8` | Similarité minimale pour qu'un **tag** corresponde avec le tagueur SigLIP 2 des profils 16gb/24gb (remplace `similarity_threshold_percent`) |
+| `clip.search_threshold_percent` | `5` | Similarité minimale pour la recherche sémantique (`GET /api/search`) ; nombre entier `0-50` |
 | `clip_legacy.model_name` | `"ViT-L-14"` | Modèle CLIP historique (profils legacy/8gb) |
 | `clip_legacy.pretrained` | `"laion2b_s32b_b82k"` | Poids pré-entraînés historiques |
 | `clip_legacy.embedding_dim` | `768` | Dimensions de l'embedding historique |
-| `clip_legacy.tag_threshold_percent` | `8` | Le même seuil d'étiquetage pour le tagger CLIP ViT-L-14 des profils `legacy`/`8gb`. **Pas** le seuil de recherche sémantique ci-dessous. `tagging.max_tags` plafonne dans tous les cas le nombre d'étiquettes |
-| `clip_legacy.search_threshold_percent` | `15` | Seuil de similarité cosinus pour la recherche sémantique de `GET /api/search` sur le profil legacy/8gb (open_clip) — préserve le seuil que Facet utilisait avant l'existence de cette clé. Même contrainte d'entier compris entre `0` et `50` que `clip.search_threshold_percent` ci-dessus. |
-| `qwen2_vl.model_path` | `"Qwen/Qwen2-VL-2B-Instruct"` | Chemin HuggingFace pour l'option manuelle `composition_model: "qwen2-vl-2b"` — aucun profil ne la sélectionne par défaut |
+| `clip_legacy.tag_threshold_percent` | `8` | Même seuil de tag pour le tagueur CLIP des profils legacy/8gb ; `tagging.max_tags` plafonne leur nombre |
+| `clip_legacy.search_threshold_percent` | `15` | Seuil de recherche sémantique du profil legacy/8gb ; nombre entier `0-50` |
+| `qwen2_vl.model_path` | `"Qwen/Qwen2-VL-2B-Instruct"` | Modèle pour l'activation manuelle `composition_model: "qwen2-vl-2b"` (aucun profil ne l'utilise) |
 | `qwen3_5_2b.model_path` | `"Qwen/Qwen3.5-2B"` | Modèle d'étiquetage pour le profil 16gb |
 | `qwen3_5_2b.vlm_batch_size` | `4` | Images par lot d'inférence VLM |
 | `qwen3_5_4b.model_path` | `"Qwen/Qwen3.5-4B"` | Modèle d'étiquetage pour le profil 24gb |
@@ -596,20 +585,15 @@ Sélectionne les modèles utilisés selon le profil VRAM.
 | `saliency.mask_threshold` | `0.3` | Seuil sigmoïde pour le masque binaire du sujet |
 | `saliency.min_subject_pixels` | `50` | Nombre minimal de pixels de sujet pour considérer qu'un sujet est détecté |
 
-**Recherche sémantique et bibliothèque embarquée sous un profil différent :** `GET /api/search`
-résout l'encodeur de texte — et son `search_threshold_percent` — à partir de celui de `clip`
-ou `clip_legacy` qui correspond à la dimension d'embedding *stockée*, pas nécessairement au
-`vram_profile` actif de la machine. Cela compte lorsqu'une bibliothèque a été embarquée sous
-un profil (par ex. CLIP 768-dim) mais est maintenant parcourue sur une machine qui résout un
-autre profil (par ex. le profil 16gb/SigLIP, qui utilise `clip` par défaut, 1152-dim) : la
-dimension stockée l'emporte, donc la recherche utilise de façon transparente le modèle de
-`clip_legacy` **et** son `search_threshold_percent`. Si la dimension stockée ne correspond
-à *aucun* des deux blocs configurés, le bloc du profil actif — et son seuil — est conservé
-tel quel plutôt que d'être deviné.
+Remarques :
+- **`ram_cache_reserve_gb` :** un modèle n'est conservé que tant que la RAM libre dépasse sa taille plus cette réserve. `"always"` saute la vérification ; `"never"` ne met rien en cache. Ce doit être un nombre >= 0, sinon le scan s'arrête au démarrage. Sous pression mémoire, le cache libère d'abord le modèle nécessaire le plus tard dans le futur (voir [Fonctionnement du multi-pass](#fonctionnement-du-multi-pass)).
+- **Seuils de tag et de recherche :** `tag_threshold_percent` contrôle le tagging (scan, `--recompute-tags`, `tag_existing.py`). `search_threshold_percent` est la valeur par défaut du curseur de recherche 0-50 % de la galerie (`search_threshold_default` dans `/api/config`). La valeur SigLIP par défaut `5` privilégie le rappel : sur un échantillon de 34 photos, elle a gardé les 21 vraies correspondances et laissé passer 3 non-correspondances sur 13.
+
+**Recherche sémantique et bibliothèque embarquée sous un profil différent :** `GET /api/search` choisit l'encodeur de texte et son `search_threshold_percent` parmi `clip` / `clip_legacy` selon la dimension d'embedding *stockée*, pas selon le `vram_profile` actif. Une bibliothèque embarquée avec CLIP en 768 dimensions et parcourue sur une machine 16gb cherche donc avec `clip_legacy`. Si la dimension stockée ne correspond à aucun des deux blocs, le bloc du profil actif est utilisé.
 
 ### Détection automatique de la VRAM
 
-Lorsque `vram_profile` vaut `"auto"` (par défaut), le système détecte la VRAM GPU disponible au démarrage et sélectionne le plus grand profil compatible :
+Lorsque `vram_profile` vaut `"auto"` (par défaut), Facet détecte la VRAM du GPU au démarrage et choisit le plus grand profil qui tient :
 
 | VRAM détectée | Profil sélectionné |
 |---------------|--------------------|
@@ -618,17 +602,17 @@ Lorsque `vram_profile` vaut `"auto"` (par défaut), le système détecte la VRAM
 | ≥ 6 Go | `8gb` |
 | Pas de GPU | `legacy` (utilise la RAM système) |
 
-Un GPU CUDA ne compte que si PyTorch voit au moins un périphérique. Sans périphérique visible (par exemple avec `CUDA_VISIBLE_DEVICES=''`), le scan utilise le processeur, signale 0 Go de VRAM et sélectionne `legacy` ; il s'arrêtait auparavant sur « Invalid device id ». `FACET_DEVICE=cuda` sans périphérique visible s'arrête sur « FACET_DEVICE=cuda was requested, but that device is not available ».
+Un GPU CUDA ne compte que si PyTorch le voit. Sans périphérique visible (par exemple avec `CUDA_VISIBLE_DEVICES=''`), le scan utilise le processeur, signale 0 Go de VRAM et sélectionne `legacy`. `FACET_DEVICE=cuda` sans périphérique visible s'arrête sur « FACET_DEVICE=cuda was requested, but that device is not available ».
 
-**Les cartes de 10 à 14 Go peuvent choisir l'ensemble complet des fonctionnalités.** La détection automatique ne change pas : en dessous de 14 Go, elle sélectionne toujours `8gb`. Une carte de 10 à 14 Go peut à la place exécuter le profil `16gb` (embeddings SigLIP 2, TOPIQ, tagging Qwen3.5-2B, Q-ReAlign, saillance) en définissant `"vram_profile": "16gb"` ou `FACET_VRAM_PROFILE=16gb`. Le planificateur de passes répartit alors les modèles en quatre passes qui tiennent, ou trois sur une carte qui annonce 11,8 GiB ou plus (voir [Regroupement dynamique des passes](#regroupement-dynamique-des-passes)). La saillance, qui manquait de mémoire ici auparavant, dimensionne son lot d'après la VRAM libre ; une photo qu'elle ne peut toujours pas noter enregistre NULL et journalise une ERROR au lieu d'un score neutre. **Passer une bibliothèque `8gb` existante à `16gb` change le modèle d'embeddings** (CLIP ViT-L-14 en 768 dimensions → SigLIP 2 en 1152 dimensions), de sorte que la bibliothèque mélangerait deux dimensions d'embedding : relancez un scan ou exécutez `--recompute-embeddings` pour la ré-embarquer. Voir *Recherche sémantique et bibliothèque embarquée sous un profil différent* dans [Modèles](#modèles) pour le comportement de la recherche d'ici là.
+**Les cartes de 10 à 14 Go peuvent choisir l'ensemble complet des fonctionnalités.** La détection automatique choisit toujours `8gb` en dessous de 14 Go. Définissez `"vram_profile": "16gb"` ou `FACET_VRAM_PROFILE=16gb` pour exécuter SigLIP 2, TOPIQ, le tagging Qwen3.5-2B, Q-ReAlign et la saillance. Les modèles s'exécutent alors en quatre passes, ou trois sur une carte qui annonce 11,8 GiB ou plus (voir [Regroupement dynamique des passes](#regroupement-dynamique-des-passes)). Une photo que la saillance ne peut toujours pas noter enregistre NULL et journalise une ERROR.
 
----
+> **Avertissement :** Passer une bibliothèque `8gb` existante à `16gb` change le modèle d'embeddings (CLIP ViT-L-14 en 768 dimensions → SigLIP 2 en 1152 dimensions). Relancez un scan ou exécutez `--recompute-embeddings`, sinon la bibliothèque mélange deux tailles d'embedding. D'ici là, la recherche se comporte comme décrit sous *Recherche sémantique et bibliothèque embarquée sous un profil différent* dans [Modèles](#modèles).
 
 ### Surcharge par la variable d'environnement `FACET_VRAM_PROFILE`
 
-La variable d'environnement `FACET_VRAM_PROFILE` surcharge `models.vram_profile` au chargement (prise en charge par `config/scoring_config.py`), si bien qu'une seule configuration montée peut servir tous les profils Docker sans modifier le JSON. Les valeurs acceptées sont `auto`, `legacy`, `8gb`, `16gb` et `24gb` ; toute autre valeur est ignorée avec un avertissement (une faute de frappe ne peut donc pas fausser silencieusement une analyse). Les surcouches Docker Compose par profil (`docker-compose.{legacy,8gb,16gb,24gb}.yml`) définissent cette variable pour vous.
+`FACET_VRAM_PROFILE` surcharge `models.vram_profile` au chargement, si bien qu'une seule configuration montée peut servir tous les profils Docker. Valeurs acceptées : `auto`, `legacy`, `8gb`, `16gb`, `24gb` ; toute autre valeur est ignorée avec un avertissement. Les surcouches Docker Compose (`docker-compose.{legacy,8gb,16gb,24gb}.yml`) la définissent pour vous.
 
-La surcharge est **valable uniquement à l'exécution et n'est jamais réécrite dans `scoring_config.json`**, même lorsqu'une autre modification déclenche un enregistrement — une correction automatique de pondération, par exemple. C'est cette garantie qui rend une configuration montée utilisable par plusieurs conteneurs à la fois : sans elle, le premier conteneur à enregistrer figerait `models.vram_profile` sur sa propre valeur, et tous les autres conteneurs lisant le même fichier en hériteraient, quelle que soit leur propre variable. Un `vram_profile` que vous avez défini vous-même dans le fichier reste intact et l'emporte toujours lorsque la variable n'est pas définie.
+La surcharge n'est jamais réécrite dans `scoring_config.json`. Un `vram_profile` que vous définissez dans le fichier s'applique toujours lorsque la variable n'est pas définie.
 
 ```bash
 FACET_VRAM_PROFILE=8gb python facet.py /path/to/photos
@@ -651,7 +635,7 @@ Sélectionne le modèle qui note la qualité/l'esthétique de l'image, via la bi
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `model` | `"auto"` | Modèle de qualité : `auto`, `topiq`, `hyperiqa`, `dbcnn`, `musiq`, `clip-mlp`. `auto` utilise `topiq`. |
+| `model` | `"auto"` | Modèle de qualité : `auto`, `topiq`, `hyperiqa`, `dbcnn`, `musiq`, `clip-mlp`. `auto` utilise `topiq`. |
 | `prefer_llm` | `false` | Préférer un évaluateur fondé sur un LLM lorsqu'il est disponible |
 
 ### Modèles de qualité disponibles
@@ -660,23 +644,23 @@ SRCC = coefficient de corrélation de rang de Spearman sur le benchmark KonIQ-10
 
 | Modèle | SRCC | VRAM | Notes |
 |--------|------|------|-------|
-| `topiq` | 0,93 | ~2 Go | Par défaut (`auto`) ; squelette ResNet50 avec attention descendante |
+| `topiq` | 0,93 | ~2 Go | Par défaut (`auto`) ; squelette ResNet50 avec attention descendante |
 | `hyperiqa` | 0,90 | ~2 Go | Hyper-réseau, adaptatif au contenu |
 | `dbcnn` | 0,90 | ~2 Go | CNN à double branche (distorsions synthétiques + authentiques) |
-| `musiq` | 0,87 | ~2 Go | Transformeur multi-échelle ; gère toute résolution |
+| `musiq` | 0,87 | ~2 Go | Transformeur multi-échelle ; gère toute résolution |
 | `clipiqa+` | 0,86 | ~4 Go | CLIP avec prompts de qualité appris |
 | `clip-mlp` | 0,76 | ~4 Go | CLIP ViT-L-14 historique + tête MLP |
 
 ### Changer de modèle de qualité
 
-1. Modifiez `scoring_config.json` :
+1. Modifiez `scoring_config.json` :
    ```json
    "quality": {
      "model": "topiq"
    }
    ```
 
-2. Re-notez les photos existantes (optionnel) :
+2. Re-notez les photos existantes (optionnel) :
    ```bash
    python facet.py /path --pass quality
    python facet.py --recompute-average
@@ -686,7 +670,7 @@ SRCC = coefficient de corrélation de rang de Spearman sur le benchmark KonIQ-10
 
 ## Traitement
 
-Réglages de traitement unifiés pour le traitement par lots GPU et le mode multi-pass.
+Réglages du traitement par lots GPU et du multi-pass.
 
 ```json
 {
@@ -720,22 +704,21 @@ Réglages de traitement unifiés pour le traitement par lots GPU et le mode mult
 
 ### Concepts clés
 
-**`gpu_batch_size`** - Nombre d'images traitées ensemble sur le GPU en une seule passe avant. Limité par la VRAM. Auto-réglé : réduit lorsque la mémoire GPU dépasse la limite.
-
-**`ram_chunk_size`** - Nombre d'images mises en cache en RAM entre les passes de modèle (mode multi-pass uniquement). Réduit les E/S disque en chargeant les images une fois par bloc. Limité par la limite de mémoire effective (voir `memory_limit_percent` ci-dessous). Auto-réglé dans les deux sens : réduit immédiatement lorsque l'utilisation dépasse la limite, et augmenté seulement en fin de bloc, et uniquement si l'utilisation *maximale* de tout ce bloc est restée sous la limite. Le maximum est ce qui compte, car un bloc n'est pas une seule mesure : chaque déchargement de modèle entre les passes fait chuter l'utilisation presque jusqu'au plancher, et c'est cette croissance sur ce creux qui a fait passer `ram_chunk_size` de 10 à 500 dans un conteneur de 8 Go et a provoqué un OOM kill sur le bloc suivant. Un bloc ne conserve plus, à côté de l'image décodée, une copie couleur OpenCV et une copie en niveaux de gris de chaque photo ; les passes qui en ont besoin les reconstruisent à l'exécution. Cela a ramené la mémoire qu'un bloc occupe pendant l'exécution de ses passes d'environ 8,1 à environ 4,4 octets par pixel source (mesuré sur des photos de 20 MP). `ram_chunk_size` est réglé de la même façon ; un bloc d'une taille donnée utilise simplement moins de mémoire.
+- **`gpu_batch_size`** : nombre d'images traitées ensemble dans une passe avant du GPU. Limité par la VRAM ; le réglage automatique le réduit lorsque la mémoire GPU dépasse la limite.
+- **`ram_chunk_size`** : nombre d'images gardées en RAM entre les passes de modèles (multi-pass uniquement), pour que chaque image soit lue sur disque une fois par bloc. Limité par `memory_limit_percent`. Le réglage automatique le réduit aussitôt que la mémoire dépasse la limite, et ne l'augmente qu'après un bloc dont l'utilisation *de pointe* est restée sous la limite.
 
 ### Référence des réglages
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `mode` | `"auto"` | Mode de traitement : `auto`, `multi-pass`, `single-pass`. Seul `single-pass` sélectionne le single-pass ; `auto` exécute toujours le multi-pass |
+| `mode` | `"auto"` | Mode de traitement : `auto`, `multi-pass`, `single-pass`. Seul `single-pass` sélectionne le single-pass ; `auto` exécute toujours le multi-pass |
 | `gpu_batch_size` | `16` | Images par lot GPU (limité par la VRAM) |
 | `ram_chunk_size` | `32` | Images par bloc RAM (multi-pass) |
 | `num_workers` | `4` | Threads de chargement d'images |
 | `load_workers` | `num_workers` | Threads de chargement de blocs en multi-pass (plafonnés à 8, `1` = séquentiel) |
-| `raw_decode_concurrency` | `0` (auto) | Nombre maximal de décodages RAW simultanés ; dimensionné automatiquement selon CPU/RAM (1-4), `1` = entièrement sérialisé |
-| `raw_decode_timeout_seconds` | `120` | Abandonner un décodage RAW bloqué après ce délai (`0` = désactivé) ; l'analyse échoue rapidement après des blocages répétés |
-| `exif_prefetch` | `true` | Mode single-pass : précharger l'EXIF en arrière-plan au lieu de bloquer le thread GPU |
+| `raw_decode_concurrency` | `0` (auto) | Nombre maximal de décodages RAW simultanés ; dimensionné automatiquement selon CPU/RAM (1-4), `1` = entièrement sérialisé |
+| `raw_decode_timeout_seconds` | `120` | Abandonner un décodage RAW bloqué après ce délai (`0` = désactivé) ; l'analyse échoue rapidement après des blocages répétés |
+| `exif_prefetch` | `true` | Mode single-pass : précharger l'EXIF en arrière-plan au lieu de bloquer le thread GPU |
 | **auto_tuning** | | |
 | `enabled` | `true` | Activer l'auto-réglage |
 | `monitor_interval_seconds` | `5` | Intervalle de vérification des ressources |
@@ -758,31 +741,31 @@ Réglages de traitement unifiés pour le traitement par lots GPU et le mode mult
 
 | Mode | Description |
 |------|-------------|
-| `auto` | Exécute toujours le multi-pass (valeur par défaut) ; seul `single-pass` sélectionne le single-pass |
+| `auto` | Exécute toujours le multi-pass (valeur par défaut) ; seul `single-pass` sélectionne le single-pass |
 | `multi-pass` | Chargement séquentiel des modèles (fonctionne avec une VRAM limitée) |
-| `single-pass` | Tous les modèles chargés en même temps (nécessite une VRAM élevée). Nécessite le modèle d'esthétique CLIP+MLP, il s'applique donc aux profils `legacy`/`8gb`. Sur `16gb`/`24gb` (esthétique TOPIQ), il journalise un avertissement et exécute le multi-pass, sauf en mode commercial (voir [Licences](#licences)) |
+| `single-pass` | Tous les modèles chargés en même temps (VRAM élevée) ; profils `legacy`/`8gb` uniquement |
+
+Sur `16gb`/`24gb` (esthétique TOPIQ), `single-pass` journalise un avertissement et s'exécute en multi-pass, sauf en mode commercial (voir [Licences](#licences)).
 
 ### Fonctionnement du multi-pass
 
-Au lieu de charger tous les modèles en même temps, le multi-pass :
+Au lieu de charger tous les modèles en même temps, le multi-pass :
 
-1. Charge les images par blocs en RAM (`ram_chunk_size` par défaut : 32)
-2. Pour chaque bloc, exécute les modèles séquentiellement : charger le modèle → traiter le bloc → décharger le modèle
+1. Charge les images par blocs en RAM (`ram_chunk_size` par défaut : 32)
+2. Pour chaque bloc, exécute les modèles séquentiellement : charger le modèle → traiter le bloc → décharger le modèle
 3. Combine les résultats dans une passe d'agrégation finale
 
-Chaque image est décodée une fois par bloc et partagée par toutes les passes, et les passes sont regroupées pour tenir dans la VRAM disponible, de sorte que les VLM de tagger/composition plus volumineux s'exécutent même avec une VRAM limitée.
+Chaque image est décodée une fois par bloc et partagée par toutes les passes. Les passes sont regroupées pour tenir dans la VRAM disponible, de sorte que les VLM plus gros s'exécutent même sur de petites cartes.
 
-Pendant le décodage, les threads de chargement effectuent aussi le travail CPU qui exige l'image complète : EXIF, métriques techniques, analyse de composition à base de règles, hash perceptuel et copie de 1024 px que se partagent les modèles pyiqa et Q-ReAlign (réduite une fois par photo, et non une fois par modèle). Le bloc conserve ensuite l'image décodée et cette copie de 1024 px. Les passes InsightFace et de saillance reconstruisent les copies couleur ou en niveaux de gris dont elles ont besoin quand elles s'exécutent (environ 0,09 s par photo de 20 MP ; le total figure sur la ligne `Plane rebuilds` du résumé du scan). Une erreur de composition ne fait échouer que cette photo : elle est consignée dans `scan_failures` à l'étape `composition` (à relancer avec `--retry-failed`), et le bloc continue.
-
-Sur un GPU CUDA, un chunk est décodé pendant le chargement des modèles du premier groupe de passes. Cela n'arrive que si toutes ces conditions sont remplies : au moins un modèle de ce groupe n'est ni chargé ni dans le cache RAM (sinon il n'y a pas de chargement derrière lequel masquer le décodage), `keep_in_ram` ne vaut pas `"never"`, et l'hôte dispose d'au moins cette mémoire : l'estimation de décodage du chunk (4,75 octets par pixel source à la taille moyenne du chunk précédent, 20 MP par photo pour le premier chunk), plus les tampons de décodage en cours (16 octets par pixel à la taille moyenne du chunk précédent, une photo par thread de chargement ; un chunk aux tailles mélangées peut en demander davantage, et `ram_cache_reserve_gb` absorbe l'écart), plus `ram_cache_reserve_gb`. La taille des modèles eux-mêmes n'entre pas dans ce budget : leurs poids vont en VRAM, et les charger coûte la même mémoire hôte quand le chunk est décodé d'abord. La vérification a lieu après l'élagage du cache RAM décrit plus bas, qui ne rend jamais un modèle pour faire de la place au chevauchement. Sinon, et toujours sur CPU et Apple MPS, le chunk est d'abord décodé comme avant, et le journal du scan l'indique une fois. Les résultats stockés sont identiques dans les deux cas. Le résumé du scan affiche `I/O wait (scan thread blocked on decode)`, la part du décodage qui n'a pas été masquée, et `Decode wall`, avec le nombre de chunks chevauchés. Mesuré sur 49 photos (profil `16gb`, chunks de 16, GPU de 16 Go, hôte de 32 Go, aucun autre processus Python en cours, trois paires d'exécutions alternant la version précédente et la nouvelle) : le scan est passé de 257,3 à 256,8 s, de 259,9 à 221,3 s et de 233,8 à 199,7 s (gain médian de 34,1 s, la première paire étant à égalité), avec 2, 2 et 4 des 4 chunks chevauchés, et l'attente du thread de scan sur le décodage est passée de 19,8, 19,9 et 20,3 s à 11,4, 10,9 et 0,0 s. Dans les deux premières paires, la vérification de la mémoire a refusé les chunks 1 et 2 (environ 5,5-5,7 Go disponibles contre 6,8 Go nécessaires : décodage 1,5 + en cours 1,3 + réserve 4,0 Go), car le scan maintient lui-même l'hôte à 91-97 % d'utilisation de la mémoire ; ces chunks ont été décodés d'abord, comme avant. Le gain dépend donc de la mémoire libre de l'hôte. L'utilisation du swap ne différait pas entre les deux exécutions d'une même paire. Les paires antérieures ont été exécutées pendant que d'autres processus occupaient deux à trois cœurs de CPU ; elles ne sont pas citées, et l'une d'elles était plus lente avec la modification (265 contre 218 s).
-
-Avant chaque chunk après le premier, le cache RAM rend des modèles lorsque la mémoire disponible est inférieure à ce dont ce chunk a besoin (son estimation de décodage plus `ram_cache_reserve_gb`). Il commence par le modèle dont on aura besoin le plus tard (compté à partir du groupe en cours, puis les groupes du chunk suivant) et s'arrête dès que ce besoin est couvert. Le chevauchement du décodage n'ajoute rien à ce besoin : si ce qui reste ne couvre pas aussi les tampons de décodage en cours, le chunk est d'abord décodé au lieu d'évincer un modèle. Sous pression mémoire (utilisation au-dessus de `memory_limit_percent`), le moniteur de ressources réduit le chunk comme avant, mais n'évince que tant que la mémoire disponible reste sous `ram_cache_reserve_gb`, dans le même ordre, au lieu de vider tout le cache. Là où la mémoire disponible ne repasse jamais au-dessus de la réserve, le cache est tout de même vidé. Le cache RAM a servi 5, 0 et 6 chargements de modèles sur 40 par scan avant le changement, et 3, 10 et 14 après (les mêmes trois paires au repos que ci-dessus ; dans la première paire, l'égalité, la nouvelle version avait moins de succès et son chargement des modèles a pris 13 s de plus).
+- Les threads de chargement calculent aussi l'EXIF, les métriques techniques, la composition à base de règles, le hash perceptuel et une copie partagée de 1024 px pour les modèles pyiqa et Q-ReAlign.
+- Une erreur de composition ne fait échouer que cette photo. Elle est enregistrée dans `scan_failures` à l'étape `composition` ; réessayez avec `--retry-failed`.
+- Sur un GPU CUDA, un bloc est décodé pendant le chargement des modèles suivants, lorsque la mémoire libre de l'hôte le permet et que `keep_in_ram` n'est pas `"never"`. Sinon (et toujours sur CPU et Apple MPS), il est décodé d'abord. Les résultats sont identiques dans les deux cas.
+- Lorsque la mémoire manque avant un bloc, le cache RAM libère d'abord le modèle nécessaire le plus tard dans le futur, et garde `ram_cache_reserve_gb` libre.
+- Le résumé du scan indique `Plane rebuilds`, `I/O wait (scan thread blocked on decode)` et `Decode wall`.
 
 ### Comportement de l'auto-réglage
 
-Le système surveille l'utilisation des ressources et ajuste :
-
-`memory_limit_percent` est mesuré par rapport à la limite de mémoire *effective* : la limite cgroup lorsque l'exécution a lieu sous un plafond de conteneur ou d'orchestrateur (`mem_limit` Docker, `--memory` Podman, `resources.limits.memory` Kubernetes), sinon la RAM hôte. Sous une limite cgroup, l'utilisation provient désormais de la comptabilité propre au cgroup plutôt que de la mémoire libre de l'hôte, si bien que `mem_limit` borne réellement l'auto-réglage — auparavant, il lisait la mémoire de l'hôte même à l'intérieur d'un conteneur plafonné, ce qui pouvait sous-évaluer l'utilisation et laisser `ram_chunk_size` croître jusqu'à provoquer un OOM kill. `memory_limit_percent` est un pourcentage de cette limite : `85` contre un plafond de 8 Go donne environ 6,8 Go, et non 85 % de la RAM hôte.
+Facet surveille l'utilisation des ressources et s'ajuste comme suit. `memory_limit_percent` se mesure par rapport à la limite de mémoire *effective* : la limite cgroup sous un plafond de conteneur (Docker `mem_limit`, Podman `--memory`, Kubernetes `resources.limits.memory`), sinon la RAM de l'hôte. Ainsi `85` face à un plafond de 8 Go donne environ 6,8 Go.
 
 | Métrique | Action |
 |----------|--------|
@@ -794,7 +777,7 @@ Le système surveille l'utilisation des ressources et ajuste :
 
 ### Regroupement dynamique des passes
 
-Quand la VRAM le permet, plusieurs petits modèles s'exécutent ensemble :
+Lorsque la VRAM le permet, plusieurs modèles s'exécutent dans la même passe :
 
 | VRAM | Passe 1 | Passe 2 | Passe 3 | Passe 4 |
 |---|---|---|---|---|
@@ -804,11 +787,9 @@ Quand la VRAM le permet, plusieurs petits modèles s'exécutent ensemble :
 | 24 Go (profil `24gb`) | Tagger Qwen3.5 4B + SigLIP + Q-ReAlign + saillance | TOPIQ + TOPIQ IAA + TOPIQ NR-Face + LIQE + SAMP-Net + InsightFace | - | - |
 | 35 Go+ (profil `24gb`) | Tous les modèles ensemble (single-pass) | - | - | - |
 
-Les lignes 8 Go, 12 Go, 16 Go et 24 Go sont la sortie du planificateur de passes pour le profil indiqué, pour une carte annonçant 8,0, 11,7, 15,99 et 23,99 GiB de VRAM totale ; une carte annonçant 34,8 GiB ou plus planifie une seule passe avec le profil `24gb` (ligne 35 Go+). Le planificateur répartit les modèles selon leur VRAM estimée dans la VRAM totale de la carte moins 1,3 GiB, qu'il met de côté pour la surcharge de CUDA et d'ONNX Runtime et pour le bureau. Une carte de 12 Go n'est pas sélectionnée automatiquement (voir [Détection automatique de la VRAM](#détection-automatique-de-la-vram)) : elle nécessite `"vram_profile": "16gb"` ou `FACET_VRAM_PROFILE=16gb`.
+Les lignes sont les plans pour des cartes annonçant 8,0, 11,7, 15,99 et 23,99 GiB de VRAM totale ; 34,8 GiB ou plus donne une seule passe. Le planificateur garde 1,3 GiB libre pour CUDA, ONNX Runtime et le bureau. Une carte de 12 Go n'est pas sélectionnée automatiquement (voir [Détection automatique de la VRAM](#détection-automatique-de-la-vram)) : définissez `"vram_profile": "16gb"` ou `FACET_VRAM_PROFILE=16gb`.
 
-\* La ligne 12 Go est le plan pour une carte annonçant 11,7 GiB. Une carte de 12 Go qui annonce 11,8 GiB ou plus (par exemple 11,99 GiB) planifie à la place trois passes : tagger Qwen3.5 + Q-ReAlign ; SigLIP + saillance + TOPIQ ; TOPIQ IAA + TOPIQ NR-Face + LIQE + SAMP-Net + InsightFace.
-
-Mesuré sur 49 photos avec un plafond strict de 11,7 GiB sur PyTorch, ONNX Runtime et la lecture de la VRAM libre (RTX 4070 Ti SUPER) : le plan en quatre passes s'est terminé sans aucune erreur de mémoire insuffisante, avec un pic de VRAM de 9,74 GiB pour toute la carte, bureau compris (passe la plus lourde : SigLIP + saillance + TOPIQ IAA), une taille de lot de saillance de 2 et 246 s de durée ; les tags, les embeddings de 1152 dimensions, les cadres du sujet (44/44) et les visages sont identiques à ceux d'une exécution sans plafond.
+\* La ligne 12 Go correspond à une carte annonçant 11,7 GiB. Une carte annonçant 11,8 GiB ou plus (par exemple 11,99 GiB) planifie à la place trois passes : tagueur Qwen3.5 + Q-ReAlign ; SigLIP + saillance + TOPIQ ; TOPIQ IAA + TOPIQ NR-Face + LIQE + SAMP-Net + InsightFace.
 
 ### Options en ligne de commande
 
@@ -838,18 +819,10 @@ python facet.py --list-models
 
 ## Décodage RAW
 
-Comment les fichiers RAW sont transformés en pixels. Deux profils existent, et ils ne
-sont pas interchangeables.
+Comment les fichiers RAW sont convertis en pixels. Facet utilise deux profils :
 
-**Profil métriques** — le démosaïçage à partir duquel chaque score est calculé, et
-l'espace de pixels dans lequel vivent les cadres de visage stockés et
-`image_width`/`image_height`. Il est délibérément fidèle : aucune adaptation par vue,
-un seul gain d'exposition fixe pour toute la bibliothèque.
-
-**Profil d'affichage** — ce que montrent la miniature stockée, la galerie et `/image`.
-Il privilégie l'aperçu intégré par le boîtier, qui porte déjà la courbe de tons, les
-modes de plage dynamique et l'exposition propres au modèle, et retombe sur le
-démosaïçage du profil métriques quand aucun aperçu exploitable n'existe.
+- **Profil de métriques** : le dématriçage à partir duquel chaque score est calculé (et l'espace de pixels des cadres de visages et de `image_width`/`image_height`). Un seul gain d'exposition fixe pour toute la bibliothèque, aucune adaptation par vue.
+- **Profil d'affichage** : ce que montrent la miniature stockée, la galerie et `/image`. Il préfère l'aperçu intégré au boîtier (la courbe de tons et l'exposition propres au boîtier), et se rabat sur le dématriçage des métriques.
 
 ```json
 "raw_decode": {
@@ -863,144 +836,66 @@ démosaïçage du profil métriques quand aucun aperçu exploitable n'existe.
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `bright` | `1.62` | Gain d'exposition fixe appliqué à chaque démosaïçage (`1.0` = le niveau propre de LibRaw). La seule constante arbitraire ici : elle correspond au +0,7 IL par défaut de darktable, et rien dans le fichier ne l'impose — validez-la sur votre propre bibliothèque avec `--check-raw-rendering` avant un grand scan |
-| `prefer_embedded_preview` | `true` | Générer les images d'affichage à partir de l'aperçu du boîtier quand il y en a un. `false` démosaïque tout, ce qui est plus lent et perd la courbe de tons du boîtier |
-| `preview_min_sensor_ratio` | `0.5` | Quelle part du capteur un aperçu doit couvrir pour que `/image` le serve au lieu de démosaïquer. Nikon, Pentax, Samsung et Canon CR3 intègrent un aperçu quasi plein format (0,98-0,99) ; le Panasonic se situe à 0,52, tandis qu'Olympus, Fuji, Sony et DNG intègrent un petit aperçu (0,29-0,49) et démosaïquent donc |
-| `viewer_concurrency` | `3` | Nombre maximal de démosaïçages RAW simultanés pour les rendus de la visionneuse `/image` et `/thumbnail`, sur son propre budget séparé de `processing.raw_decode_concurrency` ci-dessus, si bien qu'une requête de la visionneuse ne fait jamais la queue derrière un scan ou un décodage en ligne de commande |
-| `faithful_bracket_render` | `true` | Afficher une vue d'un bracketing sans aucune correction : ni aperçu du boîtier, ni gain `bright`. Voir [plus bas](#les-vues-dun-bracketing-saffichent-sans-correction). `false` affiche les bracketings comme n'importe quelle autre photo |
+| `bright` | `1.62` | Gain d'exposition fixe pour chaque dématriçage (`1.0` = niveau propre de LibRaw ; `1.62` ≈ +0,7 IL de darktable) |
+| `prefer_embedded_preview` | `true` | Afficher l'aperçu du boîtier lorsqu'il y en a un ; `false` dématrice tout (plus lent, sans la courbe de tons du boîtier) |
+| `preview_min_sensor_ratio` | `0.5` | Part du capteur qu'un aperçu doit couvrir pour que `/image` l'utilise au lieu de dématricer |
+| `viewer_concurrency` | `3` | Nombre maximal de dématriçages RAW simultanés pour `/image` et `/thumbnail` de la visionneuse, distinct de `processing.raw_decode_concurrency` |
+| `faithful_bracket_render` | `true` | Afficher les vues d'un bracketing sans aucune correction (ni aperçu, ni gain `bright`) ; voir [plus bas](#les-vues-dun-bracketing-saffichent-sans-correction) |
+
+Remarques :
+- `bright` est la seule constante arbitraire ici. Vérifiez-la sur votre bibliothèque avec `--check-raw-rendering` avant un gros scan.
+- Nikon, Pentax, Samsung et Canon CR3 intègrent un aperçu quasi pleine taille (0,98-0,99). Panasonic se situe à 0,52. Olympus, Fuji, Sony et DNG en intègrent un petit (0,29-0,49) et sont donc dématricés.
 
 ### Compromis mémoire
 
-`viewer_concurrency` et `processing.raw_decode_concurrency` sont des budgets
-indépendants, chacun avec son propre sémaphore, et ni l'un ni l'autre n'emprunte de
-marge à l'autre. Dans le pire des cas, le processus peut donc tenir en vol des
-démosaïçages « bibliothèque + visionneuse » à la fois, chacun culminant à environ
-200-400 Mo d'intermédiaires — abaissez `viewer_concurrency` sur un hôte contraint en
-mémoire. En pratique ce budget est le plus souvent inactif : il n'est dépensé que
-lorsque `/image` doit retomber sur un démosaïçage complet, ce que
-`preview_min_sensor_ratio` ci-dessus évite déjà pour tout RAW dont l'aperçu intégré est
-assez grand (Nikon, Pentax, Samsung, Canon CR3). Sony, Fuji, Olympus et DNG sont les
-boîtiers qui le consomment réellement.
+`viewer_concurrency` et `processing.raw_decode_concurrency` sont des budgets distincts. Dans le pire des cas les deux s'exécutent en même temps, et chaque dématriçage atteint un pic d'environ 200-400 Mo. Baissez `viewer_concurrency` sur un hôte à mémoire limitée. En pratique, seuls les fichiers Sony, Fuji, Olympus et DNG utilisent le budget de la visionneuse, car les autres ont un aperçu assez grand.
 
 ### Pourquoi il n'y a pas de luminosité automatique
 
-LibRaw éclaircit chaque vue jusqu'à ce qu'environ 1 % de ses propres pixels soit
-écrêté, et substitue le pixel le plus clair de cette même vue au niveau de blanc du
-boîtier. Les deux termes sont propres à chaque vue, si bien qu'un bracketing ressort
-égalisé : un ensemble Canon de 5 vues mesuré, couvrant -3,4 à +3,3 IL, a rendu des
-luminances moyennes de 54 à 56 pour ses trois vues sombres, indiscernables les unes des
-autres. Avec le gain fixe, le même ensemble s'étend de 8,7 à 160 — une échelle de 18x
-au lieu de 2,6x.
+L'éclaircissement automatique de LibRaw s'adapte à chaque vue, si bien qu'un bracketing ressort avec toutes ses vues à peu près à la même luminosité. Le gain fixe conserve l'échelle d'exposition réelle entre les vues.
 
-Augmenter `bright` étire linéairement chaque rendu ; cela ne restaure jamais le
-comportement par vue. Les métriques d'exposition en dépendent, donc relancez
-`--recompute-average` après l'avoir modifié, et rescannez pour réécrire les métriques
-elles-mêmes.
+Augmenter `bright` éclaircit tous les rendus. Les métriques d'exposition suivent : relancez `--recompute-average` après l'avoir changé, et rescannez pour réécrire les métriques elles-mêmes.
 
 ### Les vues d'un bracketing s'affichent sans correction
 
-Une photo dont le `sequence_kind` est `bracket` ou `hdr_panorama` s'affiche sans
-aucune des deux corrections ci-dessus : ni aperçu intégré par le boîtier, ni gain
-`bright`. Tout le reste conserve le profil d'affichage. Un `panorama` ordinaire n'est
-*pas* un bracketing et en est exclu — seul un panorama HDR, qui est en bracketing à
-chaque position, rejoint les bracketings ici.
+Une photo dont le `sequence_kind` est `bracket` ou `hdr_panorama` s'affiche sans aperçu du boîtier et sans gain `bright`. Les deux écrêteraient les hautes lumières que vous jugez dans un bracketing. Un simple `panorama` n'est pas concerné.
 
-La raison est que les deux corrections compressent les hautes lumières, et la marge
-de hautes lumières est tout l'intérêt des vues en +IL d'un bracketing. Le gain
-uniforme préserve l'exposition *relative* entre les vues mais écrête le haut de
-l'échelle : à `bright` 2.0, une échelle mesurée de 4,85x est ressortie à 3,67x, l'écart
-tenant uniquement à l'écrêtage. Le JPEG intégré du boîtier a sa propre courbe de
-tons, qui compresse la même plage pour la même raison. Pour une photo ordinaire,
-c'est une image plus flatteuse ; pour un bracketing, cela cache exactement ce que le
-photographe est en train de juger.
+Où cela s'applique :
+- `/image` (vue détail, loupe de comparaison, loupe de tri), rendu à la volée.
+- Les vignettes de la galerie et la grille de comparaison, après `--refresh-thumbnails`.
+- `GET /api/download` avec `type=original`.
 
-Cela s'applique à toute surface qui affiche un bracketing, afin qu'elles ne puissent
-pas se contredire : `/image` (la vue détail, la loupe de comparaison et la loupe de
-tri) le rend ainsi à la volée, `--refresh-thumbnails` le fige dans
-`photos.thumbnail` pour la vignette de galerie et la grille de comparaison, et
-`GET /api/download` avec `type=original` le convertit de la même façon — une vue de
-bracketing téléchargée est généralement en route vers une fusion HDR, où les hautes
-lumières écrêtées que les autres rendus introduisent seraient irrécupérables.
+Non concernés : `type=raw` (le RAW intact), `type=darktable` (l'export avec rendu retouché), `GET /api/photo/cull_preview` (rendu par darktable-cli) et le calcul des scores.
 
-Deux types de téléchargement sont délibérément laissés de côté : `type=raw` copie
-le fichier RAW intact, et `type=darktable` est l'export « rendu retouché », dont le
-but même est une courbe de tons. `GET /api/photo/cull_preview` n'est pas affecté non
-plus — il s'affiche via darktable-cli, pas via rawpy.
+La détection des séquences s'exécute après un scan : lancez d'abord `--detect-sequences`, puis `--refresh-thumbnails`, pour que les vignettes suivent.
 
-Ce n'est *pas* appliqué au moment du scan, car la détection de séquence tourne après
-un scan et l'appartenance à un bracketing n'est pas encore connue — lancez
-`--detect-sequences` d'abord, puis `--refresh-thumbnails`, pour que les vignettes
-suivent.
-
-La notation n'est pas affectée. Les métriques sont calculées à partir de
-`load_image_from_path`, qui est un décodage séparé aux dimensions du capteur et où
-vivent chaque cadre de visage stocké et `image_width`/`image_height` ; rien ici ne
-les atteint.
-
-Réglez `faithful_bracket_render` sur `false` pour afficher les bracketings comme
-n'importe quelle autre photo.
+Définissez `faithful_bracket_render` à `false` pour afficher les bracketings comme n'importe quelle autre photo.
 
 ### Migration d'une bibliothèque scannée avant ce profil
 
-Les miniatures et les histogrammes sont figés au moment du scan, donc changer de
-profil ne modifie pas rétroactivement ce que contient une ligne déjà scannée.
-`photos.render_version` enregistre lequel des deux rendus RAW d'affichage a
-produit la miniature stockée de chaque ligne :
+Les miniatures et les histogrammes sont stockés au moment du scan ; changer de profil ne modifie donc pas les photos déjà scannées. `photos.render_version` indique quel rendu a produit chaque miniature stockée :
 
-- `NULL` — antérieur à l'introduction du marqueur
-- `1` — l'aperçu intégré du boîtier d'abord, sinon le gain `bright` configuré
-  sur le repli en dématriçage : ce que produit chaque scan
-- `2` — ni aperçu ni gain : ce que doit afficher une vue d'un bracketing, et
-  ce que seul `--refresh-thumbnails` peut produire, car c'est la première
-  passe qui sait que la vue appartient à un bracketing (la détection de
-  séquence tourne après un scan, donc un scan ne peut marquer que `1`)
+- `NULL` : antérieur au marquage
+- `1` : aperçu du boîtier d'abord, gain `bright` sur le repli par dématriçage (ce que stocke chaque scan)
+- `2` : ni aperçu ni gain, pour une vue de bracketing (seul `--refresh-thumbnails` le stocke)
 
-Lire le marqueur en le confrontant au `sequence_kind` de la ligne, jamais
-seul : un `1` est à jour pour une photo ordinaire et périmé pour une vue
-qu'une passe ultérieure regroupe dans un bracketing.
+Deux actions seulement mettent à jour les miniatures stockées :
+- **Un nouveau scan** réécrit la miniature et l'histogramme, et marque toujours `1`.
+- **`--refresh-thumbnails`** réécrit les miniatures RAW et marque `1` ou `2` d'après le `sequence_kind` actuel. Il reconstruit chaque ligne : relancez-le après un changement de `bright` ou une passe `--detect-sequences`.
 
-Il n'y a rien à configurer — le marqueur est une écriture comptable, pas un
-réglage — mais il vaut la peine de savoir quels chemins le font avancer :
+La vue détail (`/image`) est toujours à jour ; la grille de la galerie ne change qu'après l'une de ces deux actions.
 
-- **Un rescan** réécrit la miniature et l'histogramme, et marque toujours
-  `1` — l'appartenance à une séquence n'est pas encore connue au moment du
-  scan.
-- **`--refresh-thumbnails`** réécrit les miniatures RAW et marque chaque
-  ligne `1` ou `2` selon son `sequence_kind` actuel. Les lignes ne sont pas
-  ignorées sur la base du marqueur, donc relancer la commande après un
-  changement de `bright` ou une passe `--detect-sequences` reconstruit tout.
+La galerie affiche une bannière que l'on peut fermer et qui compte les photos encore sur l'ancien rendu. Elle peut avoir jusqu'à une heure de retard ; `python database.py --refresh-stats` la met à jour aussitôt.
 
-Ce sont les deux seuls. Parcourir la bibliothèque ne répare rien : `/image` s'affiche
-à la volée, donc la vue détail est toujours à jour, mais la grille de galerie lit
-`photos.thumbnail` et seuls un scan ou `--refresh-thumbnails` la réécrivent.
-
-La bannière rejetable de la galerie compte les lignes encore sur l'ancien rendu.
-Elle lit une entrée `stats_cache` avec un TTL d'une heure plutôt que de parcourir
-`photos` à chaque chargement de page, donc elle peut retarder par rapport à la
-réalité après un rescan ; `python database.py --refresh-stats` la recalcule
-immédiatement.
-
-Un rendu qui revient entièrement noir est refusé plutôt que stocké, et la ligne
-reste sans marqueur pour qu'une exécution ultérieure la retente. LibRaw remplit de
-zéros un RW2 Panasonic sévèrement tronqué pour en faire une vue noire pleine taille
-valide au lieu d'échouer, et une migration sans supervision est le pire endroit pour
-que cela passe inaperçu. Le rejet est journalisé avec le nom du fichier.
+Un rendu entièrement noir (par exemple un RW2 Panasonic tronqué) est refusé, journalisé avec le nom du fichier, et retenté lors d'une exécution ultérieure.
 
 ---
 
 ## Mappage de tons HDR PQ
 
-Les images Canon HDR PQ (`.HIF`) sont HDR : le HEIF porte la fonction de
-transfert PQ (SMPTE ST 2084) sur des primaires BT.2020, avec une luminance
-absolue jusqu’à 10 000 nits. Les modèles de qualité et la vignette stockée
-travaillent en sRGB SDR 8 bits ; une image PQ est donc décodée à la
-profondeur native du boîtier, convertie de BT.2020 vers sRGB, mappée en lumière
-linéaire puis encodée avec l’OETF sRGB — la réduction à 8 bits n’intervient
-qu’à cette dernière étape. Ce bloc contrôle ce mappage. Il ne s’applique qu’aux images dont le profil de
-couleur NCLX déclare le transfert PQ (caractéristique 16) ; les HEIF SDR, HLG
-et JPEG passent tels quels, quelle que soit la valeur de `enabled`.
-Les cadres que le boîtier a écrits tournés (une orientation EXIF autre que 1) ressortent droits : le décodeur applique lui-même l'orientation — y compris sur le chemin de profondeur native, où pillow-heif 1.6 et plus tournent le plan avant le mappage de tons et la valeur EXIF brute est neutralisée plutôt que réappliquée.
+Les images Canon HDR PQ (`.HIF`) portent la fonction de transfert PQ (SMPTE ST 2084) sur des primaires BT.2020, jusqu'à 10 000 nits. Les modèles de qualité et les miniatures exigent du sRGB SDR 8 bits ; Facet décode donc une image PQ à la profondeur native du boîtier, la convertit en sRGB et applique un mappage de tons. Ce bloc contrôle ce mappage.
 
+Il ne s'applique **qu'**aux images dont le profil colorimétrique NCLX déclare le transfert PQ (caractéristique 16). Le HEIF SDR, le HLG et le JPEG passent sans modification, quelle que soit la valeur de `enabled`. Les images pivotées (Orientation EXIF autre que 1) ressortent droites, y compris sur le chemin en profondeur native : avec pillow-heif 1.6 et plus, le plan est tourné avant le mappage de tons.
 
 ```json
 "hdr_pq_tonemap": {
@@ -1018,62 +913,30 @@ Les cadres que le boîtier a écrits tournés (une orientation EXIF autre que 1)
 ```
 
 | Réglage | Défaut | Description |
-|---------|---------|-------------|
-| `enabled` | `true` | Mapper les images PQ en SDR. Avec `false`, les valeurs PQ brutes du décodeur sont renvoyées sans conversion, ce qui laisse la galerie et les notes avec une image sombre et délavée ; à laisser activé sauf pour déboguer la chaîne |
-| `method` | `hable` | Courbe de tons. `hable` est la courbe filmique (épaule) utilisée par le filtre `tonemap` HDR vers SDR de ffmpeg ; `clip` est une simple normalisation linéaire avec écrasement brutal, uniquement à titre de référence |
-| `white_point.mode` | `percentile` | Manière de choisir le point blanc par image (la luminance mappée sur le blanc SDR). `percentile` prend un percentile élevé du canal le plus clair ; `max` utilise le pixel le plus clair (équivaut au pic de signal de ffmpeg, mais un pixel chaud dans une scène nocturne assombrit toute l’image) ; `fixed` utilise `fixed_nits` |
-| `white_point.percentile` | `99.99` | Percentile utilisé en mode `percentile`. Assez haut pour suivre un grand ciel clair, assez bas pour ignorer les pixels spéculaires isolés |
-| `white_point.min_nits` | `100.0` | Plancher du point blanc ; une image sombre n’est jamais normalisée sous le blanc de référence SDR |
-| `white_point.max_nits` | `1200.0` | Plafond en mode `percentile` ; limite dans quelle mesure une image inhabituellement claire peut tirer la courbe vers le bas |
+|---------|--------|-------------|
+| `enabled` | `true` | Applique le mappage de tons des images PQ vers le SDR ; `false` les laisse sombres et délavées (débogage uniquement) |
+| `method` | `hable` | Courbe de tons : `hable` (filmique, comme le filtre `tonemap` de ffmpeg) ou `clip` (linéaire avec écrêtage net, référence uniquement) |
+| `white_point.mode` | `percentile` | Comment le point blanc de chaque image est choisi : `percentile`, `max` (pixel le plus lumineux) ou `fixed` (`fixed_nits`) |
+| `white_point.percentile` | `99.99` | Percentile utilisé par le mode `percentile` |
+| `white_point.min_nits` | `100.0` | Plancher du point blanc ; une image sombre n’est jamais normalisée sous le blanc de référence SDR |
+| `white_point.max_nits` | `1200.0` | Plafond en mode `percentile` ; limite dans quelle mesure une image inhabituellement claire peut tirer la courbe vers le bas |
 | `white_point.fixed_nits` | `1000.0` | Point blanc utilisé en mode `fixed` |
-| `chroma_preserve` | `per_channel` | `per_channel` fait rouler chaque canal R/V/B indépendamment (plus clair, avec un léger décalage de teinte dans les plus hautes lumières) ; `max_channel` dérive une échelle du canal le plus clair comme le défaut de ffmpeg, en préservant la teinte pour un résultat légèrement plus sombre |
+| `chroma_preserve` | `per_channel` | `per_channel` (plus lumineux, léger décalage de teinte dans les hautes lumières) ou `max_channel` (préserve la teinte, légèrement plus sombre) |
+
+Le mode `max` laisse un seul pixel chaud d'une scène nocturne assombrir toute l'image ; `percentile` l'évite.
 
 ### Pourquoi le point blanc est déterminé par image
 
-Normaliser la courbe Hable sur un blanc de référence fixe de 100 nits,
-`hable(x)/hable(1)`, écrase en blanc pur tout pixel au-dessus de 100 nits. Les
-photos HDR réelles culminent à plusieurs centaines voire quelques milliers de
-nits : les ciels et fenêtres clairs perdaient donc toute texture (25 à 60 %
-des pixels écrasés en blanc sur un échantillon de photos Canon HDR PQ). La
-courbe est plutôt normalisée sur un point blanc par image `w`,
-`hable(x)/hable(w)`, comme ffmpeg divise par `hable(peak)` avec un pic mesuré
-par image dans `vf_tonemap.c`. Le percentile par défaut p99.99, borné à
-100-1200 nits, conserve la texture des hautes lumières tout en ignorant les
-pixels chauds isolés.
+Un point blanc fixe de 100 nits écrête en blanc pur tout ce qui est plus lumineux, alors que de vraies images HDR culminent à des centaines, voire des milliers de nits. Facet normalise donc à un point blanc propre à chaque image, comme ffmpeg (`vf_tonemap.c`). Le p99.99 par défaut, borné à 100-1200 nits, conserve la texture des hautes lumières et ignore les pixels chauds isolés.
 
 ### Pourquoi le décodage se fait à la profondeur native du boîtier
 
-Le PQ encode une luminance absolue : sa plage de codes couvre toute l’échelle
-ST 2084 de 0 à 10 000 nits, quel que soit le contenu réel. En 8 bits, seuls
-130 codes environ tombent sous le blanc diffus, et un quart de la plage couvre
-les 1000-10 000 nits qu’un boîtier masterisé à 1000 nits n’atteint jamais.
-Décoder en 8 bits avant que l’EOTF ne les dilate provoque donc une postérisation
-des dégradés lisses.
+Décoder le PQ en 8 bits avant le mappage de tons postérise les dégradés doux. Facet demande au décodeur HEIF la profondeur propre au fichier (10 bits sur les boîtiers actuels) et ne réduit à 8 bits qu'après la courbe de tons. Le gain se voit sur les contenus doux (ciels dégagés, fonds de studio, bokeh prononcé) ; les indicateurs d'écrêtage et `exposure_score` sont inchangés sur de vraies photos. Un décodeur qui ne peut pas fournir la profondeur native se rabat sur 8 bits.
 
-Le décodage réclame désormais au décodeur HEIF la profondeur propre du fichier
-(10 bits sur les boîtiers actuels) et la table d’EOTF est dimensionnée en
-conséquence : la réduction à 8 bits a lieu après la courbe de tons, plus avant.
-Mesuré sur une rampe PQ de 1024 paliers : la voie 8 bits atteint 170 niveaux de
-sortie distincts avec 86 niveaux intermédiaires vides, la voie native atteint
-les 256 sans aucun trou.
-
-Cela ne change rien de mesurable sur une photographie : le bruit du capteur
-diffuse déjà les paliers 8 bits, si bien qu’une vraie image PQ Canon remplit 248
-des 256 casiers de luminance dans les deux cas, et que ses pourcentages
-d’écrêtage, ses indicateurs `shadow_clipped` / `highlight_clipped` et son
-`exposure_score` sont inchangés. Le gain porte sur le contenu synthétique lisse :
-ciels dégagés, fonds de studio, bokeh marqué. Le pic mémoire n’augmente pas
-pour autant : le tampon uint16 du décodeur est plus large, mais emprunter cette
-voie signifie que Pillow ne décode jamais l’image, si bien qu’une image PQ de
-12 Mpx culmine à 166,4 Mio contre 212,3 Mio pour la voie 8 bits. Un HEIF SDR
-n’est jamais décodé ainsi. Un décodeur incapable de fournir la profondeur native
-retombe silencieusement sur la voie 8 bits, et `enabled: false` court-circuite
-l’ensemble.
-
-**Références.** EOTF PQ : SMPTE ST 2084:2014. Courbe Hable et pic par image :
-ffmpeg `vf_tonemap.c` (John Hable, « Filmic Tonemapping Operators », 2010).
-Matrice BT.2020 vers sRGB : BT.2020-2 / IEC 61966-2-1 avec D65. OETF sRGB :
-IEC 61966-2-1. Caractéristique de transfert NCLX 16 : ISO/IEC 23001-8 /
+**Références.** EOTF PQ : SMPTE ST 2084:2014. Courbe Hable et pic par image :
+ffmpeg `vf_tonemap.c` (John Hable, « Filmic Tonemapping Operators », 2010).
+Matrice BT.2020 vers sRGB : BT.2020-2 / IEC 61966-2-1 avec D65. OETF sRGB :
+IEC 61966-2-1. Caractéristique de transfert NCLX 16 : ISO/IEC 23001-8 /
 UIT-T H.273.
 
 ## Détection de rafales
@@ -1100,13 +963,12 @@ Regroupe les photos similaires prises en succession rapide.
 
 ## Notifications de mise à jour
 
-Prévient l'administrateur de l'installation qu'une nouvelle version de Facet est parue. À ne pas confondre avec le « Une nouvelle version est disponible — Recharger » du navigateur, qui bascule la page sur un paquet déjà téléchargé : ici il s'agit d'une version que personne n'a encore installée.
+Avertit les utilisateurs en mode édition qu'une version plus récente de Facet existe. C'est distinct de l'invite du navigateur « une nouvelle version est disponible — Recharger ».
 
-La version en cours est toujours affichée en bas du menu utilisateur, pour tous ceux qui peuvent ouvrir le visualiseur. Une image construite avec `--build-arg FACET_BUILD=<branche>@<commit>` affiche aussi cette ligne, pour distinguer deux installations d'une même version construites depuis des branches différentes (`/api/config` les fournit en `version` et `build`, mais seulement à qui peut lire la bibliothèque : sur une installation protégée par mot de passe, un visiteur non connecté ne reçoit ni l'un ni l'autre).
-
-Volontairement discret. La vérification a lieu côté serveur et son résultat est mis en cache : une installation n'interroge GitHub qu'une fois tous les `interval_days`, quel que soit le nombre de personnes devant le viewer. La requête ne transporte rien d'autre qu'elle-même — aucun jeton, aucun identifiant, rien de la photothèque. Un échec est silencieux : un GitHub injoignable se traduit par « aucune mise à jour connue », jamais par une erreur. Seuls les utilisateurs en mode édition sont prévenus, car la mise à jour relève de l'exploitant, et chaque navigateur n'affiche l'avis qu'une fois par semaine au maximum.
-
-Passez `enabled` à `false` pour supprimer complètement la requête sortante.
+- La version en cours s'affiche en bas du menu utilisateur pour tous ceux qui peuvent ouvrir la visionneuse.
+- Une image construite avec `--build-arg FACET_BUILD=<branch>@<commit>` affiche aussi cette ligne de build. `/api/config` renvoie les deux sous `version` et `build`, uniquement aux appelants qui peuvent lire la bibliothèque.
+- Le serveur interroge GitHub au plus une fois par `interval_days`, sans jeton ni donnée de la bibliothèque. Un échec de vérification s'affiche comme « aucune mise à jour connue ».
+- Seuls les utilisateurs en mode édition voient l'avis, au plus une fois par semaine et par navigateur.
 
 ```json
 {
@@ -1120,7 +982,7 @@ Passez `enabled` à `false` pour supprimer complètement la requête sortante.
 
 | Paramètre | Défaut | Description |
 |---|---|---|
-| `enabled` | `true` | `false` désactive la vérification ; plus aucune requête n'est émise |
+| `enabled` | `true` | `false` désactive la vérification ; plus aucune requête n'est émise |
 | `check_url` | API GitHub des dernières versions | Où chercher la dernière version publiée |
 | `interval_days` | `7` | Durée de mise en cache du résultat avant une nouvelle interrogation |
 
@@ -1128,44 +990,19 @@ Passez `enabled` à `false` pour supprimer complètement la requête sortante.
 
 ## Détection de séquences
 
-Nomme les séries prises volontairement en plusieurs vues — aujourd'hui les bracketings
-d'exposition — pour qu'elles ne soient pas lues comme des prises concurrentes. L'échelle
-d'exposition est déduite des `f_stop` / `shutter_speed` / `ISO` déjà stockés
-(`EV = log2(N^2 / t) - log2(ISO / 100)`) : une bibliothèque existante est donc étiquetée par
-simple calcul, sans nouveau scan, sans décodage d'image et sans modèle.
+Étiquette les bracketings d'exposition pour qu'ils ne soient pas traités comme des prises concurrentes. L'exposition de chaque vue vient de `f_stop` / `shutter_speed` / `ISO` stockés (`EV = log2(N^2 / t) - log2(ISO / 100)`), si bien qu'une bibliothèque existante est étiquetée sans nouveau scan.
 
-Une série est retenue si les vues partagent le même boîtier, se suivent dans
-`max_gap_seconds`, gardent le même cadrage (`max_hamming` sur le pHash) et si leurs IL, triés
-plutôt que dans l'ordre de prise de vue, forment une échelle régulière d'expositions
-distinctes couvrant `min_span_stops` sur au moins `min_frames` vues. Trier d'abord rend
-l'ordre de prise de vue indifférent : une série débutant par la vue de base (`0, -, +`, un
-ordre proposé par Sony, Canon comme Nikon) est retenue au même titre qu'une série prise du
-plus sombre au plus clair. C'est la régularité des pas qui distingue un bracketing d'une série
-à main levée dans une lumière changeante.
+Une suite est un bracketing lorsque ses vues :
+- viennent du même appareil, chacune à moins de `max_gap_seconds` de la précédente ;
+- gardent le même cadrage (`max_hamming` sur le pHash) ;
+- forment une échelle régulière d'expositions distinctes, dans n'importe quel ordre de prise (base d'abord `0, -, +` fonctionne comme du sombre au clair), couvrant `min_span_stops`, sur au moins `min_frames` vues.
 
-Chaque vue reçoit `sequence_ev_offset`, sa correction d'exposition par rapport à la vue de
-référence, signée comme sur le boîtier : `-2` est la vue sombre, `+2` la vue claire. Quand
-une rafale correspond exactement à un bracketing, son `is_burst_lead` est déplacé sur la vue
-de référence, afin que la galerie affiche la photo correctement exposée plutôt que celle qui
-obtient le meilleur score.
+Chaque vue reçoit `sequence_ev_offset`, son exposition relative à la vue de base, signée comme les étiquettes AEB d'un boîtier (`-2` sombre, `+2` clair). La base est le barreau du milieu. Avec un nombre pair de vues, la base est la vue centrale qui écrête le moins d'extrémités de son histogramme (la plus ancienne en cas d'égalité) ; un jeu impair comme `(-2, 0, +2)` utilise toujours sa vue centrale. Lorsqu'un groupe de rafale est exactement un bracketing, la galerie montre sa vue de base.
 
-La vue de référence est le barreau central de l'échelle. Un nombre pair de vues en compte
-deux à égale distance du centre : la référence est alors celle qui a brûlé le moins
-d'extrémités de son histogramme (`shadow_clipped` / `highlight_clipped`), car la vue mesurée
-tient la scène tandis que les barreaux qui l'encadrent sont poussés assez loin pour écrêter.
-Si aucune des deux n'a été mesurée, ou si elles écrêtent autant l'une que l'autre, la plus
-ancienne l'emporte. Une échelle impaire se centre toujours sur sa vue médiane, quel que soit
-l'écrêtage : une série symétrique `(-2, 0, +2)` n'est donc pas affectée.
-
-Lancé par `--detect-sequences` ; s'exécute aussi à la fin de chaque scan, après le
+Lancé par `--detect-sequences` ; s'exécute aussi à la fin de chaque scan, après le
 regroupement des rafales.
 
-**Les corrections manuelles couvrent aussi les bracketings.** Un bracketing manqué par la
-détection peut être nommé à la main depuis la galerie ou le tri (« Marquer comme bracketing »)
-— le même mécanisme persistant `photo_sequence_overrides` que les corrections de panorama,
-soumis à la même règle d'échelle d'exposition (≥ 2 images, chacune avec des métadonnées
-d'exposition utilisables, jamais deux à la même exposition). Voir
-[docs/VIEWER.md — Panoramas et bracketings d'exposition](VIEWER.md#panoramas-et-bracketings-dexposition).
+**Les corrections manuelles couvrent aussi les bracketings.** Marquez un bracketing manqué à la main depuis la galerie ou la salle de tri (*Marquer comme bracket*). Il faut ≥ 2 vues, chacune avec des données d'exposition exploitables, sans deux vues à la même exposition. Voir [docs/VIEWER.md — Panoramas et bracketings d'exposition](VIEWER.md#panoramas-et-bracketings-dexposition).
 
 ```json
 {
@@ -1191,32 +1028,17 @@ d'exposition utilisables, jamais deux à la même exposition). Voir
 | `min_span_stops` | `1.0` | Amplitude minimale entre la vue la plus sombre et la plus claire |
 | `step_tolerance_stops` | `0.34` | Irrégularité tolérée entre les pas (un tiers d'IL) |
 
-**Pourquoi `min_frames` vaut `3` par défaut.** Sur une paire, deux des quatre tests de
-l'échelle ne veulent plus rien dire : un pas unique est trivialement unidirectionnel et
-trivialement régulier. Il ne reste que « deux vues prises à quelques instants d'intervalle,
-au même cadrage, séparées d'au moins un IL » — ce qui décrit tout aussi bien un photographe
-qui corrige son exposition et redéclenche qu'un vrai bracketing à deux vues. Mesuré sur une
-bibliothèque de 124 886 photos, `2` ajoute 381 séries aux 657 trouvées par défaut, et les
-indices disent toujours que la plupart n'en sont pas : 62 % couvrent moins de deux IL là où
-91 % des séries confirmées en couvrent deux ou plus, et quand une paire supplémentaire
-présente de l'écrêtage, « les deux vues sombres » en est le profil le plus fréquent.
-
-Pire, une paire qui est *réellement* ce qui reste d'une série de trois vues se compose de
-deux barreaux voisins qui encadrent la référence, et rien de stocké ne dit de quel côté
-manquait le troisième : le `sequence_ev_offset` `0` se pose alors sur une vue que le boîtier
-n'a jamais mesurée, et `hide_brackets` (actif par défaut) masque l'autre. Ne passez à `2` que
-si vous pratiquez le bracketing à deux vues et préférez assumer ces faux positifs plutôt que
-de manquer ces séries.
+**Pourquoi `min_frames` est livré à `3`.** Deux vues espacées d'un diaphragme se ressemblent, qu'il s'agisse d'un AEB à deux prises ou d'une correction d'exposition rapide. Avec `2`, la plupart des jeux supplémentaires trouvés sur une bibliothèque de test n'étaient pas des bracketings. Une paire peut aussi être ce qui reste d'un jeu de trois prises ; la base (`sequence_ev_offset` `0`) peut alors tomber sur la mauvaise vue tandis que `hide_brackets` (activé par défaut) masque l'autre. Ne choisissez `2` que si vous faites de l'AEB à deux vues et acceptez quelques faux positifs.
 
 ---
 
 ## Détection de panoramas
 
-Les images d'un panorama ont été prises pour être assemblées, pas pour se concurrencer : la détection de rafales les lit comme des prises concurrentes et n'en garde qu'une. Cette passe les nomme sur des preuves géométriques — points SIFT et homographie RANSAC entre images consécutives, mesurés sur les vignettes 640px déjà stockées. Aucun décodage de l'original, aucun modèle, aucune dépendance supplémentaire.
+Étiquette les vues sources de panoramas, que la détection de rafales masquerait sinon comme prises concurrentes. La détection met en correspondance des caractéristiques SIFT entre miniatures stockées de 640 px consécutives ; elle n'exige ni décodage de l'original, ni modèle, ni dépendance supplémentaire.
 
-Ce qui distingue un balayage d'une rafale est le déplacement **cumulé**, pas le décalage image par image : un panorama est pris avec environ 90 % de recouvrement, donc un pas ne déplace que 5 à 18 % du cadre, tandis que sur la durée une rafale oscille autour de zéro et un balayage avance. Les panoramas simples et HDR sont deux types distincts, séparés par l'écart d'exposition.
-
-Les seuils ont été calibrés sur 26 panoramas et 8 non-panoramas confirmés à l'œil sur une bibliothèque de 126 000 photos. Précision mesurée : environ 96 %. Le rappel est volontairement incomplet — les balayages verticaux à faible déplacement et les panoramas à peu de positions passent sous le seuil et sont manqués. Manquer un panorama ne coûte rien ; étiqueter du reportage à tort coûte la confiance, et la correction manuelle persistante rattrape les deux sens.
+- Un balayage avance régulièrement dans une direction ; une rafale oscille autour d'un point. Les balayages simples et HDR sont des genres distincts, séparés selon l'étendue d'exposition.
+- Précision mesurée d'environ 96 % sur une bibliothèque de test. Certains panoramas verticaux ou à peu de positions sont manqués.
+- Vous pouvez corriger dans les deux sens avec le remplacement par ensemble.
 
 ```json
 {
@@ -1232,12 +1054,12 @@ Les seuils ont été calibrés sur 26 panoramas et 8 non-panoramas confirmés à
 }
 ```
 
-| Paramètre | Défaut | Description |
-|---------|---------|-------------|
+| Réglage | Défaut | Description |
+|---------|--------|-------------|
 | `enabled` | `true` | Désactiver complètement la détection de panoramas |
 | `max_gap_seconds` | `30.0` | Écart maximal entre deux images consécutives d'un balayage |
-| `min_frames` | `8` | Série la plus courte considérée comme un panorama. Le discriminant le plus fort : tous les non-panoramas confirmés comptaient 6 images ou moins |
-| `min_drift` | `0.43` | Balayage total, en largeurs de cadre, pour qu'une série compte. Les non-panoramas confirmés se groupent entre 0,36 et 0,40 ; le plus petit vrai panorama est à 0,46 |
+| `min_frames` | `8` | Plus courte suite traitée comme panorama (filtre le plus fort ; les non-panoramas comptaient 6 vues ou moins) |
+| `min_drift` | `0.43` | Balayage total, en largeurs de vue, avant qu'une suite compte |
 | `min_inliers` | `25` | Points concordants RANSAC requis pour valider une paire |
 | `max_step` | `0.9` | Plus grand pas isolé, en largeurs de cadre — au-delà c'est une coupure de scène |
 | `back_tolerance` | `0.02` | Recul toléré sur un pas avant que la série ne s'arrête |
@@ -1245,21 +1067,25 @@ Les seuils ont été calibrés sur 26 panoramas et 8 non-panoramas confirmés à
 | `ortho_ratio` | `0.25` | Marge latérale supplémentaire proportionnelle au balayage, pour ne pas pénaliser les longues séries |
 | `step_ortho_abs` | `0.02` | Déplacement latéral toléré sur un seul pas avant d'être lu comme un recadrage |
 | `step_ortho_ratio` | `0.5` | La même limite, en fraction de la taille du pas |
-| `hdr_min_span_stops` | `1.5` | Écart d'exposition au-delà duquel un balayage est un panorama HDR. Les balayages simples couvrent 0,0 à 0,7 IL, les HDR 2,0 à 4,4 |
-| `sift_features` | `400` | Points caractéristiques par vignette. Le corpus est encore détecté à 250 ; 400 garde de la marge. L'appariement compare chaque point d'une image à chaque point de la suivante, son coût croît donc avec le carré de cette valeur : environ 2,3 ms par paire d'images avec les 400 points par défaut (l'appariement approximatif des versions précédentes : 5,2 à 5,5 ms), mais environ 0,12 s à 3000 (versions précédentes : 0,047 s). Une valeur bien supérieure à la valeur par défaut rend donc la détection plus lente qu'avant ; le point à partir duquel les deux se croisent n'a pas été mesuré. |
+| `hdr_min_span_stops` | `1.5` | Étendue d'exposition au-delà de laquelle un balayage est un panorama HDR |
+| `sift_features` | `400` | Caractéristiques par miniature ; le coût croît avec le carré de cette valeur |
 | `match_ratio` | `0.75` | Rapport de Lowe qu'une correspondance doit franchir pour être retenue |
-| `workers` | `0` | Processus parallèles ; `0` choisit selon le nombre de cœurs. L'accélération reste en deçà du nombre de cœurs : le coût est dominé par les lectures aléatoires de vignettes |
+| `workers` | `0` | Processus de travail parallèles ; `0` se règle d'après le nombre de cœurs |
 | `probe_stride` | `8` | Nombre d'images entre les sondages rapides qui écartent les rafales ordinaires |
 | `probe_min_drift` | `0.05` | Mouvement en deçà duquel un sondage déclare la série immobile |
-| `max_run_frames` | `500` | Plus longue série mesurée. Un panoramique n'a jamais besoin d'autant d'images, et le plafond borne le cache de descripteurs par série (~220 Ko par image et par processus) |
+| `max_run_frames` | `500` | Plus longue suite candidate mesurée (borne la mémoire, ~220 Ko par vue et par worker) |
 
-Modifier ces valeurs ne change rien en soi — la détection est une passe par lots : relancez `--detect-panoramas` (ou l'action de relance dans la visionneuse) pour que le changement atteigne la galerie et le tri. Cette relance explicite remesure toujours toute la bibliothèque. L'étape panorama qui s'exécute après un scan (et après `--recompute-average` ou `--recompute-burst`) réutilise en revanche une mesure stockée pour chaque série d'images inchangée : les mêmes images, avec les mêmes données de prise de vue et d'exposition, la même date de scan, la même version de rendu et la même taille de vignette stockée. Modifier l'un de ces réglages, sauf `enabled` et `workers`, supprime les mesures stockées : cette étape remesure alors tout. Les étiquettes sont toujours reconstruites à partir des mesures et de vos corrections actuelles : une correction posée ou effacée prend donc effet à la passe suivante, sans remesurer quand les mesures sont réutilisées. L'appariement est exact, si bien que deux passes sur une bibliothèque inchangée trouvent les mêmes séries, avec les mêmes numéros de groupe.
+Remarques :
+- `sift_features` prend environ 2,3 ms par paire de vues à 400, et environ 0,12 s à 3000.
+- Changer un réglage ne fait rien tant que la détection n'est pas relancée : utilisez `--detect-panoramas` (ou l'action de relance de la visionneuse), qui re-mesure toute la bibliothèque.
+- L'étape panorama après un scan, `--recompute-average` ou `--recompute-burst` ne re-mesure que les suites modifiées. Modifier tout réglage autre que `enabled` et `workers` la fait tout re-mesurer.
+- Vos corrections s'appliquent à la passe suivante. Deux passes sur une bibliothèque inchangée trouvent les mêmes ensembles avec les mêmes numéros de groupe.
 
 ---
 
 ## Notation des rafales
 
-Pondérations utilisées par le tri de rafales pour calculer un score composite afin de sélectionner la meilleure prise au sein de chaque groupe de rafale. La somme des pondérations doit faire 1,0.
+Poids utilisés par le tri des rafales pour choisir la meilleure prise de chaque groupe de rafale. Les poids doivent totaliser 1,0.
 
 ```json
 {
@@ -1283,7 +1109,7 @@ Pondérations utilisées par le tri de rafales pour calculer un score composite 
 
 ## Détection de doublons
 
-Détecter les photos en double globalement à l'aide d'une comparaison par empreinte perceptuelle (pHash).
+Trouve les photos en double dans toute la bibliothèque : candidats pHash larges, confirmés par un contrôle de similarité d'embedding.
 
 ```json
 {
@@ -1297,26 +1123,28 @@ Détecter les photos en double globalement à l'aide d'une comparaison par empre
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `similarity_threshold_percent` | `90` | Filtre pHash strict (90 % = distance de Hamming <= 6 sur 64 bits) ; utilisé comme seul critère quand un embedding manque pour l'une des deux photos |
-| `prefilter_hamming` | `12` | Surcharge optionnelle (absente du fichier livré). Filtre Hamming lâche de l'étape 1 pour l'ensemble candidat quand les deux photos ont des embeddings (forcé à être >= au filtre strict) |
-| `embedding_cosine_threshold` | `0.90` | Surcharge optionnelle (absente du fichier livré). Filtre cosinus SigLIP/CLIP de l'étape 2 : un candidat à pHash lâche n'est fusionné que si le cosinus >= cette valeur |
+| `similarity_threshold_percent` | `90` | Seuil strict du pHash (90 % = distance de Hamming <= 6 sur 64 bits) ; le seul test lorsqu'une des photos n'a pas d'embedding |
+| `prefilter_hamming` | `12` | Optionnel (absent du fichier livré). Seuil de Hamming large pour les candidats lorsque les deux photos ont des embeddings (au moins le seuil strict) |
+| `embedding_cosine_threshold` | `0.90` | Optionnel (absent du fichier livré). Un candidat n'est fusionné que si le cosinus SigLIP/CLIP est >= à cette valeur |
 
-La détection se fait en deux étapes : candidats pHash lâches (rappel) confirmés par un filtre cosinus d'embedding strict (précision). Les photos sans embedding retombent sur le critère strict pHash seul, donc le comportement est inchangé en l'absence d'embeddings.
-
-Exécutez `python facet.py --detect-duplicates` pour détecter et regrouper les doublons. Exécutez `python facet.py --sweep-dedup-thresholds [labels.json]` pour évaluer le filtre cosinus — avec un fichier de labels JSON, il affiche un tableau précision/rappel, sinon la distribution des cosinus candidats et combien de collisions pHash strictes le filtre rejette.
+- `python facet.py --detect-duplicates` détecte et regroupe les doublons.
+- `python facet.py --sweep-dedup-thresholds [labels.json]` évalue le seuil de cosinus : avec un JSON d'étiquettes il affiche précision et rappel, sinon la distribution des cosinus des candidats et le nombre de correspondances pHash strictes que le seuil rejette.
 
 ---
 
 ## Niveau IQA étendu (optionnel)
 
-Évaluateurs de qualité lourds/expérimentaux qui ajoutent des colonnes supplémentaires ; **jamais un remplacement de TOPIQ**. `qrealign` vaut par défaut `"auto"` — **activé** pour les profils `8gb`/`16gb`/`24gb`, **désactivé** pour `legacy`/CPU — le premier évaluateur du niveau étendu utilisable dès le profil `8gb` (Q-Align, qu'il remplace, n'a jamais tenu sous 16 Go). `aesthetic_v25` et `deqa` restent **désactivés par défaut**. Lorsqu'ils sont activés, les évaluateurs étendus s'exécutent **pendant une analyse normale** et écrivent leurs propres colonnes ; une erreur de chargement/VRAM est journalisée et la colonne reste à `NULL` (l'analyse ne s'interrompt jamais).
+Évaluateurs de qualité supplémentaires qui écrivent leurs propres colonnes ; ils ne remplacent jamais TOPIQ. Ils s'exécutent pendant un scan normal. Un échec de chargement ou de VRAM est journalisé et laisse la colonne à `NULL` ; le scan continue.
+
+- `qrealign` vaut par défaut `"auto"` : **activé** pour les profils `8gb`/`16gb`/`24gb`, **désactivé** pour `legacy`/CPU.
+- `aesthetic_v25` et `deqa` sont **DÉSACTIVÉS par défaut**.
 
 ```json
 {
   "iqa_extended": {
     "qrealign": "auto",
     "qrealign_size": "mini",
-    "aesthetic_v25": true,
+    "aesthetic_v25": false,
     "deqa": false
   }
 }
@@ -1324,18 +1152,25 @@ Exécutez `python facet.py --detect-duplicates` pour détecter et regrouper les 
 
 | Réglage | Défaut | Valeurs acceptées | Colonne | Description |
 |---------|--------|-------------------|---------|-------------|
-| `qrealign` | `"auto"` | `"auto"` · `true` · `false` | `qrealign_score` | IQA fondé sur un LLM Q-ReAlign-Mini 0.8B (chargeur natif `transformers`, sans pyiqa ; poids Apache-2.0, ~2-3 Go VRAM/RAM). `"auto"` l'active pour les profils `8gb`/`16gb`/`24gb` et la désactive pour `legacy`/CPU ; `true`/`false` outrepassent explicitement le défaut du profil. Triable dans la visionneuse sous **Q-ReAlign (esthétique)** ; l'option n'apparaît que si au moins une photo a un score Q-ReAlign, et les photos non notées sont placées en dernier dans les deux sens. Cette colonne contient la tâche d'esthétique ; la qualité utilise `quality_score`. |
-| `qrealign_size` | `"mini"` | `"mini"` · `"lite"` | - | Taille de Q-ReAlign chargée par l'évaluateur natif : `mini` (0.8B) ou `lite` (4B). Utilisée pour la colonne `qrealign` et, avec `licensing.mode: "commercial"`, comme modèle principal d'esthétique et de qualité. |
-| `aesthetic_v25` | `false` | `true` / `false` | `aesthetic_v25` | Aesthetic Predictor V2.5 (tête SigLIP, ~2 Go). Nécessite le paquet `aesthetic-predictor-v2-5`. **Déprécié :** sous licence AGPL-3.0 et sans maintenance depuis le 2024-12-18 — préférez `qrealign`. Triable dans la visionneuse sous **Esthétique v2.5** (l'option apparaît dès qu'au moins une photo a un score Esthétique v2.5), les photos non notées étant placées en dernier dans les deux sens. |
-| `deqa` | `false` | `true` / `false` | `deqa_score` | IQA VLM DeQA-Score (GPU 16 Go+ ; ignoré et laissé à NULL sinon). Triable dans la visionneuse sous **DeQA** (l'option apparaît dès qu'au moins une photo a un score DeQA), les photos non notées étant placées en dernier dans les deux sens. |
+| `qrealign` | `"auto"` | `"auto"` · `true` · `false` | `qrealign_score` | IQA esthétique Q-ReAlign-Mini 0,8B (Apache-2.0, ~2-3 Go de VRAM/RAM, sans pyiqa) |
+| `qrealign_size` | `"mini"` | `"mini"` · `"lite"` | - | `mini` (0,8B) ou `lite` (4B) ; aussi le modèle principal avec `licensing.mode: "commercial"` |
+| `aesthetic_v25` | `false` | `true` / `false` | `aesthetic_v25` | Aesthetic Predictor V2.5 (tête SigLIP, ~2 Go) ; **déprécié**, préférez `qrealign` |
+| `deqa` | `false` | `true` / `false` | `deqa_score` | IQA VLM DeQA-Score (GPU 16 Go+ ; ignoré et laissé à NULL sinon) |
+
+Remarques :
+- **Tri :** chaque métrique apparaît dans le menu de tri de la visionneuse dès qu'au moins une photo a un score (**Q-ReAlign (esthétique)**, **Esthétique v2.5**, **DeQA**). Les photos sans score sont triées en dernier.
+- `qrealign_score` contient la tâche esthétique ; la qualité utilise `quality_score`.
+- `aesthetic_v25` nécessite le paquet `aesthetic-predictor-v2-5`. Il est sous licence AGPL-3.0 et sans maintenance en amont depuis le 2024-12-18.
 
 **Installez les dépendances optionnelles** correspondant à ce que vous activez : `pip install -e .[iqa-extended]` (ajoute `aesthetic-predictor-v2-5`), ou décommentez la ligne correspondante dans `requirements.txt`. DeQA-Score se télécharge via `transformers`.
 
-Lorsqu'elle est activée, chaque métrique est exposée à l'agrégat pondéré mais avec une pondération par défaut de 0, de sorte que `--recompute-average` reste identique au bit près jusqu'à ce que vous lui attribuiez une pondération. Exécutez `python facet.py --eval-iqa-srcc` pour mesurer la qualité du classement de votre photothèque par chaque métrique au regard de vos propres notes en étoiles.
+Chaque métrique est disponible pour l'agrégat pondéré avec un poids de 0, donc `--recompute-average` ne change rien tant que vous ne la pondérez pas. `python facet.py --eval-iqa-srcc` mesure à quel point chaque métrique correspond à vos propres notes en étoiles.
 
-**Affichage dans la visionneuse.** Lorsqu'une de ces colonnes est renseignée, la visionneuse affiche la valeur dans le panneau **Quality** du détail de la photo (`Q-ReAlign`, `Aesthetic V2.5`, `DeQA`) et expose un curseur de plage correspondant dans la barre latérale de filtres de la galerie, sous **Extended Quality** (`min_qrealign`/`max_qrealign`, `min_aesthetic_v25`/`max_aesthetic_v25`, `min_deqa`/`max_deqa`). Les photos analysées avant l'activation du niveau ont `NULL` dans ces colonnes, et définir un minimum ou un maximum sur l'un de ces curseurs **les exclut** : un `NULL` ne satisfait jamais une comparaison `>=`/`<=`. Relancez une analyse avant de filtrer sur une métrique fraîchement activée, sinon ces photos disparaîtront silencieusement de la galerie.
+**Affichage dans la visionneuse.** Les valeurs renseignées apparaissent dans le panneau **Qualité** du détail de la photo (`Q-ReAlign`, `Esthétique V2.5`, `DeQA`), avec des curseurs de plage sous **Qualité étendue** dans les filtres de la galerie (`min_qrealign`/`max_qrealign`, `min_aesthetic_v25`/`max_aesthetic_v25`, `min_deqa`/`max_deqa`).
 
-**Robustesse.** DeQA-Score charge du code `trust_remote_code` distant dont la signature de forward varie selon les révisions de checkpoint ; son évaluateur est défensif — toute défaillance de prédiction (mauvaise signature, forme de sortie inattendue, OOM) est interceptée et le `deqa_score` de l'image reste à `NULL` au lieu de faire planter l'analyse.
+> **Avertissement :** Les photos scannées avant l'activation d'une métrique ont `NULL` à cet endroit, et tout minimum ou maximum sur son curseur les masque. Relancez un scan avant de filtrer sur une métrique fraîchement activée.
+
+**Robustesse.** DeQA-Score exécute du code de modèle distant (`trust_remote_code`). S'il échoue sur une image (changement de signature, sortie étrange, OOM), le `deqa_score` de cette image reste `NULL` et le scan continue.
 
 ---
 
@@ -1354,14 +1189,28 @@ Détermine quels composants de modèles Facet peut charger. Voir [THIRD_PARTY_MO
 
 | Réglage | Défaut | Valeurs acceptées | Description |
 |---------|--------|-------------------|-------------|
-| `mode` | `"default"` | `"default"` · `"commercial"` | `"default"` charge tous les modèles (comportement livré). `"commercial"` n'importe, ne planifie ni ne télécharge jamais les composants dont la licence n'est pas compatible avec un usage commercial : `pyiqa` (TOPIQ, HyperIQA, LIQE, ...) et InsightFace sont refusés à chaque niveau. L'esthétique et la qualité viennent de l'évaluateur natif Q-ReAlign, la composition de l'analyseur à base de règles et les visages du pipeline facial permissif (détection YuNet, embeddings SFace de 128 dimensions, et en option MediaPipe pour les yeux/le sourire et la qualité de visage OFIQ). `liqe` et `aesthetic_iaa` n'ont pas de remplaçant et restent à `NULL` ; `deqa` (licence *incertaine*) est indisponible sauf si `allow_unclear` est activé, et `aesthetic_v25` (AGPL) est toujours indisponible. |
-| `allow_unclear` | `false` | `true` / `false` | En mode commercial, autorise aussi les composants à licence *incertaine* (SAMP-Net, U2-Net-P, la tête esthétique CLIP-MLP de LAION). Les composants à licence non commerciale restent refusés. Doit être un booléen JSON ; toute autre valeur est une erreur qui interrompt le démarrage. |
+| `mode` | `"default"` | `"default"` · `"commercial"` | `"default"` charge tous les modèles ; `"commercial"` ne charge que les composants sûrs pour un usage commercial |
+| `allow_unclear` | `false` | `true` / `false` | En mode commercial, autorise aussi les composants à licence *incertaine* (SAMP-Net, U2-Net-P, la tête esthétique LAION CLIP-MLP) ; doit être un booléen JSON |
 
-Un composant refusé lève une `LicenceError` qui nomme le composant et son remplaçant ; tout gestionnaire susceptible de l'absorber la relève (un test l'impose), de sorte qu'un refus arrête le scan au démarrage au lieu de devenir des échecs par photo ou un repli silencieux. Les commandes qui ne dépendent que d'un composant refusé (`--score-topiq`, `--recompute-iqa` pour les modèles pyiqa, `--recompute-composition-gpu`) se terminent avec ce message en mode commercial. Le mode est lu dans la configuration résolue au démarrage. La visionneuse passe `FACET_LICENSING_MODE=commercial` dans l'environnement de chaque processus `facet.py` qu'elle lance (scans, recalculs), de sorte qu'un enfant ne retombe jamais en mode par défaut depuis un autre répertoire de travail. Rien ici ne constitue un avis juridique.
+En mode `"commercial"` :
+- `pyiqa` (TOPIQ, HyperIQA, LIQE, ...) et InsightFace ne sont jamais importés ni téléchargés.
+- L'esthétique et la qualité viennent de Q-ReAlign, la composition de l'analyseur à base de règles.
+- Les visages utilisent la détection YuNet, des embeddings SFace de 128 dimensions, et en option MediaPipe pour les yeux/le sourire et la qualité de visage OFIQ.
+- `liqe` et `aesthetic_iaa` restent à `NULL`. `deqa` (licence *incertaine*) exige `allow_unclear`. `aesthetic_v25` (AGPL) n'est jamais disponible.
+- Un composant refusé arrête le scan au démarrage avec une `LicenceError` qui le nomme ainsi que son remplaçant.
+- `--score-topiq`, `--recompute-iqa` (modèles pyiqa) et `--recompute-composition-gpu` se terminent avec ce message.
+- Les composants à licence non commerciale restent refusés même avec `allow_unclear`.
 
-La variable d'environnement `FACET_LICENSING_MODE` prévaut sur le fichier : `commercial` force le mode commercial, `default` ou vide signifie aucune surcharge (elle ne peut jamais assouplir un fichier indiquant `commercial`), et toute autre valeur est une erreur qui interrompt le démarrage (une faute de frappe ne laisse donc pas silencieusement une installation commerciale tourner en mode par défaut).
+Rien ici ne constitue un conseil juridique.
 
-La variable d'environnement `FACET_LICENSING_ALLOW_UNCLEAR` ne peut elle aussi que durcir : `0`, `false`, `no` ou `off` force `licensing.allow_unclear` à désactivé même si le fichier indique `true`, tandis que `1`, `true`, `yes`, `on` ou vide ne surcharge rien et ne l'accorde jamais. Toute autre valeur est une erreur. Le viewer définit `FACET_LICENSING_ALLOW_UNCLEAR=0` dans l'environnement de chaque processus `facet.py` qu'il lance dès que sa propre politique interdit les composants incertains, de sorte qu'un scan lancé ne peut pas assouplir la politique du serveur depuis une configuration du répertoire de travail. `licensing.allow_unclear` doit lui-même être un booléen JSON : une chaîne comme `"false"` ou un nombre est rejeté avec une erreur au démarrage au lieu d'être lu comme vrai.
+Surcharges par variables d'environnement (elles ne peuvent que resserrer ; une valeur invalide arrête le démarrage) :
+
+| Variable | Effet |
+|----------|--------|
+| `FACET_LICENSING_MODE` | `commercial` force le mode commercial ; `default` ou vide = aucune surcharge |
+| `FACET_LICENSING_ALLOW_UNCLEAR` | `0`, `false`, `no`, `off` forcent `allow_unclear` à off ; `1`, `true`, `yes`, `on` ou vide = aucune surcharge |
+
+La visionneuse transmet `FACET_LICENSING_MODE=commercial` et, lorsque sa politique interdit les composants incertains, `FACET_LICENSING_ALLOW_UNCLEAR=0` à chaque processus `facet.py` qu'elle démarre. Une chaîne telle que `"false"` pour `licensing.allow_unclear` est rejetée au démarrage.
 
 ---
 
@@ -1390,16 +1239,21 @@ Réglages de détection des visages InsightFace.
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `min_confidence_percent` | `65` | Confiance de détection minimale |
-| `min_face_size` | `20` | Taille minimale du visage en pixels — InsightFace uniquement : le détecteur YuNet du mode commercial utilise des valeurs fixes mesurées (confiance 0,7, 30 px) et ignore `min_confidence_percent` ainsi que ce réglage. |
+| `min_confidence_percent` | `65` | Confiance minimale de détection (InsightFace uniquement) |
+| `min_face_size` | `20` | Taille minimale d'un visage en pixels (InsightFace uniquement) |
 | `blink_ear_threshold` | `0.28` | Rapport d'aspect de l'œil (EAR) pour la détection de clignement |
 | `min_faces_for_group` | `4` | Nombre minimal de visages pour classer en portrait de groupe (recalculé lors de `--recompute-average`) |
-| `enable_3d_landmarks` | `false` | Surcharge optionnelle (absente du fichier livré ; défaut du code `false`). Charge le module InsightFace `landmark_3d_68` pour l'extraction de la pose de tête (lacet/tangage/roulis). Coûte ~5 Mo de poids ONNX supplémentaires. Actuellement informatif ; de futurs affinements de profil/silhouette le liront. |
-| `eyes_closed_max` | `4.0` | Score d'ouverture des yeux par visage (0–10) à ou en dessous duquel la chambre noire de tri signale un visage comme clignant. Pilote les anneaux de visage rouge/orange/vert et le curseur de seuil des yeux (déplacé depuis une constante codée en dur) |
-| `poor_expression_min` | `4.0` | Score de sourire/expression par visage (0–10) en dessous duquel la chambre noire signale une expression faible. Pilote l'anneau de visage d'expression et le curseur (déplacé depuis une constante codée en dur) |
-| `blendshapes.enabled` | `true` | Utilise les scores blendshapes de MediaPipe (basés sur l'apparence) pour `eyes_open_score` / `smile_score` par visage quand MediaPipe et le modèle `face_landmarker.task` sont disponibles ; quand `true`, ils remplacent les scores de géométrie des points de repère, sinon le repli géométrique s'exécute automatiquement. Dépendance optionnelle — installer avec `pip install mediapipe==0.10.35 --no-deps` (jamais un simple `pip install mediapipe`). Voir [FACE_RECOGNITION.md](FACE_RECOGNITION.md#signaux-dexpression-par-visage-yeux-ouverts--sourire). |
-| `blendshapes.min_crop_size` | `192` | Les visages dont le recadrage rembourré est plus petit que cette valeur (px, côté le plus court) retombent sur le score géométrique plutôt que d'agrandir un visage minuscule |
-| `blendshapes.blink_pose_gate_deg` | `null` | Analyseur MediaPipe du mode commercial uniquement. Seuil de pose de la tête en degrés : un visage dont |yaw| ou |pitch| le dépasse n'a ni verdict de clignement ni score yeux ouverts / sourire (NULL, inconnu), car une tête tournée ressemble à des yeux fermés. `null` (défaut) = pas de filtre ; il reste désactivé par défaut : sur une moitié réservée d'une vraie bibliothèque, aucun seuil entre 20° et 45° n'a amélioré la détection des clignements (chacun perdait plus de vrais clignements que de faux), donc aucun n'est fourni ; ne le définissez que si votre bibliothèque contient beaucoup de visages très tournés. S'applique aux photos nouvellement analysées ; les valeurs `is_blink` existantes ne changent qu'au rescan. Doit être un nombre positif de degrés : 0 ou une valeur négative est refusé au démarrage ; `null` = désactivé. |
+| `enable_3d_landmarks` | `false` | Optionnel (absent du fichier livré). Charge `landmark_3d_68` d'InsightFace pour la pose de la tête (lacet/tangage/roulis) ; ~5 Mo, informatif uniquement |
+| `eyes_closed_max` | `4.0` | Score yeux ouverts (0–10) en dessous duquel ou égal auquel la salle de tri signale un clignement (anneaux de visages, curseur des yeux) |
+| `poor_expression_min` | `4.0` | Score sourire/expression (0–10) en dessous duquel la salle de tri signale une expression faible |
+| `blendshapes.enabled` | `true` | Utilise les blendshapes MediaPipe pour `eyes_open_score` / `smile_score` lorsqu'il est installé, sinon la géométrie des repères |
+| `blendshapes.min_crop_size` | `192` | Les visages dont le recadrage avec marge est plus petit que cette valeur (px, petit côté) utilisent le score géométrique |
+| `blendshapes.blink_pose_gate_deg` | `null` | Mode commercial (MediaPipe) uniquement : seuil de pose de la tête en degrés ; `null` = désactivé |
+
+Remarques :
+- Le détecteur YuNet du mode commercial utilise des valeurs fixes (confiance 0,7, 30 px) et ignore `min_confidence_percent` et `min_face_size`.
+- MediaPipe a besoin du bundle `face_landmarker.task`. Installez-le avec `pip install mediapipe==0.10.35 --no-deps`, jamais un simple `pip install mediapipe`. Voir [FACE_RECOGNITION.md](FACE_RECOGNITION.md#signaux-dexpression-par-visage-yeux-ouverts--sourire).
+- `blink_pose_gate_deg` : un visage dont le |lacet| ou le |tangage| le dépasse n'obtient ni verdict de clignement ni score yeux ouverts / sourire (NULL), car une tête tournée se lit comme des yeux fermés. Aucun seuil entre 20° et 45° n'a amélioré la détection des clignements sur une bibliothèque de test ; il est donc livré désactivé. Ce doit être un nombre positif ; il s'applique aux photos nouvellement scannées (`is_blink` change au nouveau scan).
 
 ---
 
@@ -1431,12 +1285,19 @@ Regroupement HDBSCAN pour la reconnaissance des visages.
 | `min_samples` | `2` | Paramètre min_samples de HDBSCAN |
 | `clustering_algorithm` | `"best"` | Algorithme HDBSCAN |
 | `leaf_size` | `40` | Taille des feuilles de l'arbre (CPU uniquement) |
-| `use_gpu` | `"auto"` | Mode GPU : `auto`, `always`, `never` |
-| `thresholds_by_model` | voir JSON | Par modèle de reconnaissance : `auto_merge_distance_percent` (distance de fusion automatique) et `merge_threshold` (similarité des centroïdes). Valeurs par défaut : ArcFace `15` / `0.6`, SFace `27.5` / `0.65` |
+| `use_gpu` | `"auto"` | Mode GPU : `auto`, `always`, `never` |
+| `thresholds_by_model` | voir le JSON | Par modèle de reconnaissance : `auto_merge_distance_percent` et `merge_threshold`. Valeurs par défaut : ArcFace `15` / `0.6`, SFace `27.5` / `0.65` |
 
-`merge_threshold` et `auto_merge_distance_percent` sont des similarités et des distances dans l'espace d'embedding d'un seul modèle de reconnaissance ; ils sont donc lus dans `thresholds_by_model` pour le modèle **actif** (ArcFace par défaut, SFace en mode commercial). Un modèle sans entrée est une erreur, pas un repli. Les valeurs placées directement sous `face_clustering` ne sont plus lues.
+`merge_threshold` (similarité des centroïdes pour la mise en correspondance) et `auto_merge_distance_percent` (distance de fusion automatique) sont lus dans `thresholds_by_model` pour le modèle de reconnaissance **actif** (ArcFace par défaut, SFace en mode commercial). Un modèle sans entrée est une erreur. Les mêmes clés définies directement sous `face_clustering` ne sont plus lues.
 
-**Algorithmes de regroupement :**
+**Notes sur le regroupement GPU (`use_gpu`) :**
+
+- Nécessite les paquets optionnels `cuml` + `cupy`. L'image Docker GPU inclut cuML.
+- Le profil `legacy` regroupe toujours sur CPU, quelle que soit la valeur de `use_gpu`.
+- Sans périphérique CUDA utilisable, le regroupement se rabat sur HDBSCAN CPU.
+- `always` avertit et utilise le CPU si cuML est absent ; une erreur GPU pendant le regroupement se rabat aussi sur le CPU.
+
+**Algorithmes de regroupement :**
 
 | Algorithme | Complexité | Idéal pour |
 |------------|------------|------------|
@@ -1527,19 +1388,19 @@ Réglages généraux d'étiquetage. Le modèle d'étiquetage est configuré par 
 | `enabled` | `true` | Activer l'étiquetage |
 | `max_tags` | `5` | Nombre maximal d'étiquettes par photo |
 
-**Note :** Le seuil d'étiquetage CLIP/SigLIP est `tag_threshold_percent` dans le bloc du profil actif : `models.clip` pour `16gb`/`24gb`, `models.clip_legacy` pour `legacy`/`8gb` (`vram_profile: "auto"` utilise le profil détecté). L'ancienne clé `similarity_threshold_percent` n'y est plus lue, et n'a pas d'alias. Si votre fichier la contient encore, reportez une valeur personnalisée dans `tag_threshold_percent` ; le chargement de la configuration et `python facet.py --doctor` nomment l'ancienne clé.
+**Remarque :** Le seuil de tag CLIP/SigLIP est `tag_threshold_percent` dans le bloc du profil actif : `models.clip` pour `16gb`/`24gb`, `models.clip_legacy` pour `legacy`/`8gb`. L'ancienne clé `similarity_threshold_percent` n'est plus lue. Si vous l'aviez personnalisée, copiez la valeur dans `tag_threshold_percent` ; le chargement de la configuration et `python facet.py --doctor` signalent l'ancienne clé.
 
-En fin de scan, l'étape d'étiquetage ne charge le modèle d'embeddings du profil que lorsqu'elle a quelque chose à étiqueter. Elle est ignorée, avec une ligne de journal, lorsque `enabled` vaut `false` ou lorsqu'aucune photo n'a à la fois un embedding stocké et une liste de tags vide. Les photos que l'étiqueteur ne peut jamais étiqueter (toute similarité sous le seuil) restent en attente : le modèle est donc chargé à chaque scan. `python tag_existing.py` (avec ou sans `--force`) et `python facet.py --tag-untagged` n'utilisent pas cette dispense.
+À la fin d'un scan, l'étape de tagging est ignorée (avec une ligne de journal) lorsque `enabled` vaut `false` ou qu'aucune photo n'a à la fois un embedding et une liste de tags vide. Les photos qu'aucun tag ne correspond jamais restent en attente, donc le modèle se charge encore à chaque scan. `python tag_existing.py` (avec ou sans `--force`) et `python facet.py --tag-untagged` s'exécutent toujours.
 
 ### Modèles d'étiquetage disponibles
 
-Configurés via `models.profiles.*.tagging_model` :
+Configurés via `models.profiles.*.tagging_model` :
 
 | Modèle | VRAM | Style d'étiquette | Notes |
 |--------|------|-------------------|-------|
-| `clip` | 0 (réutilise les embeddings) | Ambiance/atmosphère (dramatic, golden_hour, vintage) | Aucun chargement de modèle supplémentaire ; détection d'objets moins littérale |
+| `clip` | 0 (réutilise les embeddings) | Ambiance/atmosphère (dramatic, golden_hour, vintage) | Aucun chargement de modèle supplémentaire ; détection d'objets moins littérale |
 | `qwen3.5-2b` | ~4 Go | Scènes structurées (landscape, architecture, reflection) | Nécessite transformers + VRAM supplémentaire |
-| `qwen3.5-4b` | ~8 Go | Scènes détaillées avec nuance | VRAM plus élevée ; inférence plus lente |
+| `qwen3.5-4b` | ~8 Go | Scènes détaillées avec nuance | VRAM plus élevée ; inférence plus lente |
 
 ### Modèles d'étiquetage par défaut selon le profil
 
@@ -1561,7 +1422,7 @@ python facet.py --recompute-tags-vlm   # Ré-étiqueter avec le tagger VLM
 
 ## Étiquettes autonomes
 
-Étiquettes avec listes de synonymes qui ne sont liées à aucune catégorie spécifique. Elles sont disponibles pour toutes les photos, quelle que soit l'attribution de catégorie. Chaque clé est le nom de l'étiquette ; la valeur est une liste de synonymes pour la correspondance CLIP/VLM.
+Étiquettes avec listes de synonymes qui ne sont liées à aucune catégorie spécifique. Elles sont disponibles pour toutes les photos, quelle que soit l'attribution de catégorie. Chaque clé est le nom de l'étiquette ; la valeur est une liste de synonymes pour la correspondance CLIP/VLM.
 
 ```json
 {
@@ -1604,9 +1465,9 @@ Seuils pour `--compute-recommendations`.
 |---------|--------|-------------|
 | `aesthetic_max_threshold` | `9.0` | Avertir si l'esthétique maximale est en dessous |
 | `aesthetic_target` | `9.5` | Cible pour aesthetic_scale |
-| `quality_avg_threshold` | `7.5` | Seuil de qualité « haute valeur » |
+| `quality_avg_threshold` | `7.5` | Seuil de qualité « haute valeur » |
 | `quality_weight_threshold_percent` | `10` | Avertir si la pondération de qualité ≤ cette valeur |
-| `correlation_dominant_threshold` | `0.5` | Avertissement « signal dominant » |
+| `correlation_dominant_threshold` | `0.5` | Avertissement « signal dominant » |
 | `category_min_samples` | `50` | Nombre minimal de photos par catégorie |
 | `category_imbalance_threshold` | `0.5` | Avertissement d'écart de score |
 | `score_clustering_std_threshold` | `1.0` | Avertir si l'écart-type < cette valeur |
@@ -1714,17 +1575,17 @@ Affichage et comportement de la galerie web.
 }
 ```
 
-> **Note :** `sort_options` (élidé en `{ ... }` ci-dessus) associe les colonnes de la base aux libellés du menu déroulant et est rarement modifié. Le groupe **Content** inclut un tri `{ "column": "narrative_moment_confidence", "label": "Moment Confidence" }` (les NULL sont relégués en dernier).
+> **Note :** `sort_options` (élidé en `{ ... }` ci-dessus) associe les colonnes de la base aux libellés du menu déroulant et est rarement modifié. Le groupe **Content** inclut un tri `{ "column": "narrative_moment_confidence", "label": "Moment Confidence" }` (les NULL sont relégués en dernier).
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
 | `default_category` | `""` | Filtre de catégorie par défaut |
-| `edition_password` | `""` | Mot de passe pour déverrouiller le mode édition (vide = toute modification est refusée ; l'installation est en lecture seule, sauf pour un navigateur local direct ou un assistant local en édition complète sous `trusted_local_editing`) |
-| `trusted_local_editing` | `false` | Accorde les droits d'édition, sans mot de passe d'édition, à un navigateur de la même machine qui joint la visionneuse directement en loopback. Ne s'applique que si `password` ET `edition_password` sont vides sur une installation mono-utilisateur ; couvre toutes les routes soumises à l'édition, déclenchement du scan compris, et permet à la boîte « Connecter un assistant » de créer un jeton d'assistant en édition complète pour les requêtes `/mcp` de la même machine. **Ne jamais l'activer derrière un proxy inverse sur la même machine.** Voir [Édition locale de confiance](#édition-locale-de-confiance) |
-| `place_search_url` | `"https://photon.komoot.io/api"` | Point d’accès Photon derrière la recherche explicite **Rechercher en ligne** de la galerie ; `""` la désactive. Voir [Recherche en ligne de lieux](#recherche-en-ligne-de-lieux). |
+| `edition_password` | `""` | Mot de passe pour déverrouiller le mode édition ; vide = lecture seule (sauf sous `trusted_local_editing`) |
+| `trusted_local_editing` | `false` | Accorde les droits d'édition à un navigateur du même ordinateur, sans mot de passe. Voir [Édition locale de confiance](#édition-locale-de-confiance) |
+| `place_search_url` | `"https://photon.komoot.io/api"` | Point d'accès Photon pour la recherche **Rechercher en ligne** de la galerie ; `""` la désactive. Voir [Recherche de lieux en ligne](#recherche-en-ligne-de-lieux) |
 | **comparison_mode** | | |
-| `min_comparisons_for_optimization` | `50` | Nombre minimal de comparaisons décisives (une photo l'a emporté ; les égalités ne comptent pas) de la catégorie avant de suggérer des poids |
-| `pair_selection_strategy` | `"learning"` | Stratégie de paires : `learning` (démarrage à froid par diversité d'embeddings + désaccord de rang une fois entraîné), `uncertainty`, `boundary`, `active`, `random` |
+| `min_comparisons_for_optimization` | `50` | Comparaisons décisives (égalités exclues) nécessaires dans une catégorie avant de suggérer des poids |
+| `pair_selection_strategy` | `"learning"` | Stratégie de paires : `learning`, `uncertainty`, `boundary`, `active`, `random` |
 | `candidate_pool_size` | `200` | Bassin candidat aléatoire au sein duquel la stratégie `learning` échantillonne les paires |
 | `show_current_scores` | `true` | Afficher les scores pendant la comparaison |
 | **pagination** | | |
@@ -1736,7 +1597,7 @@ Affichage et comportement de la galerie web.
 | `max_tags` | `20` | Nombre maximal d'étiquettes |
 | `min_photos_for_person` | `10` | Masquer du menu déroulant les personnes ayant moins de photos |
 | **persons** | | |
-| `needs_naming_min_faces` | `5` | face_count minimal pour qu'un cluster auto-regroupé apparaisse dans la section « À nommer » de `/persons` |
+| `needs_naming_min_faces` | `5` | Nombre minimal de visages pour qu'un groupe apparaisse sous « À nommer » dans `/persons` |
 | **raw_processor** | | |
 | `darktable.executable` | `"darktable-cli"` | Nom du binaire darktable-cli ou chemin absolu |
 | `darktable.profiles` | `[]` | Tableau de profils d'export darktable nommés (voir ci-dessous) |
@@ -1745,10 +1606,10 @@ Affichage et comportement de la galerie web.
 | `darktable.profiles[].width` | *(omettre)* | Largeur de sortie maximale (omettre pour la pleine résolution) |
 | `darktable.profiles[].height` | *(omettre)* | Hauteur de sortie maximale (omettre pour la pleine résolution) |
 | `darktable.profiles[].style` | *(omettre)* | Nom du style darktable appliqué lors de l'export (`--style`) |
-| `darktable.profiles[].apply_custom_presets` | `true` | Lorsque `false`, passe `--apply-custom-presets false` afin que seul le `style` explicite soit rendu (et non les préréglages auto-appliqués) |
+| `darktable.profiles[].apply_custom_presets` | `true` | `false` passe `--apply-custom-presets false`, si bien que seul le `style` explicite s'applique |
 | `darktable.profiles[].extra_args` | `[]` | Arguments CLI supplémentaires (par ex. `["--style-overwrite"]`) |
-| `darktable.cull_styles` | `[]` | Styles darktable nommés proposés comme aperçus développés dans le studio de tri (`GET /api/photo/cull_preview`). Vide = le sélecteur de style est masqué. Chaque style **doit déjà exister** dans la configuration darktable de l'utilisateur qui exécute la visionneuse. Le nom est transmis tel quel à `--style`. |
-| `darktable.cull_styles[].name` | *(requis)* | Nom du style darktable (transmis à `--style` et validé par l'endpoint) |
+| `darktable.cull_styles` | `[]` | Styles darktable proposés comme aperçus au rendu retouché dans la salle de tri ; vide masque le sélecteur |
+| `darktable.cull_styles[].name` | *(obligatoire)* | Nom du style darktable (passé à `--style`) |
 | `darktable.cull_styles[].label_key` | *(name)* | Clé i18n facultative pour le libellé du menu (par défaut le nom du style) |
 | `darktable.preview_max_edge` | `1440` | Bord maximal (px) du rendu de l'aperçu de tri |
 | `darktable.preview_timeout_seconds` | `60` | Délai d'attente darktable-cli par rendu d'aperçu |
@@ -1767,17 +1628,17 @@ Affichage et comportement de la galerie web.
 | `crop_padding_ratio` | `0.2` | Marge du visage |
 | `min_crop_size_px` | `20` | Taille minimale de recadrage |
 | **quality_thresholds** | | |
-| `good` | `6` | Seuil « bon » |
-| `great` | `7` | Seuil « très bon » |
-| `excellent` | `8` | Seuil « excellent » |
-| `best` | `9` | Seuil « meilleur » |
+| `good` | `6` | Seuil « bon » |
+| `great` | `7` | Seuil « très bon » |
+| `excellent` | `8` | Seuil « excellent » |
+| `best` | `9` | Seuil « meilleur » |
 | **photo_types** | | |
 | `top_picks_min_score` | `7` | Minimum pour Top Picks |
 | `top_picks_min_face_ratio` | `0.2` | Ratio de visage pour les pondérations |
 | `low_light_max_luminance` | `0.2` | Seuil de faible luminosité |
 | **defaults** | | |
 | `type` | `""` | Filtre de type de photo par défaut (par ex. `"portraits"`, `"landscapes"`, ou `""` pour Toutes) |
-| `sort` | `"aggregate"` | Colonne de tri par défaut. La galerie s'ouvre plutôt sur le dernier tri choisi dans le menu de tri lorsque ce navigateur en mémorise un (voir [Tri](VIEWER.md#tri)) |
+| `sort` | `"aggregate"` | Colonne de tri par défaut (un tri mémorisé par le navigateur l'emporte ; voir [Tri](VIEWER.md#tri)) |
 | `sort_direction` | `"DESC"` | Sens de tri par défaut (`"ASC"` ou `"DESC"`) |
 | `hide_blinks` | `true` | Masquer les photos avec clignement par défaut |
 | `hide_bursts` | `true` | Afficher uniquement la meilleure de chaque rafale par défaut |
@@ -1785,25 +1646,33 @@ Affichage et comportement de la galerie web.
 | `hide_brackets` | `true` | Afficher uniquement l'exposition de base de chaque bracketing par défaut |
 | `hide_panoramas` | `true` | N'afficher qu'une image représentative par panorama par défaut |
 | `hide_details` | `true` | Masquer les détails des photos sur les cartes par défaut |
-| `tooltip_mode` | `"panel"` | Déclencheur d'infobulle : `"hover"`, `"click"`, `"off"` ou `"panel"` (rail ancré au lieu d'une infobulle flottante — voir `panel_activation` ci-dessous). Remplace l'ancien booléen `hide_tooltip`. |
-| `panel_activation` | `"both"` | Geste qui redirige la photo sélectionnée du rail ancré quand `tooltip_mode` vaut `"panel"` : `"hover"`, `"click"` ou `"both"`. Sans effet sur les autres modes d'infobulle. La valeur par défaut `"both"` préserve le comportement d'origine du panneau |
+| `tooltip_mode` | `"panel"` | Déclencheur de l'infobulle : `"hover"`, `"click"`, `"off"` ou `"panel"` (rail ancré) ; remplace `hide_tooltip` |
+| `panel_activation` | `"both"` | Geste qui change la photo du rail ancré en mode `"panel"` : `"hover"`, `"click"` ou `"both"` |
 | `hide_rejected` | `true` | Masquer les photos rejetées par défaut |
 | `gallery_mode` | `"mosaic"` | Disposition de galerie par défaut (`"grid"` ou `"mosaic"`) |
 | **allowed_origins** | | |
-| `allowed_origins` | `["http://localhost:4200", "http://localhost:5000"]` | Origines CORS autorisées pour le serveur FastAPI. Ajoutez votre domaine ou l'URL de votre reverse proxy en cas d'hébergement distant. |
+| `allowed_origins` | `["http://localhost:4200", "http://localhost:5000"]` | Origines CORS autorisées ; ajoutez votre domaine ou l'URL de votre reverse proxy en cas d'hébergement distant |
 | **security_headers** | | |
-| `security_headers.content_security_policy` | _(valeur par défaut compatible SPA)_ | Valeur de l'en-tête Content-Security-Policy. Par défaut, une politique autorisant les ressources propres de la SPA (script/style de thème inline, Google Fonts, tuiles OpenStreetMap, API de même origine). Mettre `""` pour désactiver, ou fournir une politique plus stricte. |
+| `security_headers.content_security_policy` | _(défaut compatible SPA)_ | En-tête Content-Security-Policy ; `""` le désactive, ou fournissez une politique plus stricte |
 | `security_headers.hsts` | `false` | Envoyer `Strict-Transport-Security`. À activer uniquement lorsque la visionneuse est servie en HTTPS. |
 | **Autres** | | |
-| `cache_ttl_seconds` | `3600` | TTL des caches de statistiques/requêtes en mémoire. Le calcul des statistiques sur toute la bibliothèque peut prendre plusieurs minutes, donc un TTL plus court que ce calcul empêche tout succès de cache |
+| `cache_ttl_seconds` | `3600` | TTL des caches de statistiques/requêtes en mémoire ; gardez-le plus long qu'un calcul complet des statistiques (qui peut prendre des minutes) |
 | `notification_duration_ms` | `2000` | Durée des notifications toast |
-| `moment_confidence_min` | `0` | En dessous de ce postérieur `narrative_moment_confidence` stocké (0–1), les libellés de moment sont affichés atténués avec un suffixe « (uncertain) » dans l'en-tête Scènes, l'en-tête du groupe de scène du tri (Culling) et l'infobulle photo de la galerie. `0` = jamais atténué |
+| `moment_confidence_min` | `0` | Les libellés de moments sous cette confiance (0–1) s'affichent atténués avec « (incertain) » ; `0` = jamais atténué |
+
+Remarques :
+- **`trusted_local_editing`** ne s'applique que tant que `password` et `edition_password` sont tous deux vides sur une installation mono-utilisateur. Il couvre toutes les routes réservées à l'édition, scans compris, et permet à la boîte de dialogue Connect de créer un jeton d'assistant **Édition complète** pour les requêtes `/mcp` de la même machine.
+
+> **Avertissement :** N'activez jamais `trusted_local_editing` derrière un reverse proxy sur le même hôte.
+
+- **`pair_selection_strategy` :** `learning` choisit d'abord des paires variées, puis les paires que le modèle classe de façon incohérente.
+- **`darktable.cull_styles`** alimentent `GET /api/photo/cull_preview`. Chaque style **doit déjà exister** dans la configuration darktable de l'utilisateur qui exécute la visionneuse.
+- La Content-Security-Policy par défaut autorise les ressources propres à la SPA : script/style de thème en ligne, Google Fonts, tuiles OpenStreetMap et API de même origine.
+- `moment_confidence_min` atténue les libellés dans l'en-tête Scènes, l'en-tête de groupe de scène du tri et l'infobulle de la galerie.
 
 ### Badges de carte et écrêtage
 
-`viewer.badges` active ou désactive chaque badge de la carte de galerie. Tous les
-badges antérieurs à ce bloc valent `true` par défaut : omettre le bloc ne change
-donc rien.
+`viewer.badges` active ou désactive chaque badge des cartes de la galerie. Les anciens badges valent `true` par défaut, donc omettre le bloc ne change rien.
 
 ```json
 {
@@ -1835,41 +1704,36 @@ donc rien.
 | `badges.favorite` | `true` | Badge cœur sur une photo favorite (mode édition) |
 | `badges.star_rating` | `true` | Badge étoile + compteur sur une photo notée (mode édition) |
 | `badges.rejected` | `true` | Badge pouce baissé sur une photo rejetée (mode édition) |
-| `badges.sequence_kind` | `true` | Badge de série (rafale/bracketing/panorama/doublon), dessiné à gauche du badge de rejet, affiché seulement quand l'option de masquage replie la série |
+| `badges.sequence_kind` | `true` | Badge d'ensemble (rafale/bracketing/panorama/doublon), affiché tant que la bascule de masquage correspondante replie l'ensemble |
 | `badges.sequence_override_pending` | `true` | Badge horloge pour une correction de panorama en attente de la prochaine détection |
-| `badges.stack` | `true` | Badge calques avec le nombre de membres sur chaque vignette d'une pile de photos manuelle (piles repliées : la couverture visible) ; un clic ouvre la pile. Désactivé masque seulement le badge : le bouton de carte « Ouvrir la pile de photos » reste disponible |
-| `badges.keeper_hint` | `true` | Flèche « une meilleure photo existe dans ce groupe » issue du modèle de sélection appris |
-| `badges.best_of_burst` | `true` | Badge « Meilleure » sur la photo de tête d'une rafale. Affiché uniquement quand `hide_bursts` est désactivé : sinon toutes les photos de rafale à l'écran sont déjà des têtes de groupe |
+| `badges.stack` | `true` | Badge de couches + nombre de membres sur les cartes d'une pile de photos manuelle ; un clic ouvre la pile |
+| `badges.keeper_hint` | `true` | Flèche « une meilleure photo existe dans ce groupe » issue du modèle de sélection appris |
+| `badges.best_of_burst` | `true` | Badge « TOP » sur le chef d'une rafale, affiché uniquement quand `hide_bursts` est désactivé |
 | `badges.clipping_highlight` | `true` | Badge sur une photo dont les hautes lumières dépassent `clipping.badge_percent` |
-| `badges.clipping_shadow` | `false` | Idem pour les ombres bouchées. Désactivé par défaut : l'écrêtage des ombres est souvent intentionnel (silhouettes, nuit, low-key) |
+| `badges.clipping_shadow` | `false` | Même chose pour les ombres bouchées (désactivé : souvent voulu dans les silhouettes, la nuit, le low-key) |
 
-`viewer.clipping` est la définition unique de « écrêté », partagée par le badge de
-la carte, les repères de l'histogramme et le filtre de galerie, afin que les trois
-ne puissent pas diverger.
+Désactiver `badges.stack` ne masque que le badge ; le bouton de carte « Ouvrir la pile de photos » fonctionne toujours.
+
+`viewer.clipping` définit une seule fois ce qu'est « écrêté » pour le badge de carte, les repères de l'histogramme et le filtre de la galerie.
 
 | Clé | Défaut | Description |
 |-----|--------|-------------|
-| `badge_percent` | `5` | Pourcentage de pixels, dans le pire des canaux R/V/B, au-delà duquel la carte est badgée. Mesuré sur un échantillon de 28 photos : l'écrêtage des hautes lumières du pire canal avait une médiane de 0,31 % et un p90 de 2,35 %, donc 5 % se déclenche sur environ 1 photo sur 25 |
-| `indicator_percent` | `1` | Seuil des repères R/V/B de l'histogramme. Plus fin que le badge, car vous regardez déjà une seule photo |
-| `histogram_mode` | `"rgb"` | Valeur par défaut de l'histogramme du **panneau de détail** : `"luma"`, `"rgb"`, ou un canal isolé (`"r"` / `"g"` / `"b"`). Le choix propre de l'utilisateur pour cette surface est stocké dans `localStorage` sous `facet_histogram_mode` et prévaut sur cette valeur |
-| `tooltip_histogram_mode` | `"luma"` | Valeur par défaut de l'histogramme de l'onglet Histogramme du **panneau latéral** (`tooltip_mode: "panel"`), mêmes cinq valeurs possibles. Volontairement indépendante de `histogram_mode` et persistée sous sa propre clé `localStorage` (`facet_histogram_mode_tooltip`) : le détail d'une photo sert à étudier une seule photo, où le détail par canal se justifie ; le panneau latéral sert à parcourir rapidement de nombreuses photos, où une simple courbe de luminance se lit généralement plus vite. Modifier l'une ne retouche jamais l'autre. Les bulles **Survol** et **Clic** n'affichent pas d'histogramme |
+| `badge_percent` | `5` | Pourcentage de pixels, dans le pire de R/V/B, au-dessus duquel la carte reçoit un badge (environ 1 photo sur 25 sur un échantillon) |
+| `indicator_percent` | `1` | Seuil des repères d'extrémité R/V/B propres à l'histogramme |
+| `histogram_mode` | `"rgb"` | Valeur par défaut de l'histogramme du **panneau de détail** : `"luma"`, `"rgb"`, `"r"`, `"g"` ou `"b"` |
+| `tooltip_histogram_mode` | `"luma"` | Valeur par défaut de l'onglet Histogramme du **panneau latéral** (`tooltip_mode: "panel"`), mêmes cinq valeurs |
 
-**L'écrêtage est mesuré par canal, exactement aux bins 0 et 255.** Il est stocké
-dans `photos.channel_clip_shadow_pct` / `channel_clip_highlight_pct` sous forme du
-pourcentage de pixels du pire canal — une mesure *différente* des indicateurs
-`shadow_clipped` / `highlight_clipped`, qui sont binaires, couvrent les plages de
-luminance 0–30 et 225–255 et alimentent `exposure_score`.
+Remarques :
+- Le choix d'histogramme d'un utilisateur est stocké dans `localStorage` (`facet_histogram_mode`, `facet_histogram_mode_tooltip`) et l'emporte sur ces valeurs par défaut. Les deux réglages sont indépendants.
+- Les bulles **Survol** et **Clic** n'affichent aucun histogramme.
 
-**`NULL` signifie inconnu, jamais propre.** Une photo dont l'histogramme stocké
-précède le format par canal n'a aucune donnée de canal : elle ne porte aucun badge
-et ne correspond à aucun des deux côtés du filtre. Lancez
-`python facet.py --backfill-clipping` pour dériver les colonnes des lignes qui
-possèdent déjà un histogramme complet — la commande ne lit que la base, ne décode
-aucune image et est reprenable.
+**L'écrêtage se mesure par canal, exactement aux cases 0 et 255.** Il est stocké dans `photos.channel_clip_shadow_pct` / `channel_clip_highlight_pct` comme la part de pixels du pire canal. Cela diffère des indicateurs `shadow_clipped` / `highlight_clipped`, qui couvrent les bandes de luminance 0–30 et 225–255 et alimentent `exposure_score`.
+
+**`NULL` signifie inconnu, jamais propre.** Une photo avec un histogramme stocké plus ancien n'a pas de données par canal ; elle n'a donc aucun badge et ne correspond à aucun côté du filtre de la galerie. `python facet.py --backfill-clipping` remplit les colonnes à partir des histogrammes stockés ; il ne décode aucune image et peut être repris.
 
 ### Fonctionnalités
 
-Activez ou désactivez des fonctionnalités optionnelles pour réduire l'utilisation mémoire ou simplifier l'interface :
+Activez ou désactivez des fonctionnalités optionnelles pour réduire l'utilisation mémoire ou simplifier l'interface :
 
 ```json
 {
@@ -1891,33 +1755,37 @@ Activez ou désactivez des fonctionnalités optionnelles pour réduire l'utilisa
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `show_similar_button` | `true` | Afficher le bouton « Trouver des similaires » sur les cartes photo (utilise numpy pour la similarité CLIP) |
+| `show_similar_button` | `true` | Afficher le bouton « Trouver des similaires » sur les cartes photo (utilise numpy pour la similarité CLIP) |
 | `show_merge_suggestions` | `true` | Activer la fonctionnalité de suggestions de fusion sur la page de gestion des personnes |
 | `show_rating_controls` | `true` | Afficher les commandes de notation par étoiles et de favori |
-| `show_scan_button` | `false` | Afficher le bouton de déclenchement d'analyse (superadmin en mode multi-utilisateurs ; session édition verrouillée en mode mono-utilisateur) — aucun GPU requis : l'analyse s'exécute sur CPU seul avec le profil `legacy` ; non requis pour une session locale de confiance sous `trusted_local_editing` |
-| `metrics_enabled` | `false` | Activer le point d'accès public Prometheus `GET /metrics`. Désactivé par défaut — il expose les nombres de photos/personnes/visages, la taille de la base et la mémoire du processus ; à n'activer que lorsque le point d'accès est joignable depuis le réseau du collecteur, et non depuis Internet public. |
+| `show_scan_button` | `false` | Affiche le bouton de déclenchement du scan (pas de GPU nécessaire ; voir les remarques) |
+| `metrics_enabled` | `false` | Active le point d'accès Prometheus public `GET /metrics` (voir l'avertissement ci-dessous) |
 | `show_semantic_search` | `true` | Afficher la barre de recherche sémantique (recherche texte-vers-image via les embeddings CLIP/SigLIP) |
 | `show_albums` | `true` | Afficher la fonctionnalité d'albums (créer, gérer et parcourir des albums photo) |
 | `show_critique` | `true` | Afficher le bouton de critique IA sur les cartes photo (décomposition de score fondée sur des règles) |
-| `show_vlm_critique` | `true` | Activer le mode de critique propulsé par VLM (nécessite un profil VRAM 16gb/24gb). Le code retombe sur `false` quand la clé est absente. |
-| `show_embed_metadata` | `true` | Afficher l'action « Écrire les métadonnées dans le fichier » par vignette en mode édition (intègre notes/mots-clés dans l'image originale via exiftool) |
-| `show_memories` | `true` | Afficher la boîte de dialogue souvenirs « Ce jour-là » (photos prises à la même date les années précédentes) |
+| `show_vlm_critique` | `true` | Active la critique VLM (profil 16gb/24gb) ; `false` si la clé est absente |
+| `show_embed_metadata` | `true` | Affiche « Écrire les métadonnées dans le fichier » en mode édition (intègre notes/mots-clés via exiftool) |
+| `show_memories` | `true` | Afficher la boîte de dialogue souvenirs « Ce jour-là » (photos prises à la même date les années précédentes) |
 | `show_captions` | `true` | Afficher les légendes générées par IA sur les cartes photo |
 | `show_timeline` | `true` | Afficher la vue chronologique pour un parcours chronologique avec navigation par date |
-| `show_map` | `true` | Afficher la vue carte avec les emplacements GPS des photos (nécessite Leaflet). Le code retombe sur `false` quand la clé est absente. |
+| `show_map` | `true` | Affiche la vue carte GPS (nécessite Leaflet) ; `false` si la clé est absente |
 | `show_capsules` | `true` | Afficher la vue Capsules (diaporamas de photos sélectionnées regroupées par thème) |
 | `show_folders` | `true` | Afficher le parcours par dossiers de la structure de répertoires photo |
-| `show_scenes` | `true` | Afficher la vue Scènes (`/scenes`) qui regroupe les photos de tête de rafale en scènes chronologiques pour un tri dans l'ordre du récit |
-| `show_my_taste` | `true` | Afficher le tri « My Taste » fondé sur le score appris du classeur personnel, avec un badge de confiance couverture-apprise / précision |
-| `show_social_export` | `true` | Affiche le menu **Recadrage social** (réservé à l'édition) : recadrages sensibles au sujet pour les formats des réseaux sociaux. Voir [Export social](#export-social) |
-| `show_portfolio_export` | `true` | Affiche l'action d'album **Exporter le portfolio** (réservée à l'édition) : galerie HTML statique autonome. Voir [Export de portfolio](#export-de-portfolio) |
-| `show_proofing` | `false` | Active l'épreuvage client sur les albums partagés : un lien de partage (plus un code PIN facultatif) permet à un client sans compte de mettre un cœur aux photos et de laisser des commentaires, que le propriétaire de l'album examine depuis une boîte de dialogue réservée à l'édition. Désactivé par défaut. Voir [Épreuvage client](#épreuvage-client) |
+| `show_scenes` | `true` | Affiche la vue Scènes (`/scenes`), des chefs de rafale regroupés en scènes chronologiques |
+| `show_my_taste` | `true` | Affiche le tri « Mes goûts » du classeur personnel, avec un badge de confiance |
+| `show_social_export` | `true` | Affiche le menu de téléchargement **Recadrage social**, réservé à l'édition. Voir [Export pour les réseaux sociaux](#export-social) |
+| `show_portfolio_export` | `true` | Affiche l'action d'album **Exporter le portfolio**, réservée à l'édition. Voir [Export de portfolio](#export-de-portfolio) |
+| `show_proofing` | `false` | Active la épreuvage client sur les albums partagés. Voir [Épreuvage client](#épreuvage-client) |
 
-**Optimisation mémoire :** définir `show_similar_button: false` empêche le chargement de numpy, réduisant l'empreinte mémoire de la visionneuse. La fonctionnalité de photos similaires calcule la similarité cosinus des embeddings CLIP, ce qui nécessite numpy.
+Remarques :
+- **`show_scan_button` :** visible pour le superadmin en mode multi-utilisateur, ou pour une session d'édition déverrouillée en mode mono-utilisateur. Les scans s'exécutent sur CPU seul avec le profil `legacy`. Une session locale de confiance (`trusted_local_editing`) peut scanner sans lui.
+- **Optimisation mémoire :** `show_similar_button: false` empêche numpy de se charger, ce qui réduit la mémoire de la visionneuse.
+
+> **Avertissement :** `metrics_enabled` expose les nombres de photos/personnes/visages, la taille de la base et la mémoire du processus. Ne l'activez que là où le réseau du collecteur peut l'atteindre, jamais sur l'internet public.
 
 ### Épreuvage client
 
-`viewer.features.show_proofing` (par défaut `false`) transforme n'importe quel album partagé en surface d'épreuvage client. Un lien de partage — éventuellement protégé par `viewer.proofing.pin` — permet à un client sans compte d'échanger le jeton de partage contre une session éphémère, puis de mettre un cœur aux photos et de laisser des commentaires. Les sélections vivent dans une table dédiée `album_client_picks`, limitées aux photos de cet album et totalement isolées des notes du propriétaire (elles ne touchent jamais `photos.is_favorite` / `user_preferences` et n'entraînent jamais le classeur personnel). Le propriétaire lit les sélections depuis une boîte de dialogue réservée à l'édition sur la carte de l'album.
+`viewer.features.show_proofing` (par défaut `false`) transforme tout album partagé en page de épreuvage client. Un client disposant du lien de partage (et du `viewer.proofing.pin` facultatif) peut mettre des cœurs et laisser des commentaires sans compte. Le propriétaire les consulte depuis une boîte de dialogue réservée à l'édition, sur la carte de l'album. Les choix des clients ne touchent jamais aux notes du propriétaire et n'entraînent pas le classeur personnel.
 
 ```json
 {
@@ -1934,12 +1802,12 @@ Activez ou désactivez des fonctionnalités optionnelles pour réduire l'utilisa
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
 | `features.show_proofing` | `false` | Interrupteur principal de l'épreuvage client sur les albums partagés |
-| `proofing.pin` | `""` | Code PIN facultatif qu'un client doit saisir (avec le jeton de partage) pour ouvrir une session d'épreuvage. Vide = aucun PIN. Les vérifications sont limitées en débit et sûres au niveau des octets |
-| `proofing.session_minutes` | `1440` | Durée de vie en minutes d'un jeton de session d'épreuvage client (par défaut 24 h). Les sessions s'arrêtent aussi dès que l'album n'est plus partagé ou que l'épreuvage est désactivé |
+| `proofing.pin` | `""` | PIN facultatif que le client doit saisir avec le lien de partage ; vide = pas de PIN (les tentatives sont limitées) |
+| `proofing.session_minutes` | `1440` | Durée de vie de la session client en minutes (24 h) ; elle prend fin aussitôt si l'album n'est plus partagé ou si la validation est désactivée |
 
 ### Mappage de chemins
 
-Associer les chemins de la base à des chemins du système de fichiers local. Utile lorsque les photos ont été notées sur une machine (par ex. Windows avec des chemins UNC) mais que la visionneuse s'exécute sur une autre (par ex. un NAS Linux avec des points de montage).
+Fait correspondre les chemins de la base à des chemins locaux, lorsque les photos ont été analysées sur une machine (par ex. Windows avec chemins UNC) et que la visionneuse tourne sur une autre (par ex. un NAS Linux).
 
 ```json
 {
@@ -1954,15 +1822,15 @@ Associer les chemins de la base à des chemins du système de fichiers local. Ut
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `path_mapping` | `{}` | Dictionnaire de préfixe source vers préfixe de destination. Lors du service d'images en pleine taille ou de la critique VLM, les chemins de la base commençant par un préfixe source sont réécrits pour utiliser le préfixe de destination. |
+| `path_mapping` | `{}` | Préfixe source → préfixe de destination, appliqué à la lecture des fichiers sur le disque |
 
-**Fonctionnement :**
-- Ne s'applique que lors de la **lecture de fichiers depuis le disque** (service d'images en pleine taille, téléchargements de fichiers, critique VLM). Les chemins de la base ne sont jamais modifiés.
-- La normalisation barre oblique inverse/barre oblique est gérée automatiquement : `\\NAS\Photos\img.jpg` et `//NAS/Photos/img.jpg` correspondent tous deux.
-- Les mappages sont évalués dans l'ordre ; le premier préfixe correspondant l'emporte.
-- Les cibles de mappage de chemins sont automatiquement incluses dans la liste blanche des répertoires d'analyse pour les contrôles de sécurité multi-utilisateurs.
+**Fonctionnement :**
+- S'applique uniquement à la **lecture de fichiers sur le disque** (images pleine taille, téléchargements, critique VLM). Les chemins de la base ne sont jamais modifiés.
+- Les barres obliques inverses et normales sont normalisées : `\\NAS\Photos\img.jpg` et `//NAS/Photos/img.jpg` correspondent toutes deux.
+- Les mappages sont évalués dans l'ordre ; le premier préfixe correspondant l'emporte.
+- Les cibles de correspondance sont ajoutées automatiquement à la liste d'autorisation des dossiers du mode multi-utilisateur.
 
-**Exemple :** une base remplie sous Windows stocke des chemins comme `\\NAS\Photos\2024\IMG_001.jpg`. Sous Linux, le même partage est monté sur `/mnt/nas/Photos`. Configurez :
+**Exemple :** une base remplie sous Windows stocke des chemins comme `\\NAS\Photos\2024\IMG_001.jpg`. Sous Linux, le même partage est monté sur `/mnt/nas/Photos`. Configurez :
 
 ```json
 "path_mapping": {"\\\\NAS\\Photos": "/mnt/nas/Photos"}
@@ -1970,7 +1838,7 @@ Associer les chemins de la base à des chemins du système de fichiers local. Ut
 
 ### Protection par mot de passe
 
-Protection par mot de passe optionnelle pour la visionneuse :
+Protection par mot de passe optionnelle pour la visionneuse :
 
 ```json
 {
@@ -1980,11 +1848,11 @@ Protection par mot de passe optionnelle pour la visionneuse :
 }
 ```
 
-Lorsqu'il est défini, les utilisateurs doivent s'authentifier avant d'accéder à la visionneuse.
+Une fois défini, les utilisateurs doivent se connecter avant d'utiliser la visionneuse.
 
 ### Édition locale de confiance
 
-Une visionneuse mono-utilisateur utilisée uniquement depuis un navigateur de la même machine peut modifier sans mot de passe d'édition, sur activation explicite :
+Permet à une visionneuse mono-utilisateur, utilisée uniquement depuis un navigateur du même ordinateur, de modifier sans mot de passe d'édition :
 
 ```json
 {
@@ -1994,30 +1862,43 @@ Une visionneuse mono-utilisateur utilisée uniquement depuis un navigateur de la
 }
 ```
 
-L'option ne s'applique que si **à la fois** `viewer.password` et `viewer.edition_password` sont vides, le mode multi-utilisateur désactivé et la configuration chargée sans erreur. Définir un mot de passe d'édition la désactive : un opérateur qui en a défini un s'attend à ce qu'il soit demandé, l'option ne le contourne donc jamais. Elle ne définit ni ne révèle aucun mot de passe, ne modifie pas les jetons et n'active pas l'administration multi-utilisateur.
+Il ne s'applique que tant que `viewer.password` **et** `viewer.edition_password` sont vides, que le mode multi-utilisateur est désactivé et que la configuration s'est chargée sans erreur. Définir un mot de passe d'édition le désactive. Il ne définit ni ne révèle aucun mot de passe, ne change aucun jeton et n'active pas l'administration multi-utilisateur.
 
-L'accès est décidé à chaque requête, jamais à partir d'une revendication de jeton. Une requête n'est de confiance que si toutes ces conditions sont réunies ; sinon tout se passe comme si l'option était désactivée, requêtes GET comprises :
+Facet vérifie chaque requête. Une requête n'est de confiance que si toutes ces conditions sont réunies :
 
-- le pair TCP est une adresse loopback (un pair IPv4 mappé comme `::ffff:127.0.0.1` est jugé sur son adresse IPv4) ;
-- il y a exactement un en-tête `Host`, et il vaut `localhost`, `127.0.0.1` ou `[::1]`, avec un port facultatif ;
-- la requête ne porte aucun en-tête `Forwarded`, `Via`, `X-Real-IP`, `X-Client-IP`, `True-Client-IP`, `CF-Connecting-IP`, `X-Original-Forwarded-For` ni `X-Forwarded-*` ;
-- un `Origin` ou un `Referer`, s'il est présent, désigne exactement le schéma, l'hôte et le port de la requête, sans identifiants (un `Origin` avec chemin, requête ou fragment est refusé), et un `Sec-Fetch-Site`, s'il est présent, vaut `same-origin` ou `none`.
+- le pair TCP est une adresse loopback (un pair IPv4 mappé comme `::ffff:127.0.0.1` est jugé sur son adresse IPv4) ;
+- il y a exactement un en-tête `Host`, et il vaut `localhost`, `127.0.0.1` ou `[::1]`, avec un port facultatif ;
+- la requête ne porte aucun en-tête `Forwarded`, `Via`, `X-Real-IP`, `X-Client-IP`, `True-Client-IP`, `CF-Connecting-IP`, `X-Original-Forwarded-For` ni `X-Forwarded-*` ;
+- un `Origin` ou `Referer`, s'il est présent, nomme exactement le schéma, l'hôte et le port, sans identifiants (un `Origin` avec chemin, requête ou fragment est refusé) ; un `Sec-Fetch-Site`, s'il est présent, vaut `same-origin` ou `none`.
 
-Une requête de confiance détient tous les droits d'édition : chaque route qui exige sinon une session d'édition, pas seulement les notes. Cela couvre les notes, favoris et rejets, le mode de comparaison, le tri (y compris **Trier vers un dossier**, qui déplace ou met à la corbeille des fichiers, et la suppression d'une photo), les albums, la gestion des personnes et des visages, les changements de poids, de priorités et de contextes de notation, l'intégration de métadonnées et les exports, les tâches à arguments fixes de recalcul et de détection de panoramas, et la génération à la demande de légendes et de critiques. Le déclenchement du scan est inclus : une session de navigateur locale de confiance, et un assistant local détenant un jeton d'édition complète, peuvent scanner sans `viewer.features.show_scan_button`. Le flux de progression du scan n'accepte un jeton de flux local de confiance que depuis la même machine locale.
+Toute autre requête est traitée comme si l'option était désactivée, requêtes GET comprises.
 
-**Assistants.** La même option permet à la boîte « Connecter un assistant » de créer un jeton **Édition complète** sur une installation ouverte (`viewer.mcp.enabled` et un jeton restent exigés). Le jeton n'est `edition` que pour les requêtes `/mcp` qui franchissent la frontière ci-dessus : il fonctionne donc depuis `http://localhost:<port>` ou `127.0.0.1` sur `:5000` et via le proxy de développement `ng serve` `:4200`, et passe en `readonly` depuis un client du réseau local, une URL à nom d'hôte ou `0.0.0.0`, ou un déploiement Docker. Tout mot de passe l'abaisse à `readonly` ; retirer le mot de passe le ravive. Les outils de suppression exigent toujours `viewer.mcp.allow_destructive`. `ng serve --host 0.0.0.0` ou tout proxy non signalé sur la même machine laisse un client du réseau local envoyant `Host: localhost` passer : seul le jeton protège alors `/mcp`. Voir [Agents IA (MCP)](AGENTS.md). La même frontière, quelle que soit la valeur de `trusted_local_editing`, régit la gestion des jetons d'assistant sur une installation ouverte : créer, lister et révoquer des jetons ne fonctionne que pour une requête qui la franchit (ou dans une session d'édition quand `viewer.edition_password` est défini). Un proxy inverse doit envoyer `X-Forwarded-For` ou `Forwarded`, sinon il est traité comme la machine locale.
+Une requête de confiance a tous les droits d'édition sur chaque route réservée à l'édition : notes, comparaisons, tri (y compris **Trier vers un dossier**, qui déplace ou met à la corbeille des fichiers, et la suppression par photo), albums, personnes et visages, poids, priorités et contextes d'évaluation, intégration et export des métadonnées, tâches de recalcul et de panorama, génération de légendes et de critiques. Elle peut aussi scanner sans `viewer.features.show_scan_button`. Le flux de progression du scan n'accepte un jeton de flux local de confiance que depuis la même machine locale.
 
-> **Avertissement :** le pair loopback est la seule vraie frontière. `Host`, `Origin`, `Referer` et `Sec-Fetch-Site` sont fixés par le client et ne peuvent que refuser une requête, et un proxy inverse, un tunnel ou une redirection de port sur la même machine qui n'ajoute aucun des en-têtes ci-dessus est indiscernable de votre navigateur. N'activez jamais cette option derrière un proxy inverse sur la même machine. Tant qu'elle est active, tout processus local et tout compte de la machine peut modifier.
+**Assistants.** La boîte de dialogue Connect peut alors créer un jeton **Édition complète** (il faut toujours `viewer.mcp.enabled`).
+
+- Le jeton n'agit comme `edition` que pour les requêtes `/mcp` qui passent les vérifications ci-dessus : `http://localhost:<port>` ou `127.0.0.1`, sur `:5000` ou le proxy de développement `ng serve` `:4200`.
+- Depuis un client du réseau local, une URL à nom d'hôte ou `0.0.0.0`, ou un déploiement Docker, il agit comme `readonly`. Définir un mot de passe le rend aussi `readonly` ; l'effacer le rétablit.
+- Les outils de suppression exigent toujours `viewer.mcp.allow_destructive`. Voir [Agents IA (MCP)](AGENTS.md).
+- Sur une installation ouverte, la création, la liste et la révocation des jetons d'assistant ne fonctionnent que depuis une requête qui passe ces vérifications (ou une session d'édition lorsque `viewer.edition_password` est défini), quelle que soit la valeur de `trusted_local_editing`.
+- `ng serve --host 0.0.0.0`, ou un proxy sur le même hôte qui n'ajoute aucun en-tête de transfert, laisse un client du réseau local passer avec `Host: localhost`. Un reverse proxy doit envoyer `X-Forwarded-For` ou `Forwarded`.
+
+> **Avertissement :** Seule la vérification de la boucle locale est une vraie frontière ; les autres en-têtes viennent du client. Un reverse proxy, un tunnel ou une redirection de port sur le même hôte qui n'ajoute aucun des en-têtes ci-dessus ressemble exactement à votre navigateur. N'activez jamais cette option derrière un reverse proxy sur le même hôte. Tant qu'elle est activée, tout processus et tout compte local de l'ordinateur peut modifier.
 
 ### Recherche en ligne de lieux
 
-`viewer.place_search_url` vaut par défaut `https://photon.komoot.io/api`. Indiquez une chaîne vide pour désactiver la recherche d’adresses et d’établissements, ou un point d’accès HTTP(S) Photon auto-hébergé sans identifiants, paramètres de requête ni fragment. Le navigateur ne reçoit que `place_search_enabled`, jamais l’URL configurée. Les recherches exigent l’accès en édition et un clic explicite sur **Rechercher en ligne**. Voir [Recherche en ligne de lieux](VIEWER.md#recherche-en-ligne-de-lieux) pour la confidentialité, le cache et les limites de workers. La [politique de la démo Photon](https://github.com/komoot/photon#demo-server) autorise un usage raisonnable du projet sans garantie de disponibilité ; la [documentation de l’API Photon](https://github.com/komoot/photon/blob/master/docs/api-v1.md) définit son format GeoJSON. Il n’y a ni nouvelle tentative ni redirection.
+`viewer.place_search_url` vaut par défaut `https://photon.komoot.io/api`.
 
-Le chien de garde de transport de cinq secondes coupe le socket actif, y compris pendant l’établissement TCP/TLS et les lectures bloquées d’en-têtes, de corps et de cadrage par blocs HTTP. La résolution DNS synchrone native suit toujours les délais du résolveur du système et peut dépasser cinq secondes avant l’existence d’un socket. La recherche reste limitée à une requête à la fois tant que le DNS est en attente ; si le DNS répond après l’échéance, aucune connexion n’est ouverte. Aucun worker de requête ou de DNS détaché n’existe.
+- Définissez `""` pour désactiver la recherche d'adresses/commerces, ou pointez vers un point d'accès HTTP(S) Photon auto-hébergé (sans identifiants, paramètres de requête ni fragments).
+- Le navigateur n'apprend que `place_search_enabled`, jamais l'URL.
+- Les recherches exigent l'accès en édition et un clic explicite sur **Rechercher en ligne**. Il n'y a ni nouvelles tentatives ni redirections.
+- Une requête expire au bout de cinq secondes ; la résolution DNS suit le résolveur du système et peut prendre plus de temps.
+
+Voir [Recherche de lieux en ligne](VIEWER.md#recherche-en-ligne-de-lieux) pour la confidentialité, le cache et les limites. La [politique de la démo Photon](https://github.com/komoot/photon#demo-server) autorise un usage raisonnable par le projet sans garantie de disponibilité ; la [documentation de l'API Photon](https://github.com/komoot/photon/blob/master/docs/api-v1.md) définit son format GeoJSON.
 
 ### Performance de la visionneuse
 
-Surcharger les réglages globaux `performance` lors de l'exécution de la visionneuse. Utile pour un déploiement NAS à faible mémoire où la notation a besoin de ressources élevées mais pas la visionneuse.
+Surcharge les réglages globaux `performance` pour la visionneuse seule, par ex. sur un NAS à faible mémoire.
 
 ```json
 {
@@ -2057,20 +1938,20 @@ Réglages de performance de la base de données.
 }
 ```
 
-> **Note :** `wal_checkpoint_minutes` est une surcharge optionnelle et **n'est pas** présente dans le bloc `performance` livré (qui ne contient que `mmap_size_mb`, `cache_size_mb` et `slow_request_ms`). Ajoutez-le explicitement pour changer la valeur par défaut de `30`.
-
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
 | `mmap_size_mb` | `2048` | Taille des E/S mappées en mémoire SQLite |
 | `cache_size_mb` | `128` | Taille du cache SQLite |
-| `wal_checkpoint_minutes` | `30` | Surcharge optionnelle (absente du fichier livré). Intervalle en minutes du `PRAGMA wal_checkpoint(TRUNCATE)` en arrière-plan de la visionneuse. Empêche le gonflement du WAL sur les déploiements de longue durée. Mettre `0` pour désactiver le checkpoint périodique ; le checkpoint lors d'un arrêt propre s'exécute dans les deux cas. |
-| `slow_request_ms` | `1000` | Les requêtes de l'API de la visionneuse plus lentes que ce nombre de millisecondes sont journalisées en WARNING avec un marqueur `SLOW`. Mettre `0` pour désactiver. |
+| `wal_checkpoint_minutes` | `30` | Optionnel (absent du fichier livré). Minutes entre les checkpoints WAL d'arrière-plan de la visionneuse ; `0` les désactive |
+| `slow_request_ms` | `1000` | Journalise les requêtes de l'API de la visionneuse plus lentes que cette valeur (WARNING, marqueur `SLOW`) ; `0` désactive |
+
+Le checkpoint périodique (`PRAGMA wal_checkpoint(TRUNCATE)`) garde le fichier WAL petit sur les installations de longue durée ; un checkpoint s'exécute aussi à l'arrêt propre.
 
 ---
 
 ## Stockage
 
-Contrôle l'emplacement de stockage des vignettes et des embeddings. Par défaut, des colonnes BLOB dans la base SQLite ; le mode système de fichiers les stocke à la place sous forme de fichiers sur disque, ce qui réduit la taille de la base.
+Où sont stockés les miniatures et les embeddings : colonnes BLOB de la base SQLite (par défaut), ou fichiers sur disque pour alléger la base.
 
 ```json
 {
@@ -2083,12 +1964,12 @@ Contrôle l'emplacement de stockage des vignettes et des embeddings. Par défaut
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `mode` | `"database"` | Backend de stockage : `"database"` (BLOBs SQLite) ou `"filesystem"` (fichiers sur disque) |
-| `filesystem_path` | `"./storage"` | Répertoire de base pour le mode système de fichiers. Les vignettes sont stockées dans `<path>/thumbnails/` et les embeddings dans `<path>/embeddings/`, organisés en sous-répertoires par empreinte de contenu. |
+| `mode` | `"database"` | Backend de stockage : `"database"` (BLOBs SQLite) ou `"filesystem"` (fichiers sur disque) |
+| `filesystem_path` | `"./storage"` | Dossier de base du mode système de fichiers (`<path>/thumbnails/` et `<path>/embeddings/`) |
 
-**Détails du mode système de fichiers :**
-- Les fichiers sont organisés par empreinte SHA-256 du chemin de la photo, avec des sous-répertoires à deux caractères pour éviter d'avoir trop de fichiers dans un seul répertoire (par ex. `thumbnails/a3/a3f8..._640.jpg`).
-- Supprimer une photo supprime toutes les tailles de vignettes et fichiers d'embeddings associés.
+**Détails du mode système de fichiers :**
+- Les fichiers sont nommés d'après le hachage SHA-256 du chemin de la photo, dans des sous-dossiers de deux caractères (par ex. `thumbnails/a3/a3f8..._640.jpg`).
+- Supprimer une photo supprime toutes ses tailles de miniature et ses fichiers d'embedding.
 - Le répertoire est créé automatiquement à la première utilisation.
 
 ---
@@ -2141,7 +2022,7 @@ Système de plugins événementiel pour réagir aux événements de notation. Le
 
 ### Écrire un plugin
 
-Placez un fichier `.py` dans le répertoire `plugins/`. Définissez des fonctions nommées d'après les événements que vous souhaitez gérer :
+Placez un fichier `.py` dans le répertoire `plugins/`. Définissez des fonctions nommées d'après les événements que vous souhaitez gérer :
 
 ```python
 def on_score_complete(data: dict) -> None:
@@ -2155,7 +2036,7 @@ Voir `plugins/example_plugin.py.example` pour l'interface complète.
 
 ### Webhooks
 
-Chaque webhook reçoit un POST JSON avec protection SSRF (les adresses privées/loopback sont bloquées) :
+Chaque webhook reçoit un POST JSON. Les adresses privées et de bouclage sont bloquées :
 
 ```json
 {
@@ -2171,7 +2052,7 @@ Chaque webhook reçoit un POST JSON avec protection SSRF (les adresses privées/
 }
 ```
 
-Options de webhook : `url` (requis), `events` (liste de noms d'événements), `min_score` (agrégat minimal pour déclencher).
+Options de webhook : `url` (requis), `events` (liste de noms d'événements), `min_score` (agrégat minimal pour déclencher).
 
 ### Actions intégrées
 
@@ -2191,7 +2072,7 @@ Options de webhook : `url` (requis), `events` (liste de noms d'événements), `m
 
 ## Capsules
 
-Diaporamas de photos sélectionnées regroupées par thème. Les capsules sont générées automatiquement à partir de votre photothèque et mises en cache avec un TTL configurable.
+Diaporamas organisés par thème, générés à partir de votre bibliothèque et mis en cache pendant `freshness_hours`.
 
 ```json
 {
@@ -2239,7 +2120,7 @@ Diaporamas de photos sélectionnées regroupées par thème. Les capsules sont g
 | `min_aggregate` | `6.0` | Score agrégé minimal pour qu'une photo soit incluse dans les capsules |
 | `max_photos_per_capsule` | `40` | Nombre maximal de photos par capsule (diversité MMR appliquée au-delà de 5) |
 | `max_photo_overlap` | `0.2` | Fraction maximale de photos partagées entre deux capsules avant que la déduplication n'en supprime une |
-| `mmr_lambda` | `0.5` | Pondération de diversité MMR : 0 = maximiser la diversité, 1 = maximiser la qualité |
+| `mmr_lambda` | `0.5` | Pondération de diversité MMR : 0 = maximiser la diversité, 1 = maximiser la qualité |
 | `mmr_moment_weight` | `0.0` | Pondération optionnelle intégrant le `narrative_moment_confidence` de chaque photo dans la sélection MMR des capsules. `0.0` = comportement inchangé |
 | `freshness_hours` | `24` | TTL du cache et période de rotation des photos de couverture et des capsules graines |
 | `reverse_geocoding` | `true` | Activer le géocodage inverse hors ligne pour les titres des capsules de lieu/voyage (nécessite le paquet `reverse_geocoder`) |
@@ -2253,18 +2134,18 @@ Diaporamas de photos sélectionnées regroupées par thème. Les capsules sont g
 | `seasonal` | Photos regroupées par saison + année |
 | `golden` | Top 1 % par score agrégé |
 | `color_story` | Groupes visuellement similaires via le regroupement des embeddings CLIP |
-| `this_week` | « Cette semaine, il y a des années » — extension de Ce jour-là sur ±3 jours |
+| `this_week` | « Cette semaine, il y a des années » — extension de Ce jour-là sur ±3 jours |
 | `location` | Clusters de photos géolocalisées avec noms de lieux géocodés en inverse |
 | `person_pair` | Paires de personnes nommées apparaissant ensemble |
 | `seeded` | Découverte à base de graines via le temps, la similarité, la personne, l'étiquette, le lieu, l'ambiance |
-| `progress` | « Votre photographie s'améliore » à partir des tendances de score trimestrielles |
-| `color_palette` | « Couleur du mois » à partir des profils de saturation/monochrome |
+| `progress` | « Votre photographie s'améliore » à partir des tendances de score trimestrielles |
+| `color_palette` | « Couleur du mois » à partir des profils de saturation/monochrome |
 | `rare_pair` | Paires de personnes peu fréquentes dans les photos bien notées |
 | `favorites` | Photos favorites regroupées par année et saison |
 
 ### Capsules fondées sur des dimensions
 
-Générées automatiquement à partir des colonnes de la base :
+Générées automatiquement à partir des colonnes de la base :
 
 | Dimension | Regroupe par |
 |-----------|--------------|
@@ -2276,16 +2157,16 @@ Générées automatiquement à partir des colonnes de la base :
 | `tag` | Étiquettes de photo (nécessite la table `photo_tags`) |
 | `day_of_week` | Jour de la semaine (dimanche–samedi) |
 | `composition` | Motif de composition SAMP-Net (rule_of_thirds, horizontal, etc.) |
-| `focal_range` | Tranches de focale : ultra grand-angle (<24 mm), grand-angle (24–35 mm), standard (36–70 mm), portrait (71–135 mm), téléobjectif (136–300 mm), super téléobjectif (300 mm+) |
+| `focal_range` | Tranches de focale : ultra grand-angle (<24 mm), grand-angle (24–35 mm), standard (36–70 mm), portrait (71–135 mm), téléobjectif (136–300 mm), super téléobjectif (300 mm+) |
 | `category` | Catégorie de contenu de la photo (portrait, paysage, rue, etc.) |
-| `time_of_day` | Tranches horaires : matin doré, matin, midi, après-midi, soir doré, nuit |
+| `time_of_day` | Tranches horaires : matin doré, matin, midi, après-midi, soir doré, nuit |
 | `star_rating` | Notes en étoiles de l'utilisateur (1–5 étoiles) |
 
 Des combos transversaux sont également générés (par ex. appareil × année, focal_range × category, category × year).
 
 ### Transitions du diaporama
 
-Chaque type de capsule correspond à une transition de diapositive thématique :
+Chaque type de capsule correspond à une transition de diapositive thématique :
 
 | Transition | Utilisée par | Effet |
 |-----------|--------------|-------|
@@ -2296,15 +2177,15 @@ Chaque type de capsule correspond à une transition de diapositive thématique :
 
 ### Géocodage inverse
 
-Les capsules de lieu et de voyage utilisent le géocodage inverse hors ligne via le paquet `reverse_geocoder` (jeu de données GeoNames local, ~30 Mo, aucun appel API). Les résultats sont mis en cache dans la table `location_names` de la base à une résolution de grille de 0,1° (~11 km).
+Les capsules de lieu et de voyage utilisent le géocodage inverse hors ligne via le paquet `reverse_geocoder` (jeu de données GeoNames local, ~30 Mo, aucun appel d'API). Les résultats sont mis en cache à une résolution de grille de 0,1° (~11 km).
 
-Installer : `pip install reverse_geocoder`
+Installer : `pip install reverse_geocoder`
 
 Mettez `"reverse_geocoding": false` pour désactiver et revenir à l'affichage des coordonnées.
 
 ## Groupes de similarité
 
-Réglages pour la fonctionnalité de tri IA des photos similaires, qui regroupe les photos visuellement similaires à l'aide des embeddings CLIP/SigLIP :
+Réglages du tri par similarité, qui regroupe les photos visuellement proches d'après leur embedding CLIP/SigLIP :
 
 ```json
 {
@@ -2319,14 +2200,14 @@ Réglages pour la fonctionnalité de tri IA des photos similaires, qui regroupe 
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `default_threshold` | `0.85` | Similarité cosinus minimale (0,0–1,0) pour considérer deux photos comme visuellement similaires. Des valeurs plus basses produisent des groupes plus grands mais avec moins de similarité visuelle. |
+| `default_threshold` | `0.85` | Similarité cosinus minimale (0,0–1,0) pour que deux photos comptent comme similaires ; plus bas = groupes plus grands et plus lâches |
 | `min_group_size` | `2` | Nombre minimal de photos requis pour former un groupe de similarité |
-| `max_photos` | `10000` | Nombre maximal de photos chargées pour le calcul de similarité (coût en O(n²)). Augmentez pour les photothèques plus grandes au prix du temps de calcul. |
-| `max_group_size` | `50` | Nombre maximal de photos par groupe de similarité. Les groupes plus grands sont scindés pour garder l'interface utilisable. |
+| `max_photos` | `10000` | Nombre maximal de photos chargées pour la comparaison (le coût croît en O(n²)) |
+| `max_group_size` | `50` | Nombre maximal de photos par groupe ; les groupes plus grands sont scindés |
 
 ## Tri automatique
 
-Tri automatique en un bouton pour la chambre noire de tri (`POST /api/culling/auto`, réservé à l'édition). Il trie toute une portée — tous les groupes, ou seulement les rafales / similaires / scènes, éventuellement restreinte à un album ou une fenêtre de dates — en une seule passe. Chaque groupe conserve sa meilleure photo plus tout ce qui se trouve dans une marge dérivée de la rigueur (le même budget de conservation que le curseur manuel de la chambre noire), avec un plancher par groupe, et rejette le reste.
+Tri automatique en un bouton pour la salle de tri (`POST /api/culling/auto`, réservé à l'édition). Il trie tout un périmètre en une passe : tous les groupes, ou seulement les rafales / similaires / scènes, éventuellement limités à un album ou à une fenêtre de dates. Chaque groupe garde sa meilleure photo plus tout ce qui se trouve dans une marge fixée par la rigueur (comme avec le curseur de la salle), au moins un minimum par groupe, et rejette le reste.
 
 ```json
 {
@@ -2339,16 +2220,16 @@ Tri automatique en un bouton pour la chambre noire de tri (`POST /api/culling/au
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `default_strictness` | `50` | Budget de conservation (0–100) utilisé lorsque la requête omet `strictness`. Plus élevé = conserver moins de photos par groupe (marge plus serrée autour de la meilleure du groupe) |
-| `highlights_min` | `8.0` | Score agrégé minimal pour que la meilleure photo d'un groupe soit rassemblée dans l'album **Highlights** facultatif lorsqu'un tri automatique est appliqué (idempotent) |
+| `default_strictness` | `50` | Budget de photos à garder (0–100) quand la requête omet `strictness` ; plus élevé garde moins de photos par groupe |
+| `highlights_min` | `8.0` | Agrégat minimal pour que la meilleure photo d'un groupe rejoigne l'album **Coups de cœur** facultatif à l'application |
 
-`dry_run` est activé par défaut et renvoie un aperçu conservation/rejet par groupe ; une application enregistre en plus des lignes de comparaison `source='culling'` et déclenche un ré-entraînement automatique. Voir [Visionneuse web — Tri automatique](VIEWER.md#tri-automatique). Le même réglage alimente la commande `python facet.py --auto-cull` (voir [Tri en ligne de commande](COMMANDS.md#tri-en-ligne-de-commande)) ; ses règles de tri sont lues dans la configuration du serveur, pas dans `--config`.
+- `dry_run` est activé par défaut et renvoie un aperçu garder/rejeter par groupe.
+- L'application enregistre des comparaisons `source='culling'` et compte pour un ré-entraînement automatique. Voir [Visionneuse web — Sélection automatique](VIEWER.md#tri-automatique).
+- Les mêmes réglages alimentent `python facet.py --auto-cull` (voir [Tri](COMMANDS.md#tri-en-ligne-de-commande)) ; ses règles viennent de la configuration du serveur, pas de `--config`.
 
 ## Ré-entraînement automatique
 
-Contrôle le moment où le classeur personnel (« Mes goûts ») se ré-entraîne. Chaque confirmation de tri et chaque changement de note incrémente un compteur par utilisateur de « nouvelles comparaisons depuis le dernier entraînement » ; le franchissement de `threshold` arme une minuterie d'inactivité, et le ré-entraînement ne démarre qu'après `idle_seconds` sans activité de votre part.
-
-Cette fenêtre d'inactivité est essentielle : le ré-entraînement réécrit une ligne par photo, et SQLite n'autorise qu'un seul écrivain par fichier de base. Un déclenchement en pleine série le mettrait en concurrence avec vos propres écritures de notation — c'est précisément ainsi qu'un long ré-entraînement faisait échouer les actions de notation. Attendre une pause sépare les deux.
+Contrôle le moment où le classeur personnel (« Mes goûts ») se ré-entraîne. Chaque confirmation de tri et chaque changement de note incrémente un compteur par utilisateur. Franchir `threshold` arme le ré-entraînement, qui démarre une fois que vous êtes inactif pendant `idle_seconds`, afin de ne pas ralentir votre notation.
 
 ```json
 {
@@ -2362,11 +2243,11 @@ Cette fenêtre d'inactivité est essentielle : le ré-entraînement réécrit un
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `threshold` | `25` | Nombre de nouvelles comparaisons qu'un utilisateur doit accumuler avant qu'un ré-entraînement soit armé. À augmenter si vous notez de très gros lots et souhaitez amortir le coût de l'entraînement (CPU, de quelques secondes à quelques minutes) sur davantage de signal |
-| `idle_seconds` | `60` | Secondes sans activité de notation/tri requises avant que le ré-entraînement armé ne démarre réellement. Chaque nouvelle action repousse la minuterie. `0` déclenche immédiatement (comportement antérieur à la 1.7.3) |
-| `backend` | `"native"` | `"native"` entraîne localement le classeur personnel, la tête de sélection et les poids appris. `"external"` conserve seulement les préférences et les compteurs de comparaisons en attente, et n'entraîne ni n'évalue jamais de tête apprise en local ; voir [Backend d'apprentissage externe](#backend-dapprentissage-externe) |
+| `threshold` | `25` | Nouvelles comparaisons nécessaires avant d'armer un ré-entraînement ; augmentez-le si vous notez de très gros lots |
+| `idle_seconds` | `60` | Secondes sans activité de notation/tri avant que le ré-entraînement armé démarre ; `0` le démarre aussitôt |
+| `backend` | `"native"` | `"native"` entraîne en local ; `"external"` ne garde que les préférences et les compteurs. Voir [Backend d'apprentissage externe](#backend-dapprentissage-externe) |
 
-Les deux sont surchargeables à l'exécution par des variables d'environnement, prioritaires sur les valeurs JSON — utile sous Docker, où la configuration est souvent intégrée à l'image :
+Les variables d'environnement surchargent `threshold` et `idle_seconds` (pratique pour Docker) :
 
 ```bash
 FACET_RETRAIN_THRESHOLD=100 FACET_RETRAIN_IDLE_S=300 python viewer.py
@@ -2377,23 +2258,24 @@ FACET_RETRAIN_THRESHOLD=100 FACET_RETRAIN_IDLE_S=300 python viewer.py
 | `FACET_RETRAIN_THRESHOLD` | `auto_retrain.threshold` |
 | `FACET_RETRAIN_IDLE_S` | `auto_retrain.idle_seconds` |
 
-Un `threshold` ou `idle_seconds` illisible retombe sur le réglage JSON, et un bloc absent ou mal formé retombe sur les valeurs par défaut intégrées : une faute de frappe dégrade donc vers le comportement livré au lieu de désactiver le ré-entraînement automatique. `backend` fait exception : une valeur illisible ou invalide bascule par prudence sur `"external"` (voir ci-dessous). `threshold` et `idle_seconds` sont lus une seule fois au démarrage — les modifier nécessite un redémarrage.
-
-Le ré-entraînement conserve son verrou de validation croisée sur données réservées : une exécution qui ne bat pas la référence actuelle n'écrit rien.
+- Un `threshold` ou `idle_seconds` invalide retombe sur la valeur du JSON, puis sur la valeur intégrée par défaut. Les deux sont lus au démarrage ; les changements exigent un redémarrage.
+- Un `auto_retrain.backend` invalide retombe sur `"external"` (voir ci-dessous).
+- Un ré-entraînement qui ne bat pas le modèle actuel sur des données de validation ne sauvegarde rien.
 
 ### Backend d'apprentissage externe
 
-Par défaut, `auto_retrain.backend` vaut `"native"`, ce qui conserve le comportement local du classeur personnel et de la tête de sélection. Définissez `"backend": "external"` pour conserver les préférences et les compteurs de comparaisons en attente sans lancer d'apprentissage personnel local ni évaluer de têtes apprises sur le CPU.
+`"backend": "external"` conserve les notes, les comparaisons et les compteurs en attente, mais n'entraîne ni n'évalue jamais en local le classeur personnel, la tête de sélection ni les poids appris. Utilisez-le quand un flux séparé, géré par l'opérateur, entraîne et publie les scores. Facet ne démarre aucun worker externe.
 
-Il s'agit d'une politique de répartition, pas d'un service de tâches externe. Elle ne lance aucun worker GPU externe et ne prétend pas qu'un modèle personnel a été entraîné. Un flux d'entraînement distinct, contrôlé par l'opérateur, doit authentifier les observations, qualifier son modèle et publier les scores obtenus. Les notes et comparaisons existantes restent disponibles pour ce flux.
+En mode externe :
+- Les commandes manuelles du classeur personnel, de la tête de sélection et de l'apprentissage des poids signalent que l'entraînement est différé.
+- Les probabilités de sélection sont indisponibles ; les réponses de Compare sur les poids appris et la confiance indiquent `available: false`.
+- La notation normale des photos et les votes ne sont pas affectés.
 
-En mode externe, les notifications incrémentent les compteurs durables existants sans les consommer ni planifier de thread d'entraînement. Les workers en file revérifient la politique et restituent le compte en attente qu'ils avaient consommé lorsqu'ils sont différés. Les points d'entrée manuels du classeur personnel, de la tête de sélection et de l'apprentissage des poids renvoient un résultat différé explicite. Les probabilités de sélection ne sont pas disponibles ; les réponses de Comparer (poids appris et confiance) indiquent `available: false` avec un message explicatif.
-
-Une politique de backend mal formée ou illisible (bloc `auto_retrain` qui n'est pas un objet, `backend` autre que `"native"` ou `"external"`, configuration illisible) bascule par prudence en mode externe et journalise un avertissement. Une configuration valide sans clé `backend` utilise le mode natif. Le visualiseur lit le chemin de configuration serveur déjà résolu ; les appels CLI respectent leur configuration explicite. Cette option ne désactive pas le scoring déterministe ordinaire des photos et n'efface aucun vote.
+Un bloc `auto_retrain` mal formé, un `backend` autre que `"native"` ou `"external"`, ou une configuration illisible sélectionne le mode externe et journalise un avertissement. Une configuration valide sans clé `backend` utilise le mode natif.
 
 ## Profils de tri par genre
 
-Préréglages par genre qui regroupent tous les réglages de tri en un clic : le sport ne garde que la photo la plus nette d'une longue rafale, les mariages conservent plus de variantes avec les yeux ouverts prioritaires, les concerts assouplissent les seuils yeux/expression, l'animalier supprime totalement le filtre de visage humain. La chambre noire de tri affiche un sélecteur de préréglage.
+Préréglages par genre qui règlent tous les paramètres de tri en un clic, depuis un sélecteur de la salle de tri. Le sport ne garde que l'image la plus nette d'une longue rafale ; les mariages gardent plus de variantes et exigent les yeux ouverts ; les concerts assouplissent les seuils yeux/expression ; la faune sauvage supprime le seuil de visage.
 
 ```json
 {
@@ -2414,17 +2296,17 @@ Préréglages par genre qui regroupent tous les réglages de tri en un clic : le
 |---|---|
 | `default` | Id de profil appliqué quand aucun n'est mémorisé côté client |
 | `profiles.<id>.label_key` | Chemin i18n du nom affiché du préréglage (`culling.profiles.*`) |
-| `profiles.<id>.strictness` | Budget de conservation (0–100) injecté dans la marge d'auto-tri quand ce préréglage est actif |
-| `profiles.<id>.eyes_closed_max` | Score yeux ouverts (0–10) en dessous duquel un visage est considéré fermé — remplace `face_detection.eyes_closed_max` dans les badges de visage |
-| `profiles.<id>.poor_expression_min` | Score d'expression/sourire (0–10) en dessous duquel un visage est jugé médiocre — remplace `face_detection.poor_expression_min` |
+| `profiles.<id>.strictness` | Budget de photos à garder (0–100) pour le tri automatique avec ce préréglage |
+| `profiles.<id>.eyes_closed_max` | Score yeux ouverts (0–10) en dessous duquel ou égal auquel un visage compte comme fermé (remplace `face_detection.eyes_closed_max`) |
+| `profiles.<id>.poor_expression_min` | Score expression/sourire (0–10) en dessous duquel un visage compte comme médiocre (remplace `face_detection.poor_expression_min`) |
 | `profiles.<id>.keep_min_per_group` | Plancher par groupe sur l'ensemble conservé par l'auto-tri |
 | `profiles.<id>.similarity_threshold` | Seuil de regroupement par similarité (pourcentage) appliqué quand le préréglage est sélectionné |
 
-Point d'accès (en lecture seule) : `GET /api/culling/profiles` renvoie la liste ordonnée des préréglages et le défaut. La requête d'auto-tri (`POST /api/culling/auto`) et le lot par visage (`POST /api/culling-group/faces`) acceptent un `profile` optionnel ; un `strictness`/`min_keep_per_group` explicite dans la requête l'emporte toujours sur le préréglage.
+`GET /api/culling/profiles` renvoie la liste ordonnée des préréglages et celui par défaut. `POST /api/culling/auto` et `POST /api/culling-group/faces` acceptent un identifiant `profile` facultatif ; un `strictness`/`min_keep_per_group` explicite dans la requête l'emporte sur le préréglage.
 
 ## Scènes
 
-Réglages pour la vue Scènes, qui regroupe les photos de tête de rafale en scènes chronologiques (séparées par les écarts de temps de capture) pour un tri dans l'ordre du récit :
+Réglages de la vue Scènes, qui regroupe les photos chefs de rafale en scènes chronologiques (coupées sur les écarts de temps de prise) pour un tri dans l'ordre de l'histoire :
 
 ```json
 {
@@ -2441,20 +2323,20 @@ Réglages pour la vue Scènes, qui regroupe les photos de tête de rafale en sc�
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `gap_minutes` | `20.0` | Une nouvelle scène commence lorsque plus de ce nombre de minutes s'écoule entre deux photos de tête de rafale consécutives (le plancher quand `adaptive` est activé) |
+| `gap_minutes` | `20.0` | Écart entre chefs de rafale consécutifs qui démarre une nouvelle scène (le plancher quand `adaptive` est activé) |
 | `min_size` | `2` | Nombre minimal de photos pour qu'une scène soit affichée |
 | `max_photos` | `5000` | Nombre maximal de photos de tête de rafale chargées pour le regroupement en scènes |
-| `max_scene_size` | `60` | Une scène plus grande est sous-scindée récursivement à ses plus grands écarts internes, afin qu'un événement photographié en continu ne s'effondre jamais en une seule scène géante |
-| `adaptive` | `true` | Lorsqu'il est activé, l'écart effectif s'élargit à `adaptive_k × médiane` des écarts consécutifs de la séance (se resserre pour les prises rapides, s'élargit pour les vacances clairsemées) |
+| `max_scene_size` | `60` | Les scènes plus grandes sont de nouveau scindées à leurs plus grands écarts internes |
+| `adaptive` | `true` | Élargit l'écart à `adaptive_k × médiane` des écarts de la séance (plus serré pour une prise rapide, plus lâche pour les voyages clairsemés) |
 | `adaptive_k` | `6.0` | Multiplicateur appliqué à l'écart médian lorsque `adaptive` est activé |
-| `split_on_moment_change` | `false` | Lorsqu'il est activé (et que les moments narratifs sont calculés), sous-scinder une série temporelle où le moment dominant change et se maintient pendant `moment_split_min_run` images |
-| `moment_split_min_run` | `4` | Hystérésis pour `split_on_moment_change` — nombre d'images consécutives durant lesquelles un nouveau moment doit persister pour forcer une frontière |
+| `split_on_moment_change` | `false` | Avec les moments narratifs calculés, coupe aussi là où le moment dominant change pendant `moment_split_min_run` vues |
+| `moment_split_min_run` | `4` | Nombre de vues consécutives qu'un nouveau moment doit durer pour imposer une limite de scène |
 
 ## Moments narratifs
 
-Étiquetage zero-shot du « moment » scène/activité de chaque photo. Le vocabulaire **general** par défaut couvre `celebration`, `dining`, `beach`, `water_activity`, `mountains`, `nature_wildlife`, `cityscape`, `travel_landmark`, `concert`, `sports`, `group_gathering`, `portrait`, `children`, `pets`, `nightlife`, `ceremony`, `scenic_landscape`, `snow_winter`, `home_indoor`, `road_vehicle`, ou `other` — il fonctionne donc sur n'importe quelle bibliothèque, pas seulement les mariages (`wedding` est fourni comme genre activable à la demande). Renseigné par `--detect-moments` (s'exécute automatiquement à la fin de chaque analyse) et exposé comme noms de scènes et filtre de galerie. Quelque chose que ni Narrative Select ni AfterShoot ne font.
+Étiquette le « moment » de scène ou d'activité de chaque photo sans entraînement. Le vocabulaire **général** par défaut couvre `celebration`, `dining`, `beach`, `water_activity`, `mountains`, `nature_wildlife`, `cityscape`, `travel_landmark`, `concert`, `sports`, `group_gathering`, `portrait`, `children`, `pets`, `nightlife`, `ceremony`, `scenic_landscape`, `snow_winter`, `home_indoor`, `road_vehicle`, ou `other`. `wedding` est livré comme genre facultatif. `--detect-moments` les remplit (il s'exécute aussi à la fin de chaque scan) ; ils apparaissent comme noms de scènes et comme filtre de la galerie.
 
-Le signal repose sur la **sémantique de la légende** : la légende IA de chaque photo est encodée une seule fois avec la tour textuelle et stockée (la colonne `caption_embedding`) ; le moment est le meilleur cosinus **max-pooled** de cet embedding de légende au regard des prompts textuels par moment. L'embedding d'image stocké sert de repli lorsqu'une photo n'a pas de légende. Le texte des légendes correspond aux prompts de moment ~2,4× plus nettement que l'embedding d'image brut, si bien que le signal `caption` porte des seuils plus élevés que le repli `image` ; chacun est ajusté par backend (les cosinus open_clip sont bien plus bas que ceux de SigLIP). Les valeurs `transformers` (SigLIP) sont fournies comme valeurs par défaut conservatrices — réajustez-les si vous utilisez un profil SigLIP.
+Facet compare la légende IA de chaque photo, encodée une fois et stockée (`caption_embedding`), avec des invites textuelles pour chaque moment, et garde la meilleure correspondance. Sans légende, il utilise l'embedding de l'image. Les légendes correspondent plus nettement : le signal `caption` a donc des seuils plus élevés que le repli `image`, réglés par backend. Les valeurs `transformers` (SigLIP) sont des valeurs par défaut prudentes ; réajustez-les si vous utilisez un profil SigLIP.
 
 ```json
 {
@@ -2491,36 +2373,43 @@ Le signal repose sur la **sémantique de la légende** : la légende IA de chaq
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `enabled` | `true` | Interrupteur principal ; lorsque désactivé, `--detect-moments` et le hook d'analyse ne font rien |
+| `enabled` | `true` | Interrupteur général ; désactivé, `--detect-moments` et le déclencheur du scan ne font rien |
 | `prompt_template` | `"a photo of {desc}"` | Enveloppe appliquée à chaque prompt avant l'encodage |
-| `default_event_type` | `"general"` | Quel vocabulaire `event_types` est actif. `general` = 20 moments scène/activité agnostiques ; `wedding` est fourni comme genre activable à la demande |
-| `pooling` | `"max"` | Score par moment = le meilleur cosinus de prompt unique (max-pool), plus discriminant que la moyenne |
-| `caption_min_confidence` | `0` | Filtre de qualité de légende : lorsque > 0, `--generate-captions` et le point d'accès de légende à la demande ignorent les photos non étiquetées, `other`, ou en dessous de cette confiance de moment stockée. `0` = aucun filtre |
-| `thresholds.<signal>.<backend>.min_confidence` | caption `0.30`/`0.12`, image `0.20`/`0.10` | En dessous de ce cosinus top-1, une photo est `other`. Indexé par **signal** (`caption` vs `image`) puis par backend — les cosinus de légende sont ~2,4× plus élevés |
+| `default_event_type` | `"general"` | Vocabulaire `event_types` actif (`general` = 20 moments ; `wedding` facultatif) |
+| `pooling` | `"max"` | Score par moment = la meilleure correspondance d'une seule invite |
+| `caption_min_confidence` | `0` | Si > 0, la génération de légendes ignore les photos sans étiquette, `other`, ou sous cette confiance ; `0` = pas de seuil |
+| `thresholds.<signal>.<backend>.min_confidence` | caption `0.30`/`0.12`, image `0.20`/`0.10` | Sous ce cosinus top-1, une photo est `other` (indexé par signal, puis backend) |
 | `thresholds.<signal>.<backend>.min_margin` | caption `0.02`/`0.01`, image `0.01`/`0.01` | Écart cosinus minimal top-1/top-2 ; en dessous, l'image est `other` |
-| `priors.enabled` / `priors.weight` | `true` / `0.04` | Coups de pouce L1 visage/étiquette qui ne départagent que les quasi-égalités ; `weight` plafonne chaque ajustement à l'échelle cosinus |
-| `priors.caption_tag_scale` | `0.25` | Atténue les règles `tag` sur le signal caption (le L0 encode déjà la légende) ; les règles structurelles gardent tout leur poids |
-| `priors.rules` | (jeu général) | Règles déclaratives `{kind, when, boost}` indépendantes du vocabulaire. `kind` : `structural` (géométrie des visages) ou `tag`. Prédicats `when` (tous combinés par ET) : `is_group_portrait`, `face_count_min`/`face_count_max`, `face_ratio_min`/`face_ratio_max`, `tags_any`, `tags_all`. `boost` : `{moment: valeur}` — un moment absent du vocabulaire actif est ignoré, si bien qu'un même jeu de règles se dégrade proprement d'un vocabulaire à l'autre |
-| `priors.event_types.<et>.rules` | surcharge `wedding` | Règles par type d'événement qui **remplacent** les `rules` globales quand ce vocabulaire est actif, ce qui garde la liste partagée indépendante du vocabulaire |
-| `transitions.stay_prob` / `forward_bias` / `weight` | `0.7` / `0.0` / `0.3` | Lissage de chronologie L2 (Viterbi) : à forte tendance auto-boucle sans progression vers l'avant (le vocabulaire agnostique n'a pas d'ordre canonique), appliqué légèrement (`weight=0` = pas de lissage) |
-| `vlm_tiebreak.enabled` / `min_confidence` / `min_margin` | `false` / `0.0` / `0.04` | Départage L3 (désormais actif) : lorsqu'il est activé sur les profils 16gb/24gb, seules les images à faible postérieur (sous `min_confidence`) ou à faible marge (sous `min_margin`) sont reclassées par le VLM du profil pendant `--detect-moments` / `--recompute-moments` : reclasser les images à faible marge avec le VLM Qwen (16gb/24gb uniquement) |
+| `priors.enabled` / `priors.weight` | `true` / `0.04` | Petits coups de pouce visage/tag qui ne départagent que les quasi-égalités ; `weight` plafonne chaque bonus |
+| `priors.caption_tag_scale` | `0.25` | Réduit les règles de **tag** sur le signal légende ; les règles structurelles gardent leur plein poids |
+| `priors.rules` | (jeu général) | Liste de règles `{kind, when, boost}` (voir ci-dessous) |
+| `priors.event_types.<et>.rules` | surcharge `wedding` | Règles qui **remplacent** les `rules` globales lorsque ce vocabulaire est actif |
+| `transitions.stay_prob` / `forward_bias` / `weight` | `0.7` / `0.0` / `0.3` | Lissage temporel entre vues voisines (`weight=0` = aucun) |
+| `vlm_tiebreak.enabled` / `min_confidence` / `min_margin` | `false` / `0.0` / `0.04` | Sur 16gb/24gb, reclasse avec le VLM du profil uniquement les vues à faible confiance ou faible marge |
 | `event_types` | `general` + `wedding` | `{moment: [synonymes de prompt]}` par type d'événement ; définissez `default_event_type` pour changer de genre ou ajouter le vôtre |
 
-> **Coût du remplissage rétroactif des légendes.** Les embeddings de légende sont calculés une seule fois et stockés, si bien que le cosinus par photo est ensuite gratuit. Une analyse n'encode que sa poignée de nouvelles légendes (peu coûteux, incrémental), mais la première passe complète sur une bibliothèque existante encode chaque légende — une passe avant de la tour textuelle par légende, rapide sur GPU et ~quelques heures sur CPU. Exécutez `python facet.py --detect-moments` une fois (GPU recommandé) pour ce remplissage ; ajoutez `--limit N` pour vérifier d'abord sur un échantillon.
+Format de `priors.rules` :
+- `kind` : `structural` (géométrie des visages) ou `tag`.
+- `when` (tout doit correspondre) : `is_group_portrait`, `face_count_min`/`face_count_max`, `face_ratio_min`/`face_ratio_max`, `tags_any`, `tags_all`.
+- `boost` : `{moment: amount}`. Un moment absent du vocabulaire actif est ignoré.
 
-**Découvrir un vocabulaire propre à la bibliothèque.** L'ensemble `general` est une valeur par défaut raisonnable, mais vous pouvez proposer un vocabulaire adapté à *votre* bibliothèque avec `python facet.py --discover-moments` : il regroupe les vecteurs `caption_embedding` stockés (HDBSCAN), nomme chaque grappe à partir de ses légendes (un mot-clé plus les légendes les plus proches du centroïde comme prompts prêts à l'emploi), et écrit le résultat sous forme d'un bloc `event_types.discovered` dans `scoring_config.discovered.json`. Examinez-le, copiez `discovered` dans `event_types` ci-dessus, réglez `default_event_type` sur `discovered`, et exécutez `--recompute-moments` pour l'adopter — la découverte propose, elle ne réécrit jamais la configuration active. `--discover-min-cluster-size N` contrôle la granularité (plus petit = plus de moments, plus fins).
+Le départage par VLM s'exécute pendant `--detect-moments` / `--recompute-moments`.
+
+> **Coût du remplissage des légendes.** Les embeddings de légendes sont calculés une fois et stockés. Un scan n'encode que ses nouvelles légendes, mais la première passe sur une bibliothèque existante encode chaque légende : rapide sur GPU, des heures sur CPU. Lancez `python facet.py --detect-moments` une fois (GPU recommandé) ; ajoutez `--limit N` pour essayer d'abord un échantillon.
+
+**Découvrir un vocabulaire propre à la bibliothèque.** `python facet.py --discover-moments` regroupe les vecteurs `caption_embedding` stockés, nomme chaque groupe d'après ses légendes, et écrit un bloc `event_types.discovered` dans `scoring_config.discovered.json`. Il ne change jamais la configuration active. Pour l'adopter, copiez `discovered` dans `event_types`, définissez `default_event_type` à `discovered`, et lancez `--recompute-moments`. `--discover-min-cluster-size N` contrôle la granularité (plus petit = plus de moments, plus fins).
 
 ## OCR
 
-Recherche de texte dans les photos : lit les mots *à l'intérieur* de vos photos — panneaux de rue, façades de magasins, dossards de course, tranches de livres, diapositives, tableaux blancs, documents scannés — vers `photos.ocr_text`, une colonne de couverture de l'index plein texte `photos_fts`. Une fois renseigné, ce texte est cherchable depuis la barre de recherche de la galerie comme n'importe quelle légende ou étiquette, et `GET /api/search?scope=text` restreint une requête aux seules colonnes porteuses de texte.
+Recherche de texte dans les photos : lit les mots *à l'intérieur* de vos photos (panneaux de rue, devantures, dossards, tranches de livres, diapositives, tableaux blancs, documents numérisés) dans `photos.ocr_text`. Ce texte est ensuite cherchable depuis la zone de recherche de la galerie comme une légende ou un tag ; `GET /api/search?scope=text` ne cherche que dans les champs de texte.
 
-**Désactivé par défaut**, et nécessite l'installation d'un moteur :
+**Désactivé par défaut**, et nécessite l'installation d'un moteur :
 
 ```bash
 pip install easyocr           # ou : pip install -e .[ocr]
 ```
 
-Puis activez-le et lancez la passe :
+Puis activez-le et lancez la passe :
 
 ```json
 {
@@ -2540,22 +2429,23 @@ python facet.py --recompute-text   # relit toute la bibliothèque
 
 | Clé | Défaut | Description |
 |-----|--------|-------------|
-| `enabled` | `false` | Interrupteur principal. `--detect-text` refuse de s'exécuter tant que ceci est à `false`, afin que la passe ne soit jamais déclenchée par accident |
-| `languages` | `["en", "fr"]` | Codes de langue transmis au moteur. Les langues à écriture latine se combinent librement ; mélanger les écritures (par ex. `en` + `ja`) est rejeté par easyocr, donc utilisez une seule famille d'écriture par exécution |
-| `min_confidence` | `0.4` | Écarte les détections que le moteur note en dessous de cette valeur (0–1). Augmentez-la si le bruit OCR pollue les résultats de recherche, diminuez-la pour capter un texte faible ou éloigné |
-| `full_resolution` | `false` | Applique l'OCR au fichier original au lieu de la miniature stockée en 640px. Bien plus lent et n'en vaut la peine que pour du texte petit ou éloigné — le 640px résout déjà panneaux, affiches et titres de document. Se rabat sur la miniature lorsque l'original est hors ligne |
+| `enabled` | `false` | Interrupteur général ; `--detect-text` refuse de s'exécuter tant qu'il vaut `false` |
+| `languages` | `["en", "fr"]` | Codes de langue transmis au moteur ; une famille d'écriture par exécution (easyocr rejette par ex. `en` + `ja`) |
+| `min_confidence` | `0.4` | Ignore les détections notées en dessous (0–1) ; augmentez-le contre le bruit, baissez-le pour un texte faible |
+| `full_resolution` | `false` | OCR sur l'original au lieu de la miniature de 640 px (bien plus lent ; se rabat sur la miniature hors ligne) |
 
-**Sémantique des sentinelles.** `ocr_text` vaut `NULL` tant qu'une photo n'a jamais été évaluée, et `''` une fois qu'elle a été lue et jugée sans texte. C'est cette distinction qui permet à `--detect-text` de se limiter aux photos réellement nouvelles au lieu de relire chaque image sans texte à chaque exécution ; `--recompute-text` l'ignore et relit tout. FTS5 indexe `''` comme zéro token, si bien qu'une photo sans texte ne peut jamais correspondre à une requête.
+Remarques :
+- `ocr_text` vaut `NULL` tant qu'une photo n'est pas évaluée, et `''` quand elle n'a pas de texte. `--detect-text` ne lit que les photos `NULL` ; `--recompute-text` relit tout.
+- **Pas besoin de `--rebuild-fts` :** la passe met à jour l'index de recherche à mesure qu'elle écrit. `python database.py --rebuild-fts` ne sert que pour une base créée avant l'OCR, et `init_database` s'en charge pour vous.
+- La miniature de 640 px résout déjà les panneaux, les affiches et les titres de documents.
 
-**Pas besoin de `--rebuild-fts`.** `ocr_text` figure dans la liste `UPDATE OF` des déclencheurs de synchronisation FTS, si bien que les écritures de la passe elle-même réindexent chaque ligne au fur et à mesure. `python database.py --rebuild-fts` n'est requis que pour une base créée avant que `ocr_text` ne rejoigne l'index de couverture — `init_database` détecte cet index plus ancien et le recrée pour vous.
+**Moteurs.** `easyocr` (Apache-2.0, PyTorch) est le moteur par défaut et réutilise la pile existante de Facet. Ses poids (~113 Mo) se téléchargent depuis les versions GitHub du projet au premier lancement. Le binaire `tesseract` plus `pytesseract` est utilisé quand easyocr est absent, mais lit moins bien le texte de scène. Si aucun des deux n'est installé, la passe se termine avec une erreur.
 
-**Moteurs.** `easyocr` (Apache-2.0, PyTorch) est le moteur par défaut et réutilise la pile que Facet installe déjà — il n'ajoute pas de second OpenCV et ne fige aucune version de numpy/torch. Ses poids (~113 Mo) se téléchargent depuis les releases GitHub propres au projet au premier lancement. Le binaire `tesseract` plus `pytesseract` fonctionne comme outil externe optionnel alternatif (comme `exiftool`) et est utilisé lorsque easyocr est absent, mais il est réglé pour les pages scannées et lit nettement moins bien le texte de scène. Sans aucun des deux installés, la passe se termine en erreur au lieu d'écrire silencieusement du vide.
-
-**Coût.** Une miniature 640px prend environ 0,4 s sur CPU, si bien qu'une bibliothèque de 50 000 photos représente une nuit de travail CPU — c'est un remplissage rétroactif ponctuel, et les analyses suivantes n'ajoutent que de nouvelles photos. Un GPU est utilisé automatiquement lorsque torch en signale un.
+**Coût.** Environ 0,4 s par miniature sur CPU : une bibliothèque de 50 000 photos est donc une tâche unique d'une nuit ; les scans suivants n'ajoutent que les nouvelles photos. Un GPU est utilisé automatiquement quand torch en signale un.
 
 ## Destinations d'export et de tri
 
-Tout endpoint qui copie, lie symboliquement ou déplace des fichiers photo hors de la bibliothèque — l'export « panier » d'album (`POST /api/albums/{id}/export`, modes `copy`/`symlink`) et le tri vers un dossier (`POST /api/cull/apply`, actions `copy_keeps` / `move_rejects`) — écrit dans un `target_dir` qui doit se résoudre sous une racine autorisée, sinon la requête est refusée avant de toucher le moindre fichier.
+L'export d'album (`POST /api/albums/{id}/export`, modes `copy`/`symlink`) et le tri vers un dossier (`POST /api/cull/apply`, actions `copy_keeps` / `move_rejects`) écrivent dans un `target_dir`. Il doit se résoudre sous une racine autorisée, sinon la requête est refusée avant que le moindre fichier ne soit touché.
 
 ```json
 {
@@ -2571,23 +2461,23 @@ Tout endpoint qui copie, lie symboliquement ou déplace des fichiers photo hors 
 ```
 
 | Réglage | Défaut | Description |
-|---------|---------|-------------|
-| `allowed_target_dirs` | *(clé absente)* | Répertoires racine supplémentaires dans lesquels un export copie/symlink ou un tri-vers-dossier copie/déplacement peut écrire, en plus des répertoires de scan (toujours autorisés). **Absente par défaut** : par défaut, les seules destinations d'export inscriptibles sont vos répertoires de scan configurés |
-| `cull.allow_trash` | `false` | Autorise ou non l'action `trash_rejects` du tri-vers-dossier à envoyer les fichiers vers la corbeille du système (récupérable, via `send2trash`, une dépendance de base livrée dans l'image Docker, si bien que l'action fonctionne dès son activation) au lieu de se limiter à `copy_keeps`/`move_rejects`. Désactivé par défaut ; l'interface masque entièrement l'option « Mettre les rejetés à la corbeille » plutôt que de proposer une action qui renverrait un 403 |
+|---------|--------|-------------|
+| `allowed_target_dirs` | *(clé absente)* | Racines supplémentaires où l'export et le tri vers un dossier peuvent écrire, en plus des dossiers de scan (toujours autorisés) |
+| `cull.allow_trash` | `false` | Autorise l'action `trash_rejects` du tri vers un dossier (corbeille du système via `send2trash`, récupérable) ; désactivé, l'option est masquée |
 
-**Séries multi-images et actions groupées.** `hide_brackets` / `hide_panoramas` (voir [Visionneuse web — Filtres par défaut](VIEWER.md#filtres-par-défaut), tous deux à `true` par défaut) bornent ce qu'une action groupée *fondée sur la sélection* peut atteindre, y compris le tri-vers-dossier et l'export d'album depuis une sélection : une fois une série repliée derrière son image représentative, agir sur la sélection agit par défaut sur cette seule image, pas sur le reste de la série. L'option `include_sequence_siblings`, propre au tri-vers-dossier, élargit une photo correspondante à toute sa série indépendamment de la sélection ; voir [Visionneuse web — Trier vers un dossier § Séries multi-images](VIEWER.md#trier-vers-un-dossier) pour cette option et les autres échappatoires.
+**Ensembles multi-vues et actions groupées.** Avec `hide_brackets` / `hide_panoramas` activés (par défaut, voir [Visionneuse web — Filtres par défaut](VIEWER.md#filtres-par-défaut)), une sélection ne contient que la vue représentative de chaque ensemble, si bien que les actions groupées n'agissent que sur cette vue. L'option `include_sequence_siblings` du tri vers un dossier étend une photo retenue à tout son ensemble ; voir [Visionneuse web — Trier vers un dossier § Ensembles multi-vues](VIEWER.md#trier-vers-un-dossier).
 
-**Ordre de résolution.** La liste d'autorisation est d'abord `allowed_target_dirs`, puis chaque répertoire de scan (par utilisateur, partagé, et les cibles de `path_mapping`) — exporter *à l'intérieur* de l'arborescence photo ne demande donc aucune configuration, mais une destination en dehors nécessite une entrée ici. Le `target_dir` demandé et chaque racine autorisée sont tous deux canonicalisés avec `os.path.realpath()` (liens symboliques résolus, `..` réduits) avant comparaison, si bien qu'un lien symbolique se résolvant hors d'une racine autorisée est refusé même si le lien lui-même se trouve dans l'une d'elles.
+**Ordre de résolution.** Les racines autorisées sont `allowed_target_dirs`, puis chaque dossier de scan (par utilisateur, partagé, et cibles de `path_mapping`). Exporter dans votre arborescence de photos n'exige aucune configuration ; une destination extérieure demande une entrée ici. Les liens symboliques et `..` sont résolus avant la vérification (`os.path.realpath()`), donc un lien pointant hors d'une racine autorisée est refusé.
 
-**Fermé par défaut (fail-closed).** Sans aucune racine du tout — ni `allowed_target_dirs` ni répertoires de scan configurés —, l'export copie/symlink/déplacement est refusé purement et simplement plutôt que de se rabattre sur une écriture n'importe où. En pratique ce cas est rare une fois une bibliothèque scannée, puisque les répertoires de scan sont toujours dans la liste d'autorisation.
+**Refus par défaut, par conception.** Sans `allowed_target_dirs` ni dossier de scan, l'export copie/lien symbolique/déplacement est refusé.
 
-**Dépannage « accès refusé ».** Ce contrôle s'exécute avant tout accès au système de fichiers, si bien qu'une destination refusée ne touche jamais le disque et ne produit aucune trace d'erreur dans les journaux du serveur — un `403` ici est une réponse HTTP normale issue d'un contrôle délibéré, pas une erreur serveur. L'interface web affiche actuellement un message générique « Accès refusé » pour *tout* `403` sur ces endpoints, sans en préciser la raison ; ouvrez l'onglet Réseau de votre navigateur, repérez la requête `/api/cull/apply` ou `/api/albums/{id}/export` en échec, et lisez le champ `detail` du corps de la réponse pour connaître la cause réelle (cette liste d'autorisation, ou une session d'édition expirée). Un vrai problème de droits du système de fichiers se présente différemment : la requête elle-même réussit (`200`), le nombre `errors` de la réponse est non nul, et le serveur journalise une trace complète pour chaque fichier en échec — voir [Déploiement — Sémantique des chemins en conteneur](DEPLOYMENT.md#sémantique-des-chemins-en-conteneur) pour le cas du conteneur, où cela est souvent confondu avec une divergence d'UID.
+**Dépannage de « accès refusé ».** L'interface web affiche une notification générique « Accès refusé ». Pour en voir la raison, ouvrez l'onglet Réseau du navigateur, trouvez la requête `/api/cull/apply` ou `/api/albums/{id}/export` qui a échoué et lisez le champ `detail` : soit cette liste d'autorisation, soit une session d'édition expirée. Une vraie erreur de permission du système de fichiers est différente : la requête réussit, le nombre `errors` de la réponse est non nul, et le journal du serveur contient une trace par fichier. Voir [Déploiement — Sémantique des chemins en conteneur](DEPLOYMENT.md#sémantique-des-chemins-en-conteneur) pour le cas des conteneurs.
 
 Voir [Visionneuse web — Trier vers un dossier](VIEWER.md#trier-vers-un-dossier) et [Visionneuse web — Export vers éditeur](VIEWER.md#export-vers-éditeur).
 
 ## Export social
 
-Recadrages sensibles au sujet pour les formats des réseaux sociaux (`GET /api/photo/social_crop`, réservé à l'édition). Chaque préréglage recadre l'original en pleine résolution vers un format cible et le cadre sur le sujet détecté — le plus grand rectangle de ce format tenant dans l'image, centré sur le sujet et borné aux bords. La boîte du sujet suit une chaîne de repli : la boîte de sujet BiRefNet persistée (`photos.subject_bbox`) → l'union des boîtes de visages détectés → un recadrage centré simple. Voir [Visionneuse web — Téléchargement](VIEWER.md#téléchargement).
+Préréglages de recadrage pour les formats d'image des réseaux sociaux, cadrés sur le sujet (`GET /api/photo/social_crop`, réservé à l'édition). Chaque préréglage recadre l'original pleine résolution au plus grand rectangle de ce format, centré sur le sujet. Le sujet est le cadre du sujet BiRefNet (`photos.subject_bbox`), sinon l'union des cadres de visages, sinon le centre de l'image. Voir [Visionneuse web — Téléchargement](VIEWER.md#téléchargement).
 
 ```json
 {
@@ -2608,11 +2498,15 @@ Recadrages sensibles au sujet pour les formats des réseaux sociaux (`GET /api/p
 | `presets.<id>.aspect` | — | Format cible sous la forme `"l:h"` (p. ex. `1:1`, `4:5`, `9:16`) |
 | `jpeg_quality` | `92` | Qualité JPEG du recadrage exporté |
 
-Contrôlé par `viewer.features.show_social_export` (par défaut `true`). La colonne `photos.subject_bbox` est écrite par la passe de saillance au scan et par `--recompute-saliency` ; les lignes scannées avant son existence se rabattent automatiquement sur le recadrage par visages ou centré.
+Conditionné par `viewer.features.show_social_export` (par défaut `true`). Le cadre du sujet est écrit par la passe de saillance au moment du scan et par `--recompute-saliency` ; les photos plus anciennes utilisent le recadrage sur le visage ou le centre.
 
 ## Export de portfolio
 
-Exportez un album sous forme de galerie HTML statique autonome qu'un photographe peut déposer sur n'importe quel hébergeur web — sans outil externe (thumbsup/sigal) requis (`POST /api/albums/{album_id}/export-portfolio`, réservé à l'édition). Le répertoire généré contient `index.html` (une grille de vignettes responsive en CSS pur plus une visionneuse vanilla-JS intégrée, avec **zéro** référence externe/CDN — entièrement hors ligne), un dossier `assets/` de JPEG nommés séquentiellement (aucun chemin de bibliothèque divulgué) et un `manifest.json`. Chaque photo utilise l'**original** sur disque (réduit à `max_edge`) lorsqu'il est lisible et se rabat sur la vignette 640 px stockée lorsque l'original est inaccessible (partages réseau hors ligne) ; la source utilisée est enregistrée par photo dans le manifeste. La génération est déterministe et idempotente — une réexportation ne réécrit que ses propres fichiers.
+Exporte un album sous forme de galerie HTML statique autonome que vous pouvez téléverser sur n'importe quel hébergeur web (`POST /api/albums/{album_id}/export-portfolio`, réservé à l'édition).
+
+- Le dossier de sortie contient `index.html` (grille de miniatures et visionneuse, sans référence externe ni CDN), un dossier `assets/` de JPEG nommés séquentiellement (sans chemins de la bibliothèque) et un `manifest.json`.
+- Chaque photo utilise l'**original**, réduit à `max_edge`, ou la miniature stockée de 640 px quand l'original est inaccessible. Le manifeste enregistre lequel.
+- Un nouvel export ne réécrit que ses propres fichiers.
 
 ```json
 {
@@ -2624,17 +2518,22 @@ Exportez un album sous forme de galerie HTML statique autonome qu'un photographe
 }
 ```
 
-| Paramètre | Défaut | Description |
-|-----------|--------|-------------|
-| `max_photos` | `500` | Les albums plus grands sont refusés avec une erreur 400 (l'export est synchrone) |
+| Réglage | Défaut | Description |
+|---------|--------|-------------|
+| `max_photos` | `500` | Les albums plus grands sont refusés (l'export s'exécute de façon synchrone) |
 | `max_edge` | `2048` | Plafond du grand côté (px) pour les originaux exportés ; la requête peut le remplacer (borné 256–8000) |
 | `jpeg_quality` | `88` | Qualité JPEG des images exportées |
 
-Le `target_dir` passe par la même liste d'autorisation que les endpoints d'export copie/déplacement (`viewer.export.allowed_target_dirs` plus les répertoires de scan — voir [Destinations d'export et de tri](#destinations-dexport-et-de-tri)). Contrôlé par `viewer.features.show_portfolio_export` (par défaut `true`).
+Le `target_dir` utilise la même liste d'autorisation que les autres exports (`viewer.export.allowed_target_dirs` plus les dossiers de scan — voir [Destinations d'export et de tri](#destinations-dexport-et-de-tri)). Conditionné par `viewer.features.show_portfolio_export` (par défaut `true`). Voir [Visionneuse web — Export de portfolio](VIEWER.md#export-de-portfolio).
 
 ## Point d'accès agent (MCP)
 
-Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp` : lecture, pilotage de l'onglet ouvert et, selon le niveau du jeton, modification des notes, étiquettes et albums, tri et suppression. Il est activé par défaut ; mettez `enabled` à `false` pour le désactiver (toutes les routes répondent alors 404). Sur une installation ouverte (sans `viewer.password`), `/mcp` ne sert qu'une clé anonyme en lecture seule, qui n'accorde rien que l'`/api` ouverte n'accorde déjà. Un jeton créé sur une installation ouverte est `readonly`, sauf si `viewer.trusted_local_editing` est actif, ce qui autorise un jeton d'édition complète pour les requêtes de la même machine. Sur une installation ouverte, les jetons ne se créent, ne se listent et ne se révoquent que depuis l'ordinateur qui exécute Facet (ou dans une session d'édition quand `viewer.edition_password` est défini).
+Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) sur `POST /mcp` : lecture, pilotage de votre onglet ouvert et, selon le niveau du jeton, modification des notes, tags et albums, tri et suppression. Activé par défaut.
+
+Sur une installation ouverte (sans `viewer.password`) :
+- `/mcp` ne sert qu'une clé anonyme en lecture seule, qui ne montre rien que l'`/api` ouverte ne montre déjà.
+- Un nouveau jeton est `readonly`, sauf si `viewer.trusted_local_editing` autorise un jeton Édition complète pour les requêtes de la même machine.
+- Les jetons ne peuvent être créés, listés et révoqués que depuis l'ordinateur qui exécute Facet (ou dans une session d'édition lorsque `viewer.edition_password` est défini).
 
 ```json
 {
@@ -2659,26 +2558,32 @@ Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) via `POST /mcp` : l
 ```
 
 | Clé | Défaut | Description |
-|-----|---------|-------------|
-| `enabled` | `true` | Interrupteur général de `/mcp` et `/api/mcp/*`. Désactivé, ils répondent 404 (le pont se ferme avec le code 4404). Sur une installation ouverte (sans `viewer.password`), le point d'accès ne sert qu'une clé anonyme en lecture seule : aucune autorité nouvelle, puisque l'`/api` ouverte expose déjà les mêmes données. Un jeton créé sur une installation ouverte est `readonly`, sauf si `viewer.trusted_local_editing` est actif, ce qui autorise un jeton d'édition complète pour les requêtes de la même machine. Sur une installation ouverte, les jetons ne se créent, ne se listent et ne se révoquent que depuis l'ordinateur qui exécute Facet (ou dans une session d'édition quand `viewer.edition_password` est défini). |
-| `bridge` | `true` | Indique si le pont vers l'onglet du navigateur (`/api/mcp/bridge`) accepte les WebSockets et si les outils `ui_*` peuvent atteindre un onglet. À `false`, le pont refuse la connexion (code de fermeture 4404) et les outils `ui_*` renvoient une erreur explicite. Exige un seul worker. |
-| `max_rows` | `100` | Nombre maximal de lignes dans un résultat d'outil (1 à 500). Les lignes en trop sont retirées et `truncated: true` est ajouté. |
+|-----|--------|-------------|
+| `enabled` | `true` | Interrupteur général de `/mcp` et `/api/mcp/*` |
+| `bridge` | `true` | Autorise le pont avec l'onglet du navigateur (`/api/mcp/bridge`) pour que les outils `ui_*` atteignent un onglet ; nécessite un seul worker |
+| `max_rows` | `100` | Nombre maximal de lignes dans un résultat d'outil (1 à 500) ; des lignes en trop positionnent `truncated: true` |
 | `max_bytes` | `60000` | Taille sérialisée maximale d'un résultat d'outil en octets (4000 à 500000). |
-| `max_image_bytes` | `262144` | Taille maximale en octets de l'image renvoyée par un outil, `get_thumbnail` ou `contact_sheet` (32768 à 2097152) ; non comptée dans `max_bytes`. |
-| `call_timeout_s` | `30` | Délai d'un appel d'outil en secondes (1 à 300). Borne aussi l'attente d'un appel `ui_*` vers l'onglet du navigateur (`tab_timeout`). |
-| `semantic_timeout_s` | `120` | Délai de `semantic_search` en secondes (1 à 300) ; l'outil charge le modèle d'embeddings et demande donc plus de temps. |
+| `max_image_bytes` | `262144` | Taille maximale d'image de `get_thumbnail` ou `contact_sheet` (32768 à 2097152) ; non comptée dans `max_bytes` |
+| `call_timeout_s` | `30` | Délai d'un appel d'outil en secondes (1 à 300), aussi l'attente de `ui_*` pour l'onglet (`tab_timeout`) |
+| `semantic_timeout_s` | `120` | Délai de `semantic_search` en secondes (1 à 300) ; l'outil charge le modèle d'embeddings et demande donc plus de temps. |
 | `rate_per_min` | `120` | Appels d'outils par minute et par jeton (minimum 1). |
-| `write_rate_per_min` | `30` | Appels d'écriture par minute et par jeton (minimum 1). Budget séparé pour que les lectures n'affament pas les écritures. S'applique aux outils d'écriture (y compris la simulation de `cull_apply` et `delete_photos`) ; voir [Agents IA](AGENTS.md#modifier-la-bibliothèque). |
-| `tool_profile` | `"full"` | `"full"` liste tous les outils que la clé peut appeler. `"core"` ne liste qu'un ensemble de 11 outils pour les petits modèles (`status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`). Seule la liste change : un outil absent peut toujours être appelé si le niveau de la clé le permet. Toute autre valeur revient à `"full"`. Voir [Agents IA](AGENTS.md#niveaux-dautorisation). |
-| `allow_destructive` | `false` | Autorise les assistants à lancer `delete_photos`, les actions `move_rejects` et `trash_rejects` de `cull_apply`, et `assign_faces` avec `allow_reassign`. Désactivé, `delete_photos` n'est pas listé et les deux autres répondent `feature_disabled` en nommant cette clé. Voir [Agents IA](AGENTS.md#actions-destructives--aperçu-puis-confirmation). |
-| `inpage_tools` | `true` | Indique si un onglet connecté peut appeler les outils du serveur depuis la page : `GET /api/mcp/inpage_tools` les liste et `POST /api/mcp/call` en exécute un avec la session, à son niveau actuel, par le même enveloppeur que `/mcp`. Désactivé, les deux routes répondent 404 et `features.mcp_inpage` est faux dans `/api/auth/status`. Voir [Agents IA](AGENTS.md#webmcp-dans-la-page-agents-du-navigateur). |
-| `allowed_origins` | `[]` | Origines de navigateur supplémentaires (par exemple `["https://photos.example.com"]`) autorisées à ouvrir le pont d'onglet lorsqu'un proxy inverse réécrit `Host`. Distinct de la clé CORS `viewer.allowed_origins`. |
+| `write_rate_per_min` | `30` | Appels d'écriture par minute et par jeton (minimum 1), séparé pour que les lectures ne puissent pas affamer les écritures |
+| `tool_profile` | `"full"` | `"full"` liste tous les outils autorisés ; `"core"` liste un jeu de 11 outils pour les petits modèles |
+| `allow_destructive` | `false` | Autorise `delete_photos`, `move_rejects`/`trash_rejects` de `cull_apply`, et `assign_faces` avec `allow_reassign` |
+| `inpage_tools` | `true` | Laisse un onglet connecté appeler les outils du serveur depuis la page (`GET /api/mcp/inpage_tools`, `POST /api/mcp/call`) |
+| `allowed_origins` | `[]` | Origines de navigateur supplémentaires (par ex. `["https://photos.example.com"]`) autorisées à ouvrir le pont d'onglet derrière un proxy qui réécrit `Host` ; pas la clé CORS `viewer.allowed_origins` |
 
-Les nombres hors plage sont ramenés dans la plage, et une valeur d'un mauvais type revient à la valeur par défaut. Le bloc est lu à chaque requête : un rechargement de la configuration active ou désactive la fonction sans redémarrage.
+Remarques :
+- **`enabled: false`** désactive `/mcp` et `/api/mcp/*` (le pont se ferme avec le code 4404). **`bridge: false`** refuse le pont et fait renvoyer une erreur aux outils `ui_*`.
+- **`write_rate_per_min`** couvre les outils d'écriture, y compris la simulation de `cull_apply` et `delete_photos` ; voir [Agents IA](AGENTS.md#modifier-la-bibliothèque).
+- **`"core"`** liste `status`, `search_photos`, `semantic_search`, `get_photo`, `filter_options`, `library_stats`, `ui_show_photos`, `set_rating`, `set_favorite`, `set_rejected`, `album_add_photos`. Seul le listage change ; les autres outils restent appelables si le niveau de la clé le permet. Toute autre valeur équivaut à `"full"`. Voir [Agents IA](AGENTS.md#niveaux-dautorisation).
+- **`allow_destructive: false`** masque `delete_photos` ; les deux autres répondent `feature_disabled` en nommant cette clé. Voir [Agents IA](AGENTS.md#actions-destructives-aperçu-puis-confirmation).
+- **`inpage_tools`** exécute les outils comme la session, à son niveau actuel. Désactivé, `features.mcp_inpage` vaut false dans `/api/auth/status`. Voir [Agents IA](AGENTS.md#webmcp-dans-la-page-agents-du-navigateur).
+- Les nombres hors plage sont ramenés dans la plage ; une valeur du mauvais type utilise la valeur par défaut. Les changements s'appliquent au rechargement de la configuration, sans redémarrage.
 
 ## Cadre photo / Kiosque
 
-Diffuse les « meilleures photos » vers des appareils kiosque sans authentification — cadres photo connectés, tableaux de bord Home Assistant, affichages de type ImmichFrame / Immich-Kiosk — via trois endpoints anonymes à jeton statique (`GET /api/frame/photos`, `GET /api/frame/image/{id}`, `GET /api/frame/next`). L'accès repose sur un **jeton de cadre** opaque à longue durée de vie ; une liste `tokens` vide désactive toute la fonctionnalité (chaque endpoint renvoie 404). Les réponses ne contiennent jamais de chemins de fichiers — chaque photo est identifiée par un identifiant signé opaque dérivé du `rowid` de la ligne.
+Sert les meilleures photos sélectionnées à des appareils kiosque sans connexion : cadres photo connectés, tableaux de bord Home Assistant, écrans de type ImmichFrame / Immich-Kiosk. Trois points d'accès utilisent un jeton statique : `GET /api/frame/photos`, `GET /api/frame/image/{id}`, `GET /api/frame/next`. Une liste `tokens` vide désactive la fonctionnalité (les points d'accès répondent 404). Les réponses ne contiennent jamais de chemins de fichiers ; les photos sont adressées par un identifiant signé.
 
 ```json
 {
@@ -2694,23 +2599,29 @@ Diffuse les « meilleures photos » vers des appareils kiosque sans authentifica
 }
 ```
 
-| Paramètre | Défaut | Description |
-|-----------|--------|-------------|
-| `tokens` | `[]` | Jetons de cadre opaques (liste). **Vide = fonctionnalité désactivée (404).** Utilisez des chaînes aléatoires longues, une par appareil ; supprimez-en une pour la révoquer. Générez-en une avec `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| Réglage | Défaut | Description |
+|---------|--------|-------------|
+| `tokens` | `[]` | Jetons de cadre, une longue chaîne aléatoire par appareil ; en retirer un le révoque. **Vide = fonctionnalité désactivée.** |
 | `count` | `20` | Nombre de photos renvoyées par défaut par `/api/frame/photos` |
 | `max_count` | `100` | Plafond strict du paramètre de requête `count` |
 | `min_aggregate` | `7.0` | Score agrégé minimal pour qu'une photo soit sélectionnée |
-| `max_edge` | `1920` | Plafond du côté long (px) des JPEG servis ; le paramètre `max_edge` peut l'abaisser mais jamais le dépasser |
+| `max_edge` | `1920` | Plafond du grand côté (px) des JPEG servis ; le paramètre de requête `max_edge` ne peut que l'abaisser |
 | `favorites_only` | `false` | Si `true`, seules les photos favorites sont sélectionnées |
 | `categories` | `[]` | Liste blanche de noms de catégories (vide = toutes) |
 
-Les jetons sont comparés à temps constant en octets UTF-8 : un jeton manquant renvoie 401 et un jeton erroné ou non-ASCII renvoie 403 (jamais 500). La sélection exclut les photos rejetées, indésirables (`junk_kind`) et avec clignement, puis applique le seuil de score / favoris / catégories ; l'ensemble renvoyé est un échantillon aléatoire pondéré par le score.
+Générez un jeton avec `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
 
-Un jeton de cadre n'est pas une connexion utilisateur : il ne porte aucun `user_id` et est vérifié par rapport à toute la bibliothèque, donc en [mode multi-utilisateur](#utilisateurs), il ignore les `directories` privés de chaque utilisateur et accorde un accès en lecture aux photos de tous les utilisateurs, pas seulement aux `shared_directories`. N'émettez des jetons de cadre que sur les installations où chaque utilisateur configuré est à l'aise avec cela.
+La sélection ignore les photos rejetées, indésirables (`junk_kind`) et avec clignement, applique les filtres de score, de favoris et de catégorie, puis tire un échantillon aléatoire pondéré par le score. Voir [Visionneuse web — Cadre photo / Kiosque](VIEWER.md#cadre-photo--kiosque) pour la recette Home Assistant.
+
+> **Avertissement :** Un jeton de cadre n'est pas une connexion utilisateur. En [mode multi-utilisateur](#utilisateurs) il ignore les `directories` privés de chaque utilisateur et peut lire les photos de tous, pas seulement `shared_directories`. N'émettez des jetons de cadre que là où tous les utilisateurs l'acceptent.
 
 ## Envoi automatique depuis le téléphone
 
-Un endpoint **WebDAV** minimal sous `/dav` permet aux applications d'envoi automatique depuis le téléphone (PhotoSync et autres) de déposer des photos dans un **répertoire de réception** (inbox) que `facet.py --watch` évalue ensuite automatiquement — le modèle de synchronisation mobile de PhotoPrism. Plomberie d'envoi uniquement : n'affecte jamais les sessions utilisateur ni les JWT. L'accès se fait en HTTP Basic avec des **identifiants d'appareil partagé** (`username` / `password`), et non un compte utilisateur. Tout l'arbre `/dav` renvoie **404 tant qu'il est désactivé** — la fonctionnalité n'est active que lorsque `username`, `password` et `inbox_dir` sont tous renseignés. Chaque opération est confinée à `inbox_dir` (traversée / chemin absolu / évasion par lien symbolique refusés), et les envois sont écrits sur disque de façon atomique avec le plafond `max_file_mb`.
+Un point d'accès **WebDAV** minimal sur `/dav` permet aux applications de téléversement automatique du téléphone (PhotoSync et similaires) de pousser des photos dans un **dossier d'arrivée**, que `facet.py --watch` analyse ensuite. L'accès utilise HTTP Basic avec des **identifiants d'appareil partagés** (`username` / `password`), pas un compte utilisateur.
+
+- `/dav` renvoie **404** tant que `username`, `password` et `inbox_dir` ne sont pas tous définis.
+- Chaque opération reste dans `inbox_dir` ; la traversée de chemin, les chemins absolus et les évasions par lien symbolique sont refusés.
+- Les téléversements sont écrits de façon atomique et plafonnés à `max_file_mb`.
 
 ```json
 {
@@ -2723,18 +2634,25 @@ Un endpoint **WebDAV** minimal sous `/dav` permet aux applications d'envoi autom
 }
 ```
 
-| Paramètre | Défaut | Description |
-|-----------|--------|-------------|
-| `username` | `""` | Nom d'utilisateur HTTP Basic (identifiant d'appareil partagé). **Vide = fonctionnalité désactivée (404).** |
-| `password` | `""` | Mot de passe HTTP Basic (identifiant d'appareil partagé). **Vide = fonctionnalité désactivée (404).** Utilisez une chaîne aléatoire longue. |
-| `inbox_dir` | `""` | Chemin absolu du répertoire de réception. **Vide = fonctionnalité désactivée (404).** Pointez-le vers l'un des répertoires scannés (ou un sous-répertoire) pour que `facet.py --watch` évalue les envois à leur arrivée. Créé à la demande. |
-| `max_file_mb` | `500` | Plafond de taille par fichier (Mo) ; un envoi qui le dépasse est interrompu avec un `413` et ne laisse aucun fichier partiel. |
+| Réglage | Défaut | Description |
+|---------|--------|-------------|
+| `username` | `""` | Nom d'utilisateur HTTP Basic (identifiant d'appareil partagé). **Vide = fonctionnalité désactivée.** |
+| `password` | `""` | Mot de passe HTTP Basic ; utilisez une longue chaîne aléatoire. **Vide = fonctionnalité désactivée.** |
+| `inbox_dir` | `""` | Chemin absolu du dossier d'arrivée, créé à la demande. **Vide = fonctionnalité désactivée.** |
+| `max_file_mb` | `500` | Taille maximale par fichier (Mo) ; un téléversement plus grand est interrompu et ne laisse aucun fichier partiel |
 
-Les identifiants sont comparés à temps constant en octets UTF-8 ; un en-tête `Authorization` manquant ou erroné renvoie un `401` avec `WWW-Authenticate: Basic realm="Facet upload"`. Méthodes implémentées : `OPTIONS`, `PROPFIND` (profondeur 0/1), `MKCOL`, `PUT`, `MOVE`, `DELETE`, `GET`, `HEAD` (`LOCK`/`UNLOCK` ne sont pas implémentées). La recette PhotoSync et un test rapide avec `curl` sont décrits dans la documentation du Visualiseur Web.
+Pointez `inbox_dir` vers un dossier scanné (ou un sous-dossier) pour que `facet.py --watch` analyse les téléversements à leur arrivée.
+
+Méthodes prises en charge : `OPTIONS`, `PROPFIND` (profondeur 0/1), `MKCOL`, `PUT`, `MOVE`, `DELETE`, `GET`, `HEAD` (pas de `LOCK`/`UNLOCK`). Un en-tête `Authorization` absent ou erroné reçoit `WWW-Authenticate: Basic realm="Facet upload"`. Voir [Visionneuse web — Envoi automatique depuis le téléphone](VIEWER.md#envoi-automatique-depuis-le-téléphone) pour la recette PhotoSync et un test rapide avec `curl`.
 
 ## Nettoyage des indésirables
 
-Détecteur zero-shot pour les fichiers non photographiques « indésirables » — captures d'écran, documents scannés, reçus, mèmes, diapositives de présentation — sur l'**embedding d'image stocké** (pas de décodage d'image, pas de passe de modèle par image ; la même architecture que les moments narratifs, sans le lissage temporel). Chaque type porte une liste de prompts textuels ; l'embedding de la photo est noté par cosinus contre chaque prompt puis **max-pooled** par type. Un jeu de prompts contrastifs `not_junk` conditionne la décision : une photo n'est signalée que lorsque le meilleur type d'indésirable franchit `min_confidence` ET dépasse le meilleur prompt `not_junk` de `min_margin` — sinon elle est enregistrée avec la sentinelle `not_junk` (évaluée et propre). `NULL` signifie « non évaluée » : `--detect-junk` n'étiquette que les lignes `NULL` (et s'exécute automatiquement en fin de scan), tandis que `--recompute-junk` réévalue toute la bibliothèque. Alimente `photos.junk_kind` ; la file de revue **Nettoyage des indésirables** de la visionneuse ([VIEWER.md](VIEWER.md#nettoyage-des-indésirables)) la consulte.
+Signale les « indésirables » qui ne sont pas des photos (captures d'écran, documents numérisés, reçus, mèmes, diapositives de présentation) à partir de l'**embedding d'image stocké**, sans décoder l'image. Chaque type a une liste d'invites textuelles, et l'invite la plus proche compte pour ce type.
+
+- Une photo n'est signalée que lorsque son meilleur type d'indésirable atteint `min_confidence` **et** dépasse de `min_margin` la meilleure invite `not_junk`.
+- Sinon elle est stockée comme `not_junk` (évaluée, propre). `NULL` signifie pas encore évaluée.
+- `--detect-junk` n'étiquette que les photos `NULL` (il s'exécute aussi à la fin d'un scan) ; `--recompute-junk` revérifie toute la bibliothèque.
+- Les résultats vont dans `photos.junk_kind`, examinés dans la file **Nettoyage** de la visionneuse ([VIEWER.md](VIEWER.md#nettoyage-des-indésirables)).
 
 ```json
 {
@@ -2761,16 +2679,20 @@ Détecteur zero-shot pour les fichiers non photographiques « indésirables »
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
 | `enabled` | `true` | Exécute la détection d'indésirables pendant `--detect-junk` / `--recompute-junk` et en fin de scan |
-| `prompt_template` | `"{desc}"` | Gabarit de format appliqué à chaque prompt (`{desc}` = le prompt) ; identité par défaut puisque les prompts sont des phrases complètes |
-| `pooling` | `"max"` | Regroupe les cosinus par prompt en un score par type, via `max` (meilleur prompt unique, plus discriminant) ou `mean` |
-| `thresholds.<backend>.min_confidence` | open_clip `0.2`, transformers `0.1` | Cosinus max-pooled minimal pour que le meilleur type d'indésirable soit pris en compte (les cosinus CLIP/`open_clip` sont plus bas que ceux de SigLIP/`transformers`, d'où un seuil propre à chaque backend) |
+| `prompt_template` | `"{desc}"` | Chaîne de format appliquée à chaque invite (`{desc}` = l'invite) ; inchangée par défaut |
+| `pooling` | `"max"` | Combine les scores d'invites par type via `max` (meilleure invite seule) ou `mean` |
+| `thresholds.<backend>.min_confidence` | open_clip `0.2`, transformers `0.1` | Score minimal pour le meilleur type d'indésirable (par backend ; les scores CLIP/`open_clip` sont plus bas que SigLIP/`transformers`) |
 | `thresholds.<backend>.min_margin` | open_clip `0.06`, transformers `0.02` | Écart minimal que le meilleur type d'indésirable doit creuser sur le meilleur prompt contrastif `not_junk` avant que la photo soit signalée |
-| `kinds` | screenshot/document/receipt/meme/slide | `{type: [synonymes de prompt]}` ; ajoutez, retirez ou renommez les types librement — la colonne et la file de la visionneuse suivent la configuration |
-| `not_junk_prompts` | 8 prompts de photographie | Jeu contrastif décrivant de vraies photographies ; le filtre qui garde les photos authentiques hors de la file |
+| `kinds` | screenshot/document/receipt/meme/slide | `{kind: [synonymes d'invite]}` ; ajoutez, retirez ou renommez librement des types |
+| `not_junk_prompts` | 8 invites de photographie | Invites décrivant de vraies photographies, qui gardent les vraies photos hors de la file |
 
 ## Critique IA
 
-Configuration du prompt de la critique propulsée par VLM (profils 16gb/24gb). La critique injecte la décomposition complète des règles, les pénalités et l'EXIF dans un prompt à paliers configurable, restitue la réponse sous forme Observation / Évaluation / Suggestions, et la met en cache par photo dans `photos.vlm_critique` (traduite à la demande dans `vlm_critique_translated`). Elle s'exécute sur la vignette stockée, si bien que les fichiers RAW sont critiqués correctement au lieu d'échouer en silence ; `refresh` régénère. Le palier par défaut suit la structure à quatre aptitudes d'AesBench (percevoir → ressentir → juger → conseiller) : son Évaluation donne un verdict bref sur la composition, la couleur & la lumière, la mise au point/PdC & l'exécution technique, et le sujet & le moment, chacun confronté aux métriques injectées plutôt que de répéter les chiffres.
+Réglages d'invite pour la critique VLM (profils 16gb/24gb). La critique fournit au VLM la décomposition du score, les pénalités et l'EXIF, et affiche sa réponse sous Observation / Évaluation / Suggestions.
+
+- L'évaluation couvre la composition, la couleur et la lumière, la mise au point/profondeur de champ et l'exécution technique, et le sujet et le moment, vérifiés par rapport aux métriques.
+- Elle est mise en cache par photo (`photos.vlm_critique`, traductions dans `vlm_critique_translated`) ; `refresh` la régénère.
+- Elle s'exécute sur la miniature stockée, donc les fichiers RAW fonctionnent.
 
 ```json
 {
@@ -2790,7 +2712,7 @@ Voir [Visionneuse web — Critique IA](VIEWER.md#critique-ia).
 
 ## Backend VLM
 
-Choisit où s'exécute le modèle vision-langage de légendage/étiquetage. `local` (par défaut) utilise le chemin transformers Qwen en process, embarqué avec les profils VRAM 16gb/24gb — aucun changement pour les installations existantes. Les deux backends distants pointent Facet vers un serveur externe afin que le légendage et l'étiquetage VLM fonctionnent sur les **profils legacy/8gb qui n'embarquent aucun VLM local** : quand un backend distant est sélectionné, les fonctionnalités VLM ne dépendent plus du profil VRAM.
+Choisit où s'exécute le modèle vision-langage de légendes/tags. `local` (par défaut) utilise le modèle Qwen intégré des profils 16gb/24gb. Les deux backends distants utilisent un serveur externe : les légendes et le tagging VLM fonctionnent donc aussi sur les **profils legacy/8gb qui n'ont pas de VLM local**.
 
 ```json
 {
@@ -2813,20 +2735,20 @@ Choisit où s'exécute le modèle vision-langage de légendage/étiquetage. `loc
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `type` | `"local"` | Backend : `local` (transformers Qwen en process), `ollama` (API REST native d'Ollama), ou `openai_compatible` (tout endpoint de complétion de chat compatible OpenAI — LM Studio, vLLM, OpenRouter) |
-| `ollama.base_url` | `"http://localhost:11434"` | URL de base du serveur Ollama ; l'image est envoyée en base64 à `POST /api/generate` |
+| `type` | `"local"` | `local` (Qwen intégré), `ollama` (API REST Ollama) ou `openai_compatible` (LM Studio, vLLM, OpenRouter, …) |
+| `ollama.base_url` | `"http://localhost:11434"` | URL de base du serveur Ollama (les images vont à `POST /api/generate`) |
 | `ollama.model` | `"qwen2.5vl:7b"` | Tag de modèle Ollama (doit être un modèle vision déjà récupéré sur le serveur) |
 | `ollama.timeout_seconds` | `120` | Délai d'expiration par requête pour les appels Ollama |
-| `openai_compatible.base_url` | `"http://localhost:1234/v1"` | URL de base compatible OpenAI, **suffixe `/v1` inclus** ; les requêtes partent vers `{base_url}/chat/completions` avec l'image en URI de données `image_url` |
-| `openai_compatible.api_key` | `""` | Jeton porteur envoyé en `Authorization: Bearer <clé>` ; laissez vide pour les serveurs locaux sans authentification |
+| `openai_compatible.base_url` | `"http://localhost:1234/v1"` | URL de base **y compris le suffixe `/v1`** (les requêtes vont à `{base_url}/chat/completions`, l'image sous forme d'URI de données `image_url`) |
+| `openai_compatible.api_key` | `""` | Envoyé comme `Authorization: Bearer <key>` ; laissez vide pour les serveurs locaux sans clé |
 | `openai_compatible.model` | `"qwen2.5-vl-7b"` | Nom de modèle transmis à l'endpoint |
 | `openai_compatible.timeout_seconds` | `120` | Délai d'expiration par requête pour les appels compatibles OpenAI |
 
-Le backend partagé pilote le légendage (`--generate-captions` et l'endpoint à la demande `/api/caption`), la critique VLM (`/api/critique?mode=vlm`), le ré-étiquetage VLM (`--recompute-tags-vlm`), et le départage VLM des moments narratifs. Un échec de requête distante est rapporté comme un échec par photo (journalisé, tags vides / pas de légende) et ne fait jamais planter l'exécution. L'étiquetage en cours de scan utilise toujours l'étiqueteur propre au profil ; exécutez `--recompute-tags-vlm` pour appliquer un backend distant à une bibliothèque existante.
+Le backend pilote les légendes (`--generate-captions` et `/api/caption`), la critique VLM (`/api/critique?mode=vlm`), le re-tagging VLM (`--recompute-tags-vlm`) et le départage des moments narratifs. Une requête distante en échec ne fait échouer que cette photo (journalisé, ni tags ni légende). Le tagging pendant le scan utilise toujours le tagueur du profil ; lancez `--recompute-tags-vlm` pour appliquer un backend distant à une bibliothèque existante.
 
 ## Attributs de distorsion
 
-Étiquetage de distorsion zero-shot, indicatif uniquement. `--recompute-distortions` note chaque photo au regard de prompts contrastifs de style ExIQA sur son embedding CLIP/SigLIP stocké et enregistre les défauts probables (flou de bougé, dominante colorée, suraccentuation, …) dans une colonne JSON indicative. Il n'alimente jamais l'agrégat ; les étiquettes s'affichent sous forme de puces d'avertissement dans la boîte de dialogue de critique.
+Étiquettes de distorsion indicatives. `--recompute-distortions` compare l'embedding CLIP/SigLIP stocké de chaque photo avec des invites de défauts courants (flou de bougé, dominante de couleur, accentuation excessive, …) et stocke les plus probables. Elles n'affectent jamais le score ; elles apparaissent comme pastilles d'avertissement dans la boîte de dialogue de critique.
 
 ```json
 {
@@ -2846,13 +2768,13 @@ Le backend partagé pilote le légendage (`--generate-captions` et l'endpoint à
 |---------|--------|-------------|
 | `enabled` | `true` | Calcule les attributs de distorsion lors de `--recompute-distortions` |
 | `top_n` | `5` | Nombre maximal d'étiquettes de distorsion conservées par photo |
-| `thresholds.<backend>.temperature` | open_clip `0.02`, transformers `0.05` | Température softmax sur les scores des prompts contrastifs, par backend d'embedding (comme pour `narrative_moments`, les cosinus open_clip et transformers évoluent à des échelles différentes) |
+| `thresholds.<backend>.temperature` | open_clip `0.02`, transformers `0.05` | Température du softmax sur les scores d'invites, par backend d'embedding (les échelles diffèrent, comme dans `narrative_moments`) |
 | `thresholds.<backend>.min_confidence` | `0.6` | Probabilité minimale pour qu'une étiquette de distorsion soit conservée |
-| `vocabulary` | `{}` | Remplacement facultatif de l'ensemble de prompts de distorsion intégré (`{attribut: [synonymes de prompt]}`) ; vide = valeurs par défaut du module |
+| `vocabulary` | `{}` | Surcharge facultative des invites intégrées (`{attribute: [synonymes d'invite]}`) ; vide = valeurs par défaut |
 
 ## Teint
 
-Naturel du teint des portraits (indicatif uniquement). `--recompute-skin-tone` échantillonne le chroma CIELAB des joues à partir des vignettes de visage + points de repère stockés et mesure sa distance CIEDE2000 à un lieu de peau à température de couleur corrélée, signalant les portraits dont la peau dérive vers le vert / magenta / bleu / jaune. Il n'alimente jamais l'agrégat ; le résultat s'affiche comme note de teint dans la boîte de dialogue de critique.
+Vérification indicative de la teinte de peau des portraits. `--recompute-skin-tone` mesure la couleur des joues sur les miniatures de visages stockées et signale les portraits dont la peau dérive vers le vert, le magenta, le bleu ou le jaune. Elle n'affecte jamais le score ; le résultat apparaît comme une note dans la boîte de dialogue de critique.
 
 ```json
 {
@@ -2864,11 +2786,11 @@ Naturel du teint des portraits (indicatif uniquement). `--recompute-skin-tone` �
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `cast_delta_threshold` | `12.0` | Écart CIEDE2000 minimal entre le chroma de peau mesuré et le lieu de peau avant qu'une dominante de couleur soit signalée |
+| `cast_delta_threshold` | `12.0` | Distance CIEDE2000 minimale aux teintes de peau naturelles avant qu'une dominante de couleur soit signalée |
 
 ## Synchronisation Immich
 
-Synchronisation à sens unique des notes en étoiles et favoris Facet vers un serveur [Immich](https://immich.app/) via son API REST. Les ressources sont résolues par `originalPath` grâce aux correspondances de préfixes de chemin configurées, en une seule passe de recherche groupée. Lancez-la avec `--immich-sync` (vérifiez d'abord avec `--immich-test`) ; voir [Commandes — Synchronisation Immich](COMMANDS.md#synchronisation-immich).
+Synchronisation à sens unique des notes en étoiles et des favoris de Facet vers un serveur [Immich](https://immich.app/) via son API REST. Les ressources sont appariées par `originalPath` au moyen de `path_map`. Lancez `--immich-sync` (testez d'abord avec `--immich-test`) ; voir [Commandes — Synchronisation Immich](COMMANDS.md#synchronisation-immich).
 
 ```json
 {
@@ -2899,24 +2821,24 @@ Synchronisation à sens unique des notes en étoiles et favoris Facet vers un se
 |---------|--------|-------------|
 | `url` | `""` | URL de base du serveur Immich (par ex. `http://nas:2283`) |
 | `api_key` | `""` | Clé API Immich, envoyée comme en-tête `x-api-key` |
-| `owner_id` | `""` | Identifiant exact du propriétaire Immich ; vide désactive ce filtre. Un champ absent ne satisfait pas une sélection explicite. |
-| `library_id` | `""` | Identifiant exact de la bibliothèque Immich ; vide désactive le filtre, sans sélectionner une bibliothèque null. |
-| `path_map` | `[{facet_prefix, immich_prefix}]` | Réécritures de préfixe des chemins Facet vers les valeurs `originalPath` d'Immich ; le premier `facet_prefix` correspondant est remplacé par son `immich_prefix` lors de la résolution d'une ressource |
-| `push.ratings` | `true` | Pousse les notes en étoiles. La politique de compatibilité de version d'Immich est respectée — seul 1–5 est écrit, jamais 0/−1 |
+| `owner_id` | `""` | ID de propriétaire exact facultatif ; les ressources sans lui ou appartenant à quelqu'un d'autre sont ignorées |
+| `library_id` | `""` | ID de bibliothèque exact facultatif ; vide = pas de filtre de bibliothèque |
+| `path_map` | `[{facet_prefix, immich_prefix}]` | Réécritures de préfixe des chemins Facet vers l'`originalPath` d'Immich ; le premier `facet_prefix` qui correspond l'emporte |
+| `push.ratings` | `true` | Envoie les notes en étoiles (seules 1–5 sont écrites, jamais 0/−1) |
 | `push.favorites` | `true` | Pousse l'indicateur de favori |
 | `push.rejected` | `false` | Pousse `rating: -1` pour les photos rejetées dans Facet. Nécessite `push.ratings` |
 | `push.top_picks_album` | `""` | Nom d'album Immich facultatif qui rassemble les photos poussées au-dessus du seuil de note. Vide = aucun album |
 | `push.top_picks_min_rating` | `4` | Note en étoiles minimale pour qu'une photo soit ajoutée à `top_picks_album` |
-| `webhook.token_env` | `""` | Nom de la variable d'environnement contenant le secret du webhook entrant. Vide (ou variable non définie/vide) désactive le point d'accès — il renvoie 404 |
+| `webhook.token_env` | `""` | Variable d'environnement contenant le secret partagé du webhook entrant ; vide ou non définie désactive le webhook |
 | `webhook.header` | `"x-facet-token"` | En-tête dans lequel le workflow Immich envoie le jeton |
 | `webhook.max_pending` | `500` | Plafond de la liste des chemins mémorisés mais non notés, rapportée par la prochaine synchronisation |
 | `timeout_seconds` | `30` | Délai d'expiration REST par requête |
 
-`--immich-sync` honore `--dry-run` (résout chaque ressource mais n'écrit rien) et `--user` (pousse les notes `user_preferences` de cet utilisateur en mode multi-utilisateurs). REST uniquement — Facet ne touche jamais la base de données Immich.
+`--immich-sync` prend en charge `--dry-run` (apparie toutes les ressources, n'écrit rien) et `--user` (envoie les notes `user_preferences` de cet utilisateur en mode multi-utilisateur). Facet n'utilise que l'API REST et ne touche jamais à la base de données d'Immich.
 
 ## Frise chronologique
 
-Réglages pour la vue chronologique :
+Réglages pour la vue chronologique :
 
 ```json
 {
@@ -2928,11 +2850,11 @@ Réglages pour la vue chronologique :
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `photos_per_group` | `30` | Nombre de photos chargées par groupe de date dans la vue chronologique. Des valeurs plus élevées affichent plus de photos par date mais alourdissent la page. |
+| `photos_per_group` | `30` | Photos chargées par groupe de date ; plus élevé montre plus de photos par date mais alourdit les pages |
 
 ## Carte
 
-Réglages pour la vue carte interactive :
+Réglages pour la vue carte interactive :
 
 ```json
 {
@@ -2944,11 +2866,11 @@ Réglages pour la vue carte interactive :
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `cluster_zoom_threshold` | `10` | Niveau de zoom auquel les marqueurs individuels remplacent les clusters. Des valeurs plus basses affichent les marqueurs individuels plus tôt (plus de détail à un zoom plus large). Plage : 1 (monde) à 18 (rue). |
+| `cluster_zoom_threshold` | `10` | Niveau de zoom où les marqueurs individuels remplacent les regroupements ; 1 (monde) à 18 (rue) |
 
 ## Traduction
 
-Réglages pour la traduction des légendes IA via MarianMT :
+Réglages pour la traduction des légendes IA via MarianMT :
 
 ```json
 {
@@ -2960,11 +2882,13 @@ Réglages pour la traduction des légendes IA via MarianMT :
 
 | Réglage | Défaut | Description |
 |---------|--------|-------------|
-| `target_language` | `"fr"` | Code de langue cible pour `--translate-captions`. Pris en charge : `fr` (français), `de` (allemand), `es` (espagnol), `it` (italien), `pt` (portugais brésilien). Utilise les modèles MarianMT de Helsinki-NLP (CPU, aucun GPU requis). |
+| `target_language` | `"fr"` | Langue cible de `--translate-captions` : `fr`, `de`, `es`, `it`, `pt` (portugais brésilien) |
+
+La traduction utilise les modèles Helsinki-NLP MarianMT sur le CPU ; aucun GPU n'est nécessaire.
 
 ## CLIP esthétique (R2)
 
-Score esthétique supplémentaire dérivé des embeddings CLIP/SigLIP mis en cache via projection textuelle. Les prompts sont réglables par l'utilisateur pour le benchmarking AVA — voir `scripts/benchmark_aesthetic.py` pour mesurer l'impact SRCC de tout changement.
+Un score esthétique supplémentaire calculé à partir des embeddings CLIP/SigLIP en cache et d'invites textuelles. Utilisez `scripts/benchmark_aesthetic.py` pour mesurer l'effet d'un changement d'invite sur AVA.
 
 ```json
 {
@@ -2987,13 +2911,13 @@ Score esthétique supplémentaire dérivé des embeddings CLIP/SigLIP mis en cac
 }
 ```
 
-Des tableaux vides retombent sur les valeurs par défaut du module intégrées dans `analyzers/aesthetic_clip.py`. Ne réglez pas ces prompts sans relancer le benchmark AVA — les valeurs par défaut obtiennent un SRCC de ~0,52 sur `ava_test/` et des changements peuvent facilement régresser à ~0,30.
+Les tableaux vides utilisent les valeurs par défaut de `analyzers/aesthetic_clip.py`. Relancez le benchmark AVA avant de les modifier : les valeurs par défaut obtiennent un SRCC d'environ 0,52 sur `ava_test/`, et des modifications le font facilement tomber à ~0,30.
 
 ## Ajout de modèles VLM tagger / critique alternatifs (R3)
 
-La clé `tagging_model` de chaque profil VRAM (par ex. `qwen3.5-2b`) correspond à une entrée de modèle dans la même section `models`. Pour expérimenter avec un VLM différent (Pixtral-12B, InternVL-2.5, etc.) :
+Le `tagging_model` de chaque profil (par ex. `qwen3.5-2b`) désigne une entrée de modèle dans la même section `models`. Pour essayer un autre VLM (Pixtral-12B, InternVL-2.5, etc.) :
 
-1. Ajoutez une entrée de modèle sous `models` :
+1. Ajoutez une entrée de modèle sous `models` :
    ```json
    "pixtral_12b": {
      "model_path": "mistralai/Pixtral-12B-2409",
@@ -3002,7 +2926,7 @@ La clé `tagging_model` de chaque profil VRAM (par ex. `qwen3.5-2b`) correspond 
      "vlm_batch_size": 1
    }
    ```
-2. Pointez un profil dessus :
+2. Pointez un profil dessus :
    ```json
    "profiles": {
      "24gb": { "tagging_model": "pixtral_12b", ... }
@@ -3010,13 +2934,13 @@ La clé `tagging_model` de chaque profil VRAM (par ex. `qwen3.5-2b`) correspond 
    ```
 3. Exécutez `python facet.py --recompute-tags-vlm` pour ré-étiqueter.
 
-Aucun changement de code nécessaire. Validez la qualité par un contrôle ponctuel côte à côte sur ~30 photos avant de promouvoir en valeur par défaut.
+Aucun changement de code nécessaire. Vérifiez ~30 photos côte à côte avant d'en faire la valeur par défaut.
 
 ## Secret du serveur
 
 Le secret qui signe les jetons de session et les liens de cadre photo n'est **pas** une clé de ce fichier. Il réside dans `.facet_secret`, à côté de `scoring_config.json` (mode `0600`, ignoré par git), et est généré au premier lancement.
 
-- Surcharge : la variable d'environnement `FACET_JWT_SECRET`.
-- Rotation : `python database.py --rotate-secret`.
+- Surcharge : la variable d'environnement `FACET_JWT_SECRET`.
+- Rotation : `python database.py --rotate-secret`.
 
-Un `share_secret` hérité d'une ancienne installation est déplacé dans ce fichier au démarrage suivant, puis supprimé de `scoring_config.json`. Voir [Stockage et rotation du secret](DEPLOYMENT.md#stockage-et-rotation-du-secret).
+Un `share_secret` d'une ancienne installation est déplacé dans ce fichier au prochain démarrage et retiré de `scoring_config.json`. Voir [Stockage et rotation du secret](DEPLOYMENT.md#stockage-et-rotation-du-secret).

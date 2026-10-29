@@ -2,13 +2,13 @@
 
 > 🌐 [English](../FACE_RECOGNITION.md) · [Français](../fr/FACE_RECOGNITION.md) · [Deutsch](../de/FACE_RECOGNITION.md) · [Italiano](../it/FACE_RECOGNITION.md) · **Español** · [Português](../pt/FACE_RECOGNITION.md) · [简体中文](../zh/FACE_RECOGNITION.md)
 
-Facet utiliza InsightFace para la detección de rostros y HDBSCAN para agrupar rostros en personas.
+Facet usa InsightFace para la detección de rostros y HDBSCAN para agrupar los rostros en personas.
 
 ## Visión general
 
 1. **Detección** - El modelo buffalo_l de InsightFace detecta rostros y extrae embeddings de 512 dimensiones
-2. **Agrupamiento** - HDBSCAN agrupa embeddings similares en clústeres de personas
-3. **Gestión** - Galería web para fusionar, renombrar y organizar personas
+2. **Agrupamiento** - HDBSCAN agrupa los embeddings similares en clústeres de personas
+3. **Gestión** - Visor web para fusionar, renombrar y organizar personas
 
 ## Flujo de trabajo completo
 
@@ -41,7 +41,7 @@ python facet.py --cluster-faces-incremental  # Conserva las personas existentes
 |---------|----------|
 | `--cluster-faces-incremental` | Conserva todas las personas, asocia las nuevas a las existentes |
 | `--cluster-faces-incremental-named` | Conserva solo las personas con nombre |
-| `--cluster-faces-force` | Elimina todas las personas, reagrupamiento completo |
+| `--cluster-faces-force` | Elimina todas las personas, reagrupa por completo |
 
 ### Paso 3: Revisar y fusionar
 
@@ -52,7 +52,7 @@ python facet.py --suggest-person-merges
 python facet.py --suggest-person-merges --merge-threshold 0.7  # Más estricto
 ```
 
-Abre el navegador en la página de sugerencias de fusión.
+Esto abre en el navegador la página de sugerencias de fusión.
 
 ### Paso 4: Gestión en el visor
 
@@ -77,11 +77,13 @@ Consulta [Integración con la galería](#integración-con-la-galería) para la r
 }
 ```
 
-| Ajuste | Predeterminado | Descripción |
+| Ajuste | Por defecto | Descripción |
 |---------|---------|-------------|
 | `min_confidence_percent` | `65` | Confianza mínima de detección |
-| `min_face_size` | `20` | Tamaño mínimo del rostro en píxeles — Solo InsightFace: el detector YuNet del modo comercial usa valores fijos medidos (0,7 de confianza, 30 px) e ignora `min_confidence_percent` y este ajuste. |
-| `blink_ear_threshold` | `0.28` | Eye Aspect Ratio para la detección de parpadeos |
+| `min_face_size` | `20` | Tamaño mínimo del rostro en píxeles (solo InsightFace, ver nota) |
+| `blink_ear_threshold` | `0.28` | Relación de aspecto del ojo (EAR) para la detección de parpadeos |
+
+En modo comercial, el detector YuNet usa valores fijos (0.7 de confianza, 30 px) e ignora `min_confidence_percent` y `min_face_size`.
 
 ### Agrupamiento de rostros
 
@@ -102,12 +104,12 @@ Consulta [Integración con la galería](#integración-con-la-galería) para la r
 }
 ```
 
-| Ajuste | Predeterminado | Descripción |
+| Ajuste | Por defecto | Descripción |
 |---------|---------|-------------|
 | `min_faces_per_person` | `2` | Mínimo de fotos para crear una persona |
 | `min_samples` | `2` | Parámetro min_samples de HDBSCAN |
-| `thresholds_by_model` | ver JSON | Por modelo de reconocimiento: `auto_merge_distance_percent` (distancia de fusión automática) y `merge_threshold` (similitud de centroides). Valores por defecto: ArcFace `15` / `0.6`, SFace `27.5` / `0.65` |
-| `use_gpu` | `"auto"` | Modo GPU: `auto`, `always`, `never` |
+| `thresholds_by_model` | ver JSON | Por modelo: `auto_merge_distance_percent` y `merge_threshold` (ArcFace `15` / `0.6`, SFace `27.5` / `0.65`) |
+| `use_gpu` | `"auto"` | Modo de GPU: `auto`, `always`, `never` |
 
 ### Procesamiento de rostros
 
@@ -128,21 +130,21 @@ Consulta [Integración con la galería](#integración-con-la-galería) para la r
 
 ## Algoritmos de agrupamiento
 
-Para el agrupamiento por CPU, elige el algoritmo según el tamaño del conjunto de datos:
+Para el agrupamiento en CPU, elige el algoritmo según el tamaño del conjunto de datos:
 
 | Algoritmo | Complejidad | Ideal para |
 |-----------|------------|----------|
-| `boruvka_balltree` | O(n log n) | Alta dimensionalidad (recomendado para más de 50K rostros) |
+| `boruvka_balltree` | O(n log n) | Alta dimensionalidad (recomendado para más de 50 000 rostros) |
 | `boruvka_kdtree` | O(n log n) | Datos de baja dimensionalidad |
 | `prims_balltree` | O(n²) | Conjuntos pequeños, memoria limitada |
 | `prims_kdtree` | O(n²) | Conjuntos pequeños |
-| `best` | Auto | Deja que HDBSCAN decida |
+| `best` | Auto | Dejar que HDBSCAN decida |
 
-**Nota de rendimiento:** Para conjuntos de datos grandes, usa `boruvka_balltree`. Con 80K rostros se completa en 2-5 minutos, mientras que los algoritmos exactos pueden quedarse colgados.
+**Nota de rendimiento:** Para conjuntos grandes, usa `boruvka_balltree`. Con 80 000 rostros termina en 2-5 minutos, mientras que los algoritmos exactos pueden quedarse colgados.
 
 ## Agrupamiento por GPU (cuML)
 
-Para conjuntos de datos grandes (más de 80K rostros), el agrupamiento por GPU mediante RAPIDS cuML es más rápido que por CPU.
+Para conjuntos grandes (más de 80 000 rostros), el agrupamiento por GPU con RAPIDS cuML es más rápido que en CPU.
 
 ### Instalación
 
@@ -166,48 +168,46 @@ pip install --extra-index-url https://pypi.nvidia.com/ "cuml-cu12"
 
 | Modo | Comportamiento |
 |------|----------|
-| `"auto"` | Usa GPU si cuML está disponible, recurre a CPU |
-| `"always"` | Intenta GPU, avisa y recurre a CPU si no está disponible |
-| `"never"` | Usa siempre CPU |
+| `"auto"` | Usa la GPU si cuML está disponible, recurre a la CPU si no |
+| `"always"` | Intenta la GPU, avisa y recurre a la CPU si no está disponible |
+| `"never"` | Usa siempre la CPU |
 
-**Nota:** cuML utiliza su propia implementación de HDBSCAN. Los parámetros `algorithm` y `leaf_size` solo se aplican al agrupamiento por CPU.
+**Nota:** cuML usa su propia implementación de HDBSCAN. Los parámetros `algorithm` y `leaf_size` solo se aplican al agrupamiento en CPU.
 
-### La GPU y la CPU no producen los mismos grupos
+### La GPU y la CPU no producen clústeres idénticos
 
-Medido en una biblioteca de 145.677 rostros, con los mismos embeddings y los mismos parámetros:
+Con los mismos rostros y parámetros, cuML genera algo más de clústeres, y más pequeños, que el agrupamiento en CPU (aproximadamente 1.1–1.2 veces más). Quién se agrupa con quién se mantiene más o menos igual, pero el *número* de clústeres difiere entre una ejecución en GPU y otra en CPU.
 
-| Rostros | Grupos cuML | Grupos CPU | Proporción |
-|--------:|------------:|-----------:|-----------:|
-| 5.000 | 202 | 181 | 1,12× |
-| 20.000 | 1.285 | 1.039 | 1,24× |
+**cuML tampoco es determinista.** Dos ejecuciones en GPU con los mismos rostros dan recuentos de clústeres casi idénticos pero etiquetas distintas.
 
-cuML es algo más granular, con una tasa de ruido comparable y un tamaño mediano de grupo idéntico (4). La diferencia es demasiado pequeña para cambiar quién queda agrupado con quién, pero el *número* de grupos no coincidirá entre una ejecución en GPU y otra en CPU.
+- **Los ID de persona no son reproducibles entre ejecuciones.** Pon nombre a las personas que te importan; las personas con nombre permanecen estables.
+- **No compares dos ejecuciones de agrupamiento por etiqueta.** Compara en su lugar la pertenencia de los rostros.
 
-**cuML tampoco es determinista.** Dos ejecuciones consecutivas en GPU sobre los mismos 145.677 rostros, con parámetros idénticos, solo coincidieron en el **41 % de las etiquetas**, aunque produjeron recuentos de grupos casi iguales (14.809 frente a 14.807) y resultados finales idénticos. La estructura es estable; el etiquetado no. Consecuencias a tener en cuenta:
-
-- **Los identificadores de persona no son reproducibles entre ejecuciones.** No des por hecho que un nuevo agrupamiento conserva la numeración de las personas agrupadas automáticamente: nombra las que te importan, eso es lo que las hace estables.
-- **No compares dos agrupamientos por etiqueta**, compara la pertenencia de los rostros.
-
-El agrupamiento por CPU con un `algorithm` fijo es determinista para la misma entrada.
+El agrupamiento en CPU con un `algorithm` fijo es determinista para la misma entrada.
 
 ### Reagrupar y las personas ya nombradas
 
-Todos los modos salvo `--cluster-faces-force` conservan los registros de personas, pero todos vuelven a derivar desde cero cada asignación rostro→persona. Solo se escriben los rostros cuya persona cambia realmente, todos en una única transacción, de modo que una ejecución interrumpida antes de esa confirmación deja la persona de cada rostro como estaba. Una ejecución tiene dos fases: cargar y agrupar los rostros, la parte larga, y después una breve fase de base de datos que escribe el resultado (unos 13 s con una copia de una biblioteca de 145.677 rostros, medido). Un rostro que reasignes en el visor durante la fase de base de datos conserva tu asignación: la ejecución solo cambia un rostro si sigue teniendo la persona que la ejecución leyó al comenzar esa fase, y registra cuántos rostros omitió. Un guardado enviado mientras la ejecución escribe espera a que termine (2,8 s con la copia de 145.677 rostros); si espera más de 5 s, se rechaza con «library busy» y hay que repetirlo. Un cambio hecho antes, mientras los rostros aún se cargan o se agrupan, se sobrescribe, como antes. Un grupo reconstruido se devuelve a una persona cuando:
+Todos los modos excepto `--cluster-faces-force` conservan los registros de personas existentes, pero todos recalculan la persona de cada rostro.
 
-1. su embedding medio está dentro de `merge_threshold` (0,6 de coseno por defecto para ArcFace, 0,65 para SFace) respecto al centroide almacenado de esa persona, **o**
+- **Las interrupciones son seguras.** Los cambios se escriben de una sola vez al final; una ejecución detenida antes no cambia nada.
+- **Ediciones en el visor durante una ejecución.** Un rostro que reasignas mientras la ejecución escribe sus resultados (los últimos segundos) conserva tu elección, y la ejecución registra cuántos omitió. Un guardado enviado en ese momento espera a la ejecución; si espera más de 5 s se rechaza con «library busy» y hay que repetirlo. Una edición hecha antes, mientras los rostros aún se están agrupando, se sobrescribe.
+
+Un clúster reconstruido vuelve a una persona existente cuando se cumple una de estas condiciones:
+
+1. su embedding medio está a menos de `merge_threshold` (por defecto 0.6 en coseno para ArcFace, 0.65 para SFace) del centroide almacenado de esa persona, **o**
 2. al menos la mitad de sus rostros pertenecían a esa persona antes de la ejecución.
 
-La segunda regla pesa más de lo que parece. El centroide de una persona es un único vector promedio: alguien fotografiado durante años abarca una región amplia, y HDBSCAN lo divide correctamente en subgrupos compactos que quedan lejos de ese promedio y fallan la regla 1. En la biblioteca anterior, la regla 1 por sí sola devolvía el 38 % de los rostros asociados a personas nombradas; con la regla 2 se alcanza el 96 %.
+La regla 2 importa para las personas fotografiadas durante muchos años: sus rostros se dividen en subclústeres compactos que quedan lejos del único centroide promedio. Sin ella, la mayoría de los rostros de las personas con nombre no se les devolverían.
 
-Como la regla 2 se apoya en la asignación previa, un error antiguo se arrastra en lugar de corregirse. Ese es el contrato de un modo cuyo propósito es preservar las personas existentes: usa `--cluster-faces-force` para recalcularlo todo desde cero. Cuando los rostros de un grupo se reparten exactamente por igual entre dos personas, el empate se resuelve por el orden de id de rostro: se conserva la persona que posee el rostro de menor número ya asignado del grupo. Los embeddings se cargan con `ORDER BY id`; las versiones anteriores dejaban ese orden sin especificar, así que en un empate así el id de persona conservado puede diferir del de una ejecución antigua.
+Como la regla 2 sigue la asignación anterior, un error previo se arrastra. Usa `--cluster-faces-force` para empezar desde cero. Cuando los rostros de un clúster se reparten a partes iguales entre dos personas, gana la persona que posee el rostro con el número más bajo de los asignados previamente.
 
 ## Detección de parpadeos
 
-Utiliza el Eye Aspect Ratio (EAR) a partir de los 106 puntos de referencia de InsightFace.
+Usa la relación de aspecto del ojo (EAR) a partir de los 106 puntos de referencia de InsightFace.
 
 ### Cómo funciona
 
-El EAR mide la relación entre la altura y la anchura del ojo. Cuando los ojos se cierran, el EAR cae por debajo del umbral.
+La EAR mide la relación entre la altura y la anchura del ojo. Cuando los ojos se cierran, la EAR cae por debajo del umbral.
 
 ### Configuración
 
@@ -227,53 +227,56 @@ Umbral más bajo = detección más estricta (más fotos marcadas como parpadeos)
 python facet.py --recompute-blinks
 ```
 
-Solo procesa fotos con rostros, no necesita GPU.
+Solo procesa las fotos con rostros, no necesita GPU.
 
 ## Calidad facial OFIQ opcional (modo comercial)
 
-En modo comercial el modelo restringido de calidad facial no está disponible. Como sustituto opcional, instale `python-ofiq` (bindings de UNICEF sobre OFIQ del BSI, ISO/IEC 29794-5; MIT; convive con numpy 2 y OpenCV 4.8+) con `pip install python-ofiq`. Solo ofrece wheels para Linux x86-64 y macOS arm64 (en Windows: WSL2 o Docker). Los modelos de OFIQ (unos 400 MB, MIT/Apache-2.0) nunca se incluyen: en el primer uso Facet los descarga, con SHA-256 fijado, en `pretrained_models/ofiq/`. El pipeline facial comercial divide entre 10 la puntuación unificada de OFIQ (0-100) y la guarda en `face_quality_iqa`; el valor de una foto es 0,7 x su peor rostro + 0,3 x la media. Si falta `python-ofiq`, la columna queda NULL y su peso se renormaliza.
+En modo comercial, el modelo restringido de calidad facial no está disponible. Como reemplazo opcional, instala `python-ofiq` (los bindings de UNICEF sobre OFIQ del BSI, ISO/IEC 29794-5; MIT):
+
+```bash
+pip install python-ofiq
+```
+
+- Existen wheels solo para Linux x86-64 y macOS arm64 (en Windows, usa WSL2 o Docker). Funciona con numpy 2 y OpenCV 4.8+.
+- En el primer uso, Facet descarga los modelos OFIQ (unos 400 MB, MIT/Apache-2.0, con SHA-256 fijado) en `pretrained_models/ofiq/`.
+- La puntuación de OFIQ (0-100) se divide entre 10 y se almacena en `face_quality_iqa`. El valor de una foto es 0.7 x su peor rostro + 0.3 x la media.
+- Sin `python-ofiq`, la columna permanece en NULL y su peso se reparte entre las demás métricas.
 
 ## Señales de expresión por rostro (ojos abiertos + sonrisa)
 
-Cada fila de rostro almacena dos señales continuas en escala 0-10 usadas por el panel de rostros de
-la selección y los agregados a nivel de foto: `eyes_open_score` (10 = completamente abiertos, 0 =
-completamente cerrados) y `smile_score` (5 = neutral, 10 = sonrisa amplia, 0 = ceño fruncido).
+Cada rostro almacena dos puntuaciones 0-10, usadas por el panel de rostros de la selección y por las puntuaciones a nivel de foto: `eyes_open_score` (10 = muy abiertos, 0 = totalmente cerrados) y `smile_score` (5 = neutro, 10 = sonrisa amplia, 0 = ceño fruncido).
 
-Dos motores los generan, en la misma escala 0-10:
+Dos backends las producen en la misma escala:
 
-1. **Geometría (siempre disponible).** Derivado de los 106 puntos de referencia de InsightFace
-   almacenados: el Eye Aspect Ratio para ojos abiertos, la elevación de las comisuras de la boca
-   para la sonrisa. Pura geometría, así que `--recompute-face-signals` puede recalcularlos a partir
-   de los puntos de referencia almacenados sin píxeles y sin GPU.
-2. **Blendshapes de MediaPipe (opcional, basado en apariencia).** Durante el escaneo / la
-   extracción de rostros, un recorte generoso de cada rostro pasa por el MediaPipe Face Landmarker,
-   cuyos blendshapes de estilo ARKit (`eyeBlink*`, `mouthSmile*`, `mouthFrown*`) se corresponden con
-   las mismas escalas. La apariencia supera a la geometría de puntos de referencia en ojos cerrados,
-   sonrisas sutiles y cabezas giradas, así que cuando un rostro se puntúa mediante MediaPipe,
-   **reemplaza** el valor geométrico. Si MediaPipe o su paquete de modelo están ausentes, o el
-   recorte del rostro es demasiado pequeño / no se detecta, se conserva el valor geométrico — el
-   comportamiento es idéntico a una instalación solo con geometría.
+1. **Geometría (siempre disponible).** Se calcula a partir de los 106 puntos de referencia
+   de InsightFace almacenados: relación de aspecto del ojo para los ojos, elevación de las
+   comisuras de la boca para la sonrisa.
+   `--recompute-face-signals` puede rellenarlas sin GPU y sin leer imágenes.
+2. **Blendshapes de MediaPipe (opcional).** Durante el escaneo y la extracción de rostros,
+   cada recorte de rostro pasa por el MediaPipe Face Landmarker, cuyos blendshapes
+   (`eyeBlink*`, `mouthSmile*`, `mouthFrown*`) se asignan a las mismas escalas.
+   Lee mejor los ojos cerrados, las sonrisas sutiles y las cabezas giradas, así que su valor
+   **reemplaza** al geométrico. Si falta MediaPipe o su modelo, o el recorte es demasiado
+   pequeño, se conserva el valor geométrico.
 
 ### Instalar MediaPipe
 
-MediaPipe es opcional y **debe** instalarse sin su `opencv-contrib-python` incluido, que instalaría
-un segundo espacio de nombres `cv2` junto al `opencv-python` de Facet:
+MediaPipe es opcional. Instálalo **sin** su `opencv-contrib-python` incluido,
+que chocaría con el `opencv-python` de Facet (ambos proporcionan `cv2`):
 
 ```bash
 pip install mediapipe==0.10.35 --no-deps
 pip install absl-py flatbuffers
 ```
 
-Nunca ejecutes un simple `pip install mediapipe`.
+No ejecutes nunca un simple `pip install mediapipe`.
 
 ### Paquete de modelo
 
-El paquete `face_landmarker.task` (~3,6 MiB, Apache-2.0) se descarga automáticamente en el primer
-uso a `pretrained_models/face_landmarker.task`. Si la máquina está sin conexión, descárgalo
-manualmente desde
+El paquete `face_landmarker.task` (~3.6 MiB, Apache-2.0) se descarga en el primer uso
+a `pretrained_models/face_landmarker.task`. Sin conexión, descárgalo desde
 `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task`
-y colócalo en esa ruta. Una descarga fallida registra un aviso una sola vez y recurre a las
-puntuaciones geométricas.
+y colócalo allí. Si la descarga falla, Facet avisa una vez y usa la geometría.
 
 ### Configuración
 
@@ -289,29 +292,27 @@ puntuaciones geométricas.
 }
 ```
 
-- `enabled` (predeterminado `true`): usa las puntuaciones blendshape siempre que MediaPipe y el
-  paquete de modelo estén disponibles; en caso contrario, el respaldo geométrico se ejecuta
-  automáticamente. Establecer en `false` para forzar solo geometría.
-- `min_crop_size` (predeterminado `192`): los rostros cuyo recorte con relleno sea menor que este
-  valor (px, lado más corto) recurren a la geometría en lugar de ampliar un rostro diminuto.
-- `blink_pose_gate_deg` (predeterminado `null` = desactivado): solo el analizador MediaPipe del modo comercial. Una cara cuyo |yaw| o |pitch| (grados, a partir de la matriz de transformación del Face Landmarker) supere este valor no recibe veredicto de parpadeo ni puntuación de ojos abiertos / sonrisa (NULL = desconocido), porque una cabeza girada parece tener los ojos cerrados. Permanece desactivado por defecto: en una mitad reservada de una biblioteca real, ningún umbral entre 20° y 45° mejoró la detección de parpadeos (cada uno perdía más parpadeos reales que falsos), así que no se incluye ninguno; actívalo solo si tu biblioteca tiene muchos rostros muy girados; se aplica a las fotos recién escaneadas y los valores `is_blink` existentes solo cambian al volver a escanear. Debe ser un número positivo de grados: 0 o un valor negativo se rechaza al arrancar; `null` = desactivado.
+- `enabled` (por defecto `true`): usa los blendshapes cuando MediaPipe y el modelo están
+  disponibles. Pon `false` para forzar solo la geometría.
+- `min_crop_size` (por defecto `192`): los rostros cuyo recorte con margen es menor que esto
+  (px, lado más corto) usan la geometría en lugar de un recorte ampliado.
+- `blink_pose_gate_deg` (por defecto `null` = desactivado): solo para el analizador del modo comercial (MediaPipe). Un rostro girado más de estos grados (|yaw| o |pitch|) no recibe veredicto de parpadeo ni puntuación de ojos abiertos / sonrisa, ya que una cabeza girada parece tener los ojos cerrados. Las pruebas no encontraron ningún umbral entre 20° y 45° que ayudara, así que se entrega desactivado; actívalo solo si tu biblioteca tiene muchos rostros muy girados. Debe ser un número positivo. Se aplica a las fotos recién escaneadas; los valores `is_blink` existentes cambian solo al reescanear.
 
 ### Recálculo
 
-`--recompute-face-signals` recalcula las señales por rostro solo a partir de los puntos de
-referencia almacenados — es **solo geometría** y no ejecuta MediaPipe (no se lee ningún píxel). Para
-actualizar las puntuaciones basadas en apariencia, vuelve a extraer los rostros
-(`--extract-faces-gpu-force`) para que los recortes en resolución completa se reanalicen.
+`--recompute-face-signals` usa solo los puntos de referencia almacenados: es **solo
+geometría** y no ejecuta MediaPipe. Para refrescar las puntuaciones de MediaPipe,
+vuelve a extraer los rostros con `--extract-faces-gpu-force`.
 
 ## Miniaturas de rostros
 
-Las miniaturas se almacenan en la base de datos para una visualización rápida.
+Las miniaturas se almacenan en la base de datos para mostrarlas rápidamente.
 
 ### Almacenamiento
 
-- Se generan durante el escaneo a partir de imágenes a resolución completa
-- Se almacenan en la columna `faces.face_thumbnail` como BLOBs JPEG (~5-10KB cada uno)
-- Se utilizan en el agrupamiento y la galería en lugar de regenerarlas
+- Se generan durante el escaneo a partir de las imágenes a resolución completa
+- Se guardan en la columna `faces.face_thumbnail` como BLOB JPEG (~5-10KB cada una)
+- El agrupamiento y el visor las usan en lugar de regenerarlas
 
 ### Regeneración
 
@@ -323,7 +324,7 @@ python facet.py --refill-face-thumbnails-incremental
 python facet.py --refill-face-thumbnails-force
 ```
 
-Ambos comandos usan procesamiento paralelo para mayor velocidad.
+Ambos comandos usan procesamiento en paralelo para mayor velocidad.
 
 ## Esquema de la base de datos
 
@@ -336,11 +337,11 @@ Ambos comandos usan procesamiento paralelo para mayor velocidad.
 | `face_index` | INTEGER | Índice dentro de la foto |
 | `embedding` | BLOB | Embedding facial de 512 dimensiones |
 | `bbox_x1`, `bbox_y1`, `bbox_x2`, `bbox_y2` | INTEGER | Esquinas del cuadro delimitador |
-| `confidence` | REAL | Confianza de detección |
+| `confidence` | REAL | Confianza de la detección |
 | `person_id` | INTEGER | Clave externa a persons |
 | `face_thumbnail` | BLOB | Miniatura JPEG |
 | `landmark_2d_106` | BLOB | 106 puntos de referencia (detección de parpadeos) |
-| `embedding_model` | TEXT | Etiqueta del modelo de reconocimiento (predeterminado `arcface_buffalo_l`) |
+| `embedding_model` | TEXT | Etiqueta del modelo de reconocimiento (por defecto `arcface_buffalo_l`) |
 
 ### Tabla persons
 
@@ -353,7 +354,7 @@ Ambos comandos usan procesamiento paralelo para mayor velocidad.
 | `centroid` | BLOB | Embedding del centroide del clúster |
 | `auto_clustered` | INTEGER | 1 si se generó automáticamente |
 | `face_thumbnail` | BLOB | Miniatura del avatar de la persona |
-| `is_hidden` | INTEGER | 1 = excluida de filtros/sugerencias |
+| `is_hidden` | INTEGER | 1 = excluida de los filtros/sugerencias |
 
 ## Modos incremental vs. forzado
 
@@ -361,17 +362,17 @@ Ambos comandos usan procesamiento paralelo para mayor velocidad.
 
 - Conserva todas las personas existentes (con nombre y agrupadas automáticamente)
 - Agrupa solo los rostros nuevos sin asignar
-- Asocia los nuevos clústeres a las personas existentes mediante la similitud de centroides
+- Asocia los clústeres nuevos con personas existentes por similitud de centroide
 - Actualiza los centroides tras la fusión
 
-**Úsalo cuando:** Añadas fotos nuevas a una colección existente
+**Úsalo cuando:** añades fotos nuevas a una colección existente
 
 ### Agrupamiento forzado
 
 - Elimina TODAS las personas, incluidas las que tienen nombre
-- Reagrupamiento completo desde cero
+- Reagrupa por completo desde cero
 
-**Úsalo cuando:** Empieces de cero o cambies sustancialmente el algoritmo
+**Úsalo cuando:** empiezas de nuevo o hay cambios importantes de algoritmo
 
 ### Agrupamiento incremental con nombre
 
@@ -379,7 +380,7 @@ Ambos comandos usan procesamiento paralelo para mayor velocidad.
 - Elimina las personas agrupadas automáticamente
 - Reagrupa todos los rostros sin nombre
 
-**Úsalo cuando:** Quieras mantener los nombres curados mientras actualizas los clústeres detectados automáticamente
+**Úsalo cuando:** mantienes los nombres curados mientras refrescas los clústeres detectados automáticamente
 
 ## Integración con la galería
 
@@ -391,7 +392,7 @@ Ambos comandos usan procesamiento paralelo para mayor velocidad.
 ### Galería de persona
 
 - Haz clic en una persona del desplegable para ver todas sus fotos
-- URL: `/person/<id>`
+- Al hacer clic en una persona se aplica un filtro `person_id` en la galería (no hay una ruta dedicada por persona)
 
 ### Página de gestión de personas
 
@@ -407,37 +408,30 @@ Accede mediante el botón de la cabecera o `/persons`:
 
 ### Crear una persona
 
-Las personas ya no provienen solo de la agrupación — puedes nombrar un rostro que el agrupador pasó
-por alto directamente desde la galería:
+Puedes nombrar un rostro que el agrupador pasó por alto directamente desde la galería:
 
 1. En una tarjeta de foto, abre las acciones de persona y elige un rostro sin asignar.
 2. En el selector de persona, elige **Crear nueva persona** y escribe un nombre.
-3. El rostro se vincula a la nueva persona (creada manualmente, `auto_clustered = 0`) en una sola
-   llamada.
+3. El rostro se vincula a la nueva persona (`auto_clustered = 0`).
 
-Endpoint: `POST /api/persons` (solo edición), cuerpo
-`{ "name": "<nombre>", "face_ids": [<id>, ...] }`. El nombre es obligatorio (no vacío tras recortar
-espacios). Los rostros que ya pertenecen a otra persona se reasignan, y cualquier persona antigua
-que quede sin rostros se elimina — la misma semántica que la asignación de rostros. En modo
-multiusuario, quien llama solo puede vincular rostros de fotos dentro de sus propios directorios (o
-compartidos); un rostro fuera de ese ámbito se rechaza como no encontrado.
+Un rostro que ya pertenece a otra persona se mueve, y una persona que se queda sin
+rostros se elimina. En modo multiusuario solo puedes vincular rostros de fotos de tus
+propios directorios o de los compartidos. API: `POST /api/persons` (consulta [API.md](../API.md)).
 
 ### Por nombrar
 
-La página de gestión de personas muestra las personas agrupadas automáticamente que merece la pena
-nombrar en una sección **Por nombrar**: clústeres sin nombre (`name IS NULL`, `auto_clustered = 1`)
-con al menos `viewer.persons.needs_naming_min_faces` rostros (predeterminado `5`), cada uno con un
-campo de nombre en línea para que los clústeres grandes puedan nombrarse sin tener que buscarlos.
-Servido por `GET /api/persons/needs_naming?min_faces=N`.
+La página de gestión de personas muestra los clústeres grandes sin nombre en una sección
+**Por nombrar**, cada uno con un campo de nombre. Un clúster aparece allí cuando tiene al menos
+`viewer.persons.needs_naming_min_faces` rostros (por defecto `5`).
 
 ### Página de sugerencias de fusión
 
 Accede mediante `/merge-suggestions` o el botón "Merge Suggestions" en la página de gestión de personas:
 
-- Muestra pares de personas con embeddings faciales similares que podrían ser el mismo individuo
-- **Control deslizante de umbral** — controla el límite de similitud (más bajo = más sugerencias)
-- **Fusión con un clic** — fusiona un par sugerido al instante
-- **Fusión por lotes** — selecciona varias sugerencias y fusiónalas todas a la vez
+- Muestra pares de personas cuyos rostros se parecen
+- **Control deslizante de umbral** — límite de similitud (más bajo = más sugerencias)
+- **Fusión con un clic** — fusiona un par sugerido
+- **Fusión por lotes** — fusiona varias sugerencias a la vez
 
 ### Tarjetas de foto
 
@@ -446,48 +440,21 @@ Accede mediante `/merge-suggestions` o el botón "Merge Suggestions" en la pági
 
 ## Marcador del espacio de embeddings (seguridad del modelo de reconocimiento)
 
-Cada fila de rostro lleva una etiqueta `embedding_model` (columna en `faces`, predeterminada
-`arcface_buffalo_l` — el modelo de reconocimiento actual `buffalo_l` de InsightFace / ArcFace
-`w600k_r50`). Los embeddings producidos por modelos de reconocimiento **diferentes** viven
-en **espacios vectoriales incompatibles** y nunca deben agruparse juntos — hacerlo
-produce silenciosamente personas erróneas sin ningún error.
-
-Por ello, `FaceClusterer.load_embeddings()` carga únicamente el espacio de embeddings
-**activo** (`active_embedding_model()` en `db/embedding_space.py`; una etiqueta `NULL` se trata
-como el espacio ArcFace heredado) y registra una advertencia llamativa si hay rostros de
-cualquier otro espacio presentes y excluidos. Es una salvaguarda de compatibilidad futura:
-hace que un futuro cambio del modelo de reconocimiento sea seguro por diseño.
+Cada rostro almacena en `embedding_model` el modelo de reconocimiento que lo produjo (por defecto `arcface_buffalo_l`, el modelo `buffalo_l` de InsightFace / ArcFace `w600k_r50`). Los embeddings de modelos distintos no se pueden comparar, así que el agrupamiento usa solo los rostros del modelo **activo**. Una etiqueta `NULL` cuenta como ArcFace. Si hay rostros de otro modelo, Facet los excluye y registra una advertencia.
 
 ### Cambiar el modelo de reconocimiento (p. ej. AdaFace) — plan diferido
 
-Una mejora de calidad como **AdaFace** (margen adaptativo según la calidad, mejor agrupamiento
-de rostros borrosos/espontáneos) es integrable como backend opcional de 512 dimensiones (misma
-ruta de almacenamiento, mismo HDBSCAN), pero **aún no está implementada** porque no se puede
-validar sin datos reales. Hacerlo correctamente requiere:
-
-1. **Pesos + backbone** — un checkpoint de AdaFace (p. ej. `adaface_ir101_webface12m`)
-   más su backbone IResNet; una nueva descarga a la caché de modelos.
-2. **Recortes alineados** — calcular el embedding a partir de un recorte alineado
-   `norm_crop(img, face.kps, 112)` de 112×112 en el momento de la extracción (los kps existen
-   en el objeto `face` de InsightFace pero no se persisten, por lo que AdaFace no se puede
-   rellenar a posteriori sin conexión — debe ejecutarse durante la extracción). Verifica que
-   la normalización/BGR coincida con el checkpoint.
-3. **Conmutador de configuración** — añadir `face_detection.recognition_model: arcface|adaface`
-   y resolver `active_embedding_model()` a partir de él; etiquetar los nuevos rostros en consecuencia.
-4. **Reextracción + reagrupamiento completos** — `--extract-faces-gpu-force` y luego
-   `--cluster-faces-force`, porque los embeddings de ArcFace y AdaFace no son
-   comparables. El marcador del espacio de embeddings anterior evita que una base de datos
-   migrada a medias agrupe silenciosamente ambos espacios (avisa y los excluye en su lugar).
-5. **Validación de calidad** — medir la calidad de los clústeres frente a identidades
-   etiquetadas; "se ejecuta y emite vectores de 512 dimensiones" no demuestra que el
-   preprocesamiento sea correcto.
+AdaFace (mejor agrupamiento de rostros borrosos o espontáneos) **aún no está implementado**. Adoptarlo exigiría una reextracción y un reagrupamiento completos (`--extract-faces-gpu-force` y luego `--cluster-faces-force`), porque los embeddings de ArcFace y de AdaFace no son comparables.
 
 ### Bibliotecas mixtas, reextracción y valores desconocidos
 
-- **Bibliotecas mixtas.** Una biblioteca puede contener rostros ArcFace (512-d) y SFace (128-d) a la vez. El agrupador, las sugerencias de fusión, la búsqueda de persona similar y los centroides de personas usan cada uno un solo modelo (`persons.centroid_model` registra cuál); los modos de agrupación incremental y solo-con-nombre no tocan los rostros ni las personas del otro modelo, pero `--cluster-faces-force` borra todas las asignaciones rostro→persona y todas las personas, incluidas las nombradas, sea cual sea su modelo. Para pasar una biblioteca al modelo activo, ejecuta `--extract-faces-gpu-force` (en modo comercial usa el extractor permisivo; las personas con nombre se conservan) y después `--cluster-faces-incremental`.
-- **Avisos.** Un escaneo registra una advertencia cuando hay rostros almacenados de un modelo distinto del activo, y `--doctor` informa de la misma discrepancia respecto al modelo activo. En modo comercial, `--doctor` enumera los componentes que un escaneo cargaría realmente (YuNet, SFace, Q-ReAlign y, si `python-ofiq` está instalado, OFIQ), y no los que el perfil de VRAM se limita a nombrar, por lo que TOPIQ, LIQE e InsightFace ya no aparecen como advertencias. Un escaneo en CUDA también registra una advertencia cuando las sesiones de ONNX Runtime de InsightFace se ejecutan en la CPU (una compilación de `onnxruntime` solo para CPU, o una compilación de GPU cuyas bibliotecas CUDA no cargan); la sección ONNX Runtime de `--doctor` muestra el motivo, y [Instalación › ONNX Runtime para la detección de rostros](INSTALLATION.md#onnx-runtime-para-la-detección-de-rostros) indica la solución.
-- **Las personas con nombre sobreviven a la reextracción.** Antes de que `--extract-faces-gpu-force` borre las filas de rostros, Facet recuerda el recuadro de cada rostro de una persona con nombre; después, cada rostro redetectado se devuelve a la persona cuyo recuadro antiguo lo solapa con IoU >= 0,5 (uno a uno, primero el mayor solapamiento) y los centroides se recalculan por modelo. Un rostro sin recuadro antiguo equivalente queda sin asignar hasta la siguiente agrupación. Los recuadros recordados se guardan en la tabla `face_reextract_snapshot` en la misma transacción que el borrado, de modo que una ejecución interrumpida se retoma en la siguiente extracción. Reescanear una foto conserva sus personas con nombre de la misma forma. Los centroides de personas que un reescaneo dejó obsoletos se reconstruyen una sola vez al terminar el escaneo (incluso si se interrumpe), no una vez por lote; los recuentos y los rostros representativos se siguen actualizando por lote.
-- **Desconocido no es cero.** Sin MediaPipe el analizador permisivo no puede medir ojos, sonrisa ni parpadeos, por lo que esos valores se guardan como NULL (no 0 ni «parpadeando»); el filtro y la penalización de parpadeo tratan NULL como «no es un parpadeo». Los lectores de los 106 puntos de referencia omiten los rostros sin ellos. Una foto cuyo paso de rostros falla se almacena con `face_count`, `face_ratio` e `is_group_portrait` en NULL (desconocido), no en 0, y se conservan sus rostros almacenados; la puntuación la trata como sin rostro hasta que se vuelva a escanear.
+- **Bibliotecas mixtas.** Una biblioteca puede contener a la vez rostros de ArcFace (512-d) y de SFace (128-d). El agrupamiento, las sugerencias de fusión, la búsqueda de personas similares y los centroides usan cada uno un solo modelo a la vez (`persons.centroid_model` lo registra).
+  - Los modos incremental y solo-con-nombre dejan intactos los rostros y personas del otro modelo.
+  - `--cluster-faces-force` borra todas las asignaciones de rostros y elimina todas las personas, también las que tienen nombre, sea cual sea el modelo.
+  - Para llevar una biblioteca al modelo activo, ejecuta `--extract-faces-gpu-force` (extractor permisivo en modo comercial; las personas con nombre se conservan) y luego `--cluster-faces-incremental`.
+- **Advertencias.** Un escaneo avisa cuando los rostros almacenados usan un modelo distinto del activo, y `--doctor` también lo informa. En modo comercial, `--doctor` enumera lo que un escaneo realmente carga (YuNet, SFace, Q-ReAlign, más OFIQ cuando `python-ofiq` está instalado). En CUDA, un escaneo avisa una vez cuando InsightFace se ejecuta en la CPU; consulta la sección ONNX Runtime de `--doctor` e [Instalación › ONNX Runtime para la detección de rostros](INSTALLATION.md#onnx-runtime-para-la-detección-de-rostros).
+- **Las personas con nombre sobreviven a la reextracción.** `--extract-faces-gpu-force` devuelve cada rostro redetectado a la persona con nombre cuyo cuadro de rostro antiguo se solapa con él (IoU >= 0.5, uno a uno). Los rostros sin correspondencia esperan a la siguiente ejecución de agrupamiento. Una ejecución interrumpida se reanuda en la siguiente extracción. Reescanear una foto conserva sus personas con nombre del mismo modo.
+- **Desconocido no es cero.** Sin MediaPipe, el analizador permisivo no puede medir los ojos, la sonrisa ni los parpadeos, así que se almacenan como NULL; los filtros y penalizaciones de parpadeo tratan NULL como «no es un parpadeo». Si falla el paso de rostros de una foto, `face_count`, `face_ratio` e `is_group_portrait` quedan en NULL y se conservan sus rostros almacenados; puntúa como si no tuviera rostro hasta que se reescanee.
 
 ## Resolución de problemas
 

@@ -13,16 +13,26 @@ O Facet tem duas cargas de trabalho:
 
 | Componente | Hardware | Finalidade |
 |-----------|----------|---------|
-| **Pontuação** (`facet.py`) | GPU (6-24GB VRAM) ou CPU (8GB mínimo, 12GB recomendado de RAM, mais para os perfis `16gb`/`24gb` — veja [Limites de memória do contêiner](#limites-de-memória-do-contêiner)) | Analisar e pontuar fotos |
+| **Pontuação** (`facet.py`) | GPU (6-24GB VRAM) ou CPU (8GB de RAM no mínimo, 12GB recomendado; mais para `16gb`/`24gb`, veja [Limites de memória do contêiner](#limites-de-memória-do-contêiner)) | Analisar e pontuar fotos |
 | **Visualizador** (`viewer.py`) | Qualquer máquina (poucos recursos) | Servir a galeria web |
 
 Apenas o visualizador precisa rodar no servidor. Pontue em uma estação de trabalho e, em seguida, sincronize o banco de dados.
 
-> **Aviso:** enquanto `viewer.password` estiver vazio (o padrão), qualquer pessoa que alcance a porta do visualizador pode navegar por toda a biblioteca e baixar as fotos originais, qualquer que seja a forma de iniciá-lo abaixo. Defina `viewer.password` antes de expor a porta além da máquina; veja a nota em [Modo de Usuário Único](VIEWER.md#modo-de-usuário-único-padrão). Numa instalação aberta, os tokens do assistente (**Ligar um assistente**) também só se criam, listam e revogam a partir do computador onde o Facet está a correr: uma implementação Docker (o navegador alcança o contentor pelo gateway da rede bridge) ou um proxy inverso não os consegue gerir, por isso defina aí `viewer.password` ou execute o pedido no anfitrião (`docker compose exec facet python -c "import urllib.request ..."`). Um proxy inverso tem de enviar `X-Forwarded-For` ou `Forwarded`; caso contrário é tratado como a máquina local.
+> **Aviso:** enquanto `viewer.password` estiver vazio (o padrão), qualquer pessoa que alcance
+> a porta do visualizador pode navegar por toda a biblioteca e baixar as fotos originais.
+> Defina `viewer.password` antes de expor a porta além da máquina; veja
+> [Modo de Usuário Único](VIEWER.md#modo-de-usuário-único-padrão).
+
+Em uma instalação aberta (sem `viewer.password`), os tokens do assistente (**Ligar um assistente**)
+só se criam, listam e revogam a partir do computador onde o Facet está rodando. Atrás do Docker
+ou de um proxy inverso, defina `viewer.password` ou execute o pedido no host
+(`docker compose exec facet python -c "import urllib.request ..."`). Um proxy inverso tem de
+enviar `X-Forwarded-For` ou `Forwarded`; caso contrário é tratado como a máquina local.
 
 ## Mapeamento de caminhos
 
-Quando a máquina de pontuação e o servidor do visualizador acessam as fotos a partir de pontos de montagem diferentes, configure `viewer.path_mapping` em `scoring_config.json` para traduzir os caminhos do banco de dados em caminhos de disco locais.
+Quando a máquina de pontuação e o visualizador veem as fotos em caminhos diferentes, configure
+`viewer.path_mapping` em `scoring_config.json` para traduzir os caminhos do banco de dados em caminhos locais.
 
 **Exemplo:** Fotos pontuadas no Windows via UNC/NFS, servidas a partir de um NAS Linux:
 
@@ -36,7 +46,8 @@ Quando a máquina de pontuação e o servidor do visualizador acessam as fotos a
 }
 ```
 
-Use **barras normais** nas chaves de configuração para facilitar a leitura — as barras invertidas são normalizadas automaticamente. Isso mapeia caminhos do banco de dados como `\\NAS\share\Photos\2024\IMG_001.jpg` para `/volume1/Photos/2024/IMG_001.jpg`.
+Isso mapeia `\\NAS\share\Photos\2024\IMG_001.jpg` para `/volume1/Photos/2024/IMG_001.jpg`.
+Use barras normais nas chaves; as barras invertidas são normalizadas.
 
 Vários mapeamentos são suportados (o primeiro que corresponder vence):
 
@@ -51,27 +62,30 @@ Vários mapeamentos são suportados (o primeiro que corresponder vence):
 }
 ```
 
-**Como funciona:**
-- O banco de dados armazena os caminhos originais da varredura (por exemplo, `\\NAS\share\Photos\2024\IMG_001.jpg`)
-- As miniaturas são armazenadas como BLOBs no banco de dados, então a navegação não precisa de acesso ao disco
-- O mapeamento de caminhos é aplicado sempre que o visualizador abre um arquivo original: downloads, visualização em resolução total, legendagem e crítica
-- Tanto caminhos UNC (`\\server\share`) quanto letras de unidade (`Z:\`) são suportados
-- O primeiro prefixo correspondente vence
+- O banco de dados mantém os caminhos originais da varredura (por exemplo, `\\NAS\share\Photos\2024\IMG_001.jpg`).
+- As miniaturas ficam no banco de dados, então a navegação não precisa de acesso ao disco.
+- O mapeamento é aplicado sempre que o visualizador abre um original: downloads, visualização em
+  resolução total, legendagem e crítica.
+- Tanto caminhos UNC (`\\server\share`) quanto letras de unidade (`Z:\`) funcionam.
 
 ## Semântica de caminhos em contêiner
 
-Tudo que você digita em um campo de pasta no visualizador — um destino de "Selecionar para pasta", o destino de exportação copiar/symlink de um álbum, ou `viewer.export.allowed_target_dirs` em `scoring_config.json` — é resolvido pelo próprio processo do Facet. **No Docker/Podman esse processo roda dentro do contêiner**, então todo caminho é o caminho que *o contêiner* vê: o ponto de montagem, nunca o caminho do lado do host.
+No Docker/Podman, toda pasta digitada no visualizador é um caminho **dentro do contêiner**.
+Isso vale para o destino de "Selecionar para pasta", o destino de exportação de um álbum e
+`viewer.export.allowed_target_dirs`. Use o ponto de montagem, nunca o caminho do host.
 
-**Exemplo.** O `docker-compose.yml` fornecido monta sua pasta de fotos em `/data/photos`:
+**Exemplo.** O `docker-compose.yml` fornecido monta suas fotos em `/data/photos`:
 
 ```yaml
 volumes:
   - ${PHOTOS_DIR:-./photos}:/data/photos
 ```
 
-Para selecionar rejeitadas para uma subpasta `rejects`, digite `/data/photos/rejects` na caixa de diálogo — nunca o caminho do host (`/home/voce/Fotos`, `D:\Fotos`, …), que o contêiner não consegue ver de forma alguma. O mesmo vale para `viewer.export.allowed_target_dirs`: liste o caminho do lado do contêiner.
+Para selecionar rejeitadas para uma subpasta `rejects`, digite `/data/photos/rejects`, não
+`/home/voce/Fotos` nem `D:\Fotos`, que o contêiner não consegue ver.
 
-Para gravar em outro lugar que não a árvore de fotos varrida — um volume de exportação separado, por exemplo —, monte-o primeiro no contêiner e depois adicione seu caminho do lado do contêiner a `viewer.export.allowed_target_dirs`:
+Para gravar fora da árvore de fotos, monte primeiro o destino e depois liste o caminho do lado do
+contêiner em `viewer.export.allowed_target_dirs`:
 
 ```yaml
 services:
@@ -91,38 +105,58 @@ services:
 }
 ```
 
-Um destino que se resolve fora de todo volume montado é recusado (`403`) — a verificação de target-dir do Facet executa `os.path.realpath()` tanto na requisição *quanto* em cada raiz permitida, resolvendo links simbólicos e `..` antes de comparar, então um caminho que só parece correto de fora do contêiner (ou um link simbólico apontando para fora de uma montagem) ainda falha no teste de contenção. Veja [Configuração — Destinos de exportação e seleção](CONFIGURATION.md#destinos-de-exportação-e-seleção) para a referência completa da lista de permissões.
+Um destino fora de todas as raízes permitidas é recusado, depois de resolver links simbólicos e `..`.
+Veja [Configuração — Destinos de exportação e seleção](CONFIGURATION.md#destinos-de-exportação-e-seleção).
 
-**Isso não é um problema de permissões do usuário do contêiner.** O UID do usuário `facet` dentro do contêiner costuma diferir do da sua conta no host, e isso pode causar um problema real e separado de permissões do sistema de arquivos em um bind mount — mas isso acontece *depois* que essa verificação de caminho é aprovada, quando a cópia/symlink/movimentação realmente roda, e é registrado no servidor com o erro subjacente do sistema operacional para o arquivo que falhou. Um `403 target_dir is not an allowed export location` (ou um "acesso negado" genérico na interface) acontece *antes* de qualquer arquivo ser tocado e não tem nada a ver com UIDs.
+**Essa recusa não é um problema de permissões.** Ela acontece antes de qualquer arquivo ser tocado. Uma
+divergência de uid entre o usuário `facet` do contêiner e sua conta no host é uma falha separada:
+ocorre durante a cópia/movimentação e é registrada com o erro do sistema operacional.
 
 ### Para onde vai a lixeira de um contêiner
 
-Quando `viewer.cull.allow_trash` está ativado, `trash_rejects` chama `send2trash`, que implementa a especificação de lixeira freedesktop.org e escolhe entre dois destinos conforme o arquivo e seu `$HOME` compartilhem ou não o mesmo sistema de arquivos. No layout de contêiner fornecido — fotos montadas via bind em `/data/photos`, rodando como uid 1000 com `HOME=/home/facet` — isso nunca acontece: `/data/photos` é seu próprio ponto de montagem dentro do contêiner (`os.path.ismount()` retorna `True` para ele) e fica em um dispositivo diferente do `$HOME` em overlay do contêiner — compare `os.stat(...).st_dev` para uma foto e para `$HOME` se quiser confirmar isso no seu próprio ambiente; os valores em si variam conforme o host, o que importa é apenas o fato de serem diferentes. Por isso o `send2trash` segue o ramo de *lixeira de volume* da especificação, não o de lixeira da home: um arquivo rejeitado vai parar em `/data/photos/.Trash-1000/files/<nome>`, com um `<nome>.trashinfo` correspondente registrando `Path=` e `DeletionDate=` sob `/data/photos/.Trash-1000/info/`. Esse diretório é criado com o modo `0700`.
+Com `viewer.cull.allow_trash` ativado, `trash_rejects` usa `send2trash`. No layout fornecido
+(fotos montadas via bind em `/data/photos`, uid 1000, `HOME=/home/facet`), as fotos e o
+`$HOME` ficam em sistemas de arquivos diferentes, então os arquivos enviados para a lixeira vão para a lixeira do próprio volume de fotos:
 
-Como `/data/photos` é o próprio bind mount, `.Trash-1000` fica visível e intacto no lado do **host** do mount — um simples `mv` para fora de `files/` restaura uma foto que foi para a lixeira, sem precisar de acesso ao contêiner. O próprio scanner do Facet não tropeça nela por acidente: o `os.walk` remove diretórios ocultos quando `scanning.skip_hidden_directories` é verdadeiro (padrão), então um arquivo na lixeira permanece invisível para uma nova varredura com essa opção ativada, e é encontrado de novo se você a desativar.
+- arquivos: `/data/photos/.Trash-1000/files/<nome>`
+- metadados: `<nome>.trashinfo` (com `Path=` e `DeletionDate=`) em `/data/photos/.Trash-1000/info/`
+- o diretório é criado com o modo `0700`
 
-Dois casos se comportam de forma diferente:
+`.Trash-1000` fica visível no **host**, então um simples `mv` para fora de `files/` restaura uma foto.
+As novas varreduras o ignoram enquanto `scanning.skip_hidden_directories` for verdadeiro (o padrão).
 
-- **Sem bind mount para a árvore de fotos** (por exemplo, um `docker run` armazenando fotos no próprio sistema de arquivos do contêiner) coloca as fotos no mesmo dispositivo que `$HOME`, então o `send2trash` passa a usar a lixeira local do contêiner (`~/.local/share/Trash`) — que se perde quando o contêiner é removido.
-- **Podman sem root** mapeia o uid 1000 do contêiner para um subuid do host, então o dono, do lado do host, de `.Trash-1000` é esse id mapeado, não sua própria conta; ler ou restaurar a partir dele no host pode exigir `podman unshare`.
+Dois casos diferentes:
 
-Se você quiser que os arquivos enviados para a lixeira fiquem em um lugar escolhido por você, em vez de uma pasta de lixeira oculta por volume, `move_rejects` para uma subpasta explícita (veja [Selecionar para pasta](VIEWER.md#selecionar-para-pasta)) continua sendo a alternativa — igualmente segura em contêiner, com o `target_dir` que você indicar como destino.
+- **Sem bind mount** para as fotos (por exemplo, um `docker run` com as fotos dentro do contêiner):
+  a lixeira vai para `~/.local/share/Trash` no contêiner e **se perde quando o contêiner é
+  removido**.
+- **Podman sem root**: `.Trash-1000` pertence ao subuid do host mapeado, não à sua conta;
+  restaurar pode exigir `podman unshare`.
+
+Para escolher o destino você mesmo, use `move_rejects` para um `target_dir`
+([Selecionar para pasta](VIEWER.md#selecionar-para-pasta)).
 
 ### Propriedade do arquivo de configuração
 
-O mesmo limite de UID se aplica também a `/config/scoring_config.json`. O Facet só assume a posse de uma configuração que ele mesmo criou; um arquivo já existente mantém o dono e as permissões que você deu a ele, e as próprias gravações de configuração do Facet agora tentam preservar isso em vez de entregar o arquivo ao uid com o qual o contêiner roda. Veja [Instalação — Propriedade do arquivo no contêiner](INSTALLATION.md#propriedade-do-arquivo-no-contêiner) para o que é garantido, o único caso em que o Facet ainda assim assume a posse (uma configuração preexistente que o usuário `facet` do contêiner não consegue ler), e a receita para que uma configuração montada sob Podman rootless permaneça sua e ao mesmo tempo gravável pelo contêiner.
+O Facet só assume a posse de um `/config/scoring_config.json` que ele mesmo criou; um arquivo existente
+mantém o dono e as permissões. A única exceção (uma configuração que o usuário `facet` do contêiner não consegue
+ler) e a receita para Podman sem root estão em
+[Instalação — Propriedade do arquivo no contêiner](INSTALLATION.md#propriedade-do-arquivo-no-contêiner).
 
-Com `group_add` do compose (veja [Compartilhamentos de fotos legíveis apenas por um grupo](#compartilhamentos-de-fotos-legíveis-apenas-por-um-grupo-group_add)), a verificação de legibilidade roda com esses mesmos grupos suplementares, então uma configuração legível apenas por um grupo desses não aciona mais essa tomada de propriedade. Se a própria chamada `setpriv` da verificação falhar, o arquivo é tratado como ilegível (tomada de propriedade, com o aviso em stderr).
+Com `group_add` do compose (veja [Compartilhamentos de fotos legíveis apenas por um grupo](#compartilhamentos-de-fotos-legíveis-apenas-por-um-grupo-group_add)),
+a verificação de legibilidade também usa esses grupos, então uma configuração legível por meio de um desses grupos é
+deixada como está. Se a própria verificação `setpriv` falhar, o arquivo é tratado como ilegível.
 
 ## Compilando o cliente Angular
 
-O servidor FastAPI serve a SPA pré-compilada a partir de `client/dist/client/browser/`. Compile-a antes da implantação:
+O servidor serve a SPA pré-compilada a partir de `client/dist/client/browser/`. Compile-a antes de
+implantar:
 
 ```bash
 cd client && npm install && npx ng build && cd ..
 ```
 
-Isso requer Node.js 20+ apenas no momento da compilação. Os arquivos compilados são ativos estáticos — o Node.js não é necessário no servidor em tempo de execução.
+Isso requer Node.js 20+ apenas no momento da compilação, não no servidor.
 
 ## Synology NAS (DS420j / série J)
 
@@ -152,40 +186,43 @@ pip3 install fastapi uvicorn pyjwt pillow aiosqlite
 
 ### Exportando um banco de dados leve
 
-Na sua estação de trabalho de pontuação, exporte um banco de dados reduzido para implantação no NAS:
+Na estação de trabalho de pontuação, exporte um banco de dados menor para o NAS:
 
 ```bash
 python database.py --export-viewer-db
 ```
 
 Isso cria `photo_scores_viewer.db`, que:
-- Remove os embeddings CLIP, os embeddings de legenda e os embeddings de rostos
-- Mantém o histograma por foto (~2 KB cada), lido pelo widget de histograma RGB da galeria
-- Reduz as miniaturas de 640px para 320px
-- Normalmente reduz um banco de dados de 14GB para ~4-5GB
 
-As exportações são incrementais: se `photo_scores_viewer.db` já existir, apenas as fotos novas e alteradas são sincronizadas. Use `--force-export` para uma reconstrução completa:
+- remove os embeddings CLIP, de legenda e de rostos;
+- mantém o histograma por foto (~2 KB cada) para o widget de histograma RGB;
+- reduz as miniaturas de 640px para 320px;
+- normalmente reduz um banco de dados de 14GB para ~4-5GB.
+
+As exportações são incrementais: apenas as fotos novas e alteradas são sincronizadas. Para uma reconstrução completa:
 
 ```bash
 python database.py --export-viewer-db --force-export
 ```
 
-Uma reconstrução completa forçada descarta as localizações definidas no visualizador no NAS, assim como as classificações do visualizador; apenas uma exportação incremental as mantém.
+> **Aviso:** `--force-export` descarta as classificações, localizações e tags manuais definidos no
+> visualizador no NAS. Apenas uma exportação incremental os mantém.
 
-O recurso "Encontrar semelhantes" não funcionará no banco de dados exportado (os embeddings CLIP são removidos). Use a máquina de pontuação para isso.
+"Encontrar semelhantes" não funciona no banco de dados exportado (sem embeddings). Use a
+máquina de pontuação para isso.
 
-**Tags manuais e a exportação.** A exportação inclui também a tabela de [tags manuais](VIEWER.md#tags-manuais) (`photo_manual_tags`), e uma exportação incremental a mescla acrescentando as linhas do banco de dados de pontuação, nunca substituindo a cópia do visualizador. Assim os tags digitados no NAS são preservados, mas com quatro limites:
+**Tags manuais.** A exportação inclui as [tags manuais](VIEWER.md#tags-manuais)
+(`photo_manual_tags`). Uma exportação incremental apenas acrescenta as tags do banco de dados de pontuação:
 
-- Um tag manual que você remove no visualizador do NAS volta na próxima exportação incremental se o banco de dados de pontuação ainda o tiver.
-- Um tag manual adicionado no NAS não é copiado de volta para o banco de dados de pontuação; nada sincroniza o banco do visualizador no sentido contrário, então adicione-o também na máquina de pontuação se quiser mantê-lo.
-- `--force-export` reconstrói o banco de dados do visualizador a partir do de pontuação, de modo que os tags manuais que existem apenas no NAS são perdidos.
-- A mesclagem apenas acrescenta linhas: um tag manual que você remove na máquina de pontuação permanece no NAS até que `--force-export` reconstrua o banco de dados do visualizador; além disso, ela não aplica o limite de 50 tags por foto, então uma foto pode ultrapassá-lo lá quando os dois lados adicionaram tags.
+- Uma tag removida no NAS volta se o banco de dados de pontuação ainda a tiver.
+- Uma tag adicionada no NAS nunca é copiada de volta; adicione-a também na máquina de pontuação.
+- Uma tag removida na máquina de pontuação permanece no NAS até `--force-export`.
+- O limite de 50 tags por foto não é aplicado na mesclagem, então uma foto pode ultrapassá-lo.
 
 ### Sincronizando arquivos
 
-Na máquina de pontuação, compile primeiro o cliente Angular (consulte [Compilando o cliente Angular](#compilando-o-cliente-angular)).
-
-Em seguida, sincronize o visualizador e o banco de dados exportado com o NAS:
+Compile primeiro o cliente Angular ([Compilando o cliente Angular](#compilando-o-cliente-angular)),
+depois sincronize com o NAS:
 
 ```bash
 rsync -avz \
@@ -195,24 +232,23 @@ rsync -avz \
   admin@your-synology-ip:/volume1/facet/
 ```
 
-`config/` carrega os padrões distribuídos, então nenhum `scoring_config.json` é
-sincronizado: o NAS roda com esses valores, a menos que você coloque seu próprio
-override ao lado do visualizador. Se você tiver um na máquina de pontuação,
-adicione-o à lista do `rsync` — é um arquivo específico da instalação, então
-revise-o primeiro (ele contém a senha do visualizador e quaisquer chaves de API em
-texto simples).
+`config/` carrega os padrões distribuídos, então o NAS roda com esses valores. Para usar seu próprio
+`scoring_config.json`, adicione-o à lista do `rsync`. Revise-o primeiro: ele contém a senha do
+visualizador e as chaves de API em texto simples.
 
-O visualizador abre `photo_scores_pro.db` por padrão (substituível pela variável de ambiente `DB_PATH`). No NAS, defina `DB_PATH=/volume1/facet/photo_scores_viewer.db` ou crie um link simbólico:
+O visualizador abre `photo_scores_pro.db` por padrão (substituível com `DB_PATH`). No NAS,
+defina `DB_PATH=/volume1/facet/photo_scores_viewer.db` ou crie um link simbólico:
+
 ```bash
 cd /volume1/facet
 ln -sf photo_scores_viewer.db photo_scores_pro.db
 ```
 
-As fotos originais devem estar acessíveis no NAS no caminho configurado em `path_mapping` para que os downloads funcionem.
+Para os downloads, os originais devem estar acessíveis no NAS no caminho de `path_mapping`.
 
 ### Configuração para pouca memória
 
-Adicione `viewer.performance` ao `scoring_config.json` no NAS para reduzir o uso de memória:
+Adicione `viewer.performance` ao `scoring_config.json` no NAS:
 
 ```json
 {
@@ -227,7 +263,8 @@ Adicione `viewer.performance` ao `scoring_config.json` no NAS para reduzir o uso
 }
 ```
 
-Isso substitui as configurações globais de `performance` (que são ajustadas para a pontuação) por valores adequados para 1GB de RAM. Consulte [Configuração](CONFIGURATION.md#desempenho-do-visualizador) para detalhes.
+Isso substitui as configurações globais de `performance` (ajustadas para a pontuação) por valores para 1GB
+de RAM. Consulte [Configuração](CONFIGURATION.md#desempenho-do-visualizador).
 
 ### Execução
 
@@ -241,7 +278,7 @@ python3 viewer.py
 uvicorn api:create_app --factory --host 0.0.0.0 --port 5000 --workers 1
 ```
 
-Acesse em `http://your-synology-ip:5000`
+Acesse em `http://your-synology-ip:5000`.
 
 ### Início automático
 
@@ -257,17 +294,18 @@ DSM > Painel de Controle > Agendador de Tarefas > Criar > Tarefa Acionada > Scri
 
 ### HTTPS
 
-Use o proxy reverso integrado do Synology:
-
-DSM > Painel de Controle > Portal de Login > Avançado > Proxy Reverso:
+Use o proxy reverso do Synology: DSM > Painel de Controle > Portal de Login > Avançado > Proxy Reverso:
 
 | Origem | Destino |
 |--------|-------------|
 | `https://photos.yourdomain.com:443` | `http://localhost:5000` |
 
-Combine com um certificado Let's Encrypt em DSM > Painel de Controle > Segurança > Certificado.
+Adicione um certificado Let's Encrypt em DSM > Painel de Controle > Segurança > Certificado.
 
-Se usar a ponte de separador para agentes (veja [Agentes de IA](AGENTS.md)), abra também o separador **Cabeçalho personalizado** da regra e escolha **Criar > WebSocket**: acrescenta os cabeçalhos `Upgrade` e `Connection` de que `/api/mcp/bridge` precisa. Se a regra reescrever o cabeçalho `Host`, indique também a sua origem pública em `viewer.mcp.allowed_origins`.
+Para a ponte de aba para agentes ([Agentes de IA](AGENTS.md)), abra a aba **Cabeçalho personalizado**
+da regra e escolha **Criar > WebSocket**. Isso acrescenta os cabeçalhos `Upgrade` e `Connection`
+de que `/api/mcp/bridge` precisa. Se a regra reescrever o cabeçalho `Host`, indique a sua origem pública em
+`viewer.mcp.allowed_origins`.
 
 ## Synology NAS (série Plus / x86)
 
@@ -275,33 +313,43 @@ O NAS da série Plus suporta Docker (Container Manager).
 
 ### Executando a imagem publicada
 
-Instale exatamente como em
-[Instalação › Instalar com Docker](INSTALLATION.md#instalar-com-docker):
-`docker compose up -d` para um NAS somente CPU, ou o bloco específico do perfil se a
-máquina tiver uma placa NVIDIA. Os ajustes do `.env` e a montagem da configuração estão
-documentados em
+Instale como em [Instalação › Instalar com Docker](INSTALLATION.md#instalar-com-docker):
+`docker compose up -d` em um NAS somente CPU, ou o bloco específico do perfil com uma placa NVIDIA. Os ajustes do
+`.env` e a montagem da configuração estão em
 [Instalação › Configurações do Docker que você pode alterar](INSTALLATION.md#configurações-do-docker-que-você-pode-alterar).
 O que segue é apenas o que muda em um NAS.
 
-**As três imagens publicadas são apenas `linux/amd64` (x86_64).** Isso cobre o hardware NAS x86 (Synology Plus/x86, UGREEN, UnifyDrive e qualquer coisa que execute Coolify, Portainer ou Docker comum em uma CPU Intel/AMD). Não existe uma imagem `arm64`: a compilação cruzada de uma pilha de ML de vários gigabytes sob QEMU custa horas por tag, e as variantes CUDA são, de qualquer forma, exclusivas de x86. Em um NAS ARM ou um Raspberry Pi, compile localmente com `docker compose build` em vez de baixar — `docker compose up` mantém `build: .` abaixo da chave `image:` exatamente para esse caso.
+**As imagens são apenas `linux/amd64` (x86_64).** Isso cobre o hardware NAS x86 (Synology
+Plus/x86, UGREEN, UnifyDrive, Coolify, Portainer ou Docker comum em Intel/AMD). Não existe
+uma imagem `arm64`. Em um NAS ARM ou um Raspberry Pi, compile localmente com
+`docker compose build`; o arquivo compose mantém `build: .` abaixo da chave `image:` para esse caso.
 
-**Reserve espaço em disco.** Já descompactada, a imagem CPU tem aproximadamente
-3,34 GB em disco, a imagem CUDA (`latest-cuda`, `sm_75`-`sm_120`) aproximadamente
-13,1 GB, e a imagem CUDA legacy (`latest-cuda-legacy`, `sm_50`-`sm_90`)
-aproximadamente 13,8 GB — veja [Tamanho da imagem](#tamanho-da-imagem) mais
-abaixo para saber como esses números foram medidos; o `docker pull` transfere
-menos que isso, compactado. Reserve espaço em disco para a imagem **mais** os
-pesos de modelo que cada perfil baixa na primeira execução
-(`legacy` 4,69 GB, `8gb` 6,93 GB,
-`16gb` 14,55 GB, `24gb` 19,13 GB — tabela completa em
-[Instalação › Tamanhos de download](INSTALLATION.md#tamanhos-de-download)).
-`docker compose down -v` apaga os volumes de modelos e força um novo download.
+**Reserve espaço em disco:** a imagem mais os modelos que cada perfil baixa na primeira execução.
 
-**Tags versionadas.** `:latest`, `:latest-cuda` e `:latest-cuda-legacy` avançam a cada release; fixe uma versão (`:1.7.2`, `:1.7`, `:1.7.2-cuda`, `:1.7.2-cuda-legacy`, …) em um NAS que você não quer que mude sozinho. As três variantes são compiladas a partir do mesmo `Dockerfile`, com os build args `BASE_IMAGE`, `STRIP_TORCH`, `INSTALL_CUML` e `REQUIREMENTS_LOCK`, definidos por variante em `.github/workflows/docker-publish.yml`. Esse workflow também aceita uma execução manual via `workflow_dispatch`, que republica `latest` / `latest-cuda` / `latest-cuda-legacy` a partir de `master` sem cortar uma release nem gerar uma tag versionada.
+- Imagens, descompactadas: CPU ~3,34 GB, `latest-cuda` (`sm_75`-`sm_120`) ~13,1 GB,
+  `latest-cuda-legacy` (`sm_50`-`sm_90`) ~13,8 GB ([Tamanho da imagem](#tamanho-da-imagem)).
+  O `docker pull` baixa menos, compactado.
+- Modelos: `legacy` 4,69 GB, `8gb` 6,93 GB, `16gb` 14,55 GB, `24gb` 19,32 GB
+  ([Tamanhos de download](INSTALLATION.md#tamanhos-de-download)).
+- `docker compose down -v` apaga os volumes de modelos e força um novo download.
 
-**Build comercial.** Adicione `--build-arg FACET_LICENSING=commercial` (compose: `build.args.FACET_LICENSING: commercial`) para pular o lock restrito (`insightface`, `pyiqa` e o que só eles usam) e definir `FACET_LICENSING_MODE=commercial` na imagem. O padrão `FACET_LICENSING=default` o instala, então as imagens publicadas não mudam. O lock restrito é derivado de `REQUIREMENTS_LOCK` (`requirements.legacy.restricted.lock.txt` para o lock legacy). Veja [Instalação](INSTALLATION.md).
+**Tags versionadas.** `:latest`, `:latest-cuda` e `:latest-cuda-legacy` avançam a cada
+release. Fixe uma versão (`:1.7.2`, `:1.7`, `:1.7.2-cuda`, `:1.7.2-cuda-legacy`, …) em um NAS
+que você não quer que mude sozinho. As variantes são compiladas a partir de um único `Dockerfile` com os
+build args `BASE_IMAGE`, `STRIP_TORCH`, `INSTALL_CUML` e `REQUIREMENTS_LOCK`, definidos em
+`.github/workflows/docker-publish.yml`. Uma execução manual via `workflow_dispatch` desse workflow
+republica `latest` / `latest-cuda` / `latest-cuda-legacy` a partir de `master` sem uma release.
 
-Para um NAS apenas de visualização, no qual a imagem deve permanecer pequena (sem CUDA), compile uma imagem enxuta. Observe que a proteção de CI exige que toda origem `COPY` esteja versionada no git, então o contexto de compilação deve incluir os arquivos listados — por isso nenhum `scoring_config.json` é copiado: esse arquivo é um override específico da instalação, não versionado, e sua ausência apenas significa que o container roda com os padrões dentro de `config/`.
+**Build comercial.** Adicione `--build-arg FACET_LICENSING=commercial` (compose:
+`build.args.FACET_LICENSING: commercial`). Isso pula o lock restrito (`insightface`,
+`pyiqa` e suas dependências) e define `FACET_LICENSING_MODE=commercial`. O padrão
+`FACET_LICENSING=default` mantém o comportamento publicado. O lock restrito segue
+`REQUIREMENTS_LOCK` (`requirements.legacy.restricted.lock.txt` para o lock legacy). Veja
+[Instalação](INSTALLATION.md#instalação-comercial-e-pacotes-restritos).
+
+Para uma imagem pequena apenas de visualização (sem CUDA), compile uma enxuta. Toda origem `COPY` deve estar
+versionada no git, e por isso `scoring_config.json` não é copiado; sem ele, o contêiner
+roda com os padrões de `config/`.
 
 ```dockerfile
 FROM python:3.11-slim
@@ -317,7 +365,9 @@ EXPOSE 5000
 CMD ["uvicorn", "api:create_app", "--factory", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"]
 ```
 
-Vários workers não funcionam com a ponte de separador para agentes: o seu registo de separadores é por processo, por isso com mais de um worker uma chamada `ui_*` pode chegar a um processo que não conhece o seu separador e responder `no_tab`. Use `--workers 1` se usar os [Agentes de IA](AGENTS.md).
+> **A ponte de aba para agentes exige um worker.** Com mais de um worker, uma chamada `ui_*` pode chegar a
+> um processo que não conhece a sua aba e responder `no_tab`. Use `--workers 1` se usar os
+> [Agentes de IA](AGENTS.md).
 
 ```yaml
 services:
@@ -333,7 +383,9 @@ services:
 
 ### Compartilhamentos de fotos legíveis apenas por um grupo (`group_add`)
 
-Em um NAS, o compartilhamento de fotos costuma ser legível apenas por um grupo suplementar (no Synology, tipicamente `users`, gid 100) e não pelo uid `facet` do contêiner. Dê esse grupo ao contêiner com `group_add` do compose, usando o gid numérico mostrado por `id <seu-usuario>` no NAS:
+Em um NAS, o compartilhamento de fotos costuma ser legível apenas por um grupo (no Synology, tipicamente
+`users`, gid 100). Dê esse grupo ao contêiner com `group_add`, usando o gid numérico
+de `id <seu-usuario>` no NAS:
 
 ```yaml
 services:
@@ -342,19 +394,24 @@ services:
       - "100"
 ```
 
-O entrypoint inicia como root e passa a `facet` com `setpriv`, preservando os gids de `group_add` (antes usava `gosu`, que os descartava, e o scanner não conseguia ler o compartilhamento). Confira com `docker compose exec facet grep Groups /proc/1/status`: a saída lista `1000` mais os seus gids.
+O entrypoint passa de root para `facet` com `setpriv` e preserva esses gids. Confira com
+`docker compose exec facet grep Groups /proc/1/status`: a saída lista `1000` mais os seus gids.
 
-Alternativa: executar sem privilégios com `user: "1000:1000"` mais `group_add`. Isso ignora por completo o ramo root do entrypoint, que então não faz chown nem inicializa `/config`; todos os mounts já devem ser graváveis pelo uid 1000 e o runtime aplica `group_add` nativamente.
+Alternativa: executar com `user: "1000:1000"` mais `group_add`. O entrypoint então não faz
+chown nem inicializa `/config`, de modo que todo mount já deve ser gravável pelo uid 1000.
 
 ## Limites de memória do contêiner
 
-O Facet agora lê o limite de memória do cgroup do contêiner (`memory.max` no cgroup v2, `memory.limit_in_bytes` no v1) em vez da RAM total do host, e dimensiona em função desse limite o agrupamento de passes (quais modelos são carregados juntos), o tamanho do bloco de RAM, o cache de modelos em CPU e a concorrência de decodificação RAW. Antes dessa correção, tudo isso era dimensionado com base na RAM do host: `psutil.virtual_memory()` lê `/proc/meminfo`, que o Docker não virtualiza, então um `mem_limit` era ignorado silenciosamente — um contêiner limitado bem abaixo da RAM do host continuava se planejando como se toda a RAM do host estivesse disponível, e era morto por OOM ([issue #111](https://github.com/ncoevoet/facet/issues/111)).
-
-Reproduzir o bug em uma imagem publicada anterior à correção (v1.7.2) mostra o mecanismo: um contêiner no perfil `8gb` limitado a `--memory=8g` em um host de 47 GB registra `Mode: CPU-only (47GB RAM)` — a RAM do host, não a do contêiner — e planeja um único passe agrupando `clip + topiq_iaa + topiq_nr_face + liqe + saliency + samp_net + insightface [~15.0GB RAM]`. Ele é morto (`OOMKilled`, código de saída 137) antes de terminar sequer um lote das 200 fotos. Diante de um limite de cgroup de 512 MB, o leitor corrigido reporta 0,500 GB onde o `/proc/meminfo` continua reportando os 46,8 GB do host.
+O Facet lê o limite de memória do contêiner (`memory.max` no cgroup v2,
+`memory.limit_in_bytes` no v1) em vez da RAM do host. Ele dimensiona em função desse limite quais modelos são carregados
+juntos, o tamanho do bloco de RAM, o cache de modelos e a decodificação RAW. As versões anteriores
+(v1.7.2 e anteriores) ignoravam `mem_limit` e podiam ser mortas por OOM
+([issue #111](https://github.com/ncoevoet/facet/issues/111)).
 
 ### Memória mínima recomendada por perfil
 
-Os pesos dos modelos são apenas uma parte do pico de memória — o runtime do torch, o bloco de imagem decodificada e as ativações por camada se somam a isso — então trate esses números como pisos, não como orçamentos. A linha `legacy`/`8gb` agora se apoia em testes reais em contêiner — varreduras de 50 fotos concluídas com `--memory=8g` em ambos os perfis (veja abaixo); as linhas `16gb` e `24gb` continuam sendo espaços reservados provisórios, sem nenhuma medição real por trás.
+Os pesos dos modelos são apenas uma parte do pico de memória: o runtime do torch, as imagens decodificadas e
+as ativações se somam a ele. Trate esses números como pisos.
 
 | Perfil de VRAM | Pesos dos modelos (total) | Memória de contêiner recomendada |
 |---|---|---|
@@ -362,19 +419,24 @@ Os pesos dos modelos são apenas uma parte do pico de memória — o runtime do 
 | `16gb` | 22,0 GB | pelo menos 18 GB (provisório) |
 | `24gb` | 25,0 GB | pelo menos 18 GB (provisório) |
 
-**GPU e CPU não são intercambiáveis aqui, e o número de 12 GB acima é um número de GPU.** Em uma RTX 3080, o perfil `8gb` do autor do issue atingiu um pico de 9,23 GB de RAM do sistema para 405 fotos, mesmo com `ram_chunk_size: 12` e `num_workers: 2`, e teve sucesso com `mem_limit: 12g`. Em uma GPU, os pesos dos modelos residem na VRAM; a RAM do contêiner contém principalmente o bloco de imagem decodificada, e é por isso que esse número é tão menor do que o que a CPU sozinha precisa. Rodar esse mesmo perfil `8gb` em CPU carrega, em vez disso, todo o catálogo de modelos na RAM do contêiner. Antes de a correção de acompanhamento da issue #111 adicionar um teto, a capacidade por passe do planejador crescia direto com o limite do contêiner, o que piorava o plano, não melhorava, à medida que o limite aumentava: um limite de 8 GB produzia 4 passes chegando a 6,0 GB, causando um OOM no passe que agrupa `topiq_nr_face + liqe + saliency` (6,0 GB declarados, pico de RSS de 10,46 GB); um limite de 12 GB colapsava para apenas 2 passes chegando a 10,0 GB, e também causava OOM. O regulador de memória de fato disparou no limite de 12 GB — `Evicted 1 model(s) from RAM cache: topiq_iaa` é uma linha de log real —, mas isso era o regulador intervindo e ainda assim não sendo suficiente, não o que salvou a execução.
+- **GPU e CPU diferem.** Em uma GPU os pesos ficam na VRAM, e a RAM contém principalmente as imagens
+  decodificadas: uma execução `8gb` em uma RTX 3080 (405 fotos, `ram_chunk_size: 12`, `num_workers: 2`) atingiu um pico de
+  9,23 GB e passou com `mem_limit: 12g`. Em
+  CPU, todos os modelos são carregados na RAM. Dimensione pela linha que corresponde a como você roda.
+- **8 GB é um piso em CPU.** Varreduras de 50 fotos com `--memory=8g` foram concluídas em `legacy` (pico de 7,26 GB) e
+  `8gb` (7,56 GB), a cerca de meio gigabyte do limite em JPEGs de 18-20 MP. Quadros maiores, decodificação
+  RAW ou um host ocupado precisam de mais, daí os 12 GB recomendados.
+- **`16gb` e `24gb` não foram medidos.** 18 GB é um valor provisório.
+- **Observe a memória anônima.** O MemUsage do `docker stats` e o `memory.current` do cgroup
+  contam o cache de páginas recuperável, então enganam.
+- **Cache de modelos.** Com `models.keep_in_ram` em `"auto"`, um modelo permanece na RAM entre
+  blocos apenas enquanto o seu tamanho mais `models.ram_cache_reserve_gb` (padrão 4 GB) estiver livre. Uma
+  reserva menor faz mais cache ([Configuração](CONFIGURATION.md#models)).
 
-O teto agora mantém a capacidade por passe em 5,0 GB não importa quão grande o limite do contêiner seja reportado, então ela para de crescer com o contêiner: o perfil `8gb` em CPU sempre planeja os mesmos 5 passes independentemente do limite — `Pass 1: qrealign [~5.0GB RAM]`, `Pass 2: clip + topiq_iaa [~5.0GB RAM]`, `Pass 3: topiq_nr_face + liqe [~4.0GB RAM]`, `Pass 4: saliency + samp_net [~4.0GB RAM]`, `Pass 5: insightface [~2.0GB RAM]`.
-
-Essa forma fixa sozinha ainda não era suficiente, porque havia duas coisas fora do plano de passes que consumiam o orçamento. O autoajuste do tamanho do lote crescia no vale de memória entre os passes — cada descarregamento derruba o uso quase até o piso, e três leituras assim seguidas eram lidas como margem — de modo que o `ram_chunk_size` saltou de 10 para 500 já no primeiríssimo lote, e o segundo tentou decodificar todas as fotos restantes de uma vez. E descarregar um modelo não devolvia nada ao kernel: o glibc mantinha os blocos liberados em suas arenas, de modo que o processo retinha uma marca de pico definida pelo seu primeiro passe, e cada passe posterior rodava sobre memória que não podia usar. Com o crescimento agora decidido a partir do pico de cada lote e o heap liberado devolvido explicitamente, uma varredura de 50 fotos com `--memory=8g` se completa em ambos os perfis — `legacy` com pico de 7,26 GB e `8gb` de 7,56 GB de memória anônima, cinco lotes de dez, código de saída 0, nenhum OOM e nenhuma falha de varredura registrada.
-
-**8 GB são um piso, não um orçamento confortável.** As duas execuções terminaram dentro de cerca de meio gigabyte do limite, em JPEGs de 18-20 MP; quadros maiores, decodificação RAW ou um host mais ocupado vão corroer essa margem, por isso 12 GB é a recomendação em vez do mínimo. A memória anônima é o número a observar — nem o MemUsage do `docker stats` nem o `memory.current` do cgroup, que contam ambos o cache de páginas recuperável, de modo que o primeiro subestima o risco real e o segundo fica preso perto do limite do contêiner independentemente de quanta margem realmente resta. Um contêiner de 16 GB foi medido carregando pelo menos 12,55 GB de memória anônima, o que também explica por que uma execução anterior de 12 GB foi morta antes de essas duas correções chegarem, e isso bate com o pico de 9,23 GB relatado pelo autor do issue em GPU — o mesmo catálogo de modelos, menos o que fica na VRAM em vez de na RAM do contêiner. Um usuário de GPU que dimensionasse com base nos números de CPU aqui superdimensionaria; um usuário de CPU que dimensionasse com base no número de GPU subdimensionaria — use o que corresponder a como seu contêiner realmente roda.
-
-O bloco decodificado agora tem cerca de metade do tamanho. Um bloco multi-passe retém cerca de 4,4 bytes por pixel de origem enquanto seus passes rodam, contra cerca de 8,1 antes (medido em fotos de 20 MP), porque os passes que precisam de um array BGR ou de um plano de cinza o reconstroem, em vez de o bloco manter ambos durante toda a sua vida. As medições de contêiner acima foram feitas antes dessa mudança. À parte, com `models.keep_in_ram` no padrão `"auto"`, um modelo só permanece na RAM entre blocos enquanto o host tiver disponível o tamanho declarado dele mais `models.ram_cache_reserve_gb` (padrão 4 GB); em um host com CPU, o orçamento do plano de passes também se aplica. Uma reserva menor faz mais cache; uma maior deixa mais memória para todo o resto do host (veja [Configuração](CONFIGURATION.md#models)).
-
-De forma mais geral: o `MODEL_RAM_REQUIREMENTS` precifica apenas o custo de peso. O pico real de RSS carrega adicionalmente o runtime do torch, o bloco de imagem decodificada e as ativações por camada, nenhum dos quais está nesse número — dimensionar um contêiner apenas com base na coluna pesos dos modelos (total) vai subdimensioná-lo.
-
-As estimativas de `16gb` e `24gb` ainda não têm nenhuma execução real por trás, nem em GPU nem em CPU; trate 18 GB como um espaço reservado provisório, não um piso validado.
+Em CPU, o perfil `8gb` sempre planeja os mesmos 5 passes, qualquer que seja o limite:
+`Pass 1: qrealign [~5.0GB RAM]`, `Pass 2: clip + topiq_iaa [~5.0GB RAM]`,
+`Pass 3: topiq_nr_face + liqe [~4.0GB RAM]`, `Pass 4: saliency + samp_net [~4.0GB RAM]`,
+`Pass 5: insightface [~2.0GB RAM]`.
 
 Defina o limite no `docker-compose.yml` (ou em um arquivo de override):
 
@@ -386,21 +448,27 @@ services:
 
 ### O agrupamento de passes tem um teto, e nenhum piso
 
-O planejador de passes do Facet orça cada passe de CPU pelo limite de memória do cgroup do contêiner menos uma reserva de 2 GB para o runtime do torch, limitado a um teto de 5 GB que nunca deixa um passe crescer além disso, não importa quão grande seja o limite. Não há piso sob esse limite: um contêiner com pouca margem depois da reserva recebe um orçamento pequeno, que pode cair até zero, o que simplesmente isola um modelo por passe.
+- **Com um limite de contêiner**, cada passe de CPU recebe o limite menos uma reserva de 2 GB, limitado a
+  5 GB. Um limite apertado significa um modelo por passe.
+- **Sem um limite**, o orçamento é (RAM do sistema − 1 GB) ÷ 1,6. Um host de 4 GB orça 1,9 GB por
+  passe, um de 2 GB, 0,6 GB.
+- **Um modelo maior do que o orçamento** ainda recebe seu próprio passe, com um aviso que o nomeia. Por
+  exemplo, `qwen3_5_4b_tagger` (`24gb`) sozinho dá um passe de 8,0 GB.
 
-Na ausência total de um limite de memória de contêiner, o orçamento vem da RAM do sistema: o que a máquina tem além do seu sistema operacional (1 GB reservado para ele), dividido por 1,6 — a razão medida entre a RSS real e o peso declarado dos modelos. Esse caminho também não tem piso: um host de 4 GB orça 1,9 GB por passe e um de 2 GB, 0,6 GB. Versões anteriores mantinham aqui um mínimo otimista de 4 GB, que era exatamente o defeito que esta página descreve vestido de bare metal: planejava um passe de 5 GB dentro de uma máquina de 4 GB.
-
-Um modelo maior do que o orçamento ainda recebe seu próprio passe em vez de ser dividido, e **cada** passe assim é nomeado em um aviso, não apenas o mais pesado: com um limite de contêiner de 4 GB, a capacidade é de 2 GB, e o perfil `24gb` ainda planeja um passe de 8,0 GB, porque o `qwen3_5_4b_tagger` sozinho precisa de 8 GB e não pode ser dividido, não importa quão pequeno seja o orçamento. Nunca dimensione um contêiner abaixo do maior modelo individual do perfil que você usa.
+> **Aviso:** nunca dimensione um contêiner abaixo do maior modelo individual do seu perfil.
 
 ## Windows (WSL2) com uma GPU NVIDIA
 
-Execute a pilha completa de scoring + visualizador em GPU no Docker no Windows via WSL2 — sem o Docker Desktop. Isso mantém tudo (a distribuição Linux, suas imagens Docker e `/var/lib/docker`) em uma **unidade de dados** (por ex. `D:`), o que importa quando a unidade do sistema `C:` está com pouco espaço.
+Execute a pilha de pontuação em GPU e o visualizador no Docker no Windows via WSL2, sem o Docker
+Desktop. Tudo (a distribuição, suas imagens, `/var/lib/docker`) fica em uma **unidade de dados**
+(por ex. `D:`), útil quando `C:` está com pouco espaço.
 
-**Pré-requisitos:** um driver NVIDIA recente no Windows (`nvidia-smi` funciona no prompt do Windows — o driver fornece o passthrough de CUDA para o WSL2; você **não** instala nenhum driver dentro do WSL).
+**Pré-requisitos:** um driver NVIDIA recente no Windows (`nvidia-smi` funciona no prompt do Windows).
+**Não** instale um driver dentro do WSL.
 
 ### 1. Instalar o WSL2 (admin, uma vez)
 
-Em um PowerShell **elevado** (executado como administrador) e reinicie se solicitado:
+Em um PowerShell **elevado**, e reinicie se solicitado:
 
 ```powershell
 wsl --install --no-distribution   # WSL2 platform only, no distro on C:
@@ -412,7 +480,8 @@ wsl --install --no-distribution   # WSL2 platform only, no distro on C:
 wsl --install -d Ubuntu --location D:\wsl\facet --name facet --no-launch
 ```
 
-`--location` coloca o `ext4.vhdx` da distribuição em `D:\wsl\facet`, para que o armazenamento de imagens do Docker fique fora de `C:`. `--no-launch` pula o prompt interativo de primeira execução; os comandos abaixo rodam como `root`, o que é adequado para uma máquina dedicada a um único propósito.
+`--location` coloca o `ext4.vhdx` da distribuição em `D:\wsl\facet`. `--no-launch` pula o
+prompt de primeira execução; os comandos abaixo rodam como `root`.
 
 ### 3. Habilitar o systemd (necessário para o serviço docker)
 
@@ -448,9 +517,8 @@ docker run --rm --gpus all nvidia/cuda:12.6.0-base-ubuntu24.04 nvidia-smi --quer
 
 ### 5. Executar o Facet
 
-O repositório na unidade Windows fica visível dentro do WSL em `/mnt/d/...`. A partir
-daí, execute o bloco da sua placa a partir de
-[Instalação › Instalar com Docker](INSTALLATION.md#instalar-com-docker):
+O repositório na unidade Windows fica em `/mnt/d/...` dentro do WSL. Execute o bloco da sua placa
+a partir de [Instalação › Instalar com Docker](INSTALLATION.md#instalar-com-docker):
 
 ```bash
 cd /mnt/d/photo-llm
@@ -458,24 +526,29 @@ docker compose -f docker-compose.yml -f docker-compose.16gb.yml up -d   # ou o a
 curl -s localhost:5000/health          # -> ok
 ```
 
-Adicione `--build` para compilar a partir do checkout em vez de baixar a imagem
-publicada. Os perfis de GPU (`8gb`/`16gb`/`24gb`) agrupam rostos na GPU via o RAPIDS cuML
-já embutido; o perfil `legacy` sempre agrupa na CPU. A primeira execução baixa os modelos
-do perfil para os volumes nomeados; redefina-os com `docker compose down -v`.
+Adicione `--build` para compilar a partir do checkout em vez de baixar a imagem. Os perfis de GPU
+(`8gb`/`16gb`/`24gb`) agrupam rostos na GPU via o RAPIDS cuML embutido; o perfil `legacy`
+agrupa na CPU. A primeira execução baixa os modelos para os volumes nomeados; redefina-os com
+`docker compose down -v`.
 
 ### Imagem reproduzível e autônoma
 
-- **Versões fixadas.** A imagem é compilada a partir de `requirements.lock.txt` — um `pip freeze` completo de um container validado, com `torch`/`torchvision` e `nvidia-*` removidos (a imagem base CUDA já os fornece). Isso evita deriva silenciosa para versões não testadas. (Exemplo do que isso evita: o transformers 5.3 mudou o processamento em lote de visão do Qwen3.5 e quebrou o marcador VLM até a correção de padding chegar; o `kornia`, exigido pelo BiRefNet, não é trazido pelo transformers e precisa ser fixado.) Regenere após uma atualização intencional: `docker compose ... exec facet pip freeze --all | grep -ivE '^(pip|wheel|torch|torchvision|nvidia-|triton)' > requirements.lock.txt`.
-- **Agrupamento de rostos em GPU embutido.** O RAPIDS cuML (`cuml-cu12`) vem embutido na imagem, então os perfis de GPU (8gb/16gb/24gb) agrupam rostos na GPU (HDBSCAN via `face_clustering.use_gpu="auto"`); o perfil legacy — e qualquer host sem dispositivo CUDA — sempre agrupa na CPU. O cuML é, de longe, a maior dependência (~5,75 GB; veja o detalhamento de tamanhos abaixo).
-- **Nenhum acoplamento com o host.** Os caches de modelos são volumes nomeados, não montagens do host; o container roda sem privilégios (o entrypoint padrão passa para o usuário `facet`).
-- **Contexto de compilação enxuto.** O `.dockerignore` exclui volumosos apenas locais (`conda/`, conjuntos de dados de exemplo, `*.db`, caches, artefatos de desenvolvimento) — mantenha novos diretórios locais grandes fora do contexto adicionando-os ali.
+- **Versões fixadas.** A imagem é compilada a partir de `requirements.lock.txt`, um `pip freeze` de um
+  contêiner validado sem `torch`/`torchvision` e `nvidia-*` (a base CUDA os fornece).
+  O `kornia`, exigido pelo BiRefNet, também está fixado ali. Regenere após uma atualização
+  intencional: `docker compose ... exec facet pip freeze --all | grep -ivE '^(pip|wheel|torch|torchvision|nvidia-|triton)' > requirements.lock.txt`.
+- **Agrupamento de rostos em GPU embutido.** O RAPIDS cuML (`cuml-cu12`, ~5,75 GB) permite que os perfis de GPU
+  agrupem na GPU (`face_clustering.use_gpu="auto"`). O `legacy`, e hosts sem CUDA,
+  agrupam na CPU.
+- **Nenhum acoplamento com o host.** Os caches de modelos são volumes nomeados; o contêiner roda como o
+  usuário sem privilégios `facet`.
+- **Contexto de compilação enxuto.** O `.dockerignore` exclui volumosos locais (`conda/`, conjuntos de dados de exemplo,
+  `*.db`, caches); adicione ali novas pastas locais grandes.
 
 ### Tamanho da imagem
 
-Nenhuma das três imagens publicadas contém os pesos dos modelos — eles são baixados
-na primeira execução para os volumes nomeados
-([totais por perfil](INSTALLATION.md#tamanhos-de-download)). Reserve espaço em disco
-para a imagem **mais** esses volumes.
+Nenhuma imagem contém os pesos dos modelos; eles são baixados na primeira execução para os volumes nomeados
+([totais por perfil](INSTALLATION.md#tamanhos-de-download)). Reserve espaço em disco para ambos.
 
 | Imagem | Em disco (medido) | Base |
 |-------|------|------|
@@ -483,13 +556,8 @@ para a imagem **mais** esses volumes.
 | `ghcr.io/ncoevoet/facet:latest-cuda` (GPU) | 13,1 GB | PyTorch CUDA 12.8 (`sm_75`-`sm_120`, de Turing a Blackwell) + RAPIDS cuML |
 | `ghcr.io/ncoevoet/facet:latest-cuda-legacy` (GPU) | 13,8 GB | PyTorch CUDA 12.6 (`sm_50`-`sm_90`, de Maxwell a Hopper) + RAPIDS cuML |
 
-As três imagens de base mudaram nesta versão (issue #119). "Em disco" é o espaço
-ocupado pela imagem já descompactada, medido localmente (`docker images`) em
-imagens compiladas a partir deste branch — uma quebra por componente (RAPIDS
-cuML vs. runtime CUDA vs. PyTorch vs. SO base) não foi remedida nesta passagem.
-O `docker pull` transfere um download compactado menor do que esses números;
-uma coluna "download compactado" volta aqui assim que essas imagens forem
-publicadas e houver um manifesto de registro real para medi-lo.
+"Em disco" é o tamanho descompactado (`docker images`). O `docker pull` baixa menos; os tamanhos
+compactados ainda não foram medidos.
 
 ## Servidor Linux genérico
 
@@ -500,13 +568,14 @@ pip install fastapi uvicorn pyjwt pillow aiosqlite 'mcp>=2.3,<3' 'httpx>=0.28,<1
 uvicorn api:create_app --factory --host 0.0.0.0 --port 5000 --workers 4
 ```
 
-Ou use o wrapper (padrão de 1 worker; passe `--workers N` para mais):
+Ou use o wrapper (1 worker por padrão; `--workers N` para mais):
 
 ```bash
 python viewer.py --production --workers 4
 ```
 
-Vários workers não funcionam com a ponte de separador para agentes: o seu registo de separadores é por processo, por isso com mais de um worker uma chamada `ui_*` pode chegar a um processo que não conhece o seu separador e responder `no_tab`. Use `--workers 1` se usar os [Agentes de IA](AGENTS.md).
+A ponte de aba para agentes exige `--workers 1` (veja
+[Executando a imagem publicada](#executando-a-imagem-publicada)).
 
 ### Uvicorn + Nginx
 
@@ -534,9 +603,12 @@ server {
 }
 ```
 
-A ponte de separador para agentes (`/api/mcp/bridge`, veja [Agentes de IA](AGENTS.md)) é um WebSocket e precisa dos cabeçalhos `Upgrade` e `Connection` do segundo bloco `location`; sem eles o handshake falha e as ferramentas `ui_*` respondem `no_tab`. Precisa também de um único worker (`--workers 1`, o valor por omissão).
+A ponte de aba para agentes (`/api/mcp/bridge`, veja [Agentes de IA](AGENTS.md)) é um WebSocket. Ela
+precisa dos cabeçalhos `Upgrade` e `Connection` do segundo bloco `location` e de um único worker
+(`--workers 1`, o padrão); caso contrário, as ferramentas `ui_*` para agentes respondem `no_tab`.
 
 Adicione HTTPS:
+
 ```bash
 sudo certbot --nginx -d photos.yourdomain.com
 ```
@@ -560,7 +632,7 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Vários workers não funcionam com a ponte de separador para agentes: o seu registo de separadores é por processo, por isso com mais de um worker uma chamada `ui_*` pode chegar a um processo que não conhece o seu separador e responder `no_tab`. Use `--workers 1` se usar os [Agentes de IA](AGENTS.md).
+Use `--workers 1` se usar a ponte de aba para agentes.
 
 ```bash
 sudo systemctl enable --now facet
@@ -590,35 +662,64 @@ photos.yourdomain.com {
                                                  http://nas:5000
 ```
 
-Reexecute a exportação e o `rsync` após cada sessão de pontuação para atualizar o banco de dados no servidor. Para servidores com bastante memória, você pode sincronizar diretamente o `photo_scores_pro.db` completo em vez de exportar.
+Reexecute a exportação e o `rsync` após cada sessão de pontuação. Em um servidor com bastante
+memória, você pode sincronizar o `photo_scores_pro.db` completo em vez disso.
 
 ### Um trabalho de biblioteca por vez
 
-Um escaneamento, `--recompute-average`, `--upgrade-db` e um treinamento do ranqueador pessoal reescrevem cada um o banco de dados inteiro, então o Facet permite apenas um por vez: cada um toma um arquivo de bloqueio em `<db_dir>/.facet_cache/library.lock`, e um segundo trabalho se recusa a iniciar, nomeando o que já está em execução, e termina com o código 75 (um arquivo de bloqueio inutilizável termina com 1). O visualizador responde 503 `library_busy` quando um trabalho que iniciou termina com 75.
+Uma varredura, `--recompute-average`, `--upgrade-db` e um treinamento do ranqueador reescrevem cada um o
+banco de dados, então apenas um roda por vez. Um segundo trabalho se recusa a iniciar, nomeia o que está em execução
+e termina com o código 75 (código 1 se o arquivo de bloqueio em `<db_dir>/.facet_cache/library.lock` estiver
+inutilizável).
 
-Esse bloqueio é um bloqueio de arquivo do kernel, portanto exclui trabalhos **apenas em uma máquina**. Quando o banco de dados é acessado por SMB/CIFS — por exemplo, uma estação de trabalho Windows pontuando fotos em um compartilhamento de NAS —, cada máquina toma sua própria cópia do bloqueio e nenhuma enxerga a outra. O Facet detecta a montagem e registra um aviso ao tomar o bloqueio, mas não pode impor nada entre máquinas: execute os trabalhos de biblioteca a partir de uma única máquina por vez. NFS entre clientes Linux não é afetado — lá o `flock` vira um bloqueio de registro POSIX arbitrado pelo servidor.
+> **Aviso:** esse bloqueio funciona em **apenas uma máquina**. Em SMB/CIFS (por exemplo, uma estação de trabalho
+> Windows pontuando fotos em um compartilhamento de NAS), cada máquina tem o seu próprio bloqueio. O Facet registra um
+> aviso, mas não pode impedir isso: execute os trabalhos de biblioteca a partir de uma máquina por vez. NFS entre
+> clientes Linux não é afetado.
 
 ### Início do visualizador e índices da galeria
 
-A primeira inicialização após uma atualização da 1.20 encontra em falta os oito índices da galeria e o índice pós-varredura `idx_post_scan` (veja [VIEWER.md](VIEWER.md#índices-da-galeria-e-cache-de-contagens)). O visualizador migra tabelas e colunas antes de atender e depois cria os índices que faltam numa thread em segundo plano enquanto já responde a pedidos, detendo o bloqueio da biblioteca descrito acima (registrado como iniciado a partir de `viewer`). Numa biblioteca de 130k fotos, só `idx_gallery_aggregate` levou 45,6 s e 54,1 s em duas execuções medidas; os oito índices da galeria acrescentaram cerca de 106 a 111 MB ao banco de dados, e alargar o índice de datas e acrescentar o `idx_post_scan` mais 24,0 MB (medido). Cada índice é a sua própria transação e recebe uma linha INFO antes e depois (`Creating index ...`, `Created index ... in N s`); a criação termina com `Gallery indexes ready`. Se após a atualização for executada primeiro uma varredura (`python facet.py`) ou `python database.py`, é ela que cria os índices, na sua própria inicialização.
+A primeira inicialização após uma atualização da 1.20 cria os índices da galeria que faltam
+([detalhes](VIEWER.md#índices-da-galeria-e-cache-de-contagem)). Em uma biblioteca de ~130k fotos isso
+leva alguns minutos e acrescenta cerca de 130 MB ao banco de dados.
 
-Um banco de dados já atualizado por uma versão de desenvolvimento posterior à 1.20.0 tem um `idx_gallery_date_asc` mais estreito; ele é descartado e o `idx_date_asc_cover`, mais largo, é criado em seu lugar. Esse índice e o `idx_post_scan` servem também as passagens sobre toda a biblioteca que se seguem a uma varredura (bursts, duplicatas, brackets, panorâmicas), e cada um é criado juntamente com o seu próprio `ANALYZE` (as estatísticas que o SQLite usa para escolher um índice) numa só transação. Criar os dois lê cada linha da biblioteca uma vez: cerca de 55 s ao todo quando criados sozinhos, num host sem outra carga, até cerca de 67 s num ocupado (cópia de uma biblioteca de 129.737 fotos, medido). O visualizador continua a responder enquanto são criados, recusando gravações como descrito abaixo; numa biblioteca grande, execute por isso primeiro `python database.py` (ou `docker compose exec facet python database.py`).
+**Recomendado:** após a atualização, execute `python database.py` (Docker:
+`docker compose exec facet python database.py`) uma vez **antes** de iniciar o visualizador. Uma
+varredura `python facet.py` também os cria na sua inicialização.
 
-**Versão do SQLite.** Um índice de cobertura só ajuda num SQLite que o planeie como de cobertura. Medido: as leituras de bursts, duplicatas e brackets ficam cobertas em todas as versões do SQLite testadas, de 3.31.1 a 3.51.0 (dados sintéticos), e a leitura dos candidatos a panorâmica, que nomeia `length(thumbnail)`, apenas a partir da 3.48.0 (de 3.41.2 a 3.47.2 usa-se o índice mais uma pesquisa da linha da tabela por entrada em vez de uma leitura de cobertura; as versões mais antigas percorrem a tabela; nenhuma das duas foi comparada com a leitura da versão anterior). Num SQLite mais antigo são lidas as mesmas linhas; a velocidade da leitura nele, em comparação com a versão anterior, não foi medida. Os empates de burst são a exceção: num SQLite que não seja o 3.51, fotos com carimbos de data/hora idênticos podem ser agrupadas ou lideradas de forma diferente na primeira passagem de burst após a atualização da 1.20.0 (veja o CHANGELOG). Medido nas imagens: `python:3.12-slim`, a base da imagem de CPU publicada, inclui o SQLite 3.46.1, pelo que a imagem de CPU segue esse caminho sem cobertura nessa leitura; uma imagem local `facet:latest-cuda` existente, com cerca de dois meses, inclui a 3.48.0. A base atual `pytorch/pytorch:2.11.0` da imagem CUDA predefinida e a base da imagem CUDA legada não foram verificadas.
+Se for o visualizador a criá-los:
 
-- **Salvamentos durante a criação.** As leituras são atendidas o tempo todo; a galeria fica mais lenta até que os seus índices existam. Os salvamentos são recusados enquanto um índice está sendo escrito, porque o índice detém o bloqueio de escrita do banco de dados: uma classificação, um favorito, uma rejeição, uma alteração de álbum ou qualquer outra escrita espera o fim de `busy_timeout` (5 s) e recebe 503 `{"detail": "library_busy"}` com `Retry-After: 5`, cerca de 5,6 s após o envio (medido), sem nova tentativa. O cliente reverte uma alteração otimista, como uma classificação, e avisa que a biblioteca está ocupada e que se tente novamente em instantes. Uma escrita enviada perto do fim de um índice, ou durante o `ANALYZE` final, espera e depois é concluída: em duas execuções que recriaram um índice, as escritas concluídas durante a criação levaram de 0,01 a 4,1 s e de 0,56 a 3,1 s. As leituras que guardam a sua resposta em cache (os intervalos de métricas e as facetas de cor da barra lateral de filtros, a contagem de renders pendentes em `/api/config`, as cenas, as capas de álbuns inteligentes, a sugestão de tipo de sessão, os grupos de semelhança, a verificação de atualizações e os nomes de lugares por trás de `/api/filter_options/location_name`) ignoram essa escrita em cache enquanto a criação decorre e desistem dela após 500 ms quando outro escritor detém o bloqueio, pelo que nunca são recusadas e esperam no máximo meio segundo; o valor é devolvido na mesma e a linha de cache é escrita numa chamada posterior. `/health` informa a criação como `gallery_indexes`: o seu `state` (`building`, `ready`, `deferred`, `failed` ou `stopped`) e `done` de `total` índices. Para evitar as recusas, execute `python database.py` (ou uma varredura) uma vez após a atualização e antes de iniciar o visualizador: ele cria os índices antecipadamente.
-- **Encerramento durante a criação.** Parar o visualizador interrompe o índice em curso e espera pela thread de criação (no máximo 30 s). Os índices concluídos são mantidos, o interrompido é revertido e a inicialização seguinte continua.
-- **Há um trabalho de biblioteca em andamento.** Se uma varredura, `--recompute-average` ou outro trabalho detém o bloqueio e faltam índices, o visualizador registra um aviso que o nomeia e atende sem eles, mais devagar. Uma varredura cria-os na sua própria inicialização; caso contrário, reinicie o visualizador quando esse trabalho terminar ou execute `python database.py`. Uma biblioteca nunca analisada recebe mesmo assim as suas estatísticas do planejador (um `ANALYZE photos`). Uma varredura iniciada durante a criação é recusada com a mensagem habitual de «já em execução», que nomeia o visualizador, em vez de esgotar o tempo com `database is locked`.
-- **Arquivo de bloqueio inutilizável.** Se o visualizador não conseguir usar `.facet_cache/library.lock` ao lado do banco de dados (permissões, uma montagem somente leitura), ele registra isso e atende sem criar; torne esse caminho utilizável pelo visualizador e reinicie-o.
-- **`--workers N`.** Exatamente um worker toma o bloqueio e cria; os outros registram uma linha INFO e atendem. Só o worker que cria responde a um salvamento recusado sem nova tentativa: um salvamento que chega a outro worker pode ser tentado de novo após a primeira espera de 5 s, por isso o seu 503 pode levar até cerca de 12,5 s.
-- **Docker.** O visualizador responde a `/health` durante a criação, portanto não é preciso aumentar o `start_period` de 30 s do healthcheck para a atualização.
-- **Arquivos enquanto o visualizador roda.** O visualizador mantém uma conexão somente leitura com o banco de dados, então os arquivos `-wal` e `-shm` persistem enquanto ele roda, e o `.db` sozinho não contém os commits recentes. Copie ou substitua o banco de dados somente depois de parar o visualizador, que faz um checkpoint do WAL em cada encerramento limpo (também com `performance.wal_checkpoint_minutes: 0`). No Windows, o arquivo do banco de dados não pode ser substituído de forma alguma enquanto o visualizador o mantém aberto.
+- Ele atende durante a criação, mas a galeria fica lenta e **os salvamentos (classificações, rejeições, alterações
+  de álbum…) podem ser recusados** com a mensagem «biblioteca ocupada, tente novamente».
+- O log mostra `Creating index ...` e `Created index ... in N s` por índice, depois
+  `Gallery indexes ready`. `/health` informa o progresso como `gallery_indexes` (`state`:
+  `building`, `ready`, `deferred`, `failed` ou `stopped`; `done` de `total`).
+- Parar o visualizador mantém os índices concluídos; a inicialização seguinte continua.
+- Se uma varredura ou outro trabalho de biblioteca estiver em andamento, o visualizador atende sem os índices e
+  registra um aviso. Reinicie-o quando o trabalho terminar, ou execute `python database.py`.
+- Se `.facet_cache/library.lock` ao lado do banco de dados estiver inutilizável (permissões, montagem
+  somente leitura), o visualizador não cria os índices. Corrija o caminho e reinicie.
+- Com `--workers N`, um worker cria e os outros atendem.
+- No Docker, o `start_period` de 30 s do healthcheck não precisa de alteração: `/health` responde durante a criação.
+
+Em um SQLite anterior à 3.48.0 (a imagem de CPU inclui a 3.46.1), a detecção de panorâmicas não consegue ler
+apenas a partir do novo índice; a sua velocidade ali não foi medida. Em um SQLite que não seja o 3.51,
+fotos com carimbos de data/hora idênticos podem ser agrupadas de forma diferente na primeira passagem de burst após
+a atualização (veja o CHANGELOG).
+
+> **Aviso:** copie ou substitua o banco de dados somente depois de parar o visualizador. Enquanto ele roda,
+> as alterações recentes ficam nos arquivos `-wal` e `-shm`, não apenas no `.db`; um encerramento limpo
+> as mescla (também com `performance.wal_checkpoint_minutes: 0`). No Windows, o arquivo
+> não pode ser substituído de forma alguma enquanto o visualizador o mantém aberto.
 
 ## Armazenamento e rotação do segredo
 
-Um único segredo assina cada sessão de login (JWT) e cada link do porta-retratos digital. **Não** é uma chave de `scoring_config.json`: ele fica em `.facet_secret`, ao lado da configuração, criado com modo `0600` na primeira execução e ignorado pelo git.
+Um único segredo assina cada sessão de login (JWT) e cada link do porta-retratos digital. Ele fica em
+`.facet_secret` ao lado da configuração (modo `0600`, ignorado pelo git), não em `scoring_config.json`.
 
-Antes era a chave `share_secret` dentro de `scoring_config.json`. Esse arquivo é rastreado pelo git, então o valor gerado na primeira execução foi commitado e publicado — o segredo distribuído por este projeto é público e deve ser considerado comprometido. Na inicialização seguinte, o Facet move qualquer `share_secret` remanescente para o arquivo do segredo, remove a chave da configuração e registra um aviso. Um valor que o próprio Facet publicou é substituído em vez de mantido, o que desconecta todo mundo de propósito.
+Versões anteriores o salvavam como `share_secret` na configuração, e o valor distribuído era público.
+Na inicialização, o Facet move um `share_secret` remanescente para o arquivo do segredo e remove a chave.
+Um valor que o próprio Facet publicou é substituído, o que desconecta todo mundo uma vez.
 
 | Onde | Como |
 |------|------|
@@ -626,19 +727,22 @@ Antes era a chave `share_secret` dentro de `scoring_config.json`. Esse arquivo �
 | Contêiner / orquestrador | Variável de ambiente `FACET_JWT_SECRET` — lida primeiro, nunca gravada em disco |
 | Rotação | `python database.py --rotate-secret` e depois reinicie o viewer |
 
-No Docker, `/app` é a camada gravável do contêiner: um segredo criado ali se perde quando o contêiner é recriado — a cada atualização de imagem todo mundo é desconectado. Defina `FACET_JWT_SECRET` no `docker-compose.yml`, ou monte o arquivo com `- ./.facet_secret:/app/.facet_secret`.
-
-Faça a rotação sempre que o segredo puder ter sido lido por outra pessoa: uma configuração que já foi commitada, um backup vazado, um administrador que sai. A rotação invalida cada sessão e cada URL assinada do porta-retratos: os usuários entram de novo e os dispositivos de quiosque buscam novos links.
-
-Com `--workers > 1` todos os workers leem o mesmo arquivo, então um JWT assinado por um vale em todos — **assim que esse arquivo existir**. Uma primeira inicialização com `--workers > 1` e ainda sem `.facet_secret` é a exceção: cada worker gera o próprio segredo e apenas um vence a escrita, de modo que uma sessão aberta em um worker é rejeitada pelos outros até o servidor ser reiniciado. Crie o segredo antes da primeira inicialização multi-worker — execute uma vez `python database.py --rotate-secret`, inicie uma vez com `--workers 1`, ou defina `FACET_JWT_SECRET`.
-
-Essa mesma divergência se torna permanente quando o diretório de instalação não é gravável: o servidor registra um erro e funciona com um segredo em memória, então cada sessão morre a cada reinicialização e cada worker assina com uma chave diferente. Defina ali `FACET_JWT_SECRET`.
-
-Inclua o arquivo no backup do banco de dados — restaurar um banco sem ele desconecta todo mundo.
+- **Docker:** `/app` é a camada gravável do contêiner, então um segredo criado ali se perde
+  quando o contêiner é recriado e todo mundo é desconectado a cada atualização de imagem. Defina `FACET_JWT_SECRET` no
+  `docker-compose.yml`, ou monte o arquivo com `- ./.facet_secret:/app/.facet_secret`.
+- **Faça a rotação** sempre que o segredo puder ter vazado (uma configuração commitada, um backup vazado, um
+  administrador que sai). Todos entram de novo e os dispositivos de quiosque buscam novos links do porta-retratos.
+- **Vários workers:** crie o segredo antes da primeira inicialização com `--workers > 1` (execute
+  `python database.py --rotate-secret` uma vez, inicie uma vez com `--workers 1`, ou defina
+  `FACET_JWT_SECRET`). Caso contrário, cada worker cria o seu e as sessões quebram até reiniciar.
+- **Diretório de instalação somente leitura:** o servidor roda com um segredo em memória, então as sessões morrem
+  a cada reinicialização. Defina `FACET_JWT_SECRET`.
+- **Inclua-o no backup** do banco de dados; restaurar um banco sem ele desconecta todo mundo.
 
 ## Configuração multiusuário
 
-Para dar a cada usuário um conjunto privado de diretórios de fotos, adicione uma seção `users` ao `scoring_config.json`. Consulte [Configuração](CONFIGURATION.md#users) para a referência completa.
+Para dar a cada usuário um conjunto privado de diretórios de fotos, adicione uma seção `users` ao
+`scoring_config.json`. Consulte [Configuração](CONFIGURATION.md#users).
 
 ### Início rápido
 
@@ -672,11 +776,12 @@ Em seguida, edite o `scoring_config.json`:
 }
 ```
 
-Os caminhos dos diretórios devem corresponder aos caminhos das fotos armazenados no banco de dados. Se você usar `viewer.path_mapping`, os diretórios devem usar os caminhos **mapeados** (como aparecem no host do visualizador).
+Os caminhos dos diretórios devem corresponder aos caminhos das fotos no banco de dados. Com `viewer.path_mapping`,
+use os caminhos **mapeados** (como aparecem no host do visualizador).
 
 ### Migrando avaliações existentes
 
-Se você tinha avaliações no modo de usuário único, migre-as para um usuário:
+Para mover as avaliações do modo de usuário único para um usuário:
 
 ```bash
 python database.py --migrate-user-preferences --user alice
@@ -684,7 +789,9 @@ python database.py --migrate-user-preferences --user alice
 
 ### Botão de varredura
 
-Para permitir o disparo de varreduras de fotos a partir da interface do visualizador (o superadmin no modo multiusuário; uma sessão de edição numa instalação de usuário único com `viewer.edition_password` definida). A varredura roda na máquina que hospeda o visualizador e não requer GPU (apenas CPU com o perfil `legacy`, veja [Sem placa de vídeo](INSTALLATION.md#sem-placa-de-vídeo)):
+Para permitir que o visualizador dispare varreduras (o superadmin no modo multiusuário; uma sessão de edição em uma
+instalação de usuário único com `viewer.edition_password` não vazia), ative-o. A varredura roda na
+máquina do visualizador e não requer GPU ([Sem placa de vídeo](INSTALLATION.md#sem-placa-de-vídeo)):
 
 ```json
 {
@@ -698,11 +805,14 @@ Para permitir o disparo de varreduras de fotos a partir da interface do visualiz
 
 ## Backups contínuos com o Litestream
 
-O banco de dados SQLite pode crescer para dezenas de gigabytes (`photo_scores_pro.db` chega a ~14 GB após pontuar mais de 20 mil fotos), e uma nova varredura custa tempo de GPU. O [Litestream](https://litestream.io/) transmite o WAL para S3, B2, GCS, SFTP ou outro disco local continuamente, com restauração para um ponto no tempo com precisão de poucos segundos.
+O banco de dados pode crescer para dezenas de gigabytes (~14 GB após mais de 20 mil fotos), e uma nova varredura
+custa tempo de GPU. O [Litestream](https://litestream.io/) transmite as alterações continuamente para S3,
+B2, GCS, SFTP ou outro disco, com restauração para um ponto no tempo com precisão de poucos segundos.
 
-O Facet não inclui o Litestream. Instale-o uma vez no host que executa o visualizador/pontuação; ele roda como um processo sidecar, transparente para a aplicação.
-
-O Facet já usa o modo WAL (`db/connection.py:apply_pragmas`), e a thread de checkpoint periódico (padrão a cada 30 min, configurável via `performance.wal_checkpoint_minutes`) mantém o WAL limitado (`0` desativa essa thread; o checkpoint em um encerramento limpo do visualizador sempre é executado). As leituras permanecem desbloqueadas durante a replicação.
+O Facet não inclui o Litestream. Instale-o no host que executa o Facet; ele roda ao lado,
+sem alterações no Facet. O checkpoint periódico do WAL do Facet (a cada 30 min por padrão,
+`performance.wal_checkpoint_minutes`; `0` o desativa, um encerramento limpo do visualizador ainda faz
+checkpoint) mantém o WAL pequeno.
 
 ### Configuração mínima do Litestream
 
@@ -742,7 +852,7 @@ EnvironmentFile=/etc/litestream.env
 WantedBy=multi-user.target
 ```
 
-O `litestream.env` guarda as credenciais da AWS / B2 para que elas fiquem fora do YAML.
+O `litestream.env` salva as credenciais da AWS / B2, fora do YAML.
 
 ### Exercício de restauração
 
@@ -764,7 +874,9 @@ sudo systemctl start facet
 
 ### Estimativa de custo
 
-Para o banco de dados de 14 GB com ~50 MB/dia de rotatividade de WAL durante a pontuação ativa, espere:
+Para um banco de dados de 14 GB com ~50 MB/dia de rotatividade de WAL durante a pontuação ativa:
+
 - ~US$ 0,30/mês de armazenamento no S3 Standard
 - ~US$ 0,05/mês para operações PUT
+
 Negligenciável em comparação a uma nova varredura: ~50 GPU-horas em uma RTX de 16 GB.
