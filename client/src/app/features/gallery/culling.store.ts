@@ -1,6 +1,9 @@
 import { SEQUENCE_KINDS_KEPT_WHOLE } from '../../shared/pipes/sequence-kind.pipe';
-import { DestroyRef, Injectable, inject, signal, computed, WritableSignal } from '@angular/core';
+import { DestroyRef, Injectable, Injector, inject, signal, computed, WritableSignal } from '@angular/core';
 import { Subject, firstValueFrom } from 'rxjs';
+import { PhotoStackService } from '../../core/services/photo-stack.service';
+import { UndoService } from '../../core/services/undo.service';
+import { StackActionsService } from './stack-actions.service';
 import { ApiService } from '../../core/services/api.service';
 import type { ComparisonStats } from '../../core/api/types';
 import { Album, AlbumService } from '../../core/services/album.service';
@@ -206,15 +209,209 @@ export class CullingStore {
   private readonly i18n = inject(I18nService);
   private readonly plan = inject(AssistantCullPlanService);
 
+  private readonly injector = inject(Injector);
+  // These dependencies belong to the optional stack workflow, so cull-only consumers need not construct them.
+  private get stacks(): PhotoStackService { return this.injector.get(PhotoStackService); }
+  private get stackActions(): StackActionsService { return this.injector.get(StackActionsService); }
+  private get undo(): UndoService { return this.injector.get(UndoService); }
+
+  readonly mode = signal<'cull' | 'stacks'>('cull');
+  readonly stackFilters = signal<Record<string, string>>({});
+  readonly cullWritesAllowed = computed(() => this.mode() === 'cull');
+  readonly batchFull = signal(false);
+  /** The page falls back to cull mode for invalid endpoint filters; network failures stay retryable. */
+  readonly stackScopeInvalid = signal(false);
+  private visitEpoch = 0;
+  private stackSession: (() => boolean) | null = null;
+  private stackScope = '';
+  private stackBatchPending: Promise<void> | null = null;
+  private readonly stackDecisions = new Set<string>();
+  private readonly completedSuggestions = new Map<CullingGroup, number>();
+
+  /** Set before the page starts any cull effects. A held global assistant pin belongs to its owner. */
+  enterStackMode(filters: Record<string, string>): void {
+    this.visitEpoch++;
+    this.cancelReplan();
+    this.clearAllPassTimers();
+    this.closeAutoCull();
+    this.planActive.set(false);
+    this.planDigest.set(null);
+    this.planAll = [];
+    this.mode.set('stacks');
+    this.stackFilters.set({ ...filters });
+    this.stackScope = JSON.stringify(this.stackFilters());
+    this.stackSession = this.stacks.context();
+    this.stackBatchPending = null;
+    this.stackDecisions.clear();
+    this.completedSuggestions.clear();
+    this.batchFull.set(false);
+    this.stackScopeInvalid.set(false);
+    this.resetFeed();
+    this.hiddenGroups.set(new Set());
+  }
+
+  leaveStackMode(): void {
+    this.visitEpoch++;
+    this.stackSession = null;
+    this.stackBatchPending = null;
+    this.stackDecisions.clear();
+    this.completedSuggestions.clear();
+    this.mode.set('cull');
+    this.stackFilters.set({});
+    this.batchFull.set(false);
+    this.stackScopeInvalid.set(false);
+    this.clearAllPassTimers();
+    this.resetFeed();
+  }
+
+  private stackVisitCurrent(epoch = this.visitEpoch): boolean {
+    return epoch === this.visitEpoch && this.mode() === 'stacks'
+      && this.stackScope === JSON.stringify(this.stackFilters())
+      && !!this.stackSession && this.stacks.isLive(this.stackSession);
+  }
+
+  private suggestionIdentity(group: CullingGroup): string {
+    return `${this.groupKey(group)}:${group.suggestionKey ?? ''}`;
+  }
+
+  private loadedSuggestion(group: CullingGroup): CullingGroup | undefined {
+    if (!group.suggestionKey || (group.type !== 'burst' && group.type !== 'duplicate')) return;
+    return this.groups().find(item => item === group && this.suggestionIdentity(item) === this.suggestionIdentity(group));
+  }
+
+  private loadStackBatch(): Promise<void> {
+    if (!this.stackVisitCurrent()) return Promise.resolve();
+    if (this.stackBatchPending) return this.stackBatchPending;
+    const epoch = this.visitEpoch;
+    const generation = ++this.loadGenerationId;
+    this.loading.set(true);
+    const run = (async () => {
+      try {
+        const result = await firstValueFrom(this.api.post<components['schemas']['StackSuggestionsResponse']>(
+          '/stacks/suggestions', { filters: this.stackFilters(), include_photos: true }));
+        if (!this.stackVisitCurrent(epoch) || generation !== this.loadGenerationId) return;
+        const incoming: CullingGroup[] = result.suggestions.map(group => {
+          if (!group.photos) throw new Error('Stack suggestion photos missing');
+          return {
+            group_id: group.group_id, type: group.kind, best_path: group.cover_path,
+            count: group.paths.length, reason: '', suggestionKey: group.key, photos: group.photos,
+          };
+        });
+        // Undo can restore an earlier batch while this request is running. Retain it and dedupe by both identities.
+        this.groups.update(retained => {
+          const keys = new Set(retained.map(group => this.suggestionIdentity(group)));
+          const completed = new Set([...this.completedSuggestions.keys()].map(group => this.suggestionIdentity(group)));
+          return [...retained, ...incoming.filter(group => {
+            const key = this.suggestionIdentity(group);
+            if (keys.has(key) || completed.has(key)) return false;
+            keys.add(key);
+            return true;
+          })];
+        });
+        this.totalGroups.set(this.groups().length);
+        this.totalPages.set(1);
+        this.currentPage.set(1);
+        this.batchFull.set(result.suggestions.length >= CULL_PAGE_SIZE
+          || result.suggestions.reduce((count, group) => count + group.paths.length, 0) >= 2000);
+        this.selectionsMap.set(new Map());
+      } catch (error) {
+        if (this.stackVisitCurrent(epoch) && generation === this.loadGenerationId) {
+          this.stackScopeInvalid.set((error as { status?: number } | null)?.status === 422);
+          this.notice$.next({ key: I18N.stacks.suggestions_error, duration: 2000 });
+        }
+      } finally {
+        if (epoch === this.visitEpoch && generation === this.loadGenerationId) {
+          this.loading.set(false);
+          this.stackBatchPending = null;
+        }
+      }
+    })();
+    this.stackBatchPending = run;
+    return run;
+  }
+
+  async stackSuggestion(group: CullingGroup, coverPath: string): Promise<boolean> {
+    const loaded = this.loadedSuggestion(group);
+    if (!loaded || !loaded.photos.some(photo => photo.path === coverPath)) return false;
+    const epoch = this.visitEpoch;
+    const rootSession = this.stackSession;
+    const session = () => this.stackVisitCurrent(epoch) && !!rootSession && rootSession();
+    const paths = loaded.photos.map(photo => photo.path);
+    return this.decideStackSuggestion(loaded, () => this.stackActions.commit(this.stacks.create(paths, coverPath), {
+      paths, action: 'create', session, live: session,
+      labelKey: I18N.stacks.stacked, labelParams: { count: paths.length },
+      onUndone: () => this.restoreStackSuggestion(loaded),
+    }));
+  }
+
+  async skipSuggestion(group: CullingGroup): Promise<boolean> {
+    const loaded = this.loadedSuggestion(group);
+    if (!loaded) return false;
+    const epoch = this.visitEpoch;
+    const session = this.stackSession;
+    return this.decideStackSuggestion(loaded, async () => {
+      await firstValueFrom(this.stacks.dismissSuggestion(loaded.type as 'burst' | 'duplicate', loaded.photos.map(photo => photo.path)));
+      if (!this.stackVisitCurrent(epoch) || !session) return;
+      this.undo.register({
+        labelKey: I18N.stacks.suggestion_skipped,
+        undo: async () => {
+          this.stacks.assertLive(() => this.stackVisitCurrent(epoch) && session());
+          await firstValueFrom(this.stacks.restoreSuggestion(loaded.suggestionKey!));
+          this.stacks.assertLive(() => this.stackVisitCurrent(epoch) && session());
+          this.restoreStackSuggestion(loaded);
+        },
+      });
+    });
+  }
+
+  private async decideStackSuggestion(group: CullingGroup, write: () => Promise<unknown>): Promise<boolean> {
+    const epoch = this.visitEpoch;
+    const key = this.suggestionIdentity(group);
+    if (!this.stackVisitCurrent(epoch) || this.stackDecisions.has(key)) return false;
+    this.stackDecisions.add(key);
+    try {
+      const committed = await write();
+      if (committed === false || !this.stackVisitCurrent(epoch)) return false;
+      return this.completeStackSuggestion(group);
+    } catch {
+      if (this.stackVisitCurrent(epoch)) this.notice$.next({ key: I18N.stacks.suggestion_failed, duration: 2000 });
+      return false;
+    } finally {
+      if (epoch === this.visitEpoch) this.stackDecisions.delete(key);
+    }
+  }
+
+  /** Editor save consumes only the group captured when that editor opened. */
+  completeStackSuggestion(group: CullingGroup): boolean {
+    if (!this.stackVisitCurrent()) return false;
+    const loaded = this.loadedSuggestion(group);
+    if (!loaded) return false;
+    this.completedSuggestions.set(loaded, this.visitEpoch);
+    this.groups.update(groups => groups.filter(item => item !== loaded));
+    this.totalGroups.set(this.groups().length);
+    if (this.groups().length === 0) void this.loadStackBatch();
+    return true;
+  }
+
+  /** Undo remains valid across batch requests, but never across visits or accounts. */
+  restoreStackSuggestion(group: CullingGroup): void {
+    if (!this.stackVisitCurrent() || this.completedSuggestions.get(group) !== this.visitEpoch) return;
+    if (!this.groups().some(item => this.suggestionIdentity(item) === this.suggestionIdentity(group))) {
+      this.groups.update(groups => [group, ...groups]);
+    }
+    this.totalGroups.set(this.groups().length);
+    this.completedSuggestions.delete(group);
+  }
+
   constructor() {
     // Lets `ui_show_culling_plan` refuse to replace what this visit's user has decided but not committed.
     // In plan mode the committed groups are the assistant's to re-plan, so only a commit in flight counts.
     const destroyRef = inject(DestroyRef);
-    destroyRef.onDestroy(this.plan.registerDecisionsProbe(() => this.planActive()
+    destroyRef.onDestroy(this.plan.registerDecisionsProbe(() => !this.cullWritesAllowed() ? false : this.planActive()
       ? this.passingGroups().size > 0 || this.confirming()
       : this.hasUncommittedDecisions()));
-    destroyRef.onDestroy(this.plan.registerClosedGroupsProbe(() => this.closedGroupKeys()));
-    destroyRef.onDestroy(() => this.cancelReplan());
+    destroyRef.onDestroy(this.plan.registerClosedGroupsProbe(() => this.cullWritesAllowed() ? this.closedGroupKeys() : new Set()));
+    destroyRef.onDestroy(() => { this.visitEpoch++; this.cancelReplan(); });
   }
 
   /** The assistant's suggestions on the plan on screen (the service stays private to the store). */
@@ -308,7 +505,7 @@ export class CullingStore {
   readonly loadingMore = signal(false);
   readonly currentPage = signal(1);
   readonly totalPages = signal(1);
-  readonly hasMore = computed(() => this.currentPage() < this.totalPages());
+  readonly hasMore = computed(() => this.cullWritesAllowed() && this.currentPage() < this.totalPages());
 
   /** groupKey -> set of kept paths (ids collide across types, so the type is part of the key) */
   readonly selectionsMap = signal<Map<string, Set<string>>>(new Map());
@@ -484,6 +681,7 @@ export class CullingStore {
   }
 
   async loadGroups(): Promise<void> {
+    if (this.mode() === 'stacks') return this.groups().length === 0 ? this.loadStackBatch() : undefined;
     this.dropPlan();
     const gen = this.loadGenerationId;
     this.loading.set(true);
@@ -506,6 +704,7 @@ export class CullingStore {
   }
 
   async loadMore(): Promise<void> {
+    if (!this.cullWritesAllowed()) return;
     if (!this.hasMore() || this.loadingMore()) return;
     if (this.planActive()) {
       // The plan arrived whole; revealing is a slice, so a shown group never moves under the user.
@@ -542,6 +741,7 @@ export class CullingStore {
    * assistant previewed: the pin is dropped, the user is told, and the manual feed loads instead.
    */
   async enterPlan(pin: CullPlanPin): Promise<CullPlanLoadOutcome> {
+    if (!this.cullWritesAllowed()) return 'superseded';
     // A new pin supersedes a re-plan the slider queued (or started) for the previous one.
     this.cancelReplan();
     this.resetFeed();
@@ -713,6 +913,7 @@ export class CullingStore {
 
   /** The slider moved while a plan is shown: recompute the plan once it settles. */
   scheduleReplan(): void {
+    if (!this.cullWritesAllowed()) return;
     if (!this.planActive()) return;
     if (this.replanTimer !== null) clearTimeout(this.replanTimer);
     // A re-plan already in flight answers for a value the user has moved away from.
@@ -741,6 +942,7 @@ export class CullingStore {
    * (and the preset) back.
    */
   async replan(): Promise<void> {
+    if (!this.cullWritesAllowed()) return;
     const seq = ++this.replanSeq;
     const pin = this.plan.pin();
     const startDigest = this.planDigest();
@@ -763,7 +965,7 @@ export class CullingStore {
       from: this.previousPlanFrom, to: this.previousPlanTo, scene: this.previousPlanScene,
     };
     await this.flushPassTimers();
-    if (seq !== this.replanSeq || !this.planActive()) return;
+    if (!this.cullWritesAllowed() || seq !== this.replanSeq || !this.planActive()) return;
     // The pin's preset stays: the explicit strictness wins over its own server-side, and it still supplies
     // the preset's other knobs (a wedding preset's two keepers per group).
     // The dates are `null`, not omitted, so All dates clears a window the pin carried.
@@ -834,8 +1036,11 @@ export class CullingStore {
 
   /** Fetch the genre presets; null when the list cannot load. */
   async fetchCullProfiles(): Promise<CullProfile[] | null> {
+    if (!this.cullWritesAllowed()) return null;
     try {
+      const gen = this.loadGenerationId;
       const data = await firstValueFrom(this.api.get<CullProfilesResponse>('/culling/profiles'));
+      if (!this.cullWritesAllowed() || gen !== this.loadGenerationId) return null;
       return data.profiles ?? [];
     } catch {
       return null;
@@ -844,9 +1049,11 @@ export class CullingStore {
 
   /** Fetch per-category comparison counts + threshold for the weight-tuning chip. */
   async refreshComparisonStats(): Promise<void> {
+    if (!this.cullWritesAllowed()) return;
+    const gen = this.loadGenerationId;
     try {
       const stats = await firstValueFrom(this.api.get<ComparisonStats>('/comparison/stats'));
-      this.comparisonStats.set(stats);
+      if (this.cullWritesAllowed() && gen === this.loadGenerationId) this.comparisonStats.set(stats);
     } catch {
       // Best-effort: the chip simply stays hidden if stats are unavailable.
     }
@@ -854,10 +1061,13 @@ export class CullingStore {
 
   /** Fetch personal-ranker status for the "trains My Taste" chip (best-effort). */
   async refreshRankerStatus(): Promise<void> {
+    if (!this.cullWritesAllowed()) return;
+    const gen = this.loadGenerationId;
     try {
       const s = await firstValueFrom(
         this.api.get<{ trained: boolean; comparison_count: number }>('/ranker/status'),
       );
+      if (!this.cullWritesAllowed() || gen !== this.loadGenerationId) return;
       this.rankerTrained.set(!!s.trained);
       this.rankerComparisons.set(s.comparison_count ?? null);
     } catch {
@@ -920,6 +1130,7 @@ export class CullingStore {
    * returned — no backend round-trip. Confirmed groups are left untouched.
    */
   reselectFromStrictness(): void {
+    if (!this.cullWritesAllowed()) return;
     // The plan's keepers are the assistant's decision, not a strictness derivation.
     if (this.planActive()) return;
     const confirmed = this.confirmedGroups();
@@ -940,6 +1151,7 @@ export class CullingStore {
   /** The one write behind every darkroom decision: the ↑ / ↓ keys, a swipe, and
    *  the per-pane buttons a compare grid needs. */
   setPhotoKept(group: CullingGroup, path: string, keep: boolean): void {
+    if (!this.cullWritesAllowed()) return;
     const key = this.groupKey(group);
     addToSetSignal(this.touchedGroups, key);
     const map = new Map(this.selectionsMap());
@@ -958,6 +1170,7 @@ export class CullingStore {
    * carries open flips over.
    */
   acceptSuggestion(group: CullingGroup, path: string, action: CullSuggestionAction): void {
+    if (!this.cullWritesAllowed()) return;
     if (!this.planActive() || this.confirming() || this.closedGroupKeys().has(this.groupKey(group))) return;
     this.setPhotoKept(group, path, action === 'keep');
     this.lastAccept = { path, at: Date.now() };
@@ -982,12 +1195,14 @@ export class CullingStore {
 
   /** Put a group's keepers back to an earlier set (a swipe's Undo); not a new decision, so `touchedGroups` is left alone. */
   restoreSelection(group: CullingGroup, kept: Set<string>): void {
+    if (!this.cullWritesAllowed()) return;
     const key = this.groupKey(group);
     updateMapSignal(this.selectionsMap, key, kept);
     this.reportSelection(key, kept);
   }
 
   toggleSelection(path: string, group: CullingGroup): void {
+    if (!this.cullWritesAllowed()) return;
     this.setPhotoKept(group, path, !(this.selectionsMap().get(this.groupKey(group))?.has(path) ?? false));
   }
 
@@ -997,6 +1212,7 @@ export class CullingStore {
    * the hidden auto-cull button -- already protects that.
    */
   selectExclusive(path: string, group: CullingGroup): void {
+    if (!this.cullWritesAllowed()) return;
     if (group.sequence_kind && SEQUENCE_KINDS_KEPT_WHOLE.includes(group.sequence_kind)) return;
     const key = this.groupKey(group);
     addToSetSignal(this.touchedGroups, key);
@@ -1020,6 +1236,7 @@ export class CullingStore {
    * false when the group has nothing kept (nothing to confirm).
    */
   confirmGroup(group: CullingGroup): boolean {
+    if (!this.cullWritesAllowed()) return false;
     // Paused while a re-plan is in flight: the plan it would land on is about to be replaced.
     if (this.replanning()) return false;
     const key = this.groupKey(group);
@@ -1041,6 +1258,7 @@ export class CullingStore {
           void this.refreshRankerStatus();
         })
         .catch(() => {
+          if (!this.cullWritesAllowed() || gen !== this.loadGenerationId) return;
           this.unconfirmGroup(key);
           this.notice$.next({ key: I18N.culling.error_confirming, duration: 2000 });
         });
@@ -1061,6 +1279,7 @@ export class CullingStore {
 
   /** Confirm every not-yet-confirmed group of `visible` that has a kept photo, five at a time. */
   async confirmAllRemaining(visible: CullingGroup[]): Promise<void> {
+    if (!this.cullWritesAllowed()) return;
     if (this.replanning()) return;
     // Tracked like a single confirm's commit, so a re-plan started meanwhile waits for every batch.
     const run = this.runConfirmAll(visible);
@@ -1086,6 +1305,7 @@ export class CullingStore {
       // Process in batches of 5 to avoid overwhelming the server
       const batchSize = 5;
       for (let i = 0; i < toConfirm.length; i += batchSize) {
+        if (!this.cullWritesAllowed() || gen !== this.loadGenerationId) return;
         const batch = toConfirm.slice(i, i + batchSize);
         await Promise.all(batch.map(g => {
           const kept = [...this.selectionsMap().get(this.groupKey(g))!];
@@ -1094,6 +1314,7 @@ export class CullingStore {
               if (gen === this.loadGenerationId && this.planActive()) this.plan.recordConfirm(this.groupKey(g), kept);
             });
         }));
+        if (!this.cullWritesAllowed() || gen !== this.loadGenerationId) return;
         this.confirmedGroups.update(s => {
           const next = new Set(s);
           for (const g of batch) next.add(this.groupKey(g));
@@ -1115,6 +1336,7 @@ export class CullingStore {
   }
 
   skipGroup(group: CullingGroup): void {
+    if (!this.cullWritesAllowed()) return;
     if (this.replanning()) return;
     const key = this.groupKey(group);
     addToSetSignal(this.touchedGroups, key);
@@ -1302,11 +1524,13 @@ export class CullingStore {
 
   /** Set one override value on the named frames, wherever they sit in the feed. */
   patchOverrides(paths: string[], value: string | null): void {
+    if (!this.cullWritesAllowed()) return;
     this.restoreOverrides(new Map(paths.map(path => [path, value])));
   }
 
   /** Write back per-path override values (the undo path restores the old ones). */
   restoreOverrides(values: Map<string, string | null>): void {
+    if (!this.cullWritesAllowed()) return;
     // `droppedApplied` is deliberately left untouched here: `rerunNeeded` unions it
     // with the pending-correction keys, so re-marking (or undoing the re-mark) a
     // group whose applied override was already dropped this session must not stop
@@ -1353,6 +1577,7 @@ export class CullingStore {
 
   /** Load the genre culling presets; re-apply the persisted one on open. */
   async loadCullProfiles(): Promise<void> {
+    if (!this.cullWritesAllowed()) return;
     try {
       const profiles = await this.fetchCullProfiles();
       if (!profiles) return;
@@ -1392,6 +1617,7 @@ export class CullingStore {
    * selection in place — or reload only when the threshold changed the grouping.
    */
   applyProfile(p: CullProfile, persist = true): void {
+    if (!this.cullWritesAllowed()) return;
     this.selectedProfile.set(p.id);
     if (persist) {
       localStorage.setItem(CULL_PROFILE_KEY, p.id);
@@ -1438,6 +1664,7 @@ export class CullingStore {
    * for afterwards — the dialog a late suggestion would repaint is gone by then.
    */
   async applySuggestedProfile(): Promise<void> {
+    if (!this.cullWritesAllowed()) return;
     if (this.profileChosen() || this.suggestionApplied || this.autoCullApplying()) return;
     const key = this.scopeKey();
     const suggestion = this.suggestionScopeKey === key
@@ -1461,11 +1688,14 @@ export class CullingStore {
 
   /** Ask the backend which preset this scope's stored content looks like. */
   async fetchProfileSuggestion(key: string): Promise<ProfileSuggestion | null> {
+    if (!this.cullWritesAllowed()) return null;
     const params: Record<string, string | number> = this.numericScopeParams();
+    const gen = this.loadGenerationId;
     try {
       const data = await firstValueFrom(
         this.api.get<ProfileSuggestion>('/culling/suggest_profile', params),
       );
+      if (!this.cullWritesAllowed() || gen !== this.loadGenerationId) return null;
       this.suggestionScopeKey = key;
       this.profileSuggestion.set(data);
       return data;
@@ -1531,6 +1761,7 @@ export class CullingStore {
    * a snapshot the newer run is about to replace.
    */
   async openAutoCull(): Promise<AutoCullRunOutcome> {
+    if (!this.cullWritesAllowed()) return 'superseded';
     if (this.autoCullApplying()) return 'superseded';
     // Only a fresh open clears the notices: the re-runs that raise them come back
     // through here, and clearing unconditionally would erase them on the way in —
@@ -1605,6 +1836,7 @@ export class CullingStore {
    *  that owns the dialog reconciles the box, in openAutoCull(); this handler
    *  only reads the outcome. */
   async onTrimBracketsChange(value: boolean): Promise<void> {
+    if (!this.cullWritesAllowed()) return;
     if (this.autoCullApplying()) return;
     const before = this.autoCullPreview();
     this.trimBrackets.set(value);
@@ -1637,8 +1869,10 @@ export class CullingStore {
    * resets its own view state and reloads the feed there.
    */
   async confirmAutoCull(onApplied: () => void): Promise<void> {
+    if (!this.cullWritesAllowed()) return;
     const previewed = this.autoCullRequest();
     if (!previewed || this.autoCullApplying()) return;
+    const gen = this.loadGenerationId;
     this.autoCullApplying.set(true);
     this.autoCullLoading.set(true);
     try {
@@ -1648,6 +1882,7 @@ export class CullingStore {
         highlights_album: this.autoCullHighlights() ? previewed.highlights_album : '',
       };
       const result = await firstValueFrom(this.api.post<AutoCullResponse>('/culling/auto', body));
+      if (!this.cullWritesAllowed() || gen !== this.loadGenerationId) return;
       this.closeAutoCull();
       this.clearAutoCullNotices();
       this.notice$.next({
