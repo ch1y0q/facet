@@ -80,6 +80,23 @@ describe('manual stack browsing through rendered viewer, Router and HTTP', () =>
     await navigation;
     await membership();
   };
+  // jsdom has no layout. Browser coverage measures the real toolbar; here the
+  // geometry lets Router/HTTP tests assert the temporary host reservation.
+  const measuredNavigator = () => {
+    const host = root().querySelector<HTMLElement>('app-stack-navigator')!;
+    vi.spyOn(host, 'getBoundingClientRect').mockReturnValue({ height: 105 } as DOMRect);
+    return host;
+  };
+  const pendingMember = async () => {
+    const navigation = arrived();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    http.expectOne(request => request.url === '/api/photo').flush(makePhoto({ path: paths[2], stack_id: stack.id }));
+    await navigation;
+    await initialPhoto();
+    const read = http.expectOne(request => request.url === '/api/stacks/by-photo');
+    expect(read.request.params.get('path')).toBe(paths[2]);
+    return read;
+  };
 
   beforeAll(async () => { ({ PhotoDetailComponent } = await import('./photo-detail.component')); });
   beforeEach(async () => {
@@ -144,6 +161,142 @@ describe('manual stack browsing through rendered viewer, Router and HTTP', () =>
       .every(image => decodeURIComponent(image.src).includes(paths[1]))).toBe(true);
     await clickMember('[data-stack-thumbnail]', paths[0]);
     expect(router.url).toContain(encodeURIComponent(paths[0]));
+  });
+
+  it.each(['success', 'null', 'error'] as const)('holds measured stack space without stale members until fresh membership %s', async outcome => {
+    await open();
+    const host = measuredNavigator();
+    const read = await pendingMember();
+    expect(root().querySelector('[data-stack-navigator]')).toBeNull();
+    expect(root().querySelectorAll('[data-stack-thumbnail]')).toHaveLength(0);
+    expect(host.style.minHeight).toBe('105px');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    http.expectNone(request => request.url === '/api/photo');
+    if (outcome === 'error') read.flush({}, { status: 503, statusText: 'Busy' });
+    else read.flush(outcome === 'success' ? stack : null);
+    await render();
+    expect(host.style.minHeight).toBe('');
+    expect(root().querySelectorAll('[data-stack-thumbnail]')).toHaveLength(outcome === 'success' ? 3 : 0);
+    if (outcome === 'error') {
+      button('[role="alert"] button').click();
+      await membership();
+      expect(root().querySelector('[data-stack-position]')?.textContent).toContain('3 of 3');
+      expect(host.style.minHeight).toBe('');
+    }
+  });
+
+  it.each(['account', 'revision', 'history', 'assistant', 'pin', 'route'] as const)('releases pending member space after %s invalidation', async reason => {
+    await open();
+    const host = measuredNavigator();
+    const read = await pendingMember();
+    expect(host.style.minHeight).toBe('105px');
+    if (reason === 'account') auth.status.update(status => ({ ...status!, user_id: 'bob' }));
+    else if (reason === 'revision') TestBed.inject(PhotoStackService).revision.update(value => value + 1);
+    else if (reason === 'history') store.notifyOrganizationRestored();
+    else if (reason === 'assistant') assistantBatches.next({ paths: null });
+    else if (reason === 'pin') store.pinnedPaths.set([paths[1]]);
+    else await router.navigateByUrl('/away');
+    await initialPhoto();
+    if (reason === 'route') expect(root().querySelector('app-stack-navigator')).toBeNull();
+    else expect(host.style.minHeight).toBe('');
+    if (reason !== 'pin') expect(read.cancelled).toBe(true);
+    http.match(request => request.url === '/api/stacks/by-photo').filter(request => !request.cancelled).forEach(request => request.flush(null));
+  });
+
+  it.each(['/outside.jpg', paths[2]])('does not reserve stack space for nonmember or pin-excluded target %s', async target => {
+    if (target === paths[2]) store.pinnedPaths.set([paths[1]]);
+    await open();
+    const host = measuredNavigator();
+    await router.navigate(['/photo'], { queryParams: { path: target }, state: { photo: makePhoto({ path: target }) } });
+    await initialPhoto();
+    const reads = http.match(request => request.url === '/api/stacks/by-photo').filter(request => !request.cancelled);
+    expect(reads).toHaveLength(1);
+    const [read] = reads;
+    expect(read.request.params.get('path')).toBe(target);
+    expect(host.style.minHeight).toBe('');
+    expect(root().querySelector('[data-stack-navigator]')).toBeNull();
+    read.flush(null);
+    await render();
+  });
+
+  it.each(['cancel', 'error'] as const)('releases measured space when a guarded member navigation ends with %s, then reloads the current membership', async outcome => {
+    await open();
+    const host = measuredNavigator();
+    const release = new Subject<boolean>();
+    let entered!: () => void;
+    const guardEntered = new Promise<void>(resolve => { entered = resolve; });
+    const route = router.config.find(route => route.path === 'photo')!;
+    route.canActivate = [() => { entered(); return release; }];
+    route.runGuardsAndResolvers = 'always';
+    const component = harness.routeDebugElement!.componentInstance as InstanceType<typeof PhotoDetailComponent>;
+    const opening = vi.spyOn(component as unknown as { openSetMember(path: string): Promise<void> }, 'openSetMember');
+    button('[data-stack-next]').click();
+    http.expectOne(request => request.url === '/api/photo').flush(makePhoto({ path: paths[2] }));
+    await guardEntered;
+    harness.detectChanges();
+    sideData();
+    expect(host.style.minHeight).toBe('105px');
+    expect(root().querySelector('[data-stack-navigator]')).toBeNull();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    http.expectNone(request => request.url === '/api/photo');
+    if (outcome === 'error') release.error(new Error('guard failed'));
+    else { release.next(false); release.complete(); }
+    await opening.mock.results[0].value;
+    await initialPhoto();
+    expect(host.style.minHeight).toBe('');
+    expect(router.url).toContain(encodeURIComponent(paths[1]));
+    const read = http.expectOne(request => request.url === '/api/stacks/by-photo');
+    expect(read.request.params.get('path')).toBe(paths[1]);
+    read.flush(stack);
+    await render();
+    expect(root().querySelector('[data-stack-position]')?.textContent).toContain('2 of 3');
+  });
+
+  it('drops a reserved target when another navigation supersedes its pending guard', async () => {
+    await open();
+    const host = measuredNavigator();
+    const release = new Subject<boolean>();
+    let entered!: () => void;
+    const guardEntered = new Promise<void>(resolve => { entered = resolve; });
+    const route = router.config.find(route => route.path === 'photo')!;
+    route.canActivate = [snapshot => {
+      if (snapshot.queryParamMap.get('path') !== paths[2]) return true;
+      entered(); return release;
+    }];
+    route.runGuardsAndResolvers = 'always';
+    button('[data-stack-next]').click();
+    http.expectOne(request => request.url === '/api/photo').flush(makePhoto({ path: paths[2] }));
+    await guardEntered;
+    harness.detectChanges();
+    expect(host.style.minHeight).toBe('105px');
+    await router.navigate(['/photo'], { queryParams: { path: paths[0] }, state: { photo: makePhoto({ path: paths[0] }) } });
+    await initialPhoto();
+    expect(host.style.minHeight).toBe('');
+    const reads = http.match(request => request.url === '/api/stacks/by-photo').filter(request => !request.cancelled);
+    expect(reads).toHaveLength(1);
+    const [read] = reads;
+    expect(read.request.params.get('path')).toBe(paths[0]);
+    release.next(true); release.complete();
+    read.flush(stack);
+    await render();
+    expect(root().querySelector('[data-stack-position]')?.textContent).toContain('1 of 3');
+    expect(host.style.minHeight).toBe('');
+  });
+
+  it('reserves only the visible pinned intersection in a read-only stack and still refreshes membership', async () => {
+    auth.status.update(status => ({ ...status!, edition_enabled: false, edition_authenticated: false }));
+    store.pinnedPaths.set([paths[1], paths[2]]);
+    await open();
+    const host = measuredNavigator();
+    expect(root().querySelector('[data-stack-manage]')).toBeNull();
+    const read = await pendingMember();
+    expect(host.style.minHeight).toBe('105px');
+    read.flush({ ...stack, editable: false });
+    await render();
+    expect(host.style.minHeight).toBe('');
+    expect(root().querySelector('[data-stack-position]')?.textContent).toContain('2 of 2');
+    expect(root().querySelectorAll('[data-stack-thumbnail]')).toHaveLength(2);
+    expect(store.pinnedPaths()).toEqual([paths[1], paths[2]]);
   });
 
   it.each([true, false])('read-only=%s and partial stacks expose only returned members and no manage control', async readOnly => {

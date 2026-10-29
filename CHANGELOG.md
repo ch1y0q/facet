@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Stack browsing keeps the image in place.** Moving between known stack members preserves the thumbnail strip's measured space while fresh membership loads, without retaining old navigation controls.
+
 ## [1.26.0] "Histogramme" — 2026-10-28
 
 ### Added
