@@ -35,6 +35,7 @@ interface CategoryWeights {
 }
 
 interface TopPhoto {
+  preview_revision?: string | null;
   path: string;
   filename: string;
   aggregate: number;
@@ -105,7 +106,7 @@ interface TopPhoto {
         <div class="text-xs font-semibold uppercase opacity-60 mb-3">{{ I18N.comparison.top_before | translate }}</div>
         @for (p of topBefore(); track p.path; let i = $index) {
           <div class="relative mb-3">
-            <img [src]="p.path | thumbnailUrl:512" class="w-full rounded object-cover" [alt]="p.filename" loading="lazy" />
+            <img [src]="p.path | thumbnailUrl:512:p.preview_revision" class="w-full rounded object-cover" [alt]="p.filename" loading="lazy" />
             <span class="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-xs">{{ i + 1 }}</span>
             <span class="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-xs font-mono">{{ p.aggregate | fixed:1 }}</span>
           </div>
@@ -118,7 +119,7 @@ interface TopPhoto {
         @if (recomputed()) {
           @for (p of topAfter(); track p.path; let i = $index) {
             <div class="relative mb-3">
-              <img [src]="p.path | thumbnailUrl:512" class="w-full rounded object-cover" [alt]="p.filename" loading="lazy" />
+              <img [src]="p.path | thumbnailUrl:512:p.preview_revision" class="w-full rounded object-cover" [alt]="p.filename" loading="lazy" />
               <span class="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-white text-xs">{{ i + 1 }}</span>
               <span class="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/60 text-[var(--facet-accent-text)] text-xs font-mono">{{ p.aggregate | fixed:1 }}</span>
             </div>
@@ -216,7 +217,7 @@ export class ComparisonSuggestionsTabComponent {
     const data = await firstValueFrom(
       this.api.get<{ photos: TopPhoto[] }>('/photos', {
         category, sort: 'aggregate', sort_direction: 'DESC',
-        per_page: 10, page: 1, hide_duplicates: true, hide_bursts: true,
+        per_page: 10, page: 1, hide_duplicates: true, hide_bursts: true, collapse_stacks: 0,
       }),
     );
     return data.photos ?? [];

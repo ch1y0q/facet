@@ -5,7 +5,7 @@
 Facet 是一款本地的照片分析与选片引擎。它从美观度到人脸清晰度，在 9 个维度上为每张照片评分，然后让你通过网页照片库浏览、选片和整理。一切都在你自己的机器上运行，无需云服务、账号或 API 密钥。
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue)
-![Angular](https://img.shields.io/badge/Angular-21-dd0031)
+![Angular](https://img.shields.io/badge/Angular-22-dd0031)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -16,7 +16,7 @@ Facet 是一款本地的照片分析与选片引擎。它从美观度到人脸�
 
 ## 工作原理
 
-1. **扫描**——把 Facet 指向一个照片文件夹。每张照片都会针对画质、构图和人脸进行分析。支持 JPG、HEIF/HEIC/HIF（佳能 HDR PQ `.HIF` 照片会以 SMPTE ST 2084 PQ 传递函数解码，并自动 tone map 到 SDR sRGB）、10 种 RAW 格式（CR2、CR3、NEF、ARW、RAF、RW2、DNG、ORF、SRW、PEF），以及 PNG、GIF、WebP、BMP、TIFF 和 AVIF 静态图像（AVIF 需要编译了 AVIF 支持的 Pillow，11.3 起原生支持），以及通过已有依赖 `imagecodecs` 支持的 JPEG XL（`.jxl`），标准安装和 Docker 镜像均已包含。对于 LibRaw 无法解码的 RAW 文件——例如 Lightroom“合并为 HDR/全景图”生成的 DNG（`-HDR.dng`、`-Pano.dng`）或比已安装 LibRaw 版本更新的相机型号——Facet 会通过 `exiftool` 回退到其内嵌的最大预览图（需要长边至少 1024 px 的预览图；此时的评分来自该预览图，而非完整的 RAW 解码）。Lightroom Classic 13+ 的合并（以及 Enhance）会将该预览图存储为 JPEG XL，Facet 会直接解码。
+1. **扫描**——把 Facet 指向一个照片文件夹。每张照片都会针对画质、构图和人脸进行分析。支持 JPEG、HEIF/HEIC、10 种 RAW 格式、JPEG XL、AVIF、PNG、WebP、TIFF 等——见[支持的文件类型](docs/zh/README.md#支持的文件类型)。
 2. **浏览**——打开网页照片库，用筛选、搜索和多种视图模式探索你的照片库。
 3. **选片**——Facet 会检测连拍、标记闭眼照片、把相似照片分组，并把精选照片推到前面。包围曝光和全景／HDR 组会被识别出来并整组保留，而不会在选片时被拆散。
 
@@ -35,7 +35,7 @@ GPU 会被自动检测，并非必需。Facet 既能纯 CPU 运行，也能使�
 ### 选片
 
 - **连拍检测**——把快速连拍的照片分为一组，并根据清晰度、画质和闭眼检测自动选出最好的一张
-- **组照保护**——包围曝光、全景扫拍和 HDR 全景（`--detect-sequences` / `--detect-panoramas`）会被识别为有意拍摄的多张组照并整组保留：选片暗房会把一组中的每一张都预设为保留，绝不会把它压缩成唯一的“赢家”
+- **组照保护**——包围曝光、全景和 HDR 全景（`--detect-sequences` / `--detect-panoramas`）会被识别为组照；选片暗房会把一组中的每一张都预设为保留
 - **相似照片组**——在整个照片库中找出视觉上相似的照片，无论拍摄时间相隔多久
 - **场景**——按拍摄时间的间隔把一次拍摄分成按先后顺序排列的“场景”，让你按叙事顺序选片；轻点标记，确认后淘汰
 - **自动选片**——一键对整个范围选片（全部分组，或只针对连拍／相似／场景，还可进一步限定到某个相册或日期区间），并提供试运行预览、保留数量预算和可选的“精选”相册
@@ -76,8 +76,8 @@ GPU 会被自动检测，并非必需。Facet 既能纯 CPU 运行，也能使�
 </details>
 
 **工作流小贴士：**
-- **`/timeline`** 视图会逐级下钻：年 → 月 → 日历——点击某一天即可打开筛选到该日期的照片库。这里没有排序；如果想从一次旅行中挑出最好的照片，请改用下面的 **`/capsules`**，它会在你指定的日期区间上做一次多样性筛选，结果可保存为相册。
-- **`/capsules`** 视图会生成主题幻灯片（旅程、“某人的面孔”、四季、佳作），你可以把它们保存为相册。
+- **`/timeline`** 会逐级下钻：年 → 月 → 日；点击某一天即可打开筛选到该日期的照片库。
+- **`/capsules`** 会生成主题幻灯片（旅程、“某人的面孔”、四季、佳作），你可以把它们保存为相册——挑选一次旅行中最好的照片时，这是更好的选择。
 - 照片库默认隐藏闭眼照片、非代表帧的连拍照片和重复照片。当出现 **“当前筛选条件隐藏了 N 张照片”** 横幅时，点击“显示全部”即可展开视图。
 
 ### 整理
@@ -101,7 +101,7 @@ GPU 会被自动检测，并非必需。Facet 既能纯 CPU 运行，也能使�
 - **统计**——器材使用、类别分布、拍摄时间线和指标相关性的仪表盘
 - **AI 点评**——展示每个指标贡献度的评分明细；由 VLM 生成的自然语言评价 `[GPU]` `[16gb/24gb]`
 - **权重调节**——按类别调节权重的编辑器，带实时评分预览。A/B 照片比较会从你的选择中学习，并给出优化后的权重建议。
-- **拍摄场景评分方案**——控制一张照片*按哪个类别*来评分，这与只在类别确定之后才起作用的权重滑块相互独立：你可以重排全局的类别优先级、为某个相册应用一个命名方案（动作／舞台、人像拍摄、野生动物……），或为单张照片设置一个能在每次重算后依然保留的类别覆盖。
+- **拍摄场景评分方案**——选择一张照片*按哪个类别*来评分：重排类别优先级、为某个相册应用一个命名方案（动作／舞台、人像拍摄、野生动物……），或为单张照片固定一个类别。
 - **“我的偏好”排序**——按个人排序模型学到的评分为照片库排序，并显示一个标明学习覆盖率和留出集准确率的置信度徽章
 - **从标注中学习**——选片决策、星级评分、收藏和淘汰都会反馈给权重优化器（`--sync-label-comparisons`、`--mine-insights`）
 - **配置快照**——保存、恢复和比较权重配置
@@ -134,7 +134,7 @@ GPU 会被自动检测，并非必需。Facet 既能纯 CPU 运行，也能使�
 - **客户选片**——分享出去的相册可以运行在客户选片模式：客户只凭链接（还可选配一个 PIN 码）就能选中喜欢的照片并留言，与你自己的评分完全隔离
 - **手机自动上传**——把 PhotoSync 或任意 WebDAV 应用指向内置的 `/dav` 收件箱；`--watch` 会在新照片到达时立即为其评分
 - **数码相框与展示屏**——一个受令牌保护的接口，把你精选的最佳照片推送给智能相框和 Home Assistant 仪表盘
-- **AI 智能体（MCP）**——默认启用的 [Model Context Protocol](https://modelcontextprotocol.io/) 端点（可通过 `viewer.mcp.enabled` 关闭），让支持 MCP 的助手用图库的筛选条件搜索和查看照片库，使用可吊销的个人令牌；视令牌级别而定，助手还可以为照片评分、打标签、整理并筛选（破坏性操作会先预览，且需要确认）
+- **AI 智能体（MCP）**——一个 [Model Context Protocol](https://modelcontextprotocol.io/) 端点（默认启用，`viewer.mcp.enabled`），让助手用可吊销的个人令牌搜索照片库。更高级别的令牌可以评分、打标签、整理并筛选；破坏性操作会先预览，且需要确认
 - **作品集导出** `[Edition]`——把一个相册渲染成自包含的静态 HTML 照片库（不引用任何 CDN，可离线使用），你可以把它放到任意网站空间上
 - **社交平台裁切** `[Edition]`——以检测到的主体为中心构图的全分辨率导出，支持方形、竖版和快拍等比例预设
 - **照片下载**——从照片库中下载单张照片或所选照片
@@ -160,7 +160,11 @@ GPU 会被自动检测，并非必需。Facet 既能纯 CPU 运行，也能使�
 
 ## 你需要什么
 
-Facet 的绝大部分功能在**任何机器（CPU）**上都能运行——评分、人脸检测、选片、照片库、搜索、相册和元数据导出都不需要 GPU。在 **Apple Silicon** 上，Facet 会自动为 Torch 模型启用 PyTorch 的 Metal（`mps`）后端，`auto` 配置档则按统一内存总量来选定——32 GB 的 Mac 能用上 `16gb` 配置档，48 GB 的能用上 `24gb` 配置档；InsightFace 仍然使用 ONNX Runtime 的 CPU provider。**NVIDIA GPU**（配合 `16gb` 或 `24gb` 配置档）可以解锁最强的模型：TOPIQ 美观度评分、SigLIP 2 向量嵌入、VLM 打标签、AI 照片描述与点评，以及主体显著性。没有本地 GPU？把 VLM 打标签／照片描述／点评通过 `scoring_config.json` 中的 `vlm_backend` 指向远程的 **Ollama** 或 **兼容 OpenAI** 的服务器——这样这些功能在 CPU 的 `legacy`/`8gb` 配置档上也能使用。在查看器中，编辑类操作（星级、人脸、选片）需要**编辑密码**，触发扫描需要 `viewer.features.show_scan_button: true`，并且在多用户模式下需要 **superadmin** 角色，在单用户安装上需要编辑权限。
+- **任何机器（CPU）**都能运行 Facet 的绝大部分功能：评分、人脸、选片、照片库、搜索、相册和元数据导出。
+- **Apple Silicon** 会自动使用 Metal（`mps`）后端。`auto` 配置档按统一内存选定：32 GB 能用上 `16gb`，48 GB 能用上 `24gb`。
+- **NVIDIA GPU** 配合 `16gb`/`24gb` 配置档可以解锁最强的模型：TOPIQ、SigLIP 2、VLM 打标签、AI 照片描述与点评、主体显著性。
+- **没有 GPU？**通过 `scoring_config.json` 中的 `vlm_backend`，把 VLM 打标签、照片描述和点评指向远程的 **Ollama** 或**兼容 OpenAI** 的服务器。
+- **在查看器中编辑**（星级、人脸、选片）需要**编辑密码**。扫描按钮需要 `viewer.features.show_scan_button: true` 和编辑权限（多用户模式下为 **superadmin** 角色）。
 
 → 按功能列出的完整要求（GPU、显存配置档、可选依赖包、鉴权）：**[安装 › 各功能的要求](docs/zh/INSTALLATION.md#各功能的要求)**。
 
@@ -173,7 +177,7 @@ Facet 会为本地照片库评分、排序和选片，并提供一个照片库�
 - 拥有庞大的本地照片库，想找出自己最好的照片，并清理连拍和近似重复的照片；
 - 希望画质、构图和人脸评分能按自己的口味调节（它会从你的 A/B 比较中学习）；
 - 偏好自托管和隐私——不上传云端、无需账号、无需订阅；
-- 已经在用 Lightroom、darktable、digiKam 或 immich 修图——Facet 会把星级、色标、关键词、照片描述和带人名的人脸区域写入 `.xmp` 附属文件（默认不改动原片），也可以选择为 JPEG/HEIC/TIFF/PNG/DNG 把它们直接嵌入文件（照片库中的“将元数据写入文件”操作，或 `--export-sidecars --embed-originals`），并可用 `--import-sidecars` 把外部的修改读回来。专门针对 Lightroom，增效工具 `facet.lrplugin` 还提供了双向流程：可根据 Facet 的评分填入星级、留用/淘汰连拍帧，根据下载的清单把连拍/曝光包围/全景组归入收藏集和关键词，并把你在 Lightroom 里自己设置的旗标/星级/色标导出回 Facet。
+- 已经在用 Lightroom、darktable、digiKam 或 Immich 修图——Facet 会把星级、色标、关键词、照片描述和人脸区域写入 `.xmp` 附属文件（除非你要求嵌入，否则原片保持不变：照片库中的“将元数据写入文件”操作，或 `--export-sidecars --embed-originals`），并用 `--import-sidecars` 把修改读回来。`facet.lrplugin` Lightroom 增效工具提供了双向流程。见[互操作](docs/zh/INTEROP.md)。
 
 **如果你想要下面这些，它多半不适合你：**
 
@@ -232,6 +236,7 @@ python viewer.py                       # 照片库 → http://localhost:5000
 | [评分](docs/zh/SCORING.md) | 类别、权重、调节指南 |
 | [人脸识别](docs/zh/FACE_RECOGNITION.md) | 人脸处理流程、聚类、人物管理 |
 | [查看器](docs/zh/VIEWER.md) | 网页照片库的功能与用法 |
+| [API](docs/API.md) | 查看器 HTTP API 参考 |
 | [互操作](docs/zh/INTEROP.md) | 与 Lightroom、Capture One、digiKam、darktable 往返同步星级／标签 |
 | [Immich](docs/zh/IMMICH.md) | 与 Immich 同步星级和收藏，以及入站 webhook |
 | [重新关联](docs/zh/RELINK.md) | 重新关联已移动照片 |
@@ -245,4 +250,4 @@ python viewer.py                       # 照片库 → http://localhost:5000
 
 ### 许可说明
 
-Facet 自身的代码采用 MIT 许可证。部分默认模型**不**允许商业使用：pyiqa（TOPIQ、LIQE 等）和 InsightFace 权重均为非商业许可。`licensing.mode: commercial` 设置会将 Facet 限制为仅使用宽松许可的模型：受限组件绝不会被导入或下载，每个环节都会改用宽松许可的替代品（参见[许可](docs/zh/CONFIGURATION.md#许可licensing)）。参见[第三方模型与许可证](docs/zh/THIRD_PARTY_MODELS.md)。
+Facet 自身的代码采用 MIT 许可证。部分默认模型**不可商业使用**：pyiqa（TOPIQ、LIQE 等）和 InsightFace 权重。设置 `licensing.mode: commercial` 即可只使用宽松许可的替代品（[许可](docs/zh/CONFIGURATION.md#许可licensing)、[第三方模型](docs/zh/THIRD_PARTY_MODELS.md)）。

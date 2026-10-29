@@ -22,6 +22,9 @@ import { PluralKeyPipe } from '../../shared/pipes/plural-key.pipe';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 import { HANDLE_PLACE_SEARCH_ERRORS_LOCALLY } from '../../core/utils/place-search-error.util';
 
+/** The keyCode browsers report for a keydown the IME is still processing. */
+const IME_PROCESS_KEY_CODE = 229;
+
 export interface GpsEditDialogData {
   path: string;
   filename: string;
@@ -56,16 +59,17 @@ type GpsResult = components['schemas']['GpsUpdateResponse'];
       <label class="block text-sm mb-2">
         {{ I18N.photo_detail.gps.online_query | translate }}
         <!-- Native maxlength counts UTF-16 units; the request guard limits code points to 200. -->
-        <input class="block w-full border rounded p-2 bg-transparent" type="search" maxlength="400" [ngModel]="onlineQuery()" (ngModelChange)="setOnlineQuery($event)">
+        <input class="block w-full border rounded p-2 bg-transparent" type="search" maxlength="400" aria-describedby="gps-online-notice" [ngModel]="onlineQuery()" (ngModelChange)="setOnlineQuery($event)" (keydown.enter)="onOnlineEnter($event)">
       </label>
-      <p class="text-xs mb-2">{{ I18N.photo_detail.gps.online_notice | translate }}</p>
+      <p id="gps-online-notice" class="text-xs mb-2">{{ I18N.photo_detail.gps.online_notice | translate }}</p>
       <p class="text-xs mb-2"><a href="https://photon.komoot.io" target="_blank" rel="noopener noreferrer">Photon<span class="sr-only"> {{ I18N.photo_detail.gps.opens_new_tab | translate }}</span></a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">{{ I18N.photo_detail.gps.osm_attribution | translate }}<span class="sr-only"> {{ I18N.photo_detail.gps.opens_new_tab | translate }}</span></a></p>
       <button mat-button (click)="searchOnline()" [disabled]="saving() || onlineBusy() || !onlineQueryValid() || !onlineEnabled() || !auth.isEdition()">{{ I18N.photo_detail.gps.online_search | translate }}</button>
       @if (!onlineEnabled()) { <p role="status">{{ I18N.photo_detail.gps.online_disabled | translate }}</p> }
       @if (onlineBusy()) { <p role="status">{{ I18N.photo_detail.gps.online_loading | translate }}</p> }
       @if (onlineError()) { <p role="alert">{{ onlineError() | translate }}</p> }
       @if (onlineSearched() && !onlineResults().length) { <p role="status">{{ I18N.photo_detail.gps.online_empty | translate }}</p> }
-      <ul class="max-h-40 overflow-auto mb-3">
+      <p role="status" class="sr-only">@if (onlineResults().length) { {{ onlineResults().length | pluralKey:I18N.photo_detail.gps.online_results:I18N.photo_detail.gps.online_results_plural | translate:{ count: onlineResults().length } }} }</p>
+      <ul class="max-h-40 overflow-auto mb-3" [attr.aria-label]="I18N.photo_detail.gps.online_results_label | translate">
         @for (result of onlineResults(); track $index) {
           <li><button mat-button class="!h-auto !py-2 !text-left" (click)="selectOnlineResult(result)">{{ result.label }}</button></li>
         }
@@ -270,6 +274,15 @@ export class GpsEditDialogComponent {
   setOnlineQuery(query: string): void {
     this.invalidateOnline();
     this.onlineQuery.set(query);
+  }
+
+  /** Enter that commits an IME candidate is part of typing, which never sends the query. */
+  onOnlineEnter(event: Event): void {
+    // Safari fires compositionend before the keydown of the Enter that commits an
+    // IME candidate, so that Enter carries isComposing false and keyCode 229.
+    const key = event as KeyboardEvent;
+    if (key.isComposing || key.keyCode === IME_PROCESS_KEY_CODE) return;
+    void this.searchOnline();
   }
 
   async searchOnline(): Promise<void> {

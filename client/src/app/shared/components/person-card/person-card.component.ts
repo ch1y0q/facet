@@ -86,14 +86,14 @@ export interface Person {
           <!-- Name & count -->
           <div class="min-w-0 flex-1">
             @if (isEditing()) {
-              <div class="flex items-center gap-1"
+              <div class="flex flex-wrap items-center justify-end gap-1"
                    role="presentation"
                    tabindex="-1"
                    (click)="$event.stopPropagation()"
                    (keydown)="$event.stopPropagation()">
                 <input
                   #nameInput
-                  class="flex-1 bg-transparent border-b border-current outline-none text-sm py-0.5"
+                  class="min-w-24 flex-1 bg-transparent border-b border-current outline-none text-sm py-0.5"
                   [value]="person().name ?? ''"
                   (keyup.enter)="onSave()"
                   (keyup.escape)="editCancel.emit()"

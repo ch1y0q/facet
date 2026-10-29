@@ -13,6 +13,7 @@ from typing import Iterator, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
+from db.preview_versions import attach_preview_versions_async
 from api.auth import CurrentUser, get_optional_user, require_edition
 from api import organization_capture
 from api.database import get_async_db, get_db
@@ -88,6 +89,7 @@ async def _get_clustered_photos(conn, zoom, date_from, date_to, user_id,
         }
         for row in rows
     ]
+    await attach_preview_versions_async(conn, clusters, 'representative_path')
     return {'clusters': clusters, 'photos': []}
 
 
@@ -117,6 +119,7 @@ async def _get_individual_photos(conn, base_where, base_params, limit):
         }
         for row in rows
     ]
+    await attach_preview_versions_async(conn, photos)
     return {'clusters': [], 'photos': photos}
 
 

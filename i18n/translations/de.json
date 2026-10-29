@@ -1,4 +1,20 @@
 {
+  "photo_refresh": {
+    "limit": "Wählen Sie 1 bis 100 Fotos aus.",
+    "reasons": {
+      "unavailable": "Quelle nicht verfügbar",
+      "changed": "Foto geändert; erneut aktualisieren",
+      "busy": "Bibliothek beschäftigt; später erneut versuchen",
+      "failed": "Foto konnte nicht gelesen werden"
+    },
+    "title": "Metadaten und Vorschau aktualisieren",
+    "description": "Verfügbare Quelldaten lesen und die Vorschau erneuern. Manuelle Angaben, Bewertungen, Gesichter und KI-Werte bleiben unverändert. Originale werden nicht verändert. Geänderte Bildinhalte erfordern einen erneuten Scan für neue Bewertungen oder Gesichtserkennung.",
+    "one": "1 ausgewähltes Foto",
+    "many": "{count} ausgewählte Fotos",
+    "start": "Aktualisieren",
+    "completed": "Aktualisiert: {count}",
+    "failed": "Einige Fotos konnten nicht aktualisiert werden. Versuchen Sie es erneut, um nur die verbleibenden Fotos zu aktualisieren."
+  },
   "ui": {
     "title": "Facet",
     "filters": {
@@ -72,7 +88,8 @@
     "switch_language": "Sprache wechseln",
     "theme": "Farbschema",
     "dark_mode": "Dunkelmodus",
-    "light_mode": "Hellmodus"
+    "light_mode": "Hellmodus",
+    "version": "Facet {version}"
   },
   "dialog": {
     "cancel": "Abbrechen",
@@ -202,8 +219,9 @@
     "duplicate_set": "Duplikatgruppe öffnen",
     "burst_set": "Seriengruppe öffnen",
     "sequence_set": "Belichtungsreihe/Panorama öffnen",
+    "stack_set": "Fotostapel öffnen",
     "open_detail": "Fotoseite öffnen",
-    "key_hint": "1-5 bewerten · F fav · X verwerfen · Leertaste auswählen · Eingabe öffnen"
+    "key_hint": "1-5 bewerten · {favourite} fav · {reject} verwerfen · Leertaste auswählen · Eingabe öffnen"
   },
   "notifications": {
     "copied": "Kopiert!",
@@ -458,6 +476,7 @@
     "exposure": "Belichtung",
     "composition": "Komposition",
     "subject_saliency": "Motivhervorhebung",
+    "content": "Inhalt",
     "camera": "Kamera"
   },
   "sort_options": {
@@ -1019,7 +1038,8 @@
     "map": "Karte",
     "capsules": "Kapseln",
     "junk_sweep": "Aufräumen",
-    "help": "Hilfe"
+    "help": "Hilfe",
+    "more": "Mehr"
   },
   "auth": {
     "logout": "Abmelden",
@@ -1040,6 +1060,11 @@
       "restore": "Filter wiederherstellen",
       "showing_all": "Alle Fotos werden angezeigt – einschließlich Blinzler, Serien und Duplikate"
     },
+    "filters_notice": {
+      "message": "{count} Filter aktiv",
+      "message_plural": "{count} Filter aktiv",
+      "reset": "Alle Filter zurücksetzen"
+    },
     "render_migration": {
       "message": "{n} RAW-Fotos zeigen noch eine Miniatur aus der vorherigen Darstellung.",
       "command_hint": "Führen Sie {command} aus, um alle auf einmal aufzufrischen."
@@ -1054,6 +1079,7 @@
     },
     "all_photos": "Alle Fotos",
     "sort": "Sortieren nach",
+    "sort_current": "Sortieren nach: {label}",
     "sort_aggregate": "Gesamtwertung",
     "sort_aesthetic": "Ästhetik",
     "sort_date": "Datum",
@@ -1322,7 +1348,11 @@
     "faces_need_names": "Gesichter ohne Namen",
     "faces_need_names_hint": "Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Mit + ein Gesicht zuweisen oder unter Personen eine Gruppe benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen.",
     "faces_need_names_readonly_hint": "Enthält nicht zugewiesene Gesichter und unbenannte Personengruppen. Personen mit Bearbeitungszugriff können Gesichter zuweisen oder Gruppen benennen. Fotos ohne erkannte Gesichter sind ausgeschlossen.",
-    "help_none": "Diese Seite hat noch keinen Hilfetext."
+    "help_none": "Diese Seite hat noch keinen Hilfetext.",
+    "notices": {
+      "collapsed": "{count} Hinweis",
+      "collapsed_plural": "{count} Hinweise"
+    }
   },
   "composition_patterns": {
     "none": "Keines",
@@ -2218,7 +2248,8 @@
       "oversize": "Ausgelassene Gruppen (zu groß, um hier bestätigt zu werden): {count}",
       "out_of_date": "Der Plan des Assistenten ist veraltet - bitten Sie ihn, die Vorschau erneut zu erstellen",
       "replan_flips_dropped": "{count} Ihrer Änderungen passen zu keiner Gruppe mehr und wurden verworfen."
-    }
+    },
+    "stack_group": "Diese Gruppe stapeln, aktuelles Bild als Titelbild"
   },
   "scenes": {
     "title": "Szenen",
@@ -2484,6 +2515,9 @@
       "online_disabled": "Die Onlinesuche ist deaktiviert.",
       "online_loading": "Onlinesuche läuft…",
       "online_empty": "Keine Orte gefunden. Andere Suchanfrage versuchen oder Koordinaten eingeben.",
+      "online_results": "{count} Ort gefunden",
+      "online_results_plural": "{count} Orte gefunden",
+      "online_results_label": "Online-Ergebnisse",
       "online_error": "Onlinesuche fehlgeschlagen oder ausgelastet. Kurz warten und erneut versuchen oder Koordinaten eingeben.",
       "preview_hint": "Wählen Sie einen Ort und dann Speichern, um ihn diesem Foto zuzuweisen.",
       "search": "Gespeicherte Orte suchen",
@@ -2617,6 +2651,9 @@
     "selected": "ausgewählt",
     "copy_keeps": "Behaltene in Ordner kopieren",
     "move_rejects": "Abgelehnte in Ordner verschieben",
+    "trash_all_rejects": "Alle abgelehnten Fotos in den Papierkorb",
+    "all_rejects_scope": "Alle für Sie sichtbaren abgelehnten Fotos der gesamten Bibliothek. Aktuelle Album-, Datums- und Galeriefilter werden ignoriert. Die Dateien werden gemeinsam genutzt: Maßgeblich sind Ihre Ablehnungen. Auch Fotos, die andere Benutzer behalten, favorisiert oder bewertet haben, können im Papierkorb landen.",
+    "all_rejects_limit": "Diese Aktion unterstützt höchstens 10.000 Fotos gleichzeitig. Zeigen Sie in der Galerie nur abgelehnte Fotos an, grenzen Sie nach Datum oder Album ein und verwenden Sie die Ordnerauswahl mit der Papierkorbaktion für kleinere Stapel. Deaktivieren Sie Filter, die Gruppenmitglieder ausblenden, um jedes abgelehnte Bild einzuschließen.",
     "trash_rejects": "Abgelehnte in den Papierkorb",
     "trash_disabled": "Papierkorb-Funktion ist deaktiviert — ein Administrator kann sie über viewer.cull.allow_trash aktivieren.",
     "trash_missing_pkg": "Der Papierkorb ist auf diesem Server nicht verfügbar — das Paket send2trash ist nicht installiert.",
@@ -2631,6 +2668,7 @@
     "preview": "Vorschau",
     "apply": "Anwenden",
     "cancel": "Abbrechen",
+    "partial_error": "Einige Dateien konnten nicht verarbeitet werden. Erstellen Sie eine neue Vorschau der verbleibenden Dateien.",
     "done": "Aussortierung angewendet",
     "error": "Aussortierung fehlgeschlagen",
     "delete_action": "Löschen…",
@@ -2662,7 +2700,13 @@
     "toggle_filters": "Filterleiste ein- / ausblenden",
     "toggle_layout": "Zwischen Raster und Mosaik wechseln",
     "comp_left_wins": "Linkes Foto gewinnt",
-    "comp_right_wins": "Rechtes Foto gewinnt"
+    "comp_right_wins": "Rechtes Foto gewinnt",
+    "keymap_hint": "Klicke eine Aktion an und drücke die neue Taste.",
+    "press_key": "Taste drücken…",
+    "reset_keys": "Alle zurücksetzen",
+    "key_in_use": "Diese Taste ist bereits belegt",
+    "key_reserved": "Diese Taste ist reserviert",
+    "keymap_title": "Tastenkürzel anpassen"
   },
   "pwa": {
     "update_available": "Eine neue Version ist verfügbar",
@@ -2711,7 +2755,10 @@
       "receipt": "Belege",
       "meme": "Memes",
       "slide": "Folien"
-    }
+    },
+    "candidates": "{count} Kandidat",
+    "candidates_plural": "{count} Kandidaten",
+    "empty_kind": "Keine Kandidaten dieser Art. Versuchen Sie „Alle Arten“ im Filtermenü."
   },
   "social_export": {
     "presets": {
@@ -2838,7 +2885,11 @@
       "set_favorite": "Favoriten geändert",
       "set_rating": "Bewertet",
       "set_rejected": "Abgelehnt",
-      "start_scan": "Scan gestartet"
+      "start_scan": "Scan gestartet",
+      "create_photo_stack": "Fotostapel erstellt",
+      "update_photo_stack": "Fotostapel geändert",
+      "unstack_photos": "Fotostapel aufgelöst",
+      "undo_photo_stack": "Stapeländerung rückgängig gemacht"
     },
     "ui": {
       "ui_navigate": "Seite geöffnet",
@@ -2928,6 +2979,87 @@
     "unknown": "Unbekannt",
     "photo_count": "Fotos: {count}",
     "field": "Feld",
-    "entry_action": "{action} · {kind} · {date} · #{id}"
+    "entry_action": "{action} · {kind} · {date} · #{id}",
+    "stack": "Fotostapel"
+  },
+  "stacks": {
+    "suggestions": "Vorgeschlagene Stapel",
+    "suggestions_hint": "Vorschläge nutzen erkannte Duplikate und Serien innerhalb dieser Filter, ohne automatisches Ausblenden von Serien/Duplikaten, eine Gruppe nach der anderen. ← → wählen das Titelbild, S stapelt mit diesem Titelbild, X überspringt. Übersprungene Gruppen bleiben ausgeblendet, bis sich ihre Fotos ändern. Bestehende Stapel sowie Belichtungsreihen und Panoramen werden nicht vorgeschlagen. Bis zu 20 Vorschläge werden auf einmal geladen; Neu laden holt weitere.",
+    "suggestions_empty": "Keine Stapelvorschläge in dieser Ansicht",
+    "suggestion_burst": "Serie",
+    "suggestion_duplicate": "Duplikate",
+    "suggestion_edit_members": "Mitglieder bearbeiten",
+    "suggestion_skip": "Überspringen",
+    "suggestion_skip_group": "Diesen Stapel überspringen",
+    "suggestions_error": "Vorschläge konnten nicht geladen werden. Bitte erneut versuchen.",
+    "suggestions_reload": "Vorschläge neu laden",
+    "previous": "Vorheriges Stapelfoto",
+    "next": "Nächstes Stapelfoto",
+    "browse_position": "{position} von {count}",
+    "manage": "Stapel verwalten",
+    "title": "Fotostapel",
+    "create": "Fotos stapeln",
+    "hint": "Originale und ihre Entscheidungen bleiben erhalten. Titelbild wählen und speichern. Die anfängliche Reihenfolge ist chronologisch.",
+    "member_count": "{count} Mitglied",
+    "member_count_plural": "{count} Mitglieder",
+    "open_member": "{path} öffnen",
+    "cover_for": "{path} als Titelbild verwenden",
+    "cover": "Titelbild",
+    "move_up": "{path} nach vorne verschieben",
+    "move_down": "{path} nach hinten verschieben",
+    "remove": "{path} aus dem Stapel entfernen",
+    "add_selected": "{count} ausgewähltes Foto hinzufügen",
+    "add_selected_plural": "{count} ausgewählte Fotos hinzufügen",
+    "select_all": "Alle {count} Mitglieder auswählen",
+    "unstack": "Stapel auflösen",
+    "read_only": "Erlaubte Mitglieder sind sichtbar. Bearbeitung erfordert Editionszugriff auf alle Mitglieder.",
+    "dissolve_hint": "Beim Speichern mit weniger als zwei Mitgliedern wird der Stapel aufgelöst. Die Fotos bleiben erhalten.",
+    "error": "Anfrage fehlgeschlagen. Der Entwurf bleibt erhalten; erneut versuchen.",
+    "conflict": "Der Stapel wurde geändert, ist nicht verfügbar oder ein Foto gehört bereits zu einem Stapel. Mitglieder neu laden. Vorhandene Stapel über ihr Abzeichen öffnen und Mitglieder vor dem Neugruppieren entfernen.",
+    "unavailable": "Dieser Stapel oder ein Mitglied ist nicht verfügbar.",
+    "reload": "Mitglieder neu laden",
+    "saved": "Fotostapel aktualisiert",
+    "expand_all": "Alle Stapel aufklappen",
+    "collapse": "Stapel einklappen",
+    "totals": "{photos} passende Fotos · {items} angezeigte Elemente",
+    "folded_scope": "Aktionen für die gesamte Ansicht umfassen eingeklappte Mitglieder. Eine einzeln ausgewählte Kachel betrifft nur dieses Foto.",
+    "explicit_only": "Zum Erstellen 2–1000 Fotos ausdrücklich auswählen.",
+    "badge": "Stapel öffnen: {count} Mitglieder",
+    "badge_filtered": "Stapel öffnen: {count} passende von {total} erlaubten Mitgliedern",
+    "stack_id": "Stapel-ID",
+    "position": "Position",
+    "suggestion_stack": "Mit diesem Titelbild stapeln",
+    "stacked": "{count} Fotos gestapelt",
+    "suggestion_skipped": "Vorschlag übersprungen",
+    "suggestion_progress": "Vorschlag {position} von {count}",
+    "suggestion_cover_previous": "Vorheriges Bild als Titelbild",
+    "suggestion_cover_next": "Nächstes Bild als Titelbild",
+    "suggestions_done": "Alle Vorschläge in dieser Ansicht sind geprüft. Neu laden, um weitere zu suchen.",
+    "stack_failed": "Stapeln fehlgeschlagen: Ein Foto gehört möglicherweise bereits zu einem Stapel.",
+    "suggestion_failed": "Diese Änderung wurde nicht gespeichert. Versuchen Sie es erneut."
+  },
+  "immich_diagnostics": {
+    "title": "Immich-Diagnose",
+    "read_only": "Nur Leseprüfungen. Fotos, Bewertungen und Stapel bleiben unverändert.",
+    "configuration": "Konfiguration",
+    "configured": "Server und Schlüssel konfiguriert",
+    "not_configured": "Zuerst Server und API-Schlüssel konfigurieren.",
+    "mapping_rules": "Pfadzuordnungsregeln",
+    "mapping_sample": "Abgedeckte Pfade (Stichprobe)",
+    "sample_hint": "Höchstens {limit} erfasste Fotos. Abdeckung bestätigt keine entfernten Treffer. Ohne Regeln bleiben Pfade unverändert.",
+    "last_push": "Letzte aufgezeichnete Aktualisierung des Synchronisationsstatus",
+    "unknown": "Nicht aufgezeichnet",
+    "version": "Serverversion: {version}",
+    "stack_version_ok": "Version unterstützt Stapel; Rechte und Dateizuordnungen wurden nicht geprüft.",
+    "stack_version_old": "Stapelübertragung benötigt Immich 3 oder neuer.",
+    "not_checked": "Verbindung nicht getestet.",
+    "connected": "Server erreichbar; Schlüssel für Kontolesen akzeptiert.",
+    "access_denied": "Zugriff verweigert. Schlüssel und user.read prüfen.",
+    "unreachable": "Verbindung fehlgeschlagen. Server, Adresse und TLS prüfen.",
+    "invalid_response": "Nicht unterstützte Serverantwort.",
+    "invalid_config": "Immich-Konfiguration auf dem Server korrigieren.",
+    "failed": "Diagnose nicht verfügbar. Erneut versuchen oder Administratorzugriff prüfen.",
+    "refresh": "Status aktualisieren",
+    "test": "Verbindung testen"
   }
 }

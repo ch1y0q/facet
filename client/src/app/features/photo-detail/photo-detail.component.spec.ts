@@ -1,3 +1,4 @@
+import { PhotoStackService } from '../../core/services/photo-stack.service';
 import { GalleryStore } from '../gallery/gallery.store';
 import { makePhoto } from '../../../testing/photo.fixture';
 import type { Mock, MockInstance } from 'vitest';
@@ -16,6 +17,7 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
+import { KeyboardMappingService, KEYMAP_STORAGE_KEY } from '../../core/services/keyboard-mapping.service';
 import { AssistantChangesService, AssistantChangeBatch } from '../../core/agent/assistant-changes.service';
 
 // Mock Leaflet via vi.doMock + dynamic import: the component pulls in shared/leaflet
@@ -102,6 +104,7 @@ describe('PhotoDetailComponent', () => {
   }, 20000);
 
   beforeEach(() => {
+    vi.spyOn(PhotoStackService.prototype, 'byPhoto').mockReturnValue(of(null));
     changes$ = new Subject<AssistantChangeBatch>();
     mockApi = {
       get: vi.fn(() => of(samplePhoto)),
@@ -293,6 +296,18 @@ describe('PhotoDetailComponent', () => {
     expect(view.componentInstance.photo()).toMatchObject({ is_kept: !kept, is_rejected: false });
     expect(keep.getAttribute('aria-pressed')).toBe(String(!kept));
     expect(keep.querySelector('mat-icon')!.textContent!.trim()).not.toBe(icon);
+  });
+
+  it('folds the secondary header actions into a More menu below md while the title keeps min-w-0', () => {
+    const view = renderDetail();
+    view.componentInstance.photo.set(makePhoto({}));
+    view.detectChanges();
+    const root = view.nativeElement as HTMLElement;
+    const more = root.querySelector('button[aria-label="nav.more"]') as HTMLButtonElement;
+    expect(more.classList.contains('md:!hidden')).toBe(true);
+    const refresh = root.querySelector('button[aria-label="photo_refresh.title"]') as HTMLButtonElement;
+    expect(refresh.classList.contains('max-md:!hidden')).toBe(true);
+    expect(root.querySelector('span.truncate')!.classList.contains('min-w-0')).toBe(true);
   });
 
   it('renders NULL and zero extended metrics in the actual detail template', () => {
@@ -854,6 +869,16 @@ describe('PhotoDetailComponent', () => {
       component.goBack();
       expect(mockLocation.back).toHaveBeenCalled();
     });
+
+    it('goes back on Escape, but not on one a dialog already handled', () => {
+      createComponent();
+      const handled = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+      handled.preventDefault();
+      component.goBack(handled);
+      expect(mockLocation.back).not.toHaveBeenCalled();
+      component.goBack(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(mockLocation.back).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('download', () => {
@@ -1098,6 +1123,11 @@ describe('PhotoDetailComponent', () => {
       toggleRejected = vi.spyOn(component, 'toggleRejected').mockResolvedValue(undefined);
     });
 
+    afterEach(() => {
+      TestBed.inject(KeyboardMappingService).resetAll();
+      localStorage.removeItem(KEYMAP_STORAGE_KEY);
+    });
+
     function press(init: KeyboardEventInit, target?: HTMLElement): KeyboardEvent {
       const event = new KeyboardEvent('keydown', { cancelable: true, ...init });
       if (target) Object.defineProperty(event, 'target', { value: target });
@@ -1126,6 +1156,55 @@ describe('PhotoDetailComponent', () => {
     it.each(['x', 'X', '0'])('%s toggles the reject', key => {
       expect(press({ key }).defaultPrevented).toBe(true);
       expect(toggleRejected).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+    });
+
+    it('rejects with a remapped key and retires the default X', () => {
+      const keymap = TestBed.inject(KeyboardMappingService);
+      keymap.setKey('reject', 'r');
+      try {
+        expect(press({ key: 'r' }).defaultPrevented).toBe(true);
+        expect(toggleRejected).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+        press({ key: 'x' });
+        // Still exactly the one call from 'r': the retired default does nothing.
+        expect(toggleRejected).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+      } finally {
+        keymap.resetAll();
+      }
+    });
+
+    it('toggles the favourite with a remapped key and retires the default F', () => {
+      TestBed.inject(KeyboardMappingService).setKey('favourite', 'z');
+      expect(press({ key: 'z' }).defaultPrevented).toBe(true);
+      expect(toggleFavorite).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+      press({ key: 'f' });
+      expect(toggleFavorite).toHaveBeenCalledExactlyOnceWith('/photos/test.jpg');
+    });
+
+    describe('keep key', () => {
+      let reviewPhoto: MockInstance;
+
+      beforeEach(() => {
+        reviewPhoto = vi.spyOn(component, 'reviewPhoto').mockResolvedValue(undefined);
+      });
+
+      function pressKeep(key: string): KeyboardEvent {
+        const event = new KeyboardEvent('keydown', { cancelable: true, key });
+        component.onReviewKey(event);
+        return event;
+      }
+
+      it('keeps with the default k', () => {
+        expect(pressKeep('k').defaultPrevented).toBe(true);
+        expect(reviewPhoto).toHaveBeenCalledExactlyOnceWith('kept');
+      });
+
+      it('keeps with a remapped key and retires the default K', () => {
+        TestBed.inject(KeyboardMappingService).setKey('keep', 'j');
+        expect(pressKeep('j').defaultPrevented).toBe(true);
+        expect(reviewPhoto).toHaveBeenCalledExactlyOnceWith('kept');
+        expect(pressKeep('k').defaultPrevented).toBe(false);
+        expect(reviewPhoto).toHaveBeenCalledExactlyOnceWith('kept');
+      });
     });
 
     it.each(['6', '9', 'q', 'Enter'])('leaves %s alone', key => {
@@ -2147,7 +2226,10 @@ describe('PhotoDetailComponent', () => {
         state: { photo: expect.objectContaining({ path: '/photos/sibling.jpg' }) },
         replaceUrl: true,
       });
-      expect(component.photo()?.path).toBe('/photos/sibling.jpg');
+      // Navigation, not openSetMember, swaps the photo: the route's activation reloads it,
+      // so the component must leave photo() untouched until then (a mocked router never activates).
+      expect(component.photo()).toBe(samplePhoto);
+      expect(mockRouter.navigate).toHaveBeenCalledTimes(1);
     });
   });
 

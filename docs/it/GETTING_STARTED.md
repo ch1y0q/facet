@@ -2,10 +2,9 @@
 
 > 🌐 [English](../GETTING_STARTED.md) · [Français](../fr/GETTING_STARTED.md) · [Deutsch](../de/GETTING_STARTED.md) · **Italiano** · [Español](../es/GETTING_STARTED.md) · [Português](../pt/GETTING_STARTED.md) · [简体中文](../zh/GETTING_STARTED.md)
 
-Una guida per la prima sessione, per il lavoro più comune: hai appena scattato o importato un
-gruppo di foto e vuoi ottenere un insieme curato. Segue sei passaggi — importare, raggruppare
-le foto simili, insegnare a Facet i tuoi gusti, scartare, taggare, esportare — e rimanda alla
-pagina che spiega ciascuno invece di ripeterlo.
+Hai un nuovo gruppo di foto e vuoi ottenere un insieme curato. Questa pagina percorre sei
+passaggi — importare, raggruppare le foto simili, insegnare i tuoi gusti, scartare, taggare,
+esportare — e rimanda ai dettagli di ciascuno.
 
 ![Percorso guidato della galleria Facet](../screenshots/walkthrough.gif)
 
@@ -13,13 +12,11 @@ pagina che spiega ciascuno invece di ripeterlo.
 
 ### 1. Imposta una password di edizione
 
-Una nuova installazione è in **sola lettura**. Puoi sfogliare (soggetto a `viewer.password`,
-se ne hai impostata una), ma ogni modifica — valutazioni, selezione, volti, album, tag e il
-pulsante di scansione — viene rifiutata finché non imposti `viewer.edition_password` in
-`scoring_config.json` e riavvii il viewer (la configurazione non viene ricaricata a caldo).
+Una nuova installazione è in **sola lettura**. Per modificare (valutazioni, selezione, volti,
+album, tag, scansione), imposta `viewer.edition_password` in `scoring_config.json` e riavvia il viewer (la configurazione non viene ricaricata a caldo).
 
-Con il `docker-compose.yml` incluso non devi inventarne una: l'immagine genera una password
-al primo avvio e la stampa una sola volta. Leggila con:
+Con il `docker-compose.yml` incluso, l'immagine genera una password al primo avvio e la
+stampa una sola volta:
 
 ```bash
 docker compose logs facet
@@ -46,11 +43,9 @@ Due cose mettono in difficoltà con i container:
 
 ### 3. Nessuna GPU? Nessun problema
 
-Tutto — punteggi, volti, tag, selezione, il pulsante di scansione — funziona su un processore
-con il profilo CPU `legacy`; è solo più lento. Leggi
+Tutto funziona con il profilo CPU `legacy`, solo più lentamente. Vedi
 [Nessuna scheda grafica](INSTALLATION.md#nessuna-scheda-grafica) e
-[Quale profilo si adatta al mio hardware?](INSTALLATION.md#quale-profilo-si-adatta-al-mio-hardware). Una scheda
-non è mai una condizione perché il pulsante di scansione compaia.
+[Quale profilo si adatta al mio hardware?](INSTALLATION.md#quale-profilo-si-adatta-al-mio-hardware).
 
 ### 4. Attenzione alla memoria
 
@@ -72,11 +67,11 @@ farlo dal terminale ([Scansione](COMMANDS.md#scansione)) o dal browser:
   Multiutente: serve il ruolo superadmin.
 - Aggiungi la cartella a `viewer.scan_directories` così l'avvio ha qualcosa da proporre.
 
-Un pulsante **Scansiona nuove foto** compare allora nell'intestazione, subito dopo il selettore
-**Ordina** (nella barra inferiore sugli schermi piccoli), non solo nella galleria vuota. Regole complete: [Avvio scansione](VIEWER.md#avvio-scansione). La prima
-scansione scarica i modelli di IA una sola volta ([Primo avvio](INSTALLATION.md#primo-avvio-cosa-aspettarsi)).
+Un pulsante **Scansiona nuove foto** compare allora in fondo all'intestazione (barra inferiore
+sugli schermi piccoli). Vedi [Avvio scansione](VIEWER.md#avvio-scansione). La prima scansione
+scarica i modelli di IA una sola volta ([Primo avvio](INSTALLATION.md#primo-avvio-cosa-aspettarsi)).
 
-![Pulsante di scansione nell'intestazione, dopo il selettore Ordina](../screenshots/getting-started-scan-button.jpg)
+![Pulsante di scansione in fondo all'intestazione](../screenshots/getting-started-scan-button.jpg)
 
 ### Passaggio 2: trovare duplicati, raffiche e foto simili
 
@@ -108,16 +103,15 @@ da solo dopo un numero sufficiente di nuove scelte, e solo quando ti fermi
 Rifiuta le foto durante la selezione, oppure seleziona un gruppo e agisci su di esso
 ([Selezione multipla e azioni di gruppo](VIEWER.md#selezione-multipla-e-azioni-di-gruppo)):
 [Tieni il top N%](VIEWER.md#tieni-il-top-n), [Scarta in cartella](VIEWER.md#scarta-in-cartella) o
-[Elimina](VIEWER.md#elimina). Scarta in cartella mostra un'anteprima come prova a secco finché non
-la applichi. Elimina invia subito i file al cestino del sistema, e solo se
-`viewer.cull.allow_trash` è attivo (di serie è `false`).
-[Annulla](VIEWER.md#annulla) copre le modifiche ai flag in blocco e le conferme della selezione, non queste operazioni
-sui file. Le cartelle in cui una selezione può scrivere sono una lista consentita: le tue
-cartelle di scansione più `viewer.export.allowed_target_dirs`, quindi una sottocartella
-dell'albero delle foto funziona senza configurazione, mentre una cartella esterna viene
-rifiutata finché non la aggiungi. Vedi
-[Destinazioni di esportazione e scarto](CONFIGURATION.md#destinazioni-di-esportazione-e-scarto). Per
-selezionare da terminale: [Selezionare uno shooting da terminale](COMMANDS.md#selezionare-uno-shooting-da-terminale).
+[Elimina](VIEWER.md#elimina).
+
+- **Scarta in cartella** mostra una prova a secco finché non la applichi.
+- **Elimina** invia i file al cestino del sistema, e solo se `viewer.cull.allow_trash` è attivo (disattivato di serie).
+- **[Annulla](VIEWER.md#annulla)** copre le modifiche ai flag e le conferme della selezione, non spostamenti o eliminazioni di file.
+- Le **destinazioni** sono limitate alle tue cartelle di scansione più `viewer.export.allowed_target_dirs`
+  ([Destinazioni di esportazione e scarto](CONFIGURATION.md#destinazioni-di-esportazione-e-scarto)).
+
+Per selezionare da terminale: [Selezionare uno shooting da terminale](COMMANDS.md#selezionare-uno-shooting-da-terminale).
 
 Le foto che elimini fuori da Facet lasciano la loro riga nel database finché non esegui la pulizia in
 [Manutenzione del database](COMMANDS.md#manutenzione-del-database).
@@ -126,12 +120,9 @@ Le foto che elimini fuori da Facet lasciano la loro riga nel database finché no
 
 ### Passaggio 5: aggiungere tag e metadati alle foto tenute
 
-Facet tagga le foto automaticamente, e puoi aggiungere anche **i tuoi tag**: nella vista di
-dettaglio della foto per una singola foto, o dalle azioni di gruppo per una selezione. I tag
-manuali sopravvivono alle riscansioni, il filtro per tag e la ricerca li trovano, e sono
-nascosti nei link di condivisione. Le parole chiave dei sidecar XMP esterni vengono importate
-come tag manuali; rimuovere un tag in Facet non lo rimuove dai sidecar che Facet ha già
-scritto. Vedi [Tag manuali](VIEWER.md#tag-manuali) e
+Facet tagga le foto automaticamente. Aggiungi **i tuoi tag** nella vista di dettaglio della
+foto o dalle azioni di gruppo. I tag manuali sopravvivono alle riscansioni, funzionano nei
+filtri e nella ricerca, e sono nascosti nei link di condivisione. Vedi [Tag manuali](VIEWER.md#tag-manuali) e
 [Tag manuali e parole chiave XMP](INTEROP.md#tag-manuali-e-parole-chiave-xmp). Per portare valutazioni
 e parole chiave in Lightroom, Capture One, digiKam o darktable, vedi [Interoperabilità](INTEROP.md)
 (serve [exiftool](INSTALLATION.md#exiftool) per l'incorporamento).

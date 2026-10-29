@@ -9,6 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from db.preview_versions import attach_preview_versions
 from api.auth import CurrentUser, get_optional_user, require_edition
 from api.config import _FULL_CONFIG
 from api.database import get_async_db, get_db
@@ -141,9 +142,12 @@ def get_capsules(
     start = (page - 1) * per_page
     end = start + per_page
     page_capsules = cached[start:end]
+    summaries = [_capsule_summary(c) for c in page_capsules]
+    with get_db() as conn:
+        attach_preview_versions(conn, summaries, 'cover_photo_path')
 
     return {
-        "capsules": [_capsule_summary(c) for c in page_capsules],
+        "capsules": summaries,
         "total": total,
         "page": page,
         "per_page": per_page,

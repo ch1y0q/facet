@@ -20,6 +20,7 @@ import { createLeafletMap } from '../../shared/leaflet';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 
 interface MapCluster {
+  preview_revision?: string | null;
   lat: number;
   lng: number;
   count: number;
@@ -27,6 +28,7 @@ interface MapCluster {
 }
 
 interface MapPhoto {
+  preview_revision?: string | null;
   path: string;
   lat: number;
   lng: number;
@@ -299,7 +301,7 @@ export class MapComponent implements OnInit, OnDestroy {
           });
 
           if (cluster.representative_path) {
-            const thumbUrl = this.escapeHtml(this.api.thumbnailUrl(cluster.representative_path, 160));
+            const thumbUrl = this.escapeHtml(this.api.thumbnailUrl(cluster.representative_path, 160, cluster.preview_revision));
             const countLabel = this.escapeHtml(this.i18n.t(I18N.map.cluster_photos, { count: cluster.count }));
             marker.bindPopup(
               `<div style="text-align:center">` +
@@ -318,7 +320,7 @@ export class MapComponent implements OnInit, OnDestroy {
         for (const photo of data.photos) {
           const marker = L.marker([photo.lat, photo.lng]);
 
-          const thumbUrl = this.escapeHtml(this.api.thumbnailUrl(photo.path, 160));
+          const thumbUrl = this.escapeHtml(this.api.thumbnailUrl(photo.path, 160, photo.preview_revision));
           const score = photo.aggregate != null ? photo.aggregate.toFixed(1) : '--';
           const scoreLabel = this.escapeHtml(this.i18n.t(I18N.map.score, { score }));
           marker.bindPopup(

@@ -76,7 +76,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: LFW download (cached; the source is slow and sometimes down)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/lfw-data
           key: lfw-funneled-v1
@@ -87,7 +87,7 @@ jobs:
           lfw="$HOME/lfw-data/lfw_home/lfw_funneled"
           python testdb/make_lfw_subset.py --lfw "$lfw" --out library/photos
           python testdb/make_references.py --lfw "$lfw" --photos library/photos --out library/references
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: face-library
           path: library/
@@ -102,7 +102,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: face-library
           path: library
@@ -115,6 +115,8 @@ jobs:
           printf 'torch==2.11.0\ntorchvision==0.26.0\n' > "$RUNNER_TEMP/torch.txt"
           uv pip install --system -c "$RUNNER_TEMP/torch.txt" \
             -r requirements.lock.txt -r requirements.restricted.lock.txt
+      - name: Runner CPU (a byte diff between the two reports may be a kernel difference, not a regression)
+        run: lscpu | grep -E '^(Vendor ID|Model name|Flags)' | sed -E 's/^(Flags:).*/\1 '"$(grep -ow -m1 -E 'avx512f|avx2' /proc/cpuinfo | sort -u | tr '\n' ' ')"'/'
       - name: Scan, group, name
         run: |
           sudo mkdir -p /data && sudo cp -r library/photos /data/photos && sudo chown -R "$USER" /data
@@ -127,7 +129,7 @@ jobs:
           python testdb/ci_report.py --db "$DB_PATH" --people /data/photos/people.csv \
             --refs library/references > reports/linux.txt
           cat reports/linux.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: report-linux
           path: reports/
@@ -139,7 +141,7 @@ jobs:
     timeout-minutes: ${{ (github.event_name == 'schedule' || inputs.full_scan) && 180 || 30 }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: face-library
           path: library
@@ -151,6 +153,8 @@ jobs:
           --build-arg BASE_IMAGE=python:3.12-slim
           --build-arg STRIP_TORCH=0
           --build-arg INSTALL_CUML=0 .
+      - name: Runner CPU (a byte diff between the two reports may be a kernel difference, not a regression)
+        run: lscpu | grep -E '^(Vendor ID|Model name|Flags)' | sed -E 's/^(Flags:).*/\1 '"$(grep -ow -m1 -E 'avx512f|avx2' /proc/cpuinfo | sort -u | tr '\n' ' ')"'/'
       - name: Scan, group, name
         run: |
           mkdir -p "$RUNNER_TEMP/data" "$RUNNER_TEMP/config" reports
@@ -169,7 +173,7 @@ jobs:
           run python /tool/ci_report.py --db /app/data/photo_scores_pro.db --people /data/photos/people.csv \
             --refs /refs > reports/docker.txt
           cat reports/docker.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: report-docker
           path: reports/
@@ -181,7 +185,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: report-*
           merge-multiple: true

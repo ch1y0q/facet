@@ -60,8 +60,23 @@ from api.auth import (  # noqa: E402
     require_edition, require_superadmin,
 )
 from db.schema import init_database  # noqa: E402
+from tests._sharding import SHARD_ENV, files_for_shard, parse_shard  # noqa: E402
 
 init_database(_TEST_DB_FILE.name)
+
+
+def pytest_collection_modifyitems(config, items):
+    """Keep only this CI slice's files when ``FACET_TEST_SHARD`` is set."""
+    value = os.environ.get(SHARD_ENV)
+    if not value:
+        return
+    index, total = parse_shard(value)
+    files = files_for_shard([item.nodeid for item in items], index, total)
+    kept = [item for item in items if item.nodeid.split("::", 1)[0] in files]
+    dropped = [item for item in items if item.nodeid.split("::", 1)[0] not in files]
+    if dropped:
+        config.hook.pytest_deselected(items=dropped)
+    items[:] = kept
 
 
 @pytest.fixture(autouse=True)

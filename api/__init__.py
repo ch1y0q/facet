@@ -158,7 +158,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        if request.url.path == "/api/organization_history" or request.url.path.startswith("/api/organization_history/"):
+        if (request.url.path == "/api/organization_history" or request.url.path.startswith("/api/organization_history/")
+                or request.url.path == "/api/stacks" or request.url.path.startswith("/api/stacks/")):
             response.headers["Cache-Control"] = "no-store"
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
@@ -597,9 +598,12 @@ def create_app() -> FastAPI:
     from api.routers.frame import router as frame_router
     from api.routers.webdav import router as webdav_router
     from api.routers.immich import router as immich_router
+    from api.routers.immich_diagnostics import router as immich_diagnostics_router
     from api.routers.updates import router as updates_router
     from api.routers.mcp_tokens import router as mcp_tokens_router
 
+    from api.routers.photo_refresh import router as photo_refresh_router
+    app.include_router(photo_refresh_router)
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(gallery_router)
@@ -625,6 +629,9 @@ def create_app() -> FastAPI:
     app.include_router(capture_dates_router)
     from api.routers.organization_history import router as organization_history_router
     app.include_router(organization_history_router)
+
+    from api.routers.stacks import router as stacks_router
+    app.include_router(stacks_router)
     app.include_router(manual_tags_router)
     app.include_router(timeline_router)
     app.include_router(map_router)
@@ -645,6 +652,7 @@ def create_app() -> FastAPI:
     app.include_router(frame_router)
     app.include_router(webdav_router)
     app.include_router(immich_router)
+    app.include_router(immich_diagnostics_router)
     app.include_router(mcp_tokens_router)
 
     # Agent (MCP) endpoint: POST /mcp. Appended here, before the SPA catch-all below.

@@ -15,6 +15,7 @@ interface MonthSummary {
   month: string;
   count: number;
   hero_photo_path: string | null;
+  preview_revision?: string | null;
 }
 
 @Component({
@@ -43,7 +44,7 @@ interface MonthSummary {
           (click)="monthSelected.emit(m.month)">
           @if (m.hero_photo_path) {
             <div class="relative w-full aspect-[4/3] overflow-hidden">
-              <img [src]="m.hero_photo_path | thumbnailUrl:320"
+              <img [src]="m.hero_photo_path | thumbnailUrl:320:m.preview_revision"
                    [alt]="m.month"
                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
               <div class="absolute inset-x-0 top-0 z-[5] flex items-start gap-1 bg-gradient-to-b from-black/70 to-transparent px-2 pt-1.5 pb-4 pointer-events-none">

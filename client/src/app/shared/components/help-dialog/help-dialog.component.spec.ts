@@ -3,7 +3,8 @@ import { TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { I18nService } from '../../../core/services/i18n.service';
 import { I18N } from '../../../core/i18n/keys';
-import { GALLERY_SHORTCUT_SECTION } from '../../../features/gallery/gallery-shortcuts';
+import { DEFAULT_KEYMAP } from '../../../core/services/keyboard-mapping.service';
+import { galleryShortcutSection } from '../../../features/gallery/gallery-shortcuts';
 import { HelpDialogComponent } from './help-dialog.component';
 
 describe('HelpDialogComponent', () => {
@@ -40,8 +41,9 @@ describe('HelpDialogComponent', () => {
   });
 
   it('renders the keyboard sections the opener passed', () => {
-    const root = render({ key: I18N.gallery.help, shortcutSections: [GALLERY_SHORTCUT_SECTION] });
+    const section = galleryShortcutSection(DEFAULT_KEYMAP);
+    const root = render({ key: I18N.gallery.help, shortcutSections: [section] });
     expect(root.textContent).toContain(I18N.shortcuts.section_gallery);
-    expect(root.querySelectorAll('kbd').length).toBe(GALLERY_SHORTCUT_SECTION.rows.flatMap(r => r.keys).length);
+    expect(root.querySelectorAll('kbd').length).toBe(section.rows.flatMap(r => r.keys).length);
   });
 });

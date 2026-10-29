@@ -10,9 +10,74 @@ permissions:
   contents: read
 
 jobs:
-  python-tests:
-    name: Python Tests
+  changes:
+    name: Detect changed areas
+    # A pull request runs the full Python suites (four parallel Linux shards,
+    # plus Windows) unless it changes only client/, i18n/, docs/, .claude/, the
+    # READMEs or the CHANGELOG. Such a pull request still runs the
+    # Python tests that check NON-Python files against the server (client
+    # interfaces and schema.d.ts, the agent UI schema and smart-album fixture,
+    # keys.ts and the i18n bundles, the AGENTS / THIRD_PARTY_MODELS docs) and
+    # the gen:api staleness check: about a minute. The Angular tests run only
+    # when client/, the i18n bundles (a spec imports them) or this workflow change; an API
+    # change reaches them through the regenerated client/.../schema.d.ts.
+    # Pushes to master always run everything.
     runs-on: ubuntu-latest
+    outputs:
+      scope: ${{ steps.filter.outputs.scope }}
+      client: ${{ steps.filter.outputs.client }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - id: filter
+        # A pull_request checkout is the merge of the PR into the CURRENT base,
+        # so HEAD^1 is that base: diffing against it gives exactly the PR's own
+        # changes. pull_request.base.sha is not: it can lag behind a base that
+        # moved since the last push, and the diff then sweeps in the base's own
+        # .py changes.
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "scope=full" >> "$GITHUB_OUTPUT"
+            echo "client=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # --no-renames lists both sides of a move, so a module moved into an
+          # allowlisted area still shows the path it was deleted from.
+          changed=$(git diff --name-only --no-renames HEAD^1 HEAD)
+          echo "$changed"
+          # An allowlist, not just "a .py changed": the full suite also reads
+          # config/scoring_config.default.json, the Lua plugin, tests/fixtures,
+          # install.sh, the requirements and pyproject, so any path outside the
+          # areas below runs it, and so does any .py inside them (i18n/__init__.py).
+          if echo "$changed" | grep -qE '\.py$' ||
+            echo "$changed" | grep -qvE '^(client/|i18n/|docs/|\.claude/|README[^/]*\.md$|CHANGELOG\.md$)'; then
+            echo "scope=full" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only client, i18n and docs changed: running only the cross-file Python checks."
+            echo "scope=cross-file" >> "$GITHUB_OUTPUT"
+          fi
+          if echo "$changed" | grep -qE '^(client|i18n)/|^\.github/workflows/ci\.yml$'; then
+            echo "client=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nothing under client/ or i18n/ changed: skipping the Angular tests."
+            echo "client=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  python-tests-shard:
+    name: Python Tests (shard ${{ matrix.shard }})
+    # The full suite is ~27 min on one 4-vCPU runner, so it runs as four jobs
+    # of four xdist workers each; FACET_TEST_SHARD picks a job's files
+    # (tests/_sharding.py). A cross-file pull request runs one job only.
+    # "Python Tests" below is the single status branch protection requires.
+    needs: changes
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.changes.outputs.scope == 'full' && '[1, 2, 3, 4]' || '[1]') }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -33,11 +98,31 @@ jobs:
         # versions are the ones verified against the suite.
         run: pip install pytest pytest-asyncio pytest-cov fastapi[standard] httpx pyjwt mcp==2.3.0 websockets pillow pillow-heif numpy scipy scikit-learn opencv-python-headless tqdm aiosqlite sqlite-vec imagehash psutil watchdog send2trash tifffile imagecodecs lupa jsonschema==4.26.0 pytest-timeout==2.4.0 pytest-xdist==3.8.0
       - name: Run tests
-        run: python -m pytest -n 4 --durations=30 --tb=short -q --cov=api --cov=processing --cov=analyzers --cov=config --cov=utils --cov-report=term-missing
+        env:
+          SCOPE: ${{ needs.changes.outputs.scope }}
+          FACET_TEST_SHARD: ${{ needs.changes.outputs.scope == 'full' && format('{0}/4', matrix.shard) || '' }}
+          COVERAGE_FILE: coverage-shard-${{ matrix.shard }}.dat
+        run: |
+          if [ "$SCOPE" = "full" ]; then
+            python -m pytest -n 4 --durations=30 --tb=short -q --cov=api --cov=processing --cov=analyzers --cov=config --cov=utils --cov-report=
+          else
+            python -m pytest -n 4 --tb=short -q -m cross_file
+          fi
+      - name: Keep this shard's coverage data
+        if: needs.changes.outputs.scope == 'full'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-shard-${{ matrix.shard }}
+          path: coverage-shard-${{ matrix.shard }}.dat
+          retention-days: 1
+          overwrite: true
+          if-no-files-found: error
       - uses: actions/setup-node@v7
+        if: matrix.shard == 1
         with:
           node-version: "24"
       - name: schema.d.ts is regenerated from the live OpenAPI schema
+        if: matrix.shard == 1
         # This job is the only one whose pip install makes `api` importable, so
         # the dump has to run here; `lint` installs ruff and mypy only. The
         # generator falls back to `npx --yes openapi-typescript@<pinned>` when
@@ -47,6 +132,7 @@ jobs:
         run: npm run gen:api
         working-directory: client
       - name: schema.d.ts is up to date
+        if: matrix.shard == 1
         # Catches the subtractive direction the compiler cannot see: deleting a
         # response_model, or a field from one, still type-checks on both sides.
         run: |
@@ -63,11 +149,44 @@ jobs:
             exit 1
           fi
 
+  python-tests:
+    name: Python Tests
+    # Required by branch protection, so it keeps this name and reports the
+    # shards' outcome; it also prints the coverage of the whole suite.
+    needs: [changes, python-tests-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every shard passed
+        env:
+          RESULT: ${{ needs.python-tests-shard.result }}
+        run: |
+          echo "shards: $RESULT"
+          [ "$RESULT" = "success" ]
+      - uses: actions/checkout@v7
+        if: needs.changes.outputs.scope == 'full'
+      - uses: actions/setup-python@v7
+        if: needs.changes.outputs.scope == 'full'
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v8
+        if: needs.changes.outputs.scope == 'full'
+        with:
+          pattern: coverage-shard-*
+          merge-multiple: true
+      - name: Coverage of the whole suite
+        if: needs.changes.outputs.scope == 'full'
+        run: |
+          pip install coverage
+          coverage combine --keep coverage-shard-*.dat
+          coverage report -m
+
   windows-tests:
     name: Python Tests (Windows)
-    # Runs after the Linux suite: no point spending a Windows runner on a tree
-    # that is already red, and this is the last gate rather than a parallel one.
-    needs: python-tests
+    # Runs beside the Linux shards rather than after them: waiting for Linux
+    # added its ~12 min to every pull request's critical path.
+    needs: changes
+    if: needs.changes.outputs.scope == 'full'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -80,7 +199,7 @@ jobs:
           choco install exiftool --yes --no-progress
           exiftool -ver
       - name: Install test dependencies
-        # Same list as python-tests: the files below import tifffile, imagecodecs
+        # Same list as python-tests-shard: the files below import tifffile, imagecodecs
         # and lupa, and jsonschema keeps tests/test_config_schema.py from skipping.
         run: pip install pytest pytest-asyncio pytest-cov fastapi[standard] httpx pyjwt mcp==2.3.0 websockets pillow pillow-heif numpy scipy scikit-learn opencv-python-headless tqdm aiosqlite sqlite-vec imagehash psutil watchdog send2trash tifffile imagecodecs lupa jsonschema==4.26.0 pytest-timeout==2.4.0
       - name: Run the Windows-green suites
@@ -137,6 +256,8 @@ jobs:
 
   angular-tests:
     name: Angular Tests
+    needs: changes
+    if: needs.changes.outputs.client == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:

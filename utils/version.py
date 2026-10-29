@@ -1,5 +1,6 @@
 """The running Facet version, and comparison against an upstream release tag."""
 
+import os
 import re
 from importlib import metadata
 from pathlib import Path
@@ -30,6 +31,15 @@ def current_version():
         return metadata.version(PACKAGE_NAME)
     except metadata.PackageNotFoundError:
         return UNKNOWN
+
+
+def build_label():
+    """Which source the running code was built from, or '' when not recorded.
+
+    Set at image build time (``--build-arg FACET_BUILD=<branch>@<commit>``) so two
+    installs of the same release built from different branches can be told apart.
+    """
+    return os.environ.get('FACET_BUILD', '').strip()
 
 
 def parse_version(value):

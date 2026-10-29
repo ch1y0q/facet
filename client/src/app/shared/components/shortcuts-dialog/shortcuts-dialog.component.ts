@@ -1,19 +1,10 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { i18nKeys } from '../../../core/i18n/keys';
-import { GALLERY_SHORTCUT_SECTION } from '../../../features/gallery/gallery-shortcuts';
-
-interface ShortcutRow {
-  keys: string[];
-  labelKey: string;
-}
-
-interface ShortcutSection {
-  titleKey: string;
-  rows: ShortcutRow[];
-}
+import { galleryShortcutSection, photoShortcutSection, ShortcutSection } from '../../../features/gallery/gallery-shortcuts';
+import { KeyboardMappingService } from '../../../core/services/keyboard-mapping.service';
 
 /** Keyboard shortcuts reference, opened globally with '?'. */
 @Component({
@@ -50,19 +41,13 @@ interface ShortcutSection {
 })
 export class ShortcutsDialogComponent {
   protected readonly I18N = i18nKeys();
+  private readonly keymap = inject(KeyboardMappingService);
+
+  /** Built at open time from the live key mapping, so a remapped key shows
+   *  here the moment it is saved. */
   protected readonly sections: ShortcutSection[] = [
-    GALLERY_SHORTCUT_SECTION,
-    {
-      titleKey: 'shortcuts.section_detail',
-      rows: [
-        { keys: ['K'], labelKey: this.I18N.review.shortcut },
-        { keys: ['←', '→'], labelKey: 'shortcuts.navigate' },
-        { keys: ['1', '–', '5'], labelKey: 'shortcuts.rate' },
-        { keys: ['0', 'X'], labelKey: 'shortcuts.reject' },
-        { keys: ['F'], labelKey: 'shortcuts.favorite' },
-        { keys: ['Esc'], labelKey: 'shortcuts.close' },
-      ],
-    },
+    galleryShortcutSection(this.keymap.keymap()),
+    photoShortcutSection(this.keymap.keymap()),
     {
       titleKey: 'shortcuts.section_comparison',
       rows: [

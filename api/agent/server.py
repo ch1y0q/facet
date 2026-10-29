@@ -44,6 +44,7 @@ from api.agent.tools_scoring import register_scoring_tools
 from api.agent.tools_read import register_read_tools
 from api.agent.tools_ui import register_ui_tools
 from api.agent.tools_write import register_write_tools
+from api.agent.tools_stacks import register_stack_tools
 from api.agent.tokens import ResolvedGrant
 from api.agent.ui_tools import tools_version
 from api.config import mcp_settings
@@ -282,6 +283,7 @@ def register_all_tools(server: MCPServer, app: Any, client: InternalClient, stat
     """The one registration list, shared by the mounted server and the levels builder."""
     register_read_tools(server, client, status_extra, registry)
     register_write_tools(server, client, registry)
+    register_stack_tools(server, client)
     register_ui_tools(server, registry)
     register_culling_tools(server, app, registry, on_write)
     register_correction_tools(server, client)

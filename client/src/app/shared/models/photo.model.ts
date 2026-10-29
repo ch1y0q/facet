@@ -6,6 +6,7 @@ export interface KeeperHint {
 }
 
 export interface Photo {
+  preview_revision?: string | null;
   path: string;
   filename: string;
   // Scores
@@ -99,6 +100,11 @@ export interface Photo {
    *  though the resolution did not. Null whenever the dimensions are real —
    *  it is a fallback, never a preference. */
   image_aspect?: number | null;
+  // Owner-private manual stack enrichment (absent on public shares).
+  stack_id?: string | null;
+  stack_revision?: number | null;
+  stack_count?: number | null;
+  stack_total_count?: number | null;
   // Burst/Duplicate
   /** The frame that stands for its burst. Named for the column the API sends:
    *  the client used to declare an `is_best_of_burst` that no backend has ever
@@ -158,6 +164,7 @@ export interface PhotoSetMember {
    *  every other kind, which has no base frame to measure against. */
   ev_offset: number | null;
   is_lead: boolean;
+  preview_revision?: string | null;
 }
 
 /** The bracket/panorama/hdr_panorama/burst/duplicate set a photo belongs to,

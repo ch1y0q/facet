@@ -1,4 +1,20 @@
 {
+  "photo_refresh": {
+    "limit": "请选择 1 至 100 张照片。",
+    "reasons": {
+      "unavailable": "源文件不可用",
+      "changed": "照片已更改，请重新刷新",
+      "busy": "照片库忙，请稍后重试",
+      "failed": "无法读取此照片"
+    },
+    "title": "刷新元数据和预览",
+    "description": "读取可用的源元数据并重建预览。手动注释、评分、人脸和 AI 分数保持不变，绝不修改原文件。如果图像内容已更改，请另行重新扫描以更新分数或人脸检测。",
+    "one": "已选择 1 张照片",
+    "many": "已选择 {count} 张照片",
+    "start": "刷新",
+    "completed": "已刷新：{count}",
+    "failed": "部分照片无法刷新。重试将只处理剩余的照片。"
+  },
   "ui": {
     "title": "Facet",
     "filters": {
@@ -72,7 +88,8 @@
     "switch_language": "切换语言",
     "theme": "主题",
     "dark_mode": "深色模式",
-    "light_mode": "浅色模式"
+    "light_mode": "浅色模式",
+    "version": "Facet {version}"
   },
   "dialog": {
     "cancel": "取消",
@@ -202,8 +219,9 @@
     "duplicate_set": "查看重复照片组",
     "burst_set": "查看连拍组",
     "sequence_set": "查看包围曝光/全景组",
+    "stack_set": "打开照片堆叠",
     "open_detail": "打开照片页",
-    "key_hint": "1-5 评分 · F 收藏 · X 淘汰 · 空格 选择 · 回车 打开"
+    "key_hint": "1-5 评分 · {favourite} 收藏 · {reject} 淘汰 · 空格 选择 · 回车 打开"
   },
   "notifications": {
     "copied": "已复制！",
@@ -458,6 +476,7 @@
     "exposure": "曝光",
     "composition": "构图",
     "subject_saliency": "主体显著性",
+    "content": "内容",
     "camera": "相机"
   },
   "sort_options": {
@@ -1019,7 +1038,8 @@
     "map": "地图",
     "capsules": "照片胶囊",
     "junk_sweep": "废片清理",
-    "help": "帮助"
+    "help": "帮助",
+    "more": "更多"
   },
   "auth": {
     "logout": "退出登录",
@@ -1040,6 +1060,11 @@
       "restore": "恢复筛选条件",
       "showing_all": "正在显示所有照片，包括闭眼照片、连拍照片和重复照片"
     },
+    "filters_notice": {
+      "message": "已启用 {count} 个筛选",
+      "message_plural": "已启用 {count} 个筛选",
+      "reset": "重置全部筛选"
+    },
     "render_migration": {
       "message": "仍有 {n} 张 RAW 照片显示上一次渲染的缩略图。",
       "command_hint": "运行 {command} 可一次性刷新全部缩略图。"
@@ -1054,6 +1079,7 @@
     },
     "all_photos": "全部照片",
     "sort": "排序方式",
+    "sort_current": "排序方式：{label}",
     "sort_aggregate": "综合评分",
     "sort_aesthetic": "美观度",
     "sort_date": "日期",
@@ -1322,7 +1348,11 @@
     "faces_need_names": "未命名的人脸",
     "faces_need_names_hint": "包括未分配的人脸和未命名的人物组。点击 + 分配人脸，或在“人物”中为分组命名。不包括未检测到人脸的照片。",
     "faces_need_names_readonly_hint": "包含未分配的人脸和尚未命名的人物组。拥有编辑权限的用户可以分配人脸或为组命名。不包含未检测到人脸的照片。",
-    "help_none": "此页面暂无帮助内容。"
+    "help_none": "此页面暂无帮助内容。",
+    "notices": {
+      "collapsed": "{count} 条通知",
+      "collapsed_plural": "{count} 条通知"
+    }
   },
   "composition_patterns": {
     "none": "无",
@@ -2218,7 +2248,8 @@
       "oversize": "已略过的分组（过大，无法在此确认）：{count}",
       "out_of_date": "助手的方案已过期 - 请让它重新预览",
       "replan_flips_dropped": "你的 {count} 项更改已不再对应任何分组，已被舍弃。"
-    }
+    },
+    "stack_group": "堆叠此组，以当前画面为封面"
   },
   "scenes": {
     "title": "场景",
@@ -2484,6 +2515,9 @@
       "online_disabled": "在线搜索已禁用。",
       "online_loading": "正在在线搜索…",
       "online_empty": "未找到地点。请尝试其他查询或输入坐标。",
+      "online_results": "找到 {count} 个地点",
+      "online_results_plural": "找到 {count} 个地点",
+      "online_results_label": "在线结果",
       "online_error": "在线搜索失败或繁忙。请稍后重试，或输入坐标。",
       "preview_hint": "选择位置，然后点击保存以应用到此照片。",
       "search": "搜索已保存地点",
@@ -2617,6 +2651,9 @@
     "selected": "已选",
     "copy_keeps": "将保留照片复制到文件夹",
     "move_rejects": "将淘汰照片移至文件夹",
+    "trash_all_rejects": "将全部已拒绝照片移入系统回收站",
+    "all_rejects_scope": "整个图库中您可见的所有已拒绝照片。当前相册、日期和图库筛选条件将被忽略。 文件由所有用户共享：此操作依据您的拒绝决定，可能将其他用户保留、收藏或评分的照片移至回收站。",
+    "all_rejects_limit": "每次最多处理 10,000 张照片。请在图库中仅显示已拒绝的照片，按日期或相册缩小范围，再使用整理到文件夹中的移至回收站操作分批处理。关闭隐藏分组成员的筛选器，以包含每一张已拒绝的照片。",
     "trash_rejects": "将淘汰照片移入系统回收站",
     "trash_disabled": "回收站功能已禁用，管理员可通过 viewer.cull.allow_trash 启用。",
     "trash_missing_pkg": "此服务器无法使用系统回收站，未安装 send2trash 软件包。",
@@ -2631,6 +2668,7 @@
     "preview": "预览",
     "apply": "应用",
     "cancel": "取消",
+    "partial_error": "部分文件未能处理。请重新预览以检查剩余文件。",
     "done": "选片文件操作已完成",
     "error": "选片文件操作失败",
     "delete_action": "删除…",
@@ -2662,7 +2700,13 @@
     "toggle_filters": "显示／隐藏筛选侧栏",
     "toggle_layout": "切换网格／拼贴",
     "comp_left_wins": "左侧照片更好",
-    "comp_right_wins": "右侧照片更好"
+    "comp_right_wins": "右侧照片更好",
+    "keymap_hint": "点击一个操作，然后按下新键。",
+    "press_key": "请按新键…",
+    "reset_keys": "全部恢复默认",
+    "key_in_use": "该按键已被其他操作使用",
+    "key_reserved": "该按键为保留按键",
+    "keymap_title": "自定义快捷键"
   },
   "pwa": {
     "update_available": "有新版本可用",
@@ -2711,7 +2755,10 @@
       "receipt": "收据",
       "meme": "表情包",
       "slide": "幻灯片"
-    }
+    },
+    "candidates": "{count} 张候选",
+    "candidates_plural": "{count} 张候选",
+    "empty_kind": "该类型下没有候选。试试筛选菜单中的「所有类型」。"
   },
   "social_export": {
     "presets": {
@@ -2838,7 +2885,11 @@
       "set_favorite": "已更改收藏",
       "set_rating": "已评分",
       "set_rejected": "已拒绝",
-      "start_scan": "已开始扫描"
+      "start_scan": "已开始扫描",
+      "create_photo_stack": "已创建照片堆叠",
+      "update_photo_stack": "已更新照片堆叠",
+      "unstack_photos": "已取消照片堆叠",
+      "undo_photo_stack": "已撤销照片堆叠更改"
     },
     "ui": {
       "ui_navigate": "已打开页面",
@@ -2928,6 +2979,87 @@
     "unknown": "未知",
     "photo_count": "照片数量：{count}",
     "field": "字段",
-    "entry_action": "{action} · {kind} · {date} · #{id}"
+    "entry_action": "{action} · {kind} · {date} · #{id}",
+    "stack": "照片堆叠"
+  },
+  "stacks": {
+    "suggestions": "建议的堆叠",
+    "suggestions_hint": "建议基于这些筛选条件内检测到的重复照片和连拍（不自动隐藏连拍/重复成员），一次一组。← → 选择封面，S 以该封面堆叠，X 跳过。跳过的组在其照片变化前保持隐藏。已有堆叠以及包围曝光/全景组不会被建议。每次最多加载 20 条建议；重新加载可获取更多。",
+    "suggestions_empty": "此视图中没有堆叠建议",
+    "suggestion_burst": "连拍",
+    "suggestion_duplicate": "重复照片",
+    "suggestion_edit_members": "编辑成员",
+    "suggestion_skip": "跳过",
+    "suggestion_skip_group": "跳过此堆叠",
+    "suggestions_error": "无法加载建议，请重试。",
+    "suggestions_reload": "重新加载建议",
+    "previous": "上一张堆叠照片",
+    "next": "下一张堆叠照片",
+    "browse_position": "第 {position} 张，共 {count} 张",
+    "manage": "管理堆叠",
+    "title": "照片堆叠",
+    "create": "堆叠照片",
+    "hint": "堆叠保留每张原片及其审核决定。选择封面后保存。初始顺序按拍摄时间排列。",
+    "member_count": "{count} 个成员",
+    "member_count_plural": "{count} 个成员",
+    "open_member": "打开 {path}",
+    "cover_for": "将 {path} 设为封面",
+    "cover": "封面",
+    "move_up": "将 {path} 前移",
+    "move_down": "将 {path} 后移",
+    "remove": "从堆叠中移除 {path}",
+    "add_selected": "添加 {count} 张已选照片",
+    "add_selected_plural": "添加 {count} 张已选照片",
+    "select_all": "选择全部 {count} 个成员",
+    "unstack": "取消堆叠",
+    "read_only": "可以浏览有权限的成员。编辑需要拥有全部成员的编辑权限。",
+    "dissolve_hint": "保存时成员少于两张将解散堆叠，照片仍会保留。",
+    "error": "请求失败。草稿已保留，请重试。",
+    "conflict": "堆叠已更改、不可用，或所选照片已属于其他堆叠。请重新加载成员。通过徽章打开现有堆叠，移除成员后再重新分组。",
+    "unavailable": "此堆叠或成员不可用。",
+    "reload": "重新加载成员",
+    "saved": "照片堆叠已更新",
+    "expand_all": "展开所有堆叠",
+    "collapse": "折叠堆叠",
+    "totals": "{photos} 张匹配照片 · 显示 {items} 个项目",
+    "folded_scope": "针对整个视图的操作包括折叠的成员。单独选择一个缩略图仅操作该张照片。",
+    "explicit_only": "请明确选择 2–1000 张照片以创建堆叠。",
+    "badge": "打开堆叠：{count} 个成员",
+    "badge_filtered": "打开堆叠：{total} 个可访问成员中有 {count} 个匹配",
+    "stack_id": "堆叠 ID",
+    "position": "位置",
+    "suggestion_stack": "以此封面堆叠",
+    "stacked": "已堆叠 {count} 张照片",
+    "suggestion_skipped": "已跳过建议",
+    "suggestion_progress": "第 {position} 条建议，共 {count} 条",
+    "suggestion_cover_previous": "上一张作为封面",
+    "suggestion_cover_next": "下一张作为封面",
+    "suggestions_done": "此视图中的所有建议均已审阅。重新加载以查找更多。",
+    "stack_failed": "无法堆叠：某张照片可能已属于一个堆叠。",
+    "suggestion_failed": "该更改未保存。请重试。"
+  },
+  "immich_diagnostics": {
+    "title": "Immich 诊断",
+    "read_only": "只读检查。不会更改照片、评分或堆叠。",
+    "configuration": "配置",
+    "configured": "已配置服务器和密钥",
+    "not_configured": "请先配置服务器和 API 密钥。",
+    "mapping_rules": "路径映射规则",
+    "mapping_sample": "路径覆盖（样本）",
+    "sample_hint": "最多抽样 {limit} 张已索引照片。路径可映射不代表远程存在匹配资源。无规则时路径保持不变。",
+    "last_push": "最近记录的同步状态更新时间",
+    "unknown": "无记录",
+    "version": "服务器版本：{version}",
+    "stack_version_ok": "此版本支持堆叠；尚未测试权限或资源匹配。",
+    "stack_version_old": "堆叠交换需要 Immich 3 或更新版本。",
+    "not_checked": "尚未测试连接。",
+    "connected": "服务器可访问，密钥获准读取账户。",
+    "access_denied": "访问被拒绝，请检查密钥和 user.read 权限。",
+    "unreachable": "连接失败，请检查服务器、地址和 TLS。",
+    "invalid_response": "服务器响应不受支持。",
+    "invalid_config": "请在服务器上修正 Immich 配置。",
+    "failed": "无法加载诊断，请重试或检查管理员权限。",
+    "refresh": "刷新状态",
+    "test": "测试连接"
   }
 }

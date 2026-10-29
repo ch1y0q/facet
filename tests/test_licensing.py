@@ -14,6 +14,9 @@ import licensing
 from db.schema import init_database
 from diagnostics import run_doctor
 
+# Reads client, i18n or docs files: runs on every pull request (see ci.yml).
+pytestmark = pytest.mark.cross_file
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 

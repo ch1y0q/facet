@@ -5,7 +5,7 @@
 O Facet é um mecanismo local de análise e seleção de fotos. Ele pontua cada imagem em 9 dimensões — da qualidade estética à nitidez dos rostos — e então permite que você navegue, selecione e organize por meio de uma galeria web. Tudo roda na sua máquina; sem nuvem, contas ou chaves de API.
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue)
-![Angular](https://img.shields.io/badge/Angular-21-dd0031)
+![Angular](https://img.shields.io/badge/Angular-22-dd0031)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Docker-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -16,7 +16,7 @@ O Facet é um mecanismo local de análise e seleção de fotos. Ele pontua cada 
 
 ## Como Funciona
 
-1. **Escanear** — Aponte o Facet para uma pasta de fotos. Cada imagem é analisada quanto à qualidade, composição e rostos. Suporta JPG, HEIF/HEIC/HIF (as fotos `.HIF` Canon HDR PQ são decodificadas com a função de transferência SMPTE ST 2084 PQ e automaticamente convertidas para sRGB SDR), 10 formatos RAW (CR2, CR3, NEF, ARW, RAF, RW2, DNG, ORF, SRW, PEF) e imagens PNG, GIF, WebP, BMP, TIFF e AVIF (o AVIF precisa de um Pillow compilado com suporte a AVIF, nativo a partir de 11.3), além de JPEG XL (`.jxl`) pela dependência existente `imagecodecs`, incluída nas instalações padrão e no Docker. Um RAW que o LibRaw não consegue decodificar — como um DNG do Lightroom "Mesclar para HDR/Panorama" (`-HDR.dng`, `-Pano.dng`) ou uma câmera mais recente do que a versão do LibRaw instalada — recorre à sua maior pré-visualização incorporada via `exiftool` (precisa de uma pré-visualização de pelo menos 1024 px no lado maior; as pontuações vêm então dessa pré-visualização, não de uma decodificação RAW completa). As fusões do Lightroom Classic 13+ (e Enhance) armazenam essa pré-visualização como JPEG XL; o Facet a decodifica diretamente.
+1. **Escanear** — Aponte o Facet para uma pasta de fotos. Cada imagem é analisada quanto à qualidade, composição e rostos. Suporta JPEG, HEIF/HEIC, 10 formatos RAW, JPEG XL, AVIF, PNG, WebP, TIFF e mais — veja os [tipos de arquivo suportados](docs/pt/README.md#tipos-de-arquivo-suportados).
 2. **Navegar** — Abra a galeria web para explorar sua biblioteca com filtros, busca e múltiplos modos de visualização.
 3. **Selecionar** — O Facet detecta rajadas, sinaliza piscadas, agrupa fotos semelhantes e destaca as melhores escolhas. Os bracketings de exposição e os conjuntos de panorâmica/HDR são reconhecidos e mantidos inteiros, em vez de serem separados pela seleção.
 
@@ -35,12 +35,16 @@ Passe o cursor sobre qualquer foto para ver o detalhamento da pontuação e os d
 ### Selecionar
 
 - **Detecção de rajadas** — agrupa disparos em sequência rápida e seleciona automaticamente o melhor com base em nitidez, qualidade e detecção de piscadas
-- **Proteção de sequências** — bracketings de exposição, varreduras panorâmicas e panorâmicas HDR (`--detect-sequences` / `--detect-panoramas`) são reconhecidos como séries deliberadas de vários fotogramas e mantidos inteiros: o laboratório de triagem começa com todas as fotos de uma série marcadas para manter e nunca a reduz a uma única "vencedora"
+- **Proteção de sequências** — bracketings de exposição, panorâmicas e panorâmicas HDR (`--detect-sequences` / `--detect-panoramas`) são reconhecidos como séries; o laboratório de triagem começa com todas as fotos de uma série marcadas para manter
 - **Grupos de similaridade** — encontra fotos visualmente semelhantes em toda a biblioteca, independentemente de quando foram capturadas
 - **Cenas** — agrupa uma sessão em "cenas" cronológicas por intervalos do horário de captura, para que você selecione na ordem da narrativa; toque para marcar e confirme para rejeitar
+- **Triagem automática** — um botão tria um escopo inteiro (todos os grupos, ou só rajadas / similares / cenas, opcionalmente restrito a um álbum ou intervalo de datas) com pré-visualização em simulação, um orçamento de fotos mantidas e um álbum opcional de Destaques
 - **Triagem automática pelo terminal** — `python facet.py --auto-cull [PATH]` mostra a triagem como simulação, `--apply` a grava e `--copy-keepers DIR` copia as fotos mantidas (veja [docs/pt/COMMANDS.md](docs/pt/COMMANDS.md#triagem-pelo-terminal))
+- **Perfis por gênero** — predefinições de esportes / casamento / show / vida selvagem reúnem rigor, orçamento de fotos mantidas, limiar de similaridade e filtros de rosto em uma única escolha
+- **Pré-visualização do visual editado** `[Edition]` — renderize uma foto com um estilo nomeado do darktable dentro do laboratório de triagem, para selecionar pelo visual revelado em vez da pré-visualização RAW plana
+- **Close-ups do sujeito** — grupos sem rosto (vida selvagem, macro, produto) são comparados por uma faixa do sujeito recortada automaticamente, com selos de nitidez normalizados por grupo
 - **Limpeza de lixo** — detecção zero-shot de arquivos não fotográficos supérfluos (capturas de tela, documentos, recibos, memes, slides) com uma fila de revisão rápida: mantenha ou rejeite cada candidato, ou rejeite todos de uma vez
-- **Selos de seleção por rosto** — o visualizador de seleção exibe selos por rosto indicando olhos abertos/fechados, expressão e confiança da detecção, em vez de apenas um único indicador de piscada no nível da foto
+- **Selos de seleção por rosto** — o visualizador de seleção exibe selos por rosto indicando olhos abertos/fechados, expressão e confiança da detecção, em vez de apenas um único indicador de piscada no nível da foto; os blendshapes opcionais do MediaPipe refinam a leitura de olhos e sorriso
 - **Detecção de piscadas** — sinaliza fotos com olhos fechados para ocultar ou rejeitar com um clique
 - **Detecção de duplicatas** — identifica imagens quase idênticas por meio de hashing perceptual
 
@@ -58,6 +62,7 @@ Passe o cursor sobre qualquer foto para ver o detalhamento da pontuação e os d
 - **Mapa** — fotos georreferenciadas em um mapa interativo com agrupamento de marcadores
 - **Cápsulas** — apresentações temáticas: viagens com nomes de lugares, coleção dourada, paletas sazonais, fotos de uma pessoa e muito mais
 - **Pastas** — navegue pela estrutura de diretórios com navegação em trilha e fotos de capa
+- **Momentos narrativos** — rótulos zero-shot de cena/atividade (praia, celebração, show, …) dão nome às suas cenas, filtram e ordenam a galeria e alimentam a seleção das cápsulas
 - **Memórias** — "Neste Dia": fotos da mesma data em anos anteriores
 - **Apresentação de slides** — modo de tela cheia com transições temáticas, encadeamento automático entre cápsulas e controles por teclado
 
@@ -71,8 +76,8 @@ Passe o cursor sobre qualquer foto para ver o detalhamento da pontuação e os d
 </details>
 
 **Dicas de fluxo de trabalho:**
-- A visualização **`/timeline`** desce de anos para meses e depois para um calendário de dias — clique em um dia para abrir a galeria filtrada para essa data. Aqui não há ordenação; para escolher as melhores fotos de uma viagem, use **`/capsules`** abaixo, que aplica uma passagem de diversidade em um intervalo de datas que você pode salvar como álbum.
-- A visualização **`/capsules`** gera diaporamas temáticos (viagens, "Rostos de", sazonais, dourada) que você pode salvar como álbuns.
+- **`/timeline`** desce de anos para meses e depois dias; clique em um dia para abrir a galeria nessa data.
+- **`/capsules`** gera apresentações temáticas (viagens, "Rostos de", sazonais, dourada) que você pode salvar como álbuns — a melhor escolha para selecionar as melhores fotos de uma viagem.
 - A galeria oculta piscadas, rajadas não principais e duplicatas por padrão. Quando o banner **"N fotos ocultas pelos filtros atuais"** aparecer, clique em "Mostrar tudo" para expandir a visualização.
 
 ### Organizar
@@ -96,7 +101,7 @@ Passe o cursor sobre qualquer foto para ver o detalhamento da pontuação e os d
 - **Estatísticas** — painéis de uso de equipamentos, detalhamento por categoria, linha do tempo de capturas e correlações de métricas
 - **Crítica por IA** — detalhamento da pontuação mostrando a contribuição de cada métrica; avaliação em linguagem natural por VLM `[GPU]` `[16gb/24gb]`
 - **Ajuste de pesos** — editor de pesos por categoria com pré-visualização da pontuação em tempo real. A comparação A/B de fotos aprende com suas escolhas e sugere pesos otimizados.
-- **Contextos de pontuação** — controle *qual* categoria pontua uma foto, algo independente dos controles de peso, que só ajustam a categoria já escolhida: reordene a prioridade global de categorias, aplique um contexto nomeado (Ação/Palco, Sessão de retrato, Vida selvagem, …) por álbum, ou defina uma substituição de categoria por foto que sobrevive a cada recálculo.
+- **Contextos de pontuação** — escolha *qual* categoria pontua uma foto: reordene a prioridade das categorias, aplique um contexto nomeado (Ação/Palco, Sessão de retrato, Vida selvagem, …) por álbum, ou fixe uma categoria em uma foto.
 - **Ordenação Meu Gosto** — ordene a galeria pela pontuação aprendida do classificador pessoal, com um selo de confiança que mostra a cobertura aprendida e a precisão em dados separados
 - **Aprendizado a partir de rótulos** — decisões de seleção, classificações por estrelas, favoritos e rejeições alimentam o otimizador de pesos (`--sync-label-comparisons`, `--mine-insights`)
 - **Snapshots** — salve, restaure e compare configurações de pesos
@@ -126,9 +131,14 @@ Passe o cursor sobre qualquer foto para ver o detalhamento da pontuação e os d
 ### Compartilhar
 
 - **Compartilhamento de álbuns** — gere links compartilháveis para qualquer álbum, sem necessidade de login para os destinatários. Revogue o acesso a qualquer momento.
+- **Aprovação pelo cliente** — um álbum compartilhado pode funcionar em modo de aprovação: os clientes marcam fotos com um coração e deixam comentários apenas com o link (mais um PIN opcional), totalmente isolados das suas próprias classificações
+- **Envio automático do celular** — aponte o PhotoSync ou qualquer app WebDAV para a caixa de entrada `/dav` integrada; `--watch` pontua as novas fotos assim que chegam
+- **Porta-retratos e quiosques** — um endpoint protegido por token alimenta suas melhores fotos selecionadas para porta-retratos inteligentes e painéis do Home Assistant
+- **Agentes de IA (MCP)** — um endpoint [Model Context Protocol](https://modelcontextprotocol.io/) (ativado por padrão, `viewer.mcp.enabled`) permite que assistentes pesquisem a biblioteca com tokens pessoais revogáveis. Níveis de token mais altos podem classificar, etiquetar, organizar e selecionar; as ações destrutivas mostram primeiro uma pré-visualização e exigem confirmação
+- **Exportação de portfólio** `[Edition]` — renderize um álbum em uma galeria HTML estática autônoma (sem referências a CDN, funciona offline) que você pode colocar em qualquer servidor web
+- **Recortes para redes sociais** `[Edition]` — exportações em resolução total enquadradas no sujeito detectado, para predefinições de proporção quadrada, retrato e story
 - **Download de fotos** — baixe fotos individuais ou seleções da galeria
 - **Exportação** — exporte todas as pontuações para CSV ou JSON para análise externa
-- **Agentes de IA (MCP)** — um endpoint [Model Context Protocol](https://modelcontextprotocol.io/) ativado por omissão (desativável com `viewer.mcp.enabled`) permite que assistentes compatíveis com MCP pesquisem e inspecionem a biblioteca com os filtros da galeria, através de tokens pessoais revogáveis; consoante o nível do token, um assistente também pode classificar, etiquetar, organizar e selecionar fotos (as ações destrutivas mostram primeiro uma pré-visualização e exigem confirmação)
 
 ### Mais
 
@@ -150,7 +160,11 @@ Passe o cursor sobre qualquer foto para ver o detalhamento da pontuação e os d
 
 ## O que você precisa
 
-A maior parte do Facet roda em **qualquer máquina (CPU)** — pontuação, detecção de rostos, seleção, a galeria, busca, álbuns e exportação de metadados funcionam sem GPU. Uma **GPU** (com o perfil `16gb` ou `24gb`) libera os modelos mais robustos: pontuação estética TOPIQ, embeddings SigLIP 2, marcação por VLM, legendas e crítica por IA, e saliência do sujeito. Sem GPU local? Aponte a marcação/as legendas/a crítica por VLM para um servidor **Ollama** ou **compatível com OpenAI** remoto via `vlm_backend` no `scoring_config.json` — esses recursos passam a funcionar também nos perfis de CPU `legacy`/`8gb`. No visualizador, as ações de edição (classificações, rostos, seleção) exigem a **senha de edição**, e acionar escaneamentos exige `viewer.features.show_scan_button: true` e, além disso, a função **superadmin** no modo multiusuário, ou acesso de edição numa instalação de usuário único.
+- **Qualquer máquina (CPU)** roda a maior parte do Facet: pontuação, rostos, seleção, a galeria, busca, álbuns e exportação de metadados.
+- **Apple Silicon** usa automaticamente o backend Metal (`mps`). O perfil `auto` acompanha a memória unificada: 32 GB chegam ao `16gb`, 48 GB chegam ao `24gb`.
+- **Uma GPU NVIDIA** nos perfis `16gb`/`24gb` libera os modelos mais robustos: TOPIQ, SigLIP 2, marcação por VLM, legendas e crítica por IA, saliência do sujeito.
+- **Sem GPU?** Aponte a marcação, as legendas e a crítica por VLM para um servidor **Ollama** ou **compatível com OpenAI** remoto com `vlm_backend` no `scoring_config.json`.
+- **Editar no visualizador** (classificações, rostos, seleção) exige a **senha de edição**. O botão Escanear exige `viewer.features.show_scan_button: true` e acesso de edição (a função **superadmin** no modo multiusuário).
 
 → Requisitos completos por recurso (GPU, perfil de VRAM, pacotes opcionais, autenticação): **[Instalação › Requisitos por recurso](docs/pt/INSTALLATION.md#requisitos-por-recurso)**.
 
@@ -163,17 +177,17 @@ O Facet pontua, classifica e seleciona uma biblioteca local de fotos e serve uma
 - tem uma biblioteca local grande e quer encontrar suas melhores fotos e selecionar rajadas e quase duplicatas;
 - quer pontuação de qualidade, composição e rostos que você possa ajustar ao seu próprio gosto (ele aprende com suas comparações A/B);
 - prefere ser auto-hospedado e privado — sem upload para a nuvem, sem conta, sem assinatura;
-- já edita no Lightroom, darktable, digiKam ou immich — o Facet grava classificações, rótulos, palavras-chave, legendas e regiões de rostos nomeados em arquivos auxiliares `.xmp` (originais intocados por padrão) e pode opcionalmente embuti-los no arquivo para JPEG/HEIC/TIFF/PNG/DNG (a ação "Gravar metadados no arquivo" da galeria ou `--export-sidecars --embed-originals`), e relê edições externas com `--import-sidecars`. Especificamente para o Lightroom, o plug-in `facet.lrplugin` adiciona um fluxo bidirecional: pode preencher estrelas a partir das pontuações do Facet, selecionar/rejeitar quadros de sequências, agrupar sequências/brackets/panoramas em coleções e palavras-chave a partir de um manifesto baixado, e exportar seus próprios sinalizadores/classificações/rótulos do Lightroom de volta para o Facet.
+- já edita no Lightroom, darktable, digiKam ou Immich — o Facet grava classificações, rótulos, palavras-chave, legendas e regiões de rostos em arquivos auxiliares `.xmp` (os originais ficam intocados, a menos que você peça a incorporação: a ação "Gravar metadados no arquivo" da galeria ou `--export-sidecars --embed-originals`) e relê as edições com `--import-sidecars`. O plug-in `facet.lrplugin` do Lightroom adiciona um fluxo bidirecional. Veja [Interoperabilidade](docs/pt/INTEROP.md).
 
 **Provavelmente não é para você se você quer:**
 
-- um substituto do Google Fotos pronto para uso, móvel e respaldado pela nuvem, com backup automático do celular;
+- um substituto do Google Fotos pronto para uso, móvel e respaldado pela nuvem — embora o envio automático do celular para uma caixa de entrada monitorada já venha integrado via WebDAV (receita do PhotoSync na documentação);
 - edição ou revelação de RAW — o Facet pontua e organiza, ele não edita;
 - um app de desktop sem configuração — ele precisa de Python, e os melhores modelos precisam de uma GPU.
 
 **Como ele se relaciona com outras ferramentas**
 
-- Bibliotecas auto-hospedadas (Immich, PhotoPrism) focam em organização, busca e backup. O Facet adiciona pontuação de qualidade, classificação e um fluxo de seleção que elas não têm, mas não possui app móvel nem backup/sincronização integrados.
+- Bibliotecas auto-hospedadas (Immich, PhotoPrism) focam em organização, busca e backup. O Facet adiciona pontuação de qualidade, classificação e um fluxo de seleção que elas não têm, mas não possui app móvel nem backup na nuvem (o envio automático do celular via WebDAV já vem integrado, e as classificações podem ser sincronizadas com o Immich).
 - Apps de seleção por IA (Aftershoot, Narrative, FilterPixel) são selecionadores comerciais refinados, muitas vezes com edição integrada. O Facet é gratuito, local, mais abrangente (galeria, busca, rostos) e sua pontuação é ajustável — mas é um projeto de desenvolvedor único, sem o suporte ou a edição de RAW que eles oferecem.
 - Editores e catálogos (Lightroom, darktable, digiKam) revelam e gerenciam fotos. O Facet os complementa por meio da interoperabilidade de metadados XMP descrita acima, em vez de substituí-los.
 
@@ -216,18 +230,19 @@ Primeira vez? Siga o roteiro **[Primeiros passos](docs/pt/GETTING_STARTED.md)**:
 
 | Documento | Descrição |
 |----------|-------------|
-| [Instalação](docs/INSTALLATION.md) | Requisitos, configuração de GPU, perfis de VRAM, dependências |
+| [Instalação](docs/pt/INSTALLATION.md) | Requisitos, configuração de GPU, perfis de VRAM, dependências |
 | [Primeiros passos](docs/pt/GETTING_STARTED.md) | Roteiro da primeira execução: da instalação à varredura, revisão, treinamento, descarte, etiquetagem e exportação |
-| [Comandos](docs/COMMANDS.md) | Referência de todos os comandos da CLI |
-| [Configuração](docs/CONFIGURATION.md) | Referência completa do `scoring_config.json` |
-| [Pontuação](docs/SCORING.md) | Categorias, pesos, guia de ajuste |
-| [Reconhecimento Facial](docs/FACE_RECOGNITION.md) | Fluxo de trabalho de rostos, agrupamento, gerenciamento de pessoas |
-| [Visualizador](docs/VIEWER.md) | Recursos e uso da galeria web |
+| [Comandos](docs/pt/COMMANDS.md) | Referência de todos os comandos da CLI |
+| [Configuração](docs/pt/CONFIGURATION.md) | Referência completa do `scoring_config.json` |
+| [Pontuação](docs/pt/SCORING.md) | Categorias, pesos, guia de ajuste |
+| [Reconhecimento Facial](docs/pt/FACE_RECOGNITION.md) | Fluxo de trabalho de rostos, agrupamento, gerenciamento de pessoas |
+| [Visualizador](docs/pt/VIEWER.md) | Recursos e uso da galeria web |
+| [API](docs/API.md) | Referência da API HTTP do visualizador |
 | [Interoperabilidade](docs/pt/INTEROP.md) | Trocar classificações/tags com Lightroom, Capture One, digiKam, darktable |
 | [Immich](docs/pt/IMMICH.md) | Sincronizar avaliações e favoritos com o Immich, além do webhook de entrada |
 | [Religar](docs/pt/RELINK.md) | Religar fotos movidas |
 | [Agentes de IA](docs/pt/AGENTS.md) | Deixar um assistente compatível com MCP pesquisar a biblioteca com um token pessoal |
-| [Implantação](docs/DEPLOYMENT.md) | Implantação em produção (Synology NAS, Linux, Docker) |
+| [Implantação](docs/pt/DEPLOYMENT.md) | Implantação em produção (Synology NAS, Linux, Docker) |
 | [Contribuindo](CONTRIBUTING.md) | Configuração de desenvolvimento, arquitetura, estilo de código |
 
 ## Licença
@@ -236,4 +251,4 @@ Primeira vez? Siga o roteiro **[Primeiros passos](docs/pt/GETTING_STARTED.md)**:
 
 ### Licenciamento
 
-O código do Facet tem licença MIT. Alguns dos modelos padrão **não** são licenciados para uso comercial: o pyiqa (TOPIQ, LIQE e outros) e os pesos do InsightFace são não comerciais. A configuração `licensing.mode: commercial` restringe o Facet a modelos com licença permissiva: componentes restritos nunca são importados nem baixados, e cada slot é redirecionado a um substituto permissivo (veja [Licenciamento](docs/pt/CONFIGURATION.md#licenciamento)). Veja [Modelos de terceiros e licenças](docs/pt/THIRD_PARTY_MODELS.md).
+O código do Facet tem licença MIT. Alguns modelos padrão são **não comerciais**: o pyiqa (TOPIQ, LIQE, …) e os pesos do InsightFace. Defina `licensing.mode: commercial` para usar apenas substitutos com licença permissiva ([Licenciamento](docs/pt/CONFIGURATION.md#licenciamento), [Modelos de terceiros](docs/pt/THIRD_PARTY_MODELS.md)).

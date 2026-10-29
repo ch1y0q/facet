@@ -8,6 +8,7 @@ export interface Album {
   name: string;
   description: string;
   cover_photo_path: string | null;
+  preview_revision?: string | null;
   first_photo_path: string | null;
   is_smart: boolean;
   is_shared: boolean;

@@ -64,6 +64,8 @@ def jpegs(tmp_path_factory):
         _noise_jpeg(root / "landscape.jpg", (4000, 3000), 1),
         _noise_jpeg(root / "portrait.jpg", (3000, 4000), 2),
         _noise_jpeg(root / "small.jpg", (1024, 700), 3),
+        # 3:2 bounds to 1024x682, the size TOPIQ crops on MPS (#377).
+        _noise_jpeg(root / "three_two.jpg", (3000, 2000), 4),
     ]
 
 
@@ -74,10 +76,11 @@ def _load(proc, paths):
     return images
 
 
-def _pyiqa_scorer():
+def _pyiqa_scorer(device="cpu"):
     from models.pyiqa_scorer import PyIQAScorer
     scorer = PyIQAScorer.__new__(PyIQAScorer)
-    scorer.device = "cpu"
+    scorer.device = device
+    scorer.model_name = "topiq"
     return scorer
 
 
@@ -87,9 +90,12 @@ def _qrealign_scorer():
 
 
 class TestSharedImageEqualsWhatTheConsumerBuilds:
-    def test_pyiqa_tensor_is_identical(self, jpegs):
+    @pytest.mark.parametrize("device", ["cpu", "mps"])
+    def test_pyiqa_tensor_is_identical(self, jpegs, device, monkeypatch):
+        # On MPS TOPIQ snaps the bounded size again (#377); both paths must still agree.
+        monkeypatch.setattr(torch.Tensor, "to", lambda self, *a, **k: self)
         images = _load(_processor(), jpegs)
-        scorer = _pyiqa_scorer()
+        scorer = _pyiqa_scorer(device)
         for path in jpegs:
             data = images[path]
             assert data["bounded"] is not None
@@ -97,6 +103,8 @@ class TestSharedImageEqualsWhatTheConsumerBuilds:
                 scorer._preprocess_image(data["bounded"]),
                 scorer._preprocess_image(data["pil"]),
             ), path
+        three_two = scorer._preprocess_image(images[jpegs[3]]["bounded"])
+        assert tuple(three_two.shape[-2:]) == ((672, 1024) if device == "mps" else (682, 1024))
 
     def test_qrealign_input_is_identical(self, jpegs):
         images = _load(_processor(), jpegs)
@@ -113,6 +121,7 @@ class TestSharedImageEqualsWhatTheConsumerBuilds:
         assert sizes["landscape.jpg"] == (1024, 768)
         assert sizes["portrait.jpg"] == (768, 1024)
         assert sizes["small.jpg"] == (1024, 700)
+        assert sizes["three_two.jpg"] == (1024, 682)
 
     def test_a_photo_within_the_bound_shares_the_full_image_object(self, jpegs):
         small = jpegs[2]

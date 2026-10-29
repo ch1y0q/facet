@@ -1,4 +1,20 @@
 {
+  "photo_refresh": {
+    "limit": "Selecciona entre 1 y 100 fotos.",
+    "reasons": {
+      "unavailable": "Origen no disponible",
+      "changed": "Foto modificada; actualiza de nuevo",
+      "busy": "Biblioteca ocupada; reintenta más tarde",
+      "failed": "No se pudo leer esta foto"
+    },
+    "title": "Actualizar metadatos y vista previa",
+    "description": "Lee los metadatos disponibles y regenera la vista previa. Las anotaciones manuales, valoraciones, caras y puntuaciones de IA no cambian. Los originales no se modifican. Vuelve a escanear para actualizar puntuaciones y caras tras cambiar los píxeles.",
+    "one": "1 foto seleccionada",
+    "many": "{count} fotos seleccionadas",
+    "start": "Actualizar",
+    "completed": "Actualizadas: {count}",
+    "failed": "Algunas fotos no pudieron actualizarse. Reintenta para actualizar solo las restantes."
+  },
   "ui": {
     "title": "Facet",
     "filters": {
@@ -72,7 +88,8 @@
     "switch_language": "Cambiar idioma",
     "theme": "Tema",
     "dark_mode": "Modo oscuro",
-    "light_mode": "Modo claro"
+    "light_mode": "Modo claro",
+    "version": "Facet {version}"
   },
   "dialog": {
     "cancel": "Cancelar",
@@ -202,8 +219,9 @@
     "duplicate_set": "Abrir grupo de duplicadas",
     "burst_set": "Abrir grupo de ráfaga",
     "sequence_set": "Abrir bracket/panorama",
+    "stack_set": "Abrir pila de fotos",
     "open_detail": "Abrir página de foto",
-    "key_hint": "1-5 puntuar · F favorita · X rechazar · Espacio seleccionar · Intro abrir"
+    "key_hint": "1-5 puntuar · {favourite} favorita · {reject} rechazar · Espacio seleccionar · Intro abrir"
   },
   "notifications": {
     "copied": "Copiado!",
@@ -458,6 +476,7 @@
     "exposure": "Exposición",
     "composition": "Composición",
     "subject_saliency": "Saliencia del sujeto",
+    "content": "Contenido",
     "camera": "Cámara"
   },
   "sort_options": {
@@ -1019,7 +1038,8 @@
     "map": "Mapa",
     "capsules": "Cápsulas",
     "junk_sweep": "Limpieza",
-    "help": "Ayuda"
+    "help": "Ayuda",
+    "more": "Más"
   },
   "auth": {
     "logout": "Cerrar sesión",
@@ -1040,6 +1060,11 @@
       "restore": "Restaurar filtros",
       "showing_all": "Se muestran todas las fotos, incluidos parpadeos, ráfagas y duplicados"
     },
+    "filters_notice": {
+      "message": "{count} filtro activo",
+      "message_plural": "{count} filtros activos",
+      "reset": "Restablecer todos los filtros"
+    },
     "render_migration": {
       "message": "{n} fotos RAW aún muestran una miniatura del renderizado anterior.",
       "command_hint": "Ejecuta {command} para actualizarlas todas de una vez."
@@ -1054,6 +1079,7 @@
     },
     "all_photos": "Todas las fotos",
     "sort": "Ordenar por",
+    "sort_current": "Ordenar por: {label}",
     "sort_aggregate": "Global",
     "sort_aesthetic": "Estética",
     "sort_date": "Fecha",
@@ -1322,7 +1348,11 @@
     "faces_need_names": "Caras sin nombre",
     "faces_need_names_hint": "Incluye caras sin asignar y grupos de personas sin nombre. Usa + para asignar una cara o nombra un grupo en Personas. No incluye fotos sin caras detectadas.",
     "faces_need_names_readonly_hint": "Incluye caras sin asignar y grupos sin nombre. Quien tenga acceso de edición puede asignar caras o nombrar grupos. Se excluyen fotos sin caras detectadas.",
-    "help_none": "Esta página aún no tiene texto de ayuda."
+    "help_none": "Esta página aún no tiene texto de ayuda.",
+    "notices": {
+      "collapsed": "{count} aviso",
+      "collapsed_plural": "{count} avisos"
+    }
   },
   "composition_patterns": {
     "none": "Ninguno",
@@ -2218,7 +2248,8 @@
       "oversize": "Grupos omitidos (demasiado grandes para confirmarlos aquí): {count}",
       "out_of_date": "El plan del asistente está desactualizado - pídele que genere la vista previa de nuevo",
       "replan_flips_dropped": "{count} de tus cambios ya no corresponden a ningún grupo y se han descartado."
-    }
+    },
+    "stack_group": "Apilar este grupo con el fotograma actual como portada"
   },
   "scenes": {
     "title": "Escenas",
@@ -2484,6 +2515,9 @@
       "online_disabled": "La búsqueda en línea está desactivada.",
       "online_loading": "Buscando en línea…",
       "online_empty": "No se encontraron lugares. Prueba otra consulta o introduce coordenadas.",
+      "online_results": "{count} lugar encontrado",
+      "online_results_plural": "{count} lugares encontrados",
+      "online_results_label": "Resultados en línea",
       "online_error": "La búsqueda en línea falló o está ocupada. Espera y vuelve a intentarlo, o introduce coordenadas.",
       "preview_hint": "Elige un lugar y pulsa Guardar para aplicarlo a esta foto.",
       "search": "Buscar lugares guardados",
@@ -2617,6 +2651,9 @@
     "selected": "seleccionados",
     "copy_keeps": "Copiar los conservados a una carpeta",
     "move_rejects": "Mover los descartados a una carpeta",
+    "trash_all_rejects": "Enviar todos los descartados a la papelera",
+    "all_rejects_scope": "Todas las fotos descartadas visibles para tu cuenta en la biblioteca. Se ignoran el álbum, las fechas y los filtros actuales. Los archivos son compartidos: se usan tus decisiones de rechazo y se pueden enviar a la papelera fotos conservadas, marcadas como favoritas o puntuadas por otros usuarios.",
+    "all_rejects_limit": "Esta acción admite hasta 10.000 fotos a la vez. En la galería, muestra solo las fotos rechazadas, limita por fecha o álbum y usa la selección a una carpeta con la acción de papelera para procesar lotes más pequeños. Desactiva los filtros que ocultan grupos para incluir cada fotograma rechazado.",
     "trash_rejects": "Enviar descartados a la papelera",
     "trash_disabled": "La papelera está deshabilitada — un administrador puede habilitarla mediante viewer.cull.allow_trash.",
     "trash_missing_pkg": "La papelera no está disponible en este servidor — el paquete send2trash no está instalado.",
@@ -2631,6 +2668,7 @@
     "preview": "Vista previa",
     "apply": "Aplicar",
     "cancel": "Cancelar",
+    "partial_error": "No se pudieron procesar algunos archivos. Genera otra vista previa para revisar los archivos restantes.",
     "done": "Descarte aplicado",
     "error": "Error al descartar",
     "delete_action": "Eliminar…",
@@ -2662,7 +2700,13 @@
     "toggle_filters": "Mostrar / ocultar la barra de filtros",
     "toggle_layout": "Alternar cuadrícula / mosaico",
     "comp_left_wins": "Gana la foto izquierda",
-    "comp_right_wins": "Gana la foto derecha"
+    "comp_right_wins": "Gana la foto derecha",
+    "keymap_hint": "Haz clic en una acción y pulsa la nueva tecla.",
+    "press_key": "Pulsa una tecla…",
+    "reset_keys": "Restablecer todo",
+    "key_in_use": "Esa tecla ya está asignada",
+    "key_reserved": "Esa tecla está reservada",
+    "keymap_title": "Personalizar atajos"
   },
   "pwa": {
     "update_available": "Hay una nueva versión disponible",
@@ -2711,7 +2755,10 @@
       "receipt": "Recibos",
       "meme": "Memes",
       "slide": "Diapositivas"
-    }
+    },
+    "candidates": "{count} candidato",
+    "candidates_plural": "{count} candidatos",
+    "empty_kind": "No hay candidatos de este tipo. Prueba «Todos los tipos» en el menú de filtros."
   },
   "social_export": {
     "presets": {
@@ -2838,7 +2885,11 @@
       "set_favorite": "Favoritos modificados",
       "set_rating": "Valoración",
       "set_rejected": "Rechazo",
-      "start_scan": "Análisis iniciado"
+      "start_scan": "Análisis iniciado",
+      "create_photo_stack": "Pila de fotos creada",
+      "update_photo_stack": "Pila de fotos actualizada",
+      "unstack_photos": "Fotos desapiladas",
+      "undo_photo_stack": "Cambio de pila deshecho"
     },
     "ui": {
       "ui_navigate": "Página abierta",
@@ -2928,6 +2979,87 @@
     "unknown": "Desconocido",
     "photo_count": "Fotos: {count}",
     "field": "Campo",
-    "entry_action": "{action} · {kind} · {date} · #{id}"
+    "entry_action": "{action} · {kind} · {date} · #{id}",
+    "stack": "Pila de fotos"
+  },
+  "stacks": {
+    "suggestions": "Pilas sugeridas",
+    "suggestions_hint": "Las sugerencias usan duplicados y ráfagas detectados dentro de estos filtros, sin la ocultación automática de ráfagas/duplicados, un grupo a la vez. ← → eligen la portada, S apila con esa portada, X omite. Los grupos omitidos permanecen ocultos hasta que cambien sus fotos. No se sugieren pilas existentes ni series de horquillado o panorámicas. Se cargan hasta 20 sugerencias a la vez; Recargar trae más.",
+    "suggestions_empty": "No hay pilas sugeridas en esta vista",
+    "suggestion_burst": "Ráfaga",
+    "suggestion_duplicate": "Duplicados",
+    "suggestion_edit_members": "Editar miembros",
+    "suggestion_skip": "Omitir",
+    "suggestion_skip_group": "Omitir esta pila",
+    "suggestions_error": "No se pudieron cargar las sugerencias. Inténtalo de nuevo.",
+    "suggestions_reload": "Recargar sugerencias",
+    "previous": "Foto anterior de la pila",
+    "next": "Foto siguiente de la pila",
+    "browse_position": "{position} de {count}",
+    "manage": "Gestionar pila",
+    "title": "Pila de fotos",
+    "create": "Apilar fotos",
+    "hint": "Se conservan los originales y sus decisiones. Elige una portada y guarda. El orden inicial es cronológico.",
+    "member_count": "{count} miembro",
+    "member_count_plural": "{count} miembros",
+    "open_member": "Abrir {path}",
+    "cover_for": "Usar {path} como portada",
+    "cover": "Portada",
+    "move_up": "Mover {path} antes",
+    "move_down": "Mover {path} después",
+    "remove": "Quitar {path} de la pila",
+    "add_selected": "Añadir {count} foto seleccionada",
+    "add_selected_plural": "Añadir {count} fotos seleccionadas",
+    "select_all": "Seleccionar los {count} miembros",
+    "unstack": "Desapilar",
+    "read_only": "Puedes ver los miembros permitidos. La edición requiere acceso a todos los miembros.",
+    "dissolve_hint": "Guardar menos de dos miembros disuelve la pila. Las fotos se conservan.",
+    "error": "La solicitud falló. Se conserva el borrador; inténtalo de nuevo.",
+    "conflict": "La pila cambió, no está disponible o una foto ya pertenece a una pila. Recarga los miembros. Abre las pilas existentes desde su insignia y quita miembros antes de reagruparlos.",
+    "unavailable": "Esta pila o un miembro no está disponible.",
+    "reload": "Recargar miembros",
+    "saved": "Pila de fotos actualizada",
+    "expand_all": "Expandir todas las pilas",
+    "collapse": "Contraer pilas",
+    "totals": "{photos} fotos coincidentes · {items} elementos visibles",
+    "folded_scope": "Las acciones de toda la vista incluyen los miembros contraídos. Una miniatura seleccionada solo afecta a esa foto.",
+    "explicit_only": "Selecciona explícitamente entre 2 y 1000 fotos para crear una pila.",
+    "badge": "Abrir pila: {count} miembros",
+    "badge_filtered": "Abrir pila: {count} coincidencias de {total} miembros permitidos",
+    "stack_id": "ID de pila",
+    "position": "Posición",
+    "suggestion_stack": "Apilar con esta portada",
+    "stacked": "{count} fotos apiladas",
+    "suggestion_skipped": "Sugerencia omitida",
+    "suggestion_progress": "Sugerencia {position} de {count}",
+    "suggestion_cover_previous": "Fotograma anterior como portada",
+    "suggestion_cover_next": "Fotograma siguiente como portada",
+    "suggestions_done": "Todas las sugerencias de esta vista están revisadas. Recarga para buscar más.",
+    "stack_failed": "No se pudo apilar: puede que una foto ya pertenezca a una pila.",
+    "suggestion_failed": "Ese cambio no se guardó. Inténtalo de nuevo."
+  },
+  "immich_diagnostics": {
+    "title": "Diagnóstico de Immich",
+    "read_only": "Solo lectura. Fotos, puntuaciones y pilas no cambian.",
+    "configuration": "Configuración",
+    "configured": "Servidor y clave configurados",
+    "not_configured": "Configura primero el servidor y la clave API.",
+    "mapping_rules": "Reglas de rutas",
+    "mapping_sample": "Rutas cubiertas (muestra)",
+    "sample_hint": "Máximo {limit} fotos indexadas. La cobertura no confirma coincidencias remotas. Sin reglas las rutas no cambian.",
+    "last_push": "Última actualización registrada del estado de sincronización",
+    "unknown": "Sin registro",
+    "version": "Versión del servidor: {version}",
+    "stack_version_ok": "Versión compatible con pilas; permisos y coincidencias no probados.",
+    "stack_version_old": "El intercambio de pilas requiere Immich 3 o posterior.",
+    "not_checked": "Conexión no probada.",
+    "connected": "Servidor accesible; clave aceptada para leer la cuenta.",
+    "access_denied": "Acceso denegado. Comprueba la clave y el permiso user.read.",
+    "unreachable": "Falló la conexión. Comprueba servidor, dirección y TLS.",
+    "invalid_response": "Respuesta del servidor no compatible.",
+    "invalid_config": "Corrige la configuración de Immich en el servidor.",
+    "failed": "Diagnóstico no disponible. Reintenta o comprueba acceso de administrador.",
+    "refresh": "Actualizar estado",
+    "test": "Probar conexión"
   }
 }
