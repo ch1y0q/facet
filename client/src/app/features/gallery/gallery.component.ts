@@ -1,4 +1,4 @@
-import { stackDialogConfig } from './stack-dialog.config';
+import { STACK_EDITOR_HISTORY } from './stack-editor-history';
 import {
   Component,
   ChangeDetectorRef,
@@ -2311,7 +2311,11 @@ export class GalleryComponent implements OnInit, OnDestroy {
     if (!this.canCreateStack() || this.stackOpening || this.parked || this.store.slideshowActive() || this.dialog.openDialogs.length) return;
     this.stackOpening = true;
     try {
-      await this.launchStack({ paths: [...this.selectedPaths()], activePath: this.store.focusedPath() });
+      const paths = [...this.selectedPaths()];
+      const focused = this.store.focusedPath();
+      await this.router.navigate(['/stacks/edit'], { state: { [STACK_EDITOR_HISTORY]: {
+        version: 1, identity: this.auth.identity(), paths, activePath: focused && paths.includes(focused) ? focused : undefined, returnUrl: this.router.url,
+      } } });
     } finally { this.stackOpening = false; }
   }
 
@@ -2327,14 +2331,6 @@ export class GalleryComponent implements OnInit, OnDestroy {
     await this.router.navigate(['/culling'], {
       queryParams: { mode: 'stacks', filters: JSON.stringify(filters), return: this.router.url },
     });
-  }
-
-  private async launchStack(data: import('./stack-dialog.component').StackDialogData): Promise<void> {
-    const session = this.stacks.context();
-    const { StackDialogComponent } = await import('./stack-dialog.component');
-    if (this.destroyRef.destroyed || !session() || !this.canCreateStack() || this.parked
-      || this.store.slideshowActive() || this.dialog.openDialogs.length) return;
-    this.dialog.open(StackDialogComponent, stackDialogConfig(data));
   }
 
   protected downloadPhoto(photo: Photo): void {

@@ -244,7 +244,7 @@ describe('Suggested stacks routed darkroom', () => {
       const editing = page['editSuggestion'](oldSecond); await settle();
       await vi.waitFor(() => expect(TestBed.inject(MatDialog).openDialogs).toHaveLength(1));
       const ref = TestBed.inject(MatDialog).openDialogs[0];
-      const oldEditorUndo = ref.componentInstance.data.onUndone;
+      const oldEditorUndo = ref.componentInstance.editor().data.onUndone;
       http.expectOne('/api/photos/by_paths').flush({ photos: oldSecond.photos, missing: [] }); await settle();
       page['openLightbox'](oldSecond, 0);
       const navigation = delayedNavigation(); await navigation.started; await settle();
@@ -471,10 +471,10 @@ describe('Suggested stacks routed darkroom', () => {
     const dialog = TestBed.inject(MatDialog);
     await vi.waitFor(() => expect(dialog.openDialogs).toHaveLength(1));
     const ref = dialog.openDialogs[0];
-    const data = ref.componentInstance.data;
+    const data = ref.componentInstance.editor().data;
     expect(data.paths).toEqual(['/d.jpg', '/c.jpg']);
     expect(data.activePath).toBe('/d.jpg'); expect(data.skippable).toBe(true);
-    const editor = ref.componentInstance as StackDialogComponent;
+    const editor = (ref.componentInstance as StackDialogComponent).editor();
     const members = http.expectOne('/api/photos/by_paths');
     members.flush({ photos: ['/d.jpg', '/c.jpg'].map(path => ({ path, filename: path.slice(1), date_taken: null })), missing: [] });
     await settle();
@@ -521,7 +521,7 @@ describe('Suggested stacks routed darkroom', () => {
     const captured = cull.groups()[0]; const opening = page['editSuggestion'](captured); await settle();
     await vi.waitFor(() => expect(TestBed.inject(MatDialog).openDialogs).toHaveLength(1));
     const ref = TestBed.inject(MatDialog).openDialogs[0];
-    const callback = ref.componentInstance.data.onUndone;
+    const callback = ref.componentInstance.editor().data.onUndone;
     const photos = http.expectOne('/api/photos/by_paths');
     if (reason === 'identity') identity.set('other'); else edition.set(false);
     // Direct liveness checks must reject before the auth effect runs.

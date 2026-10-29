@@ -18,6 +18,10 @@ import { GalleryStore } from './gallery.store';
 import { App } from '../../app';
 import { KeyboardMappingService, DEFAULT_KEYMAP } from '../../core/services/keyboard-mapping.service';
 import { StackDialogComponent } from './stack-dialog.component';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { StackEditorPageComponent } from './stack-editor-page.component';
+import { STACK_EDITOR_HISTORY } from './stack-editor-history';
+import { Location } from '@angular/common';
 import { ThemeService } from '../../core/services/theme.service';
 
 const counts = { total: 2, undecided: 2, kept: 0, rejected: 0 };
@@ -92,6 +96,12 @@ describe('stack representative repairs through rendered gallery and HTTP', () =>
 
 
   describe('Stack shortcut through document/grid and HTTP', () => {
+    let routed: RouterTestingHarness;
+    beforeEach(async () => {
+      TestBed.inject(Router).resetConfig([{ path: 'stacks/edit', component: StackEditorPageComponent }]);
+      routed = await RouterTestingHarness.create();
+      document.body.appendChild(fixture.nativeElement);
+    });
     const key = (init: KeyboardEventInit = {}, target: EventTarget = document) => {
       const event = new KeyboardEvent('keydown', { key: 's', bubbles: true, cancelable: true, ...init });
       target.dispatchEvent(event);
@@ -104,6 +114,7 @@ describe('stack representative repairs through rendered gallery and HTTP', () =>
     };
     const closeEditor = async () => {
       TestBed.inject(MatDialog).closeAll();
+      routed.fixture.destroy();
       await fixture.whenStable();
     };
     afterEach(async () => { await closeEditor(); });
@@ -115,27 +126,40 @@ describe('stack representative repairs through rendered gallery and HTTP', () =>
       const node = target === 'document' ? document : fixture.nativeElement.querySelector('[role="grid"]');
       expect(node).not.toBeNull();
       const event = key({}, node);
-      key({}, node); // Two immediate presses cannot race the lazy import into two dialogs.
+      key({}, node); // Two immediate presses cannot start duplicate navigations.
       expect(event.defaultPrevented).toBe(true);
-      await vi.waitFor(() => expect(document.querySelector('app-stack-dialog')).not.toBeNull());
+      await vi.waitFor(() => expect(TestBed.inject(Router).url).toBe('/stacks/edit'));
+      routed.detectChanges();
       fixture.detectChanges();
       const request = http.expectOne('/api/stacks/regroup/preview');
       expect(request.request.body).toEqual({ selected_paths: rows.map(row => row.path), mode: 'combine' });
       request.flush({ selected_paths: rows.map(row => row.path), mode: 'combine', paths: rows.map(row => row.path),
         cover_path: rows[0].path, source_stacks: [], unstacked_paths: rows.map(row => row.path),
         affected_paths: rows.map(row => row.path), expected_state: 'a'.repeat(64) });
-      await fixture.whenStable(); fixture.detectChanges();
-      expect(document.querySelectorAll('app-stack-dialog')).toHaveLength(1);
-      expect(document.querySelector('[data-stack-save]')).not.toBeNull();
+      await fixture.whenStable(); fixture.detectChanges(); routed.detectChanges();
+      expect(document.querySelectorAll('app-stack-dialog')).toHaveLength(0);
+      expect(routed.routeNativeElement?.querySelector('[data-stack-save]')).not.toBeNull();
+      expect((TestBed.inject(Location).getState() as Record<string, unknown>)[STACK_EDITOR_HISTORY]).toEqual({ version: 1, identity: auth.identity(), paths: rows.map(row => row.path), activePath: undefined, returnUrl: '/' });
       http.expectNone('/api/stacks/regroup/apply');
       http.expectNone('/api/stacks');
+    });
+
+    it('routes the toolbar maximum of 1000 explicitly selected photos without a dialog', async () => {
+      const paths = Array.from({ length: 1000 }, (_, index) => `/selected/${index}.jpg`);
+      store.selectedPaths.set(new Set(paths)); fixture.detectChanges();
+      fixture.nativeElement.querySelector('[data-create-stack]').click();
+      await vi.waitFor(() => expect(TestBed.inject(Router).url).toBe('/stacks/edit')); routed.detectChanges();
+      const request = http.expectOne('/api/stacks/regroup/preview'); expect(request.request.body.selected_paths).toEqual(paths);
+      expect(TestBed.inject(MatDialog).openDialogs).toHaveLength(0);
+      request.flush({}, { status: 403, statusText: 'Unavailable' }); await fixture.whenStable();
     });
 
     it.each(['S', '+'])('honours the case-insensitive or shifted printable binding %s', async pressed => {
       select();
       if (pressed === '+') expect(TestBed.inject(KeyboardMappingService).setKey('stack', '+')).toBeNull();
       expect(key({ key: pressed, shiftKey: true }).defaultPrevented).toBe(true);
-      await vi.waitFor(() => expect(document.querySelector('app-stack-dialog')).not.toBeNull());
+      await vi.waitFor(() => expect(TestBed.inject(Router).url).toBe('/stacks/edit'));
+      routed.detectChanges();
       fixture.detectChanges();
       const request = http.expectOne('/api/stacks/regroup/preview');
       expect(request.request.body.selected_paths).toEqual(rows.map(row => row.path));
@@ -199,10 +223,9 @@ describe('stack representative repairs through rendered gallery and HTTP', () =>
       expect(button.injector.get(MatTooltip).message).toBe('stacks.create {"key":""}');
     });
 
-    it('does not open after navigation parks the gallery while its lazy editor loads', async () => {
-      select();
-      expect(key().defaultPrevented).toBe(true);
-      fixture.componentInstance['parked'] = true;
+    it('does not navigate when the gallery is already parked', async () => {
+      select(); fixture.componentInstance['parked'] = true;
+      expect(key().defaultPrevented).toBe(false);
       await fixture.whenStable(); noEditor();
     });
 
@@ -225,7 +248,8 @@ describe('stack representative repairs through rendered gallery and HTTP', () =>
       // The real translated tooltip includes the currently mapped binding.
       expect(button.injector.get(MatTooltip).message).toContain('G');
       key({ key: 'g' });
-      await vi.waitFor(() => expect(document.querySelector('app-stack-dialog')).not.toBeNull());
+      await vi.waitFor(() => expect(TestBed.inject(Router).url).toBe('/stacks/edit'));
+      routed.detectChanges();
       fixture.detectChanges(); http.expectOne('/api/stacks/regroup/preview').flush({}, { status: 500, statusText: 'Failed' });
       await fixture.whenStable();
     });

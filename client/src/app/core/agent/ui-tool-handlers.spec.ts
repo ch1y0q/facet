@@ -253,6 +253,11 @@ describe('UI tool registry and handlers', () => {
       expect(navigate).not.toHaveBeenCalled();
     });
 
+    it('does not advertise the history-input manual editor in the assistant navigation contract', async () => {
+      for (edition of [false, true]) expect(await run('ui_navigate', { route: '/stacks/edit' })).toMatchObject({ ok: false, error: 'invalid_input' });
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
     it('allows edition-only routes for an edition session', async () => {
       edition = true;
       expect((await run('ui_navigate', { route: '/culling' })).ok).toBe(true);

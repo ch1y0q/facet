@@ -96,6 +96,14 @@ describe('App', () => {
       expect(rows.map(row => row.labelKey)).not.toContain('culling.shortcuts.toggle');
     });
 
+    it('shows manual editor help without suggested or culling decisions', () => {
+      const { app } = createApp('/stacks/edit');
+      (app as any).openHelpDialog();
+      const open = TestBed.inject(MatDialog).open as unknown as ReturnType<typeof vi.fn>;
+      const sections = open.mock.calls[0][1].data.shortcutSections;
+      expect(sections).toEqual([{ titleKey: 'stacks.create', rows: [{ keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' }] }]);
+    });
+
     it('lists the remapped reject key on a gallery route, not the default', () => {
       const { app } = createApp('/');
       TestBed.inject(KeyboardMappingService).setKey('reject', 'r');

@@ -3188,7 +3188,8 @@ export class BurstCullingComponent implements OnDestroy {
   protected async editSuggestion(group: CullingGroup): Promise<void> {
     if (!this.stacksMode() || !this.auth.isEdition() || this.secondaryEditor || !this.cull.groups().includes(group)) return;
     const current = this.pageSession();
-    const { StackDialogComponent, SKIP_SUGGESTION } = await import('./stack-dialog.component');
+    const { StackDialogComponent } = await import('./stack-dialog.component');
+    const { SKIP_SUGGESTION } = await import('./stack-editor-host');
     if (!current() || this.dialog.openDialogs.length || !this.cull.groups().includes(group)) return;
     const focused = this.lightboxGroupId() === this.cull.groupKey(group)
       ? group.photos[this.lightboxIndex()]?.path : group.photos[this.selectedPhotoIndex()]?.path;

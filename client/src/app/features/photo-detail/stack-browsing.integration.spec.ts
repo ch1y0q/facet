@@ -604,7 +604,7 @@ describe('manual stack browsing through rendered viewer, Router and HTTP', () =>
     const opened = vi.spyOn(navigatorElement.injector.get(MatDialog), 'open');
     button('[data-stack-manage]').click(); await manage.mock.results[0].value;
     harness.detectChanges(); http.expectOne('/api/stacks/s1').flush(stack); await render();
-    const editor = opened.mock.results[0].value.componentInstance;
+    const editor = opened.mock.results[0].value.componentInstance.editor();
     const opening = vi.spyOn(editor, 'openMember');
     const release = new Subject<boolean>();
     let entered!: () => void;

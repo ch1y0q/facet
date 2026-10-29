@@ -45,3 +45,7 @@ export const STACK_SHORTCUT_SECTIONS = [
   ] },
   { titleKey: 'culling.shortcuts.darkroom_title', rows: STACK_DARKROOM_SHORTCUTS },
 ];
+
+export const MANUAL_STACK_SHORTCUT_SECTIONS = [{ titleKey: 'stacks.create', rows: [
+  { keys: ['←', '→'], labelKey: 'culling.shortcuts.navigate' },
+] }];

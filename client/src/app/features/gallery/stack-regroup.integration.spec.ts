@@ -63,7 +63,7 @@ describe('shared regroup editor through Material, Router and HTTP', () => {
     expect(root().querySelectorAll('[data-stack-tile]')).toHaveLength(4);
     button('[data-stack-focus="/b.jpg"]').click(); await render();
     expect(root().querySelector<HTMLImageElement>('[data-stack-preview]')!.src).toContain('size=1920');
-    expect(ref.componentInstance.cover()).toBe('/a.jpg');
+    expect(ref.componentInstance.editor().cover()).toBe('/a.jpg');
     button('[data-stack-cover="/d.jpg"]').click();
     button('[data-stack-remove="/b.jpg"]').click(); await render();
     button('[data-stack-save]').click();
@@ -134,7 +134,7 @@ describe('shared regroup editor through Material, Router and HTTP', () => {
     button('[data-stack-mode="combine"]').click();
     expect(old.cancelled).toBe(true);
     http.expectOne('/api/stacks/regroup/preview').flush(preview); await render();
-    expect(ref.componentInstance.paths()).toEqual(preview.paths);
+    expect(ref.componentInstance.editor().paths()).toEqual(preview.paths);
     expect(button('[data-stack-mode="combine"]').getAttribute('aria-pressed')).toBe('true');
   });
   it.each(['identity', 'edition', 'navigation'])('ignores an in-flight successful write after %s changes', async change => {
@@ -151,7 +151,7 @@ describe('shared regroup editor through Material, Router and HTTP', () => {
   });
   it.each(['identity', 'edition'])('ignores preview completion immediately after %s changes before an effect runs', async change => {
     const ref = TestBed.inject(MatDialog).open(StackDialogComponent, stackDialogConfig({ paths: preview.selected_paths }));
-    const instance = ref.componentInstance; fixture.detectChanges();
+    const instance = ref.componentInstance.editor(); fixture.detectChanges();
     const request = http.expectOne('/api/stacks/regroup/preview');
     if (change === 'identity') identity.set('bob'); else edition.set(false);
     const closed = firstValueFrom(ref.afterClosed());
@@ -176,19 +176,19 @@ describe('shared regroup editor through Material, Router and HTTP', () => {
       target.dispatchEvent(event); return event;
     };
     for (const init of [{ isComposing: true }, { keyCode: 229 }, { ctrlKey: true }, { altKey: true }, { metaKey: true }, { shiftKey: true }, { key: 'Enter' }, { key: ' ' }]) {
-      expect(key(init).defaultPrevented).toBe(false); expect(ref.componentInstance.focused()).toBe('/a.jpg');
+      expect(key(init).defaultPrevented).toBe(false); expect(ref.componentInstance.editor().focused()).toBe('/a.jpg');
     }
     const input = document.createElement('input'); root().appendChild(input);
     expect(key({}, input).defaultPrevented).toBe(false); input.remove();
     expect(key({}).defaultPrevented).toBe(true); await render();
-    expect(ref.componentInstance.focused()).toBe('/b.jpg'); expect(ref.componentInstance.cover()).toBe('/a.jpg');
+    expect(ref.componentInstance.editor().focused()).toBe('/b.jpg'); expect(ref.componentInstance.editor().cover()).toBe('/a.jpg');
     expect(document.activeElement).toBe(button('[data-stack-focus="/b.jpg"]'));
     const urls = [...root().querySelectorAll<HTMLImageElement>('img')].map(img => new URL(img.src));
     expect(urls.filter(url => url.searchParams.get('size') === '1920')).toHaveLength(1);
     expect(urls.filter(url => url.searchParams.get('size') === '640')).toHaveLength(4);
     expect(urls.every(url => url.pathname === '/thumbnail')).toBe(true);
     const upper = TestBed.inject(MatDialog).open(HostComponent); await render();
-    key({}, document.body); expect(ref.componentInstance.focused()).toBe('/b.jpg'); upper.close(); await render();
+    key({}, document.body); expect(ref.componentInstance.editor().focused()).toBe('/b.jpg'); upper.close(); await render();
   });
   it('retains strict remove-to-unstack, then enters regroup only on explicit cross-stack Add selected', async () => {
     const ref = TestBed.inject(MatDialog).open(StackDialogComponent, stackDialogConfig({ stackId: source.id, selectedPaths: ['/d.jpg'] }));
@@ -199,7 +199,7 @@ describe('shared regroup editor through Material, Router and HTTP', () => {
     expect(check.request.body.selected_paths).toEqual(['/a.jpg', '/c.jpg', '/d.jpg']);
     check.flush({ ...preview, selected_paths: ['/a.jpg', '/c.jpg', '/d.jpg'], paths: ['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg', '/e.jpg'],
       source_stacks: [source, { ...source, id: 'other', cover_path: '/d.jpg', members: [{ path: '/d.jpg', position: 0 }, { path: '/e.jpg', position: 1 }] }] }); await render();
-    expect(ref.componentInstance.paths()).toEqual(['/a.jpg', '/c.jpg', '/d.jpg', '/e.jpg']);
+    expect(ref.componentInstance.editor().paths()).toEqual(['/a.jpg', '/c.jpg', '/d.jpg', '/e.jpg']);
     expect(root().textContent).toContain('stacks.regroup_policy');
     button('[data-stack-save]').click();
     const apply = http.expectOne('/api/stacks/regroup/apply'); expect(apply.request.body.paths).not.toContain('/b.jpg');
@@ -223,8 +223,8 @@ describe('shared regroup editor through Material, Router and HTTP', () => {
     const retry = http.expectOne('/api/stacks/regroup/preview');
     expect(retry.request.body.selected_paths).toEqual(['/a.jpg', '/c.jpg', '/d.jpg']);
     retry.flush({ ...preview, paths: ['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg'], source_stacks: [source] }); await render();
-    expect(ref.componentInstance.paths()).toEqual(['/a.jpg', '/c.jpg', '/d.jpg']);
-    expect(ref.componentInstance.cover()).toBe('/c.jpg');
+    expect(ref.componentInstance.editor().paths()).toEqual(['/a.jpg', '/c.jpg', '/d.jpg']);
+    expect(ref.componentInstance.editor().cover()).toBe('/c.jpg');
     http.expectNone('/api/stacks/source');
   });
 
