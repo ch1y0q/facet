@@ -20,6 +20,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { StalenessGuardFactory } from '../../core/services/staleness-guard.service';
 import { PhotoActionsService } from '../../core/services/photo-actions.service';
 import { PhotoDetailBase } from '../../shared/directives/photo-detail-base.directive';
+import { ZoomPanDirective } from '../../shared/directives/zoom-pan.directive';
 import { FixedPipe } from '../../shared/pipes/fixed.pipe';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { ThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
@@ -43,7 +44,10 @@ import * as L from 'leaflet';
 import { createLeafletMap } from '../../shared/leaflet';
 import { I18N, i18nKeys } from '../../core/i18n/keys';
 import { isPageShortcutBlocked, isTypingContext } from '../../shared/utils/keyboard';
+import { KeyboardMappingService } from '../../core/services/keyboard-mapping.service';
 import type { CategoryOverrideResult } from './category-override-dialog.component';
+import { StackNavigatorComponent } from './stack-navigator.component';
+import { PhotoStackService } from '../../core/services/photo-stack.service';
 
 const SOCIAL_SOURCE_KEYS: Record<string, string> = {
   saliency: I18N.social_export.source.saliency,
@@ -54,6 +58,8 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
 @Component({
   selector: 'app-photo-detail',
   imports: [
+    StackNavigatorComponent,
+    ZoomPanDirective,
     MetricRankComponent,
     PhotoMetricsTabsComponent,
     MatIconModule,
@@ -83,24 +89,17 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
         <button mat-icon-button (click)="goBack()" [matTooltip]="I18N.photo_detail.back | translate" [attr.aria-label]="I18N.photo_detail.back | translate">
           <mat-icon>arrow_back</mat-icon>
         </button>
-        <span class="flex-1 truncate font-medium">{{ p.filename }}</span>
+        <span class="min-w-0 flex-1 truncate font-medium">{{ p.filename }}</span>
+        @if (auth.isEdition()) {
+          <button mat-icon-button class="max-md:!hidden" (click)="refreshPhoto(p)" [matTooltip]="I18N.photo_refresh.title | translate" [attr.aria-label]="I18N.photo_refresh.title | translate"><mat-icon>refresh</mat-icon></button>
+        }
+
 
         @if (store.config()?.features?.show_similar_button) {
-          <button mat-icon-button [matMenuTriggerFor]="similarMenu"
+          <button mat-icon-button class="max-md:!hidden" [matMenuTriggerFor]="similarMenu"
             [matTooltip]="I18N.similar.find_similar | translate" [attr.aria-label]="I18N.similar.find_similar | translate">
             <mat-icon>image_search</mat-icon>
           </button>
-          <mat-menu #similarMenu="matMenu">
-            <button mat-menu-item (click)="openSimilar(p, 'visual')">
-              <mat-icon>image_search</mat-icon> {{ I18N.similar.mode_visual | translate }}
-            </button>
-            <button mat-menu-item (click)="openSimilar(p, 'color')">
-              <mat-icon>palette</mat-icon> {{ I18N.similar.mode_color | translate }}
-            </button>
-            <button mat-menu-item (click)="openSimilar(p, 'person')">
-              <mat-icon>person_search</mat-icon> {{ I18N.similar.mode_person | translate }}
-            </button>
-          </mat-menu>
         }
 
         @if (store.config()?.features?.show_critique) {
@@ -111,36 +110,28 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
         }
 
         @if (auth.isEdition() && store.config()?.cull?.trash_available) {
-          <button mat-icon-button (click)="deletePhoto()"
+          <button mat-icon-button class="max-md:!hidden" (click)="deletePhoto()"
             [matTooltip]="I18N.photo_detail.delete.button_label | translate" [attr.aria-label]="I18N.photo_detail.delete.button_label | translate">
             <mat-icon>delete</mat-icon>
           </button>
         }
 
         @if (auth.isEdition()) {
-          <button mat-icon-button [matMenuTriggerFor]="categoryOverrideMenu"
+          <button mat-icon-button class="max-md:!hidden" [matMenuTriggerFor]="categoryOverrideMenu"
             [matTooltip]="I18N.photo.category_override.menu_tooltip | translate" [attr.aria-label]="I18N.photo.category_override.menu_tooltip | translate">
             <mat-icon>category</mat-icon>
           </button>
-          <mat-menu #categoryOverrideMenu="matMenu">
-            <button mat-menu-item (click)="openCategoryOverride(p)">
-              <mat-icon>edit</mat-icon> {{ I18N.photo.category_override.set_action | translate }}
-            </button>
-            <button mat-menu-item (click)="clearCategoryOverride(p)">
-              <mat-icon>restart_alt</mat-icon> {{ I18N.photo.category_override.clear_action | translate }}
-            </button>
-          </mat-menu>
         }
 
         @if (auth.isEdition()) {
-          <button mat-icon-button (click)="openManualFaces(p)"
+          <button mat-icon-button class="max-md:!hidden" (click)="openManualFaces(p)"
             [matTooltip]="I18N.manual_faces.title | translate" [attr.aria-label]="I18N.manual_faces.title | translate">
             <mat-icon>crop_free</mat-icon>
           </button>
         }
 
         @if (auth.isEdition() && p.unassigned_faces > 0) {
-          <button mat-icon-button (click)="openAddPerson(p)"
+          <button mat-icon-button class="max-md:!hidden" (click)="openAddPerson(p)"
             [matTooltip]="I18N.manage_persons.assign_face | translate" [attr.aria-label]="I18N.manage_persons.assign_face | translate">
             <mat-icon>person_add</mat-icon>
           </button>
@@ -171,39 +162,85 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
         }
 
         @if (socialExportEnabled()) {
-          <button mat-icon-button [matMenuTriggerFor]="socialMenu" [disabled]="downloading()"
+          <button mat-icon-button class="max-md:!hidden" [matMenuTriggerFor]="socialMenu" [disabled]="downloading()"
             [matTooltip]="(socialCropTooltipKey() | translate)" [attr.aria-label]="I18N.photo_detail.social_crop | translate">
             <mat-icon>crop</mat-icon>
           </button>
-          <mat-menu #socialMenu="matMenu">
-            @for (preset of socialPresets(); track preset.key) {
-              <button mat-menu-item (click)="downloadSocialCrop(p.path, preset.key)">
-                <mat-icon>crop</mat-icon>
-                {{ preset.label_key | translate }}
-              </button>
+        }
+
+        <!-- Declared outside their @if so both the inline buttons and the overflow menu can target them. -->
+        <mat-menu #similarMenu="matMenu">
+          <button mat-menu-item (click)="openSimilar(p, 'visual')">
+            <mat-icon>image_search</mat-icon> {{ I18N.similar.mode_visual | translate }}
+          </button>
+          <button mat-menu-item (click)="openSimilar(p, 'color')">
+            <mat-icon>palette</mat-icon> {{ I18N.similar.mode_color | translate }}
+          </button>
+          <button mat-menu-item (click)="openSimilar(p, 'person')">
+            <mat-icon>person_search</mat-icon> {{ I18N.similar.mode_person | translate }}
+          </button>
+        </mat-menu>
+        <mat-menu #categoryOverrideMenu="matMenu">
+          <button mat-menu-item (click)="openCategoryOverride(p)">
+            <mat-icon>edit</mat-icon> {{ I18N.photo.category_override.set_action | translate }}
+          </button>
+          <button mat-menu-item (click)="clearCategoryOverride(p)">
+            <mat-icon>restart_alt</mat-icon> {{ I18N.photo.category_override.clear_action | translate }}
+          </button>
+        </mat-menu>
+        <mat-menu #socialMenu="matMenu">
+          @for (preset of socialPresets(); track preset.key) {
+            <button mat-menu-item (click)="downloadSocialCrop(p.path, preset.key)">
+              <mat-icon>crop</mat-icon>
+              {{ preset.label_key | translate }}
+            </button>
+          }
+        </mat-menu>
+
+        <!-- Below md the secondary actions fold into this menu so the filename keeps its room;
+             back, critique and download stay in the row. Same handlers and conditions as the inline buttons. -->
+        @if (auth.isEdition() || store.config()?.features?.show_similar_button || socialExportEnabled()) {
+          <button mat-icon-button class="md:!hidden" [matMenuTriggerFor]="moreActionsMenu"
+            [matTooltip]="I18N.nav.more | translate" [attr.aria-label]="I18N.nav.more | translate">
+            <mat-icon>more_vert</mat-icon>
+          </button>
+          <mat-menu #moreActionsMenu="matMenu">
+            @if (auth.isEdition()) {
+              <button mat-menu-item (click)="refreshPhoto(p)"><mat-icon>refresh</mat-icon> {{ I18N.photo_refresh.title | translate }}</button>
+            }
+            @if (store.config()?.features?.show_similar_button) {
+              <button mat-menu-item [matMenuTriggerFor]="similarMenu"><mat-icon>image_search</mat-icon> {{ I18N.similar.find_similar | translate }}</button>
+            }
+            @if (auth.isEdition() && store.config()?.cull?.trash_available) {
+              <button mat-menu-item (click)="deletePhoto()"><mat-icon>delete</mat-icon> {{ I18N.photo_detail.delete.button_label | translate }}</button>
+            }
+            @if (auth.isEdition()) {
+              <button mat-menu-item [matMenuTriggerFor]="categoryOverrideMenu"><mat-icon>category</mat-icon> {{ I18N.photo.category_override.menu_tooltip | translate }}</button>
+              <button mat-menu-item (click)="openManualFaces(p)"><mat-icon>crop_free</mat-icon> {{ I18N.manual_faces.title | translate }}</button>
+            }
+            @if (auth.isEdition() && p.unassigned_faces > 0) {
+              <button mat-menu-item (click)="openAddPerson(p)"><mat-icon>person_add</mat-icon> {{ I18N.manage_persons.assign_face | translate }}</button>
+            }
+            @if (socialExportEnabled()) {
+              <button mat-menu-item [matMenuTriggerFor]="socialMenu" [disabled]="downloading()"><mat-icon>crop</mat-icon> {{ I18N.photo_detail.social_crop | translate }}</button>
             }
           </mat-menu>
         }
       </div>
 
+      <app-stack-navigator [path]="p.path" [allowedPaths]="store.pinnedPaths()" [stacked]="!!p.stack_id"
+        (memberOpened)="openSetMember($event)" />
+
       <!-- Main content: image + info -->
-      <div class="flex flex-col lg:flex-row lg:h-[calc(100%-49px)] lg:overflow-hidden">
+      <div class="flex flex-col lg:flex-row lg:flex-1 lg:min-h-0 lg:overflow-hidden">
         <!-- Image panel -->
-        <div #imagePanel class="shrink-0 lg:h-auto lg:flex-1 flex items-center justify-center bg-black lg:min-h-0 relative overflow-hidden cursor-grab"
-          [class.cursor-grabbing]="isPanning()"
-          (dblclick)="resetZoom()"
-          (pointerdown)="onPanStart($event)"
-          (pointermove)="onPanMove($event)"
-          (pointerup)="onPanEnd($event)"
-          (pointercancel)="onPanEnd($event)"
-          (touchstart)="onTouchStart($event)"
-          (touchend)="onTouchEnd()">
+        <div appZoomPan #zoom="zoomPan" class="shrink-0 lg:h-auto lg:flex-1 flex items-center justify-center bg-black lg:min-h-0 relative overflow-hidden cursor-grab">
           <img
-            [src]="p.path | thumbnailUrl:640"
+            [src]="p.path | thumbnailUrl:640:p.preview_revision"
             [alt]="p.filename"
             class="w-full lg:max-w-full lg:max-h-full object-contain transition-opacity duration-300 pointer-events-none select-none"
             [class.opacity-0]="fullImageLoaded()"
-            [style.transform]="zoomTransform()"
+            [style.transform]="zoom.transform()"
           />
           <img
             [src]="fullImageUrl()"
@@ -211,7 +248,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
             class="absolute inset-0 w-full h-full object-contain transition-opacity duration-300 pointer-events-none select-none"
             [class.opacity-0]="!fullImageLoaded()"
             (load)="onFullImageLoad()"
-            [style.transform]="zoomTransform()"
+            [style.transform]="zoom.transform()"
           />
         </div>
 
@@ -481,7 +518,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
                             [class.ring-2]="member.path === p.path"
                             [attr.aria-label]="(I18N.photo_detail.set.member_position | translate:{ position: $index + 1, count: set.members.length }) + (member.ev_offset !== null ? ', ' + (member.ev_offset | evOffset) : '')"
                             (click)="openSetMember(member.path)">
-                      <img [src]="member.path | thumbnailUrl:96" alt="" class="w-full h-full object-cover" />
+                      <img [src]="member.path | thumbnailUrl:96:member.preview_revision" alt="" class="w-full h-full object-cover" />
                       @if (member.ev_offset !== null) {
                         <span class="absolute bottom-0 inset-x-0 text-center text-[0.625rem] leading-4 bg-black/60 text-white">{{ member.ev_offset | evOffset }}</span>
                       }
@@ -509,7 +546,7 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
     }
   `,
   changeDetection: ChangeDetectionStrategy.Eager,
-  host: { class: 'block h-full overflow-y-auto lg:overflow-y-hidden' },
+  host: { class: 'flex flex-col h-full overflow-y-auto lg:overflow-y-hidden' },
 })
 export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   protected readonly I18N = i18nKeys();
@@ -525,6 +562,12 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   private readonly assistantChanges = inject(AssistantChangesService);
   private readonly photoActions = inject(PhotoActionsService);
   private readonly journal = inject(UserActivityJournal);
+  private readonly keymap = inject(KeyboardMappingService);
+  private readonly stacks = inject(PhotoStackService);
+  private readonly stackNavigator = viewChild(StackNavigatorComponent);
+  private memberRequest = 0;
+  private memberPhoto: { photo: Photo; owner: string } | null = null;
+  private readonly viewerOwner = this.auth.identity();
 
   readonly photo = signal<Photo | null>(null);
   protected readonly photoMissing = signal(false);
@@ -537,24 +580,6 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   protected readonly explainerOpen = signal(false);
   protected readonly explainerCategories = signal<string[]>([]);
   protected readonly explainerTargetCategory = signal<string | null>(null);
-
-  // Zoom & pan state
-  private readonly imagePanel = viewChild<ElementRef<HTMLDivElement>>('imagePanel');
-  protected readonly zoomScale = signal(1);
-  protected readonly panX = signal(0);
-  protected readonly panY = signal(0);
-  protected readonly isPanning = signal(false);
-  protected readonly zoomTransform = computed(() => {
-    const s = this.zoomScale();
-    const x = this.panX();
-    const y = this.panY();
-    return s === 1 && x === 0 && y === 0 ? '' : `scale(${s}) translate(${x}px, ${y}px)`;
-  });
-  private panStartX = 0;
-  private panStartY = 0;
-  private panOriginX = 0;
-  private panOriginY = 0;
-  private lastPinchDist = 0;
 
   // Download options
   private downloadOptionsEffect = effect(() => {
@@ -648,24 +673,6 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   private locationMap: L.Map | null = null;
   private locationMapTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  // Register wheel and touchmove as non-passive so preventDefault() works. Keyed
-  // on imagePanel() (not afterNextRender()) so the async query-param load path
-  // -- where photo() is still null on first paint and #imagePanel doesn't exist
-  // yet -- re-attaches once the @if-gated element actually appears, instead of
-  // permanently missing the listeners.
-  private zoomListenersEffect = effect((onCleanup) => {
-    const el = this.imagePanel()?.nativeElement;
-    if (!el) return;
-    const wheelHandler = (e: WheelEvent) => this.onWheel(e);
-    const touchMoveHandler = (e: TouchEvent) => this.onTouchMove(e);
-    el.addEventListener('wheel', wheelHandler, { passive: false });
-    el.addEventListener('touchmove', touchMoveHandler, { passive: false });
-    onCleanup(() => {
-      el.removeEventListener('wheel', wheelHandler);
-      el.removeEventListener('touchmove', touchMoveHandler);
-    });
-  });
-
   private locationMapEffect = effect(() => {
     const container = this.locationMapContainer();
     const p = this.photo();
@@ -749,7 +756,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
       if (path) {
         // The user may leave, or Back may move the address, while this loads; replacing keeps a dead entry out of history.
         const photo = await this.fetchPhoto(path).catch(() => undefined);
-        if (this.destroyRef.destroyed || this.route.snapshot.queryParamMap.get('path') !== path) return;
+        if (this.destroyRef.destroyed || this.viewerOwner !== this.auth.identity() || this.route.snapshot.queryParamMap.get('path') !== path) return;
         if (photo) this.photo.set(photo);
         else this.router.navigate(['/'], { replaceUrl: true });
       } else {
@@ -774,9 +781,11 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
   }
 
   private async showPhotoAt(path: string): Promise<void> {
+    if (this.viewerOwner !== this.auth.identity() || (this.memberPhoto?.photo.path === path && !this.memberAllowed(path))) return;
     // Store copy carries edits made since; history.state is the photo as opened.
-    const photo = this.store.photos().find(p => p.path === path) ?? await this.fetchPhoto(path).catch(() => undefined);
-    if (this.route.snapshot.queryParamMap.get('path') !== path) return;
+    const context = this.stacks.context();
+    const photo = (this.memberPhoto?.owner === this.auth.identity() && this.memberPhoto.photo.path === path ? this.memberPhoto.photo : null) ?? this.store.photos().find(p => p.path === path) ?? await this.fetchPhoto(path).catch(() => undefined);
+    if (this.destroyRef.destroyed || !context() || this.route.snapshot.queryParamMap.get('path') !== path) return;
     if (!photo) {
       // Say so rather than keep the previous photo under this address (e.g. Forward to one deleted since).
       this.photo.set(null);
@@ -788,14 +797,26 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     this.fullImageLoaded.set(false);
   }
 
+  private memberAllowed(path: string): boolean {
+    const pinned = this.store.pinnedPaths();
+    return pinned === null || pinned.includes(path);
+  }
+
   protected async openSetMember(path: string): Promise<void> {
-    if (this.photo()?.path === path) return;
+    if (this.viewerOwner !== this.auth.identity() || !this.memberAllowed(path) || this.photo()?.path === path) return;
+    const sequence = ++this.memberRequest;
+    const currentPath = this.photo()?.path;
+    const context = this.stacks.context();
+    const current = () => !this.destroyRef.destroyed && context() && sequence === this.memberRequest && this.photo()?.path === currentPath && this.memberAllowed(path);
     try {
       const photo = await this.fetchPhoto(path);
-      this.router.navigate(['/photo'], { queryParams: { path }, state: { photo }, replaceUrl: true });
-      this.photo.set(photo);
-      this.fullImageLoaded.set(false);
+      if (!current()) return;
+      this.memberPhoto = { photo, owner: this.auth.identity() };
+      try {
+        await this.stacks.navigateMember(path, photo, () => this.memberAllowed(path), true);
+      } finally { this.memberPhoto = null; }
     } catch {
+      if (!current()) return;
       this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 });
     }
   }
@@ -817,49 +838,57 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     this.router.navigate(['/'], { state: { setScope: updates } });
   }
 
-  @HostListener('document:keydown.escape')
-  protected goBack(): void {
+  private shortcutBlocked(event: Event): boolean {
+    return event.defaultPrevented || isPageShortcutBlocked(event as KeyboardEvent) || this.store.slideshowActive();
+  }
+
+  @HostListener('document:keydown.escape', ['$event'])
+  protected goBack(event?: Event): void {
+    if (event && this.shortcutBlocked(event)) return;
     this.location.back();
   }
 
   @HostListener('document:keydown.arrowleft', ['$event'])
   protected prevPhoto(event: Event): void {
-    if (isTypingContext(event)) return;
+    if (this.shortcutBlocked(event)) return;
+    event.preventDefault();
     void this.navigateAdjacentPhoto(-1);
   }
 
   @HostListener('document:keydown.arrowright', ['$event'])
   protected nextPhoto(event: Event): void {
-    if (isTypingContext(event)) return;
+    if (this.shortcutBlocked(event)) return;
+    event.preventDefault();
     void this.navigateAdjacentPhoto(1);
   }
 
-  /** 1-5 rate, F favourite, X/0 reject the open photo — the same rating keys
-   *  the grid's focused card answers, so a reviewer never has to reach for
-   *  the panel. Gated the same way the rating buttons are (edition mode +
-   *  the rating-controls feature flag); typing contexts and open dialogs bow
-   *  out first. No auto-advance: a single-photo view has no "next" contract
-   *  with the filters it came from. */
+  /** The mapped rating keys act on the open photo — the same keys the grid's
+   *  focused card answers, so a reviewer never has to reach for the panel.
+   *  Gated the same way the rating buttons are (edition mode + the
+   *  rating-controls feature flag); typing contexts and open dialogs bow out
+   *  first. No auto-advance: a single-photo view has no "next" contract with
+   *  the filters it came from. */
   @HostListener('document:keydown', ['$event'])
   protected onRatingShortcut(event: KeyboardEvent): void {
     if (isPageShortcutBlocked(event)) return;
     if (!this.auth.isEdition() || !this.store.config()?.features?.show_rating_controls) return;
     const p = this.photo();
     if (!p) return;
-    const key = event.key;
-    if (key >= '1' && key <= '5') {
+    if (event.key >= '1' && event.key <= '5') {
       event.preventDefault();
-      void this.setRating(p.path, Number(key));
-    } else if (key === 'f' || key === 'F') {
+      void this.setRating(p.path, Number(event.key));
+    } else if (this.keymap.matches(event, 'favourite')) {
       event.preventDefault();
       void this.toggleFavorite(p.path);
-    } else if (key === 'x' || key === 'X' || key === '0') {
+    } else if (event.key === '0' || this.keymap.matches(event, 'reject')) {
       event.preventDefault();
       void this.toggleRejected(p.path);
     }
   }
 
   private async navigateAdjacentPhoto(delta: number): Promise<void> {
+    // Match the visible stack buttons; its members already respect an exact list.
+    if (this.stackNavigator()?.step(delta)) return;
     const current = this.photo();
     if (!current) return;
     const indexOf = () => this.store.photos().findIndex(p => p.path === current.path);
@@ -978,7 +1007,7 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
 
   @HostListener('document:keydown', ['$event'])
   protected onReviewKey(event: KeyboardEvent): void {
-    if (this.dialog.openDialogs.length || isTypingContext(event) || event.ctrlKey || event.metaKey || event.altKey || event.key.toLowerCase() !== 'k' || !this.auth.isEdition()) return;
+    if (this.dialog.openDialogs.length || isTypingContext(event) || event.ctrlKey || event.metaKey || event.altKey || !this.keymap.matches(event, 'keep') || !this.auth.isEdition()) return;
     event.preventDefault();
     void this.reviewPhoto('kept');
   }
@@ -1249,6 +1278,16 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     }
   }
 
+  protected async refreshPhoto(p: Photo): Promise<void> {
+    const { current, dispose } = this.staleness.create(this.destroyRef, { valid: () => this.photo()?.path === p.path });
+    try {
+      const refreshed = await this.photoActions.refreshPhotos([p.path]);
+      if (!current() || !refreshed.includes(p.path)) return;
+      const photo = await this.fetchPhoto(p.path);
+      if (current()) { this.fullImageLoaded.set(false); this.photo.set(photo); }
+    } finally { dispose(); }
+  }
+
   protected openAddPerson(photo: Photo): void {
     this.photoActions.openAddPerson(photo, () => {
       this.photo.update(p => p?.path === photo.path ? { ...p, unassigned_faces: Math.max(0, p.unassigned_faces - 1) } : p);
@@ -1303,84 +1342,5 @@ export class PhotoDetailComponent extends PhotoDetailBase implements OnInit {
     } finally {
       if (!opened) dispose();
     }
-  }
-
-  // Zoom & pan
-
-  private applyZoom(raw: number): void {
-    const clamped = Math.min(5, Math.max(0.5, raw));
-    if (clamped === 1) { this.panX.set(0); this.panY.set(0); }
-    this.zoomScale.set(clamped);
-  }
-
-  protected onWheel(e: WheelEvent): void {
-    e.preventDefault();
-    this.applyZoom(this.zoomScale() + (e.deltaY > 0 ? -0.15 : 0.15));
-  }
-
-  protected resetZoom(): void {
-    this.zoomScale.set(1);
-    this.panX.set(0);
-    this.panY.set(0);
-  }
-
-  protected onPanStart(e: PointerEvent): void {
-    if (this.zoomScale() <= 1) return;
-    this.isPanning.set(true);
-    this.panStartX = e.clientX;
-    this.panStartY = e.clientY;
-    this.panOriginX = this.panX();
-    this.panOriginY = this.panY();
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-  }
-
-  protected onPanMove(e: PointerEvent): void {
-    if (!this.isPanning()) return;
-    const scale = this.zoomScale();
-    const rawX = this.panOriginX + (e.clientX - this.panStartX) / scale;
-    const rawY = this.panOriginY + (e.clientY - this.panStartY) / scale;
-    // Clamp pan so the image can't be dragged entirely off-screen
-    const el = this.imagePanel()?.nativeElement;
-    if (el) {
-      const limit = Math.max(el.clientWidth, el.clientHeight) / (2 * scale);
-      this.panX.set(Math.max(-limit, Math.min(limit, rawX)));
-      this.panY.set(Math.max(-limit, Math.min(limit, rawY)));
-    } else {
-      this.panX.set(rawX);
-      this.panY.set(rawY);
-    }
-  }
-
-  protected onPanEnd(e: PointerEvent): void {
-    if (!this.isPanning()) return;
-    this.isPanning.set(false);
-    (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
-  }
-
-  protected onTouchStart(e: TouchEvent): void {
-    if (e.touches.length === 2) {
-      this.lastPinchDist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY,
-      );
-    }
-  }
-
-  protected onTouchMove(e: TouchEvent): void {
-    if (e.touches.length === 2) {
-      e.preventDefault();
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY,
-      );
-      if (this.lastPinchDist > 0) {
-        this.applyZoom(this.zoomScale() * (dist / this.lastPinchDist));
-      }
-      this.lastPinchDist = dist;
-    }
-  }
-
-  protected onTouchEnd(): void {
-    this.lastPinchDist = 0;
   }
 }

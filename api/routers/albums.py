@@ -15,6 +15,7 @@ from typing import Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from db.preview_versions import attach_preview_versions
 from api.auth import CurrentUser, get_optional_user, require_edition
 from api.config import VIEWER_CONFIG, server_scoring_config
 from api.database import get_async_db, get_db
@@ -166,7 +167,12 @@ async def _fetch_album_photos(conn, album_row, user_id, page, per_page, sort_col
         from api.routers.gallery import _build_gallery_where
         saved_filters = json.loads(album_row['smart_filter_json'])
         saved_filters = _normalize_smart_filters(saved_filters)
-        where_clauses, sql_params = _build_gallery_where(saved_filters, conn, user_id=owner_id)
+        from api.stack_gallery import enabled_owner_async
+        stack_owner = await enabled_owner_async(conn, owner_id) if include_manual else None
+        where_clauses, sql_params = _build_gallery_where(
+            saved_filters, conn, user_id=owner_id, stack_owner=stack_owner,
+            include_stacks=include_manual,
+        )
         from_clause, from_params = get_photos_from_clause(owner_id)
         all_params = from_params + sql_params
         where_str = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
@@ -200,7 +206,10 @@ async def _fetch_album_photos(conn, album_row, user_id, page, per_page, sort_col
 
         if filters:
             from api.routers.gallery import _build_gallery_where
-            extra_clauses, extra_params = _build_gallery_where(filters, conn, include_manual=include_manual)
+            from api.stack_gallery import enabled_owner_async
+            stack_owner = await enabled_owner_async(conn, user_id) if include_manual else None
+            extra_clauses, extra_params = _build_gallery_where(
+                filters, conn, user_id=user_id, include_manual=include_manual, stack_owner=stack_owner)
             base_where.extend(extra_clauses)
             base_params.extend(extra_params)
 
@@ -474,6 +483,7 @@ def list_albums(
             album['photo_count'] = count_map.get(row['id'], 0)
             album['first_photo_path'] = _get_first_photo_path(conn, row)
             albums.append(album)
+        attach_preview_versions(conn, albums, 'first_photo_path')
         return {
             'albums': albums,
             'total': total,

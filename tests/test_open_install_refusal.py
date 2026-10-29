@@ -76,6 +76,11 @@ EDITION_ROUTES = _routes_requiring(require_edition)
 # Pinned on purpose: dropping require_edition from a route (or adding a new
 # edition route) must fail here with a readable diff, not slip under a count.
 EXPECTED_EDITION_ROUTES = frozenset({
+    ('POST', '/api/stacks'),
+    ('PUT', '/api/stacks/{stack_id}'),
+    ('DELETE', '/api/stacks/{stack_id}'),
+    ('POST', '/api/stacks/suggestions/dismissals'),
+    ('DELETE', '/api/stacks/suggestions/dismissals/{key}'),
     ('GET', '/api/organization_history'),
     ('POST', '/api/organization_history/{entry_id}/revert'),
     ('DELETE', '/api/albums/{album_id}'),
@@ -163,6 +168,7 @@ EXPECTED_EDITION_ROUTES = frozenset({
     ('POST', '/api/photo/unassign_person'),
     ('POST', '/api/photos/batch_favorite'),
     ('POST', '/api/photos/batch_gps'),
+    ('POST', '/api/photos/refresh'),
     ('POST', '/api/photos/batch_manual_tags'),
     ('POST', '/api/photos/capture_date/preview'),
     ('POST', '/api/photos/capture_date/apply'),

@@ -2088,6 +2088,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/immich/diagnostics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Immich Diagnostics
+         * @description Administrator-only local status; network reads require an explicit flag.
+         */
+        get: operations["immich_diagnostics_api_immich_diagnostics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/immich/webhook": {
         parameters: {
             query?: never;
@@ -3679,6 +3699,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/photos/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refresh Photos */
+        post: operations["refresh_photos_api_photos_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/photos/review_progress": {
         parameters: {
             query?: never;
@@ -4326,6 +4363,113 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stacks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Stack */
+        post: operations["create_stack_api_stacks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stacks/by-photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stack By Photo */
+        get: operations["stack_by_photo_api_stacks_by_photo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stacks/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stack Suggestions
+         * @description Scoped, bounded suggestions only; no writes, filesystem reads or cached private rows.
+         */
+        post: operations["stack_suggestions_api_stacks_suggestions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stacks/suggestions/dismissals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss Stack Suggestion */
+        post: operations["dismiss_stack_suggestion_api_stacks_suggestions_dismissals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stacks/suggestions/dismissals/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Restore Stack Suggestion */
+        delete: operations["restore_stack_suggestion_api_stacks_suggestions_dismissals__key__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stacks/{stack_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stack By Id */
+        get: operations["stack_by_id_api_stacks__stack_id__get"];
+        /** Update Stack */
+        put: operations["update_stack_api_stacks__stack_id__put"];
+        post?: never;
+        /** Delete Stack */
+        delete: operations["delete_stack_api_stacks__stack_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/stats/categories": {
         parameters: {
             query?: never;
@@ -4923,6 +5067,8 @@ export interface components {
             is_smart: boolean;
             /** Name */
             name: string;
+            /** Preview Revision */
+            preview_revision?: string | null;
             /** Scoring Context */
             scoring_context?: string | null;
             /** Smart Filter Json */
@@ -5504,6 +5650,8 @@ export interface components {
             id: string;
             /** Photo Count */
             photo_count: number;
+            /** Preview Revision */
+            preview_revision?: string | null;
             /** Subtitle */
             subtitle: string;
             /** Title */
@@ -5816,6 +5964,13 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** CreateStack */
+        CreateStack: {
+            /** Cover Path */
+            cover_path: string;
+            /** Paths */
+            paths: string[];
+        };
         /** CullApplyRequest */
         CullApplyRequest: {
             /**
@@ -5849,6 +6004,8 @@ export interface components {
             include_sequence_siblings?: boolean;
             /** Paths */
             paths?: string[] | null;
+            /** Preview Digest */
+            preview_digest?: string | null;
             /** Target Dir */
             target_dir?: string | null;
         };
@@ -5879,6 +6036,8 @@ export interface components {
             moved?: number | null;
             /** Not Visible */
             not_visible: number;
+            /** Preview Digest */
+            preview_digest?: string | null;
             /** Sequence Siblings */
             sequence_siblings: number;
             /** Skipped */
@@ -6161,6 +6320,8 @@ export interface components {
             path: string;
             /** Photo Count */
             photo_count: number;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /**
          * FoldersResponse
@@ -6243,6 +6404,30 @@ export interface components {
             panoramas: number;
             /** Total */
             total: number;
+        };
+        /** ImmichDiagnosticsResponse */
+        ImmichDiagnosticsResponse: {
+            /** Configured */
+            configured: boolean;
+            /**
+             * Connection
+             * @enum {string}
+             */
+            connection: "not_checked" | "not_configured" | "invalid_config" | "connected" | "access_denied" | "unreachable" | "invalid_response";
+            /** Last Push At */
+            last_push_at: string | null;
+            /** Mapped Photos */
+            mapped_photos: number;
+            /** Mapping Rules */
+            mapping_rules: number;
+            /** Sample Limit */
+            sample_limit: number;
+            /** Sampled Photos */
+            sampled_photos: number;
+            /** Stack Version Supported */
+            stack_version_supported: boolean | null;
+            /** Version */
+            version: string | null;
         };
         /**
          * KeeperHint
@@ -6549,6 +6734,8 @@ export interface components {
             lat: number;
             /** Lng */
             lng: number;
+            /** Preview Revision */
+            preview_revision?: string | null;
             /** Representative Path */
             representative_path?: string | null;
         };
@@ -6568,6 +6755,8 @@ export interface components {
             lng: number;
             /** Path */
             path: string;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /** McpCallRequest */
         McpCallRequest: {
@@ -7086,7 +7275,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "gps" | "date" | "review";
+            kind: "gps" | "date" | "review" | "stack";
             /** Part */
             part: number;
             /** Parts */
@@ -7448,6 +7637,8 @@ export interface components {
             phash?: string | null;
             /** Power Point Score */
             power_point_score?: number | null;
+            /** Preview Revision */
+            preview_revision?: string | null;
             /** Qrealign Score */
             qrealign_score?: number | null;
             /** Quality Score */
@@ -7468,6 +7659,14 @@ export interface components {
             shutter_speed?: string | null;
             /** Similarity */
             similarity?: number | null;
+            /** Stack Count */
+            stack_count?: number | null;
+            /** Stack Id */
+            stack_id?: string | null;
+            /** Stack Revision */
+            stack_revision?: number | null;
+            /** Stack Total Count */
+            stack_total_count?: number | null;
             /** Star Rating */
             star_rating?: number | null;
             /** Subject Placement */
@@ -7658,6 +7857,28 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** PhotoRefreshFailure */
+        PhotoRefreshFailure: {
+            /** Path */
+            path: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "unavailable" | "changed" | "busy" | "failed";
+        };
+        /** PhotoRefreshRequest */
+        PhotoRefreshRequest: {
+            /** Paths */
+            paths: string[];
+        };
+        /** PhotoRefreshResponse */
+        PhotoRefreshResponse: {
+            /** Failed */
+            failed: components["schemas"]["PhotoRefreshFailure"][];
+            /** Refreshed */
+            refreshed: string[];
+        };
         /**
          * PhotoSearchResponse
          * @description Semantic/text search results.
@@ -7692,6 +7913,8 @@ export interface components {
             is_lead: boolean;
             /** Path */
             path: string;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /**
          * PhotoSetResponse
@@ -7715,6 +7938,19 @@ export interface components {
              * @default []
              */
             members?: components["schemas"]["PhotoSetMember"][];
+        };
+        /** PhotoStack */
+        PhotoStack: {
+            /** Cover Path */
+            cover_path: string;
+            /** Editable */
+            editable: boolean;
+            /** Id */
+            id: string;
+            /** Members */
+            members: components["schemas"]["StackMember"][];
+            /** Revision */
+            revision: number;
         };
         /**
          * PhotoTypeCount
@@ -7779,6 +8015,8 @@ export interface components {
             page: number;
             /** Per Page */
             per_page: number;
+            /** Photo Total */
+            photo_total?: number | null;
             /** Photos */
             photos: components["schemas"]["Photo"][];
             /** Sort Col */
@@ -8167,6 +8405,8 @@ export interface components {
             filename?: string | null;
             /** Path */
             path: string;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /** ScenesResponse */
         ScenesResponse: {
@@ -8430,6 +8670,61 @@ export interface components {
             face_ids: number[];
             /** Name */
             name?: string | null;
+        };
+        /** StackMember */
+        StackMember: {
+            /** Path */
+            path: string;
+            /** Position */
+            position: number;
+            /** Preview Revision */
+            preview_revision?: string | null;
+        };
+        /** StackMutation */
+        StackMutation: {
+            stack: components["schemas"]["PhotoStack"] | null;
+            undo: components["schemas"]["StackUndo"] | null;
+        };
+        /** StackSuggestion */
+        StackSuggestion: {
+            /** Cover Path */
+            cover_path: string;
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "duplicate" | "burst";
+            /** Paths */
+            paths: string[];
+        };
+        /** StackSuggestionDismissal */
+        StackSuggestionDismissal: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "duplicate" | "burst";
+            /** Paths */
+            paths: string[];
+        };
+        /** StackSuggestionsRequest */
+        StackSuggestionsRequest: {
+            /** Filters */
+            filters?: {
+                [key: string]: string | number | boolean;
+            };
+        };
+        /** StackSuggestionsResponse */
+        StackSuggestionsResponse: {
+            /** Suggestions */
+            suggestions: components["schemas"]["StackSuggestion"][];
+        };
+        /** StackUndo */
+        StackUndo: {
+            /** Entry Id */
+            entry_id: number;
         };
         /** StatsCategoryCorrelationsResponse */
         StatsCategoryCorrelationsResponse: {
@@ -8735,6 +9030,8 @@ export interface components {
             date?: string | null;
             /** Hero Photo Path */
             hero_photo_path?: string | null;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /** TimelineDatesResponse */
         TimelineDatesResponse: {
@@ -8752,6 +9049,8 @@ export interface components {
             hero_photo_path?: string | null;
             /** Month */
             month: string;
+            /** Preview Revision */
+            preview_revision?: string | null;
         };
         /** TimelineMonthsResponse */
         TimelineMonthsResponse: {
@@ -8767,6 +9066,8 @@ export interface components {
             count: number;
             /** Hero Photo Path */
             hero_photo_path?: string | null;
+            /** Preview Revision */
+            preview_revision?: string | null;
             /** Year */
             year: string;
         };
@@ -8853,6 +9154,15 @@ export interface components {
             /** Update Available */
             update_available: boolean;
         };
+        /** UpdateStack */
+        UpdateStack: {
+            /** Cover Path */
+            cover_path?: string | null;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Paths */
+            paths: string[];
+        };
         /** UpdateWeightsBody */
         UpdateWeightsBody: {
             /** Category */
@@ -8907,6 +9217,8 @@ export interface components {
             badges: {
                 [key: string]: unknown;
             };
+            /** Build */
+            build?: string | null;
             /** Clipping */
             clipping: {
                 [key: string]: unknown;
@@ -8985,6 +9297,8 @@ export interface components {
              * @default []
              */
             unavailable_metrics?: string[];
+            /** Version */
+            version?: string | null;
         };
         /** WeightSnapshotItem */
         WeightSnapshotItem: {
@@ -11988,6 +12302,37 @@ export interface operations {
             };
         };
     };
+    immich_diagnostics_api_immich_diagnostics_get: {
+        parameters: {
+            query?: {
+                check_connection?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImmichDiagnosticsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     immich_webhook_api_immich_webhook_post: {
         parameters: {
             query?: never;
@@ -12475,7 +12820,10 @@ export interface operations {
     };
     revert_history_api_organization_history__entry_id__revert_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Refuse an entry of another kind */
+                kind?: "stack" | null;
+            };
             header?: never;
             path: {
                 entry_id: number;
@@ -14473,6 +14821,39 @@ export interface operations {
             };
         };
     };
+    refresh_photos_api_photos_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PhotoRefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoRefreshResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     api_review_progress_api_photos_review_progress_get: {
         parameters: {
             query?: never;
@@ -15345,6 +15726,262 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SimilarPhotosResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_stack_api_stacks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStack"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StackMutation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stack_by_photo_api_stacks_by_photo_get: {
+        parameters: {
+            query: {
+                path: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoStack"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stack_suggestions_api_stacks_suggestions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StackSuggestionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StackSuggestionsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dismiss_stack_suggestion_api_stacks_suggestions_dismissals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StackSuggestionDismissal"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_stack_suggestion_api_stacks_suggestions_dismissals__key__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stack_by_id_api_stacks__stack_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                stack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PhotoStack"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_stack_api_stacks__stack_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                stack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateStack"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StackMutation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_stack_api_stacks__stack_id__delete: {
+        parameters: {
+            query: {
+                expected_revision: number;
+            };
+            header?: never;
+            path: {
+                stack_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StackMutation"];
                 };
             };
             /** @description Validation Error */

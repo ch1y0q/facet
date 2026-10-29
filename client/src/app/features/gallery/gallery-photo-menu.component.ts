@@ -169,6 +169,9 @@ const RATINGS = [1, 2, 3, 4, 5].map(value => ({ value, label: '★'.repeat(value
             </button>
           }
           @if (isEdition()) {
+          <button mat-menu-item [disabled]="bulk && viewScoped()" (click)="emit({ kind: 'refresh' }, photo, bulk)">
+            <mat-icon>refresh</mat-icon><span>{{ I18N.photo_refresh.title | translate }}</span>
+          </button>
             <mat-divider />
           }
         }

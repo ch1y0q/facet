@@ -83,7 +83,7 @@ def same_image(first, second):
     return sum(abs(x - y) for x, y in zip(a['sig'], b['sig'])) / len(a['sig']) <= SIGNATURE_TOLERANCE
 
 
-def is_current(path, stored, conn=None, face_id=None):
+def is_current(path, stored, conn=None, face_id=None, *, verify_pixels=False):
     """Is ``stored`` still the picture at ``path``? Never raises.
 
     An unchanged stat is current without decoding. Otherwise the file is
@@ -101,7 +101,7 @@ def is_current(path, stored, conn=None, face_id=None):
         if data.get('relink_unverified'):
             return False
         stat = os.stat(path)
-        if data['stat'] == [stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns]:
+        if not verify_pixels and data['stat'] == [stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns]:
             return True
         fresh = source_identity(path)
         if not same_image(stored, fresh):
@@ -191,3 +191,15 @@ def clear_cache():
     with _lock:
         _identities.clear()
         _last_frame = None
+
+
+def invalidate_path(path):
+    """An explicit refresh discards only this original's cached frame/signature."""
+    global _last_frame
+    absolute = os.path.abspath(os.fspath(path))
+    with _lock:
+        for stamp in list(_identities):
+            if stamp[0] == absolute:
+                del _identities[stamp]
+        if _last_frame is not None and _last_frame.stamp[0] == absolute:
+            _last_frame = None

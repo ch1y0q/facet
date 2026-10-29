@@ -175,7 +175,7 @@ class TestTheCgroupThisProcessBelongsTo:
     container -- cgroup v2 with a private cgroup namespace, where the
     container's own cgroup IS the mount root -- and wrong everywhere else.
     ``docker run --cgroupns=host`` and a systemd unit carrying ``MemoryMax=``
-    (which is how ``docs/DEPLOYMENT.md`` ships ``facet.service``) both leave
+    both leave
     that root file absent or saying ``max`` while the real limit sits on a
     cgroup further down the tree, so the reader answered "unlimited" and every
     consumer fell back to host RAM -- the exact issue #111 failure.

@@ -4,6 +4,7 @@ import { AuthService } from '../services/auth.service';
 import { pathOf } from '../../shared/utils/url-path';
 
 export type UserActivityKind =
+  | 'stack'
   | 'rating'
   | 'reject'
   | 'review'

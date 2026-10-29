@@ -91,6 +91,7 @@ export class OrganizationHistoryDialogComponent implements OnInit {
   readonly error = signal<'conflict' | 'unavailable' | 'error' | null>(null);
   readonly busy = signal(false);
   readonly fields = {
+    stack: [{ key: this.I18N.stacks.stack_id, flag: false }, { key: this.I18N.stacks.cover, flag: false }, { key: this.I18N.stacks.position, flag: false }],
     gps: [{ key: this.I18N.organization_history.latitude, flag: false }, { key: this.I18N.organization_history.longitude, flag: false }, { key: this.I18N.organization_history.manual_gps, flag: true }],
     date: [{ key: this.I18N.organization_history.capture_date, flag: false }, { key: this.I18N.organization_history.manual_date, flag: true }],
     review: [{ key: this.I18N.organization_history.stars, flag: false }, { key: this.I18N.organization_history.favorite, flag: true }, { key: this.I18N.organization_history.rejected, flag: true }, { key: this.I18N.organization_history.kept, flag: true }],

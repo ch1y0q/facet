@@ -215,6 +215,7 @@ PHOTOS_COLUMNS = [
     # the row's sequence_kind, never on its own. NULL = written before the stamp
     # existed, i.e. before the RAW exposure fix. See db/render_version.py.
     ('render_version', 'INTEGER'),
+    ('preview_revision', 'TEXT'),
     # Manual capture dates survive EXIF rescans.
     ('date_manually_set', 'INTEGER NOT NULL DEFAULT 0'),
     # Manual GPS (including intentional clears) survives EXIF rescans.
@@ -1471,6 +1472,10 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
         for table_name, columns in _MIGRATED_TABLES:
             _migrate_add_missing_columns(conn, table_name, columns)
 
+        conn.execute("""CREATE TRIGGER IF NOT EXISTS photos_preview_revision
+            AFTER UPDATE OF thumbnail ON photos WHEN OLD.thumbnail IS NOT NEW.thumbnail
+            BEGIN UPDATE photos SET preview_revision=lower(hex(randomblob(16))) WHERE path=NEW.path; END""")
+
         if migrate_manual_review:
             _bootstrap_manual_review(conn)
 
@@ -1507,6 +1512,11 @@ def init_database(db_path='photo_scores_pro.db', build_photo_indexes=True):
 
         from db.organization_history import init_schema as init_organization_history
         init_organization_history(conn)
+        from db.immich_stacks import init_schema as init_immich_stacks
+        init_immich_stacks(conn)
+
+        from db.stacks import init_schema as init_stacks
+        init_stacks(conn)
 
         # Create photos_vec virtual table for vector search (requires sqlite-vec).
         # After the sweep so detect_embedding_dim can see clip_embedding.

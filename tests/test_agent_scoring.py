@@ -11,6 +11,9 @@ import pytest
 
 from tests.conftest import AGENT_DIR, agent_db as db
 
+# Reads client, i18n or docs files: runs on every pull request (see ci.yml).
+pytestmark = pytest.mark.cross_file
+
 PREFIX = AGENT_DIR + "score/"
 METRICS = {"aesthetic": 7.0, "face_quality": 6.0, "eye_sharpness": 6.0, "tech_sharpness": 6.5, "comp_score": 5.5,
            "exposure_score": 8.0, "color_score": 6.0, "contrast_score": 6.0, "quality_score": 6.0,

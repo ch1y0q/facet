@@ -120,6 +120,48 @@ describe('GalleryStore', () => {
     store = TestBed.inject(GalleryStore);
   });
 
+  describe('manual stack display and action scope', () => {
+    it('keeps representative paging separate from matching-photo selection', async () => {
+      apiGet.mockReturnValue(of(makePhotosResponse({ total: 2, photo_total: 5, has_more: true })));
+      await store.loadPhotos();
+      expect(store.total()).toBe(2);
+      expect(store.photoTotal()).toBe(5);
+      store.selectWholeView();
+      expect(store.selectionCount()).toBe(5);
+      expect(store.filterPayload()).not.toHaveProperty('collapse_stacks');
+      store.excludedPaths.set(new Set(['/excluded']));
+      expect(store.selectionCount()).toBe(4);
+      store.restoreSelection(['/representative']);
+      expect(store.selectionCount()).toBe(1);
+    });
+    afterEach(() => localStorage.removeItem('facet_collapse_stacks'));
+    it('persists expansion as a listing preference and sends it for later pages', async () => {
+      apiGet.mockReturnValue(of(makePhotosResponse({ total: 10, photo_total: 10, has_more: true })));
+      await store.toggleStackCollapse();
+      expect(localStorage.getItem('facet_collapse_stacks')).toBe('off');
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ collapse_stacks: '0' }));
+      await store.nextPage();
+      expect(apiGet).toHaveBeenCalledWith('/photos', expect.objectContaining({ collapse_stacks: '0', page: 2 }));
+    });
+    it('uses the default collapse preference when browser storage is blocked', () => {
+      const original = Storage.prototype.getItem;
+      const blocked = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function(this: Storage, key: string) {
+        if (key === 'facet_collapse_stacks') throw new DOMException('Storage blocked', 'SecurityError');
+        return original.call(this, key);
+      });
+      try {
+        const fresh = TestBed.runInInjectionContext(() => new GalleryStore());
+        expect(fresh.collapseStacks()).toBe(true);
+      } finally { blocked.mockRestore(); }
+    });
+    it('range selection selects displayed representatives without folded members', () => {
+      store.photos.set([makePhoto({ path: '/cover', stack_id: 's', stack_count: 3 }), makePhoto({ path: '/single' })]);
+      store.toggleSelection(store.photos()[0]);
+      store.toggleSelection(store.photos()[1], new MouseEvent('click', { shiftKey: true }));
+      expect([...store.selectedPaths()]).toEqual(['/cover', '/single']);
+    });
+  });
+
   describe('review refresh ownership', () => {
     it('does not use another principal removed-photo cache for Undo', async () => {
       store.filters.update(f => ({ ...f, review_status: 'undecided' }));

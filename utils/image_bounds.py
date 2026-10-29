@@ -6,7 +6,8 @@ definition without either importing the other (or anything heavy).
 """
 
 # PyIQA models are trained on <=1024px images; larger adds no benefit but explodes
-# intermediate activation memory. ``PyIQAScorer`` imports this constant.
+# intermediate activation memory. ``PyIQAScorer`` applies it through
+# ``bound_to_inference_size`` below.
 MAX_INFERENCE_SIZE = 1024
 
 # LIQE asserts a short side of at least this many pixels on the tensor it is given
@@ -37,10 +38,10 @@ def liqe_input_too_small(w, h):
 
 
 def bound_to_inference_size(img):
-    """Mirror the production input contract before scoring.
+    """Apply the production input contract before scoring.
 
-    PyIQAScorer bounds every image to ``MAX_INFERENCE_SIZE`` on the long edge
-    before any pyiqa metric sees it (models/pyiqa_scorer.py). Feeding the
+    PyIQAScorer calls this to bound every image to ``MAX_INFERENCE_SIZE`` on the
+    long edge before any pyiqa metric sees it (models/pyiqa_scorer.py). Feeding the
     Q-ReAlign scorer native-resolution originals instead measured it encoding
     24MP frames whole -- 23s/img and ~13GB of activations for a 0.8B model --
     a regime no shipped code path ever enters. The evaluation harnesses apply

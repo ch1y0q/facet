@@ -71,7 +71,7 @@ import { GalleryStore } from '../gallery/gallery.store';
             (click)="openFolder(folder)">
             @if (folder.cover_photo_path) {
               <div class="relative w-full aspect-[4/3] overflow-hidden">
-                <img [src]="folder.cover_photo_path | thumbnailUrl:320"
+                <img [src]="folder.cover_photo_path | thumbnailUrl:320:folder.preview_revision"
                      [alt]="folder.name"
                      loading="lazy"
                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />

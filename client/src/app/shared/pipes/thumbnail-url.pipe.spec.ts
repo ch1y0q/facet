@@ -40,6 +40,23 @@ describe('ThumbnailUrlPipe', () => {
   });
 });
 
+describe('explicit thumbnail preview revisions', () => {
+  it('encodes revisions while retaining stored-thumbnail offline caching and sharp-render bypass', () => {
+    const pipe = new ThumbnailUrlPipe();
+    const path = '/photos/a b.jpg';
+    const revised = new URL(pipe.transform(path, 160, 'load+1&2'), 'http://facet.test');
+    expect(revised.searchParams.get('path')).toBe(path);
+    expect(revised.searchParams.get('preview')).toBe('load+1&2');
+    expect(revised.searchParams.get('ngsw-bypass')).toBeNull();
+    const sharp = new URL(pipe.transform(path, 1920, 'load+1&2'), 'http://facet.test');
+    expect(sharp.searchParams.get('preview')).toBe('load+1&2');
+    expect(sharp.searchParams.get('v')).toBe('2');
+    expect(sharp.searchParams.get('ngsw-bypass')).toBe('1');
+    expect(pipe.transform(path, 160, null)).toBe(pipe.transform(path, 160));
+    expect(pipe.transform(path, 160)).not.toContain('ngsw-bypass');
+  });
+});
+
 describe('ImageUrlPipe', () => {
   let pipe: ImageUrlPipe;
 
@@ -88,5 +105,22 @@ describe('PersonThumbnailUrlPipe', () => {
 
   it('handles large ids', () => {
     expect(pipe.transform(9999)).toBe('/person_thumbnail/9999?v=2&ngsw-bypass=1');
+  });
+});
+
+
+describe('per-photo preview revisions', () => {
+  it('keeps stored thumbnails cacheable under distinct revision URLs', () => {
+    const pipe = new ThumbnailUrlPipe();
+    const first = pipe.transform('/photo a.jpg', 160, 'one&value');
+    const second = pipe.transform('/photo a.jpg', 160, 'second');
+    expect(first).not.toEqual(second);
+    expect(new URL(first, 'http://localhost').searchParams.get('preview')).toBe('one&value');
+    expect(first).not.toContain('ngsw-bypass');
+    expect(pipe.transform('/a.jpg', 1920, 'second')).toContain('ngsw-bypass=1');
+  });
+
+  it('also versions full-image URLs', () => {
+    expect(new ImageUrlPipe().transform('/a.jpg', false, 'new')).toContain('preview=new');
   });
 });

@@ -3,8 +3,8 @@
 > 🌐 [English](../INSTALLATION.md) · [Français](../fr/INSTALLATION.md) · **Deutsch** · [Italiano](../it/INSTALLATION.md) · [Español](../es/INSTALLATION.md) · [Português](../pt/INSTALLATION.md) · [简体中文](../zh/INSTALLATION.md)
 
 Facet läuft auf Ihrem eigenen Rechner. Wählen Sie den Abschnitt, der zu Ihrer Einrichtung
-passt, kopieren Sie den Block, und Sie sind fertig. Die Hälfte [Fortgeschritten](#fortgeschritten)
-am Ende ist nur da, wenn Sie sie brauchen.
+passt, und kopieren Sie den Block. Der Teil [Fortgeschritten](#fortgeschritten) ist nur da,
+wenn Sie ihn brauchen.
 
 ## Welche Installation passt zu mir?
 
@@ -16,30 +16,29 @@ am Ende ist nur da, wenn Sie sie brauchen.
 
 ## Welches Profil passt zu meiner Hardware?
 
-Facet bringt vier *Profile* mit. Ein Profil ist einfach ein Satz von KI-Modellen, der auf
-Ihren Rechner zugeschnitten ist — Sie wählen eines bei der Installation und können es
-später ändern.
+Ein *Profil* ist ein Satz von KI-Modellen, der auf Ihren Rechner zugeschnitten ist. Sie
+wählen eines bei der Installation und können es später ändern.
 
 | Ihre Hardware | Profil | Was Sie erhalten |
 |---------------|---------|--------------|
-| Keine Grafikkarte | `legacy` | Alles funktioniert — Bewertung, Gesichter, Tags, Auswahl, die Galerie — nur langsamer. |
-| NVIDIA-Karte, 6–14 GB | `8gb` | Dieselben Modelle wie bei `legacy`, ausgeführt auf der Grafikkarte statt auf dem Prozessor. |
-| NVIDIA-Karte, 14–20 GB | `16gb` | Die stärkste Fotobewertung, plus KI-Tags und vom Rechner geschriebene Bildbeschreibungen. |
-| NVIDIA-Karte, 20 GB oder mehr | `24gb` | Die größten Modelle, plus geschriebene Erklärungen zur Bildkomposition. |
-| Apple-Silicon-Mac (M1–M4) | für Sie gewählt | Facet nutzt die Grafikkerne des Mac und bemisst das Profil anhand Ihres Speichers. |
+| Keine Grafikkarte | `legacy` | Alles funktioniert, nur langsamer. |
+| NVIDIA-Karte, 6–14 GB | `8gb` | Die Modelle von `legacy`, ausgeführt auf der Grafikkarte. |
+| NVIDIA-Karte, 14–20 GB | `16gb` | Die stärkste Bewertung, plus KI-Tags und Bildbeschreibungen. |
+| NVIDIA-Karte, 20 GB oder mehr | `24gb` | Die größten Modelle, plus geschriebene Erklärungen zur Komposition. |
+| Apple-Silicon-Mac (M1–M4) | für Sie gewählt | Nutzt die Grafikkerne des Mac; das Profil richtet sich nach dem Speicher. |
 
-Nicht sicher, wie viel Speicher Ihre Karte hat? Überspringen Sie das — der Block
-**Automatische Erkennung** weiter unten findet es für Sie heraus.
+Nicht sicher, wie viel Speicher Ihre Karte hat? Nutzen Sie den Block *Meine Hardware
+automatisch erkennen* weiter unten.
 
 ## Installation mit Docker
 
-Sie benötigen [Docker](https://docs.docker.com/get-started/get-docker/). Wenn Ihr Rechner
-über eine NVIDIA-Karte verfügt, benötigen Sie außerdem das
-[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html),
-damit Docker darauf zugreifen kann — unter Windows bedeutet das, Facet innerhalb von WSL2
-auszuführen ([Schritt-für-Schritt-Anleitung](DEPLOYMENT.md#windows-wsl2-mit-einer-nvidia-gpu)).
+Sie benötigen [Docker](https://docs.docker.com/get-started/get-docker/). Mit einer NVIDIA-Karte
+brauchen Sie außerdem das
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
+Unter Windows bedeutet das, Facet innerhalb von WSL2 auszuführen
+([Schritt-für-Schritt-Anleitung](DEPLOYMENT.md#windows-wsl2-mit-einer-nvidia-gpu)).
 
-Jeder Block unten beginnt bei null. Wählen Sie **einen**.
+Jeder Block beginnt bei null. Wählen Sie **einen**.
 
 ### Meine Hardware automatisch erkennen
 
@@ -93,26 +92,24 @@ docker compose -f docker-compose.yml -f docker-compose.24gb.yml up -d
 
 ### Ältere NVIDIA-Karte (Maxwell, Pascal, Volta)
 
-Die Blöcke für 8 GB, 16 GB und 24 GB oben sowie das generische Overlay
-`docker-compose.gpu.yml` ziehen alle `ghcr.io/ncoevoet/facet:latest-cuda`, dessen
-PyTorch-Build `sm_75`-`sm_120` abdeckt — Turing bis Blackwell. Eine Maxwell-,
-Pascal- (GTX-900/10-Serie) oder Volta-Karte (z. B. eine Titan V) braucht
-stattdessen das andere CUDA-Image: Ändern Sie die `image:`-Zeile in der oben
-verwendeten Compose-Datei (`docker-compose.8gb.yml`, `.16gb.yml`, `.24gb.yml`
-oder `.gpu.yml`) von `ghcr.io/ncoevoet/facet:latest-cuda` auf
-`ghcr.io/ncoevoet/facet:latest-cuda-legacy` (`sm_50`-`sm_90`, Maxwell bis Hopper),
-bevor Sie `docker compose up -d` ausführen. Verwechseln Sie diesen Image-Tag
-nicht mit `docker-compose.legacy.yml`: Diese Datei wählt das CPU-only-
-**VRAM-Profil** `legacy` und hat nichts mit dem **Architektur**-Tag
-`-cuda-legacy` oben zu tun. Eine Karte älter als Maxwell (Kepler, Fermi —
-`sm_50` ist die Untergrenze des Legacy-Images selbst) hat kein unterstütztes
-CUDA-Image; verwenden Sie stattdessen das VRAM-Profil `legacy` auf der CPU —
-der Block [„Keine Grafikkarte"](#keine-grafikkarte) oben.
+Die GPU-Blöcke oben und `docker-compose.gpu.yml` ziehen `ghcr.io/ncoevoet/facet:latest-cuda`,
+das `sm_75`-`sm_120` abdeckt (Turing bis Blackwell).
+
+Für eine Maxwell-, Pascal- (GTX-900/10-Serie) oder Volta-Karte (z. B. Titan V) ändern Sie
+vor `docker compose up -d` die `image:`-Zeile in der verwendeten Compose-Datei
+(`docker-compose.8gb.yml`, `.16gb.yml`, `.24gb.yml` oder `.gpu.yml`):
+
+- von `ghcr.io/ncoevoet/facet:latest-cuda`
+- auf `ghcr.io/ncoevoet/facet:latest-cuda-legacy` (`sm_50`-`sm_90`, Maxwell bis Hopper)
+
+Dieser Image-Tag `-cuda-legacy` hat nichts mit `docker-compose.legacy.yml` zu tun, das das
+reine CPU-Profil `legacy` wählt. Karten älter als Maxwell (Kepler, Fermi) haben kein
+CUDA-Image: Verwenden Sie den Block [Keine Grafikkarte](#keine-grafikkarte).
 
 ### Befehle für den Alltag
 
 Die Galerie ist leer, bis Sie Ihre Fotos bewerten. Innerhalb von Docker heißt Ihr
-Fotoordner immer `/data/photos`, egal wie er auf Ihrem Rechner heißt:
+Fotoordner immer `/data/photos`:
 
 ```bash
 docker compose exec facet python facet.py /data/photos   # Ihre Fotos bewerten
@@ -120,8 +117,8 @@ docker compose logs -f                                   # beobachten, was gerad
 docker compose down                                      # stoppen
 ```
 
-Um es später erneut zu starten, führen Sie dieselbe `docker compose … up -d`-Zeile
-erneut aus, die Sie oben verwendet haben.
+Um erneut zu starten, führen Sie die oben verwendete Zeile `docker compose … up -d` noch
+einmal aus.
 
 ## Installation ohne Docker
 
@@ -132,8 +129,8 @@ git clone https://github.com/ncoevoet/facet.git && cd facet
 bash install.sh
 ```
 
-`install.sh` findet Ihre Grafikkarte, installiert alles Passende und baut die
-Web-Galerie. Danach, jedes Mal, wenn Sie Facet verwenden:
+`install.sh` erkennt Ihre Grafikkarte, installiert die passenden Pakete und baut die
+Web-Galerie. Danach, jedes Mal:
 
 ```bash
 source venv/bin/activate
@@ -150,8 +147,7 @@ git clone https://github.com/ncoevoet/facet.git && cd facet
 bash install.sh
 ```
 
-Auf einem Apple-Silicon-Mac nutzt dies automatisch die Grafikkerne des Mac. Danach,
-jedes Mal, wenn Sie Facet verwenden:
+Auf Apple Silicon nutzt dies automatisch die Grafikkerne. Danach, jedes Mal:
 
 ```bash
 source venv/bin/activate
@@ -161,31 +157,29 @@ python viewer.py                       # Galerie starten
 
 Öffnen Sie <http://localhost:5000>.
 
-> **Port 5000 bereits belegt?** macOS nutzt ihn für AirPlay. Starten Sie die Galerie
-> stattdessen mit `python viewer.py --port 5001` und öffnen Sie <http://localhost:5001>.
+> **Port 5000 ist bereits belegt?** macOS nutzt ihn für AirPlay. Starten Sie
+> `python viewer.py --port 5001` und öffnen Sie <http://localhost:5001>.
 
 ### Windows
 
-Verwenden Sie [Docker](#installation-mit-docker). Um eine NVIDIA-Karte unter Windows zu
-nutzen, folgen Sie der [WSL2-Anleitung](DEPLOYMENT.md#windows-wsl2-mit-einer-nvidia-gpu)
-— das ist der getestete Weg.
+Verwenden Sie [Docker](#installation-mit-docker). Für eine NVIDIA-Karte folgen Sie der
+[WSL2-Anleitung](DEPLOYMENT.md#windows-wsl2-mit-einer-nvidia-gpu), dem getesteten Weg.
 
 ## Erster Start: was Sie erwartet
 
-- **Ein Download.** Der erste Scan lädt die KI-Modelle für Ihr Profil herunter — etwa
-  4,7 GB für `legacy`, 6,9 GB für `8gb`, 14,6 GB für `16gb`, 19,1 GB für `24gb`
-  (vollständige Aufschlüsselung unter [Downloadgrößen](#downloadgrößen)). Das geschieht
-  einmalig; spätere Läufe starten sofort.
-- **Keine Einrichtung zum Scannen.** Facet erstellt seine Datenbank beim ersten Scan und
-  liefert funktionierende Einstellungen mit. Zum **Bearbeiten** (bewerten, aussortieren, Alben
-  und Personen verwalten) setzen Sie `viewer.edition_password` in `scoring_config.json` — ohne
-  ist der Viewer schreibgeschützt (starten Sie den Viewer nach dem Setzen neu: die Konfiguration wird nicht im laufenden Betrieb neu geladen. Mit der mitgelieferten `docker-compose.yml` erzeugt das Docker-Image beim ersten Start eines).
-- **Ihre Fotos werden nicht verändert.** Der Scan liest sie nur; die Ergebnisse landen in
-  Facets eigener Datenbank. Bewertungen und Schlagwörter zurück in Ihre Dateien zu
-  schreiben, ist eine separate Aktion, die Sie selbst auslösen ([Interop](INTEROP.md)).
-- **Zeit.** Ein erster Scan einer großen Bibliothek dauert eine Weile und ist auf einem
-  Prozessor deutlich langsamer als auf einer Grafikkarte. Der Fortschritt wird laufend
-  ausgegeben, und Sie können die Galerie durchstöbern, während sie läuft.
+- **Ein Download.** Der erste Scan lädt die Modelle für Ihr Profil herunter: etwa 4,7 GB
+  für `legacy`, 6,9 GB für `8gb`, 14,6 GB für `16gb`, 19,3 GB für `24gb`
+  ([Downloadgrößen](#downloadgrößen)). Das geschieht einmalig.
+- **Keine Einrichtung zum Scannen.** Facet erstellt seine Datenbank beim ersten Scan.
+- **Schreibgeschützt, bis Sie ein Passwort setzen.** Zum Bearbeiten (bewerten, aussortieren,
+  Alben, Personen) setzen Sie `viewer.edition_password` in `scoring_config.json` und starten
+  den Viewer neu. Mit der mitgelieferten `docker-compose.yml` erzeugt das Image beim ersten
+  Start eines.
+- **Ihre Fotos werden nicht verändert.** Der Scan liest sie nur. Bewertungen und
+  Schlagwörter zurück in die Dateien zu schreiben, ist eine separate Option
+  ([Interop](INTEROP.md)).
+- **Zeit.** Ein erster Scan einer großen Bibliothek dauert eine Weile, auf einem Prozessor
+  länger als auf einer Grafikkarte. Sie können die Galerie durchstöbern, während er läuft.
 
 ## Prüfen, ob es funktioniert hat
 
@@ -194,18 +188,17 @@ python facet.py --doctor                             # ohne Docker
 docker compose exec facet python facet.py --doctor   # mit Docker
 ```
 
-Dies gibt aus, was Facet gefunden hat: Ihre Grafikkarte, das gewählte Profil und alles
-Fehlende. Wenn die Galerie läuft, antwortet <http://localhost:5000/health> mit `ok`.
+Dies gibt Ihre Grafikkarte, das gewählte Profil und alles Fehlende aus. Wenn die Galerie
+läuft, antwortet <http://localhost:5000/health> mit `ok`.
 
 Funktioniert etwas nicht? Siehe [Abhängigkeitskonflikte beheben](#abhängigkeitskonflikte-beheben)
-und [Probleme bei der GPU-Erkennung](#probleme-bei-der-gpu-erkennung) weiter unten.
+und [Probleme bei der GPU-Erkennung](#probleme-bei-der-gpu-erkennung).
 
 ---
 
 # Fortgeschritten
 
-Alles ab hier ist optional: was die Installation tatsächlich tut, wie Sie sie ändern,
-und die vollständige Abhängigkeitsreferenz.
+Optional: was die Installation tut, wie Sie sie ändern, und die Abhängigkeitsreferenz.
 
 - [Docker-Einstellungen, die Sie ändern können](#docker-einstellungen-die-sie-ändern-können)
 - [Das Profil selbst wählen](#das-profil-selbst-wählen)
@@ -227,54 +220,44 @@ und die vollständige Abhängigkeitsreferenz.
 Bereitstellungs-Einstellungen liegen in `.env` (kopieren Sie `.env.example`):
 
 | Schlüssel | Standard | Zweck |
-|-----|---------|------|
-| `PHOTOS_DIR` | `./photos` | Host-Ordner, lesbar/schreibbar unter `/data/photos` eingehängt (beschreibbar, damit XMP-Sidecars neben den Originalen geschrieben werden können) |
+|-----|---------|---------|
+| `PHOTOS_DIR` | `./photos` | Host-Ordner, les- und schreibbar unter `/data/photos` eingehängt (damit XMP-Sidecars geschrieben werden können) |
 | `PORT` | `5000` | Host-Port für die Galerie |
-| `FACET_VRAM_PROFILE` | `auto` | `auto`, `legacy`, `8gb`, `16gb`, `24gb` — überschreibt `models.vram_profile`, ohne JSON zu bearbeiten |
-| `DB_PATH` | `/app/data/photo_scores_pro.db` | Datenbankpfad im Container, gehalten auf dem `./data`-Bind-Mount |
+| `FACET_VRAM_PROFILE` | `auto` | `auto`, `legacy`, `8gb`, `16gb`, `24gb`; überschreibt `models.vram_profile` |
+| `DB_PATH` | `/app/data/photo_scores_pro.db` | Datenbankpfad im Container, auf dem `./data`-Bind-Mount |
 | `FACET_RETRAIN_THRESHOLD` / `FACET_RETRAIN_IDLE_S` | `auto_retrain` der Konfiguration | Auslöser für das Neutrainieren des persönlichen Rankers, für Nutzer mit vielen Bewertungen |
 
-`scoring_config.json` ist Ihre **Überschreibung**, nicht die gesamte Konfiguration.
-Jeder Wert, den Facet ausliefert, lebt in `config/scoring_config.default.json`
-innerhalb des Images, und Ihre Datei wird darüber aufgelöst — sie muss also nur die
-Handvoll Einstellungen enthalten, die Sie tatsächlich geändert haben, und alles, was
-Sie weglassen, behält den ausgelieferten Wert (und übernimmt dessen Verbesserungen bei
-einem Upgrade).
+`scoring_config.json` ist Ihre **Überschreibung**. Die ausgelieferten Werte liegen in
+`config/scoring_config.default.json` innerhalb des Images. Ihre Datei enthält nur, was Sie
+geändert haben; alles andere behält den ausgelieferten Wert und folgt Upgrades. Siehe
+[Konfiguration](CONFIGURATION.md#standardwerte-und-ihre-überschreibung) und
+[die vollständige Schlüsselreferenz](CONFIGURATION.md).
 
-`docker-entrypoint.sh` befüllt daher die persistente Datei
-`./facet-config/scoring_config.json` beim ersten Start mit einem generierten `viewer.edition_password` (einmalig im Container-Log ausgegeben: `docker compose logs facet`; nur wenn `FACET_CONFIG` auf diese Datei zeigt, wie es `docker-compose.yml` setzt — ein einfaches `docker run` ohne diese Variable befüllt eine leere Überschreibung und erzeugt kein Passwort). Diese
-Datei wird von `docker-compose.yml` eingehängt (als
-`FACET_CONFIG=/config/scoring_config.json` im Container), sodass der Container ohne
-jede Host-Einrichtung läuft und jede Konfigurationsänderung zur Laufzeit (die
-Migration des Viewer-Passworts, Gewichte, Prioritäten, Scoring-Kontexte) einen
-`docker compose down && up` übersteht. Bearbeiten Sie sie direkt, um Gewichte, das
-Viewer-Passwort oder Kategorien von Hand anzupassen — siehe
-[Konfiguration](CONFIGURATION.md#standardwerte-und-ihre-überschreibung) dafür, was
-hineingehört, und [die vollständige Schlüsselreferenz](CONFIGURATION.md) dafür, was
-verfügbar ist. Eine bestehende Datei wird nie überschrieben — und ihr Eigentümer
-und ihre Rechte bleiben unangetastet. Facet ändert Rechte und Eigentümer nur bei
-einer Konfiguration, die es selbst angelegt hat.
+Beim ersten Start legt `docker-entrypoint.sh` `./facet-config/scoring_config.json` an:
+
+- `docker-compose.yml` hängt sie als `FACET_CONFIG=/config/scoring_config.json` per
+  Bind-Mount ein, sodass im Viewer vorgenommene Konfigurationsänderungen
+  `docker compose down && up` überstehen.
+- Unter Compose enthält sie ein generiertes `viewer.edition_password`, einmalig ausgegeben
+  in `docker compose logs facet`. Ein einfaches `docker run` ohne `FACET_CONFIG` erzeugt
+  eine leere Überschreibung und kein Passwort.
+- Eine bestehende Datei wird nie überschrieben, und ihr Eigentümer und ihre Rechte bleiben
+  unangetastet.
 
 ### Dateibesitz im Container
 
 Facet führt `chown` und `chmod` nur für ein `scoring_config.json` aus, das es selbst
-angelegt hat — eine bereits vorhandene Datei behält dauerhaft den Eigentümer und die
-Rechte, die Sie ihr gegeben haben. Die einzige Ausnahme: Ist eine bereits vorhandene
-Konfiguration für den `facet`-Benutzer des Containers (uid 1000) nicht **lesbar**,
-übernimmt der Entrypoint trotzdem deren Besitz und meldet dies auf stderr — denn eine
-unlesbare Konfiguration sperrt jede Route, ohne dass die Oberfläche zur Behebung
-erreichbar wäre. Machen Sie die Datei stattdessen lesbar —
-`chmod o+r facet-config/scoring_config.json` — dann lässt Facet sie beim nächsten
-Start in Ruhe.
+angelegt hat.
 
-Auch Facets eigene Konfigurationsschreibvorgänge (Gewichte, Kategorie-Prioritäten,
-Scoring-Kontexte, die Migration des Viewer-Passworts, …) versuchen, Eigentümer und
-Rechte der Datei zu erhalten, indem sie an Ort und Stelle überschrieben wird, wenn
-der Eigentümer des Ziels nicht direkt übernommen werden kann. Bei einem gewöhnlichen
-rootless Podman/Docker reicht das allein noch nicht aus, weil Ihre Datei einem uid
-gehört, den der `facet`-Benutzer des Containers nicht annehmen kann — Sie müssen sie
-zusätzlich **für den Container-Benutzer beschreibbar machen, ohne Ihr eigenes
-Eigentum aufzugeben**:
+Eine Ausnahme: Ist eine bestehende Konfiguration für den `facet`-Benutzer des Containers
+(uid 1000) nicht **lesbar**, übernimmt der Entrypoint ihren Besitz und meldet dies auf
+stderr. Eine unlesbare Konfiguration würde Sie aus der Oberfläche aussperren. Um den Besitz
+zu behalten, machen Sie sie stattdessen lesbar:
+`chmod o+r facet-config/scoring_config.json`.
+
+Unter rootless Podman/Docker gehört Ihre Datei einem uid, den der `facet`-Benutzer des
+Containers nicht annehmen kann. Machen Sie sie **für den Container-Benutzer beschreibbar,
+während Sie Eigentümer bleiben**:
 
 ```bash
 # 100999 = die Host-Subuid, auf die der facet-Benutzer im Container (uid 1000) abgebildet wird;
@@ -283,102 +266,107 @@ chown "$USER":100999 facet-config/scoring_config.json
 chmod 664 facet-config/scoring_config.json
 ```
 
-Die Datei bleibt dann Ihre und bearbeitbar, und Facets Schreibvorgänge erhalten das
-so. Alternativen: `podman unshare chown`, um eine dem Container gehörende Datei an
-Ort und Stelle zu bearbeiten, oder `--userns=keep-id` (bzw. eine `user:`-Angabe im
-Compose), damit der Container-Benutzer Sie selbst ist.
+Die Datei bleibt Ihre und bearbeitbar, und Facets Schreibvorgänge erhalten das so.
+Alternativen: `podman unshare chown`, um eine dem Container gehörende Datei zu bearbeiten,
+oder `--userns=keep-id` (bzw. eine `user:`-Angabe im Compose), damit der Container-Benutzer
+Sie selbst ist.
 
-> **Sie steigen von einer Version vor dieser Änderung um?** Frühere Versionen rieten
-> dazu, die Standarddatei nach `scoring_config.json` zu kopieren und eine Zeile
-> `- ./scoring_config.json:/app/scoring_config.json` in `docker-compose.yml`
-> auszukommentieren.
-> Dieser Mount ist aus der ausgelieferten Compose-Datei verschwunden. Wenn Sie die neue
-> übernehmen, **verschieben Sie Ihre bestehende Konfiguration zuerst**:
+> **Warnung — Upgrade von einer älteren Compose-Datei.** Frühere Versionen hängten
+> `- ./scoring_config.json:/app/scoring_config.json` ein. Die ausgelieferte Compose-Datei
+> tut das nicht mehr. Wenn Sie die neue übernehmen, **verschieben Sie Ihre Konfiguration
+> zuerst**, sonst werden Ihre Gewichte, Kategorien und Ihr Viewer-Passwort nicht mehr gelesen:
 >
 > ```bash
 > mkdir -p facet-config && cp scoring_config.json facet-config/scoring_config.json
 > ```
 >
-> Andernfalls befüllt der Entrypoint eine neue Überschreibung (unter Compose mit einem frisch generierten `viewer.edition_password`), und Ihre Gewichte, Kategorien und **Ihr Viewer-Passwort werden nicht mehr gelesen**. Behalten Sie
-> Ihre eigene `docker-compose.yml` mit dem alten Mount, initialisiert der Entrypoint
-> `./facet-config` aus *dieser* Datei, und es geht nichts verloren.
+> Behalten Sie Ihre eigene `docker-compose.yml` mit dem alten Mount, wird `./facet-config`
+> aus dieser Datei befüllt, und es geht nichts verloren.
 >
-> Eine mitgenommene Konfiguration ist eine vollständige Kopie der alten ausgelieferten
-> Datei. Sie funktioniert unverändert weiter — eine vollständige Konfiguration löst
-> sich auf sich selbst auf —, aber Ihre eigenen Anpassungen sind darin unsichtbar.
-> Führen Sie `python database.py --compact-config` aus (oder, unter Docker,
+> Eine mitgenommene Konfiguration ist eine vollständige Kopie der alten Standardwerte. Sie
+> funktioniert weiter, aber Ihre Änderungen sind schwer zu erkennen. Führen Sie
+> `python database.py --compact-config` aus (unter Docker:
 > `docker compose exec facet python database.py --compact-config`), um sie auf das zu
-> reduzieren, was Sie tatsächlich geändert haben. Es wird zuerst eine Sicherung mit
-> `0600` angelegt, und der Vorgang ist verlustfrei: Die Datei löst sich danach auf
-> exakt dieselbe Konfiguration auf.
+> reduzieren, was Sie geändert haben. Es legt zuerst eine Sicherung mit `0600` an und löst
+> sich auf dieselbe Konfiguration auf.
 
-Modell-Caches liegen in von Docker verwalteten benannten Volumes (`facet-hf-cache`,
-`facet-torch-cache`, `facet-insightface`, `facet-pretrained`), sodass das Image nie die
-eigenen Caches Ihres Rechners liest und die Modelle Neustarts überdauern.
-`docker compose down -v` löscht sie und erzwingt einen erneuten Download.
+Modell-Caches liegen in benannten Volumes (`facet-hf-cache`, `facet-torch-cache`,
+`facet-insightface`, `facet-pretrained`) und überdauern Neustarts. `docker compose down -v`
+löscht sie und erzwingt einen erneuten Download.
 
-Das Image bündelt `exiftool`, aber **nicht** darktable, sodass der optionale
-RAW-/Darktable-Profil-Download des Viewers inaktiv bleibt, es sei denn, Sie erweitern
-das Image um eine `darktable-cli`-Binärdatei. Alles andere funktioniert unabhängig
-davon.
+Das Image bündelt `exiftool`, aber **nicht** darktable. Der RAW-/Darktable-Profil-Download
+des Viewers bleibt aus, es sei denn, Sie fügen dem Image eine `darktable-cli`-Binärdatei hinzu.
 
 ## Das Profil selbst wählen
 
-Die profilspezifischen Dateien (`docker-compose.legacy.yml`, `docker-compose.8gb.yml`,
-`docker-compose.16gb.yml`, `docker-compose.24gb.yml`) setzen jeweils
-`FACET_VRAM_PROFILE` und reservieren bei den GPU-Profilen das NVIDIA-Gerät.
-`docker-compose.gpu.yml` ist die generische Alternative: Sie reserviert die GPU,
-überlässt das Profil aber dem eigenen `vram_profile` der Konfiguration (Standard
-`auto`).
+- `docker-compose.legacy.yml`, `docker-compose.8gb.yml`, `docker-compose.16gb.yml`,
+  `docker-compose.24gb.yml` setzen jeweils `FACET_VRAM_PROFILE`; die GPU-Dateien
+  reservieren außerdem das NVIDIA-Gerät.
+- `docker-compose.gpu.yml` reserviert die GPU und überlässt das Profil dem
+  `vram_profile` der Konfiguration (Standard `auto`).
 
-Drei Images werden aus einem `Dockerfile` veröffentlicht: `ghcr.io/ncoevoet/facet:latest`
-ist ein schlanker CPU-Build (3,34 GB entpackt auf der Platte; siehe
-[Downloadgrößen](#downloadgrößen)). `ghcr.io/ncoevoet/facet:latest-cuda` bringt CUDA 12.8,
-RAPIDS cuML und PyTorchs `sm_75`-`sm_120`-Build mit — Turing bis Blackwell,
-einschließlich RTX-50er-Serie (13,1 GB entpackt) — und ist das, was die
-`8gb`/`16gb`/`24gb`-Compose-Dateien standardmäßig ziehen.
-`ghcr.io/ncoevoet/facet:latest-cuda-legacy` bringt CUDA 12.6 und PyTorchs
-`sm_50`-`sm_90`-Build mit — Maxwell, Pascal (GTX-900/10-Serie) und Volta bis Hopper
-(13,8 GB entpackt) — für Karten, die `latest-cuda` nicht mehr abdeckt; siehe
-[Ältere NVIDIA-Karte](#ältere-nvidia-karte-maxwell-pascal-volta) oben. Beide CUDA-Images liefern `onnxruntime-gpu` (1.26.0, ein CUDA-12-Build) anstelle von
-`onnxruntime` mit, sodass die Gesichtserkennung auf der GPU läuft; das CPU-Image behält
-`onnxruntime`. Alle drei sind
-ausschließlich `linux/amd64` — bauen Sie auf einem ARM-Rechner lokal mit
-`docker compose build`, statt zu ziehen. `docker compose build` (oder `up --build`)
-baut immer aus diesem Repository; siehe die Build-Argumente `BASE_IMAGE`,
-`STRIP_TORCH`, `INSTALL_CUML`, `REQUIREMENTS_LOCK` und `ORT_GPU_VERSION` im `Dockerfile`.
+Drei Images werden veröffentlicht:
 
-Ohne Docker ist dieselbe Wahl eine Umgebungsvariable oder ein Konfigurationsschlüssel:
+| Image | Inhalt | Entpackt |
+|-------|----------|----------|
+| `ghcr.io/ncoevoet/facet:latest` | Schlanker CPU-Build | 3,34 GB |
+| `ghcr.io/ncoevoet/facet:latest-cuda` | CUDA 12.8, RAPIDS cuML, PyTorch `sm_75`-`sm_120` (Turing–Blackwell, einschl. RTX-50-Serie); Standard für `8gb`/`16gb`/`24gb` | 13,1 GB |
+| `ghcr.io/ncoevoet/facet:latest-cuda-legacy` | CUDA 12.6, PyTorch `sm_50`-`sm_90` (Maxwell, Pascal, Volta–Hopper); siehe [Ältere NVIDIA-Karte](#ältere-nvidia-karte-maxwell-pascal-volta) | 13,8 GB |
+
+- Beide CUDA-Images liefern `onnxruntime-gpu` (1.26.0, CUDA 12) anstelle von
+  `onnxruntime` mit, sodass die Gesichtserkennung auf der GPU läuft. Das CPU-Image behält
+  `onnxruntime`.
+- Alle drei sind ausschließlich `linux/amd64`. Bauen Sie auf ARM lokal mit
+  `docker compose build`.
+- `docker compose build` (oder `up --build`) baut aus diesem Repository. Build-Argumente:
+  `BASE_IMAGE`, `STRIP_TORCH`, `INSTALL_CUML`, `REQUIREMENTS_LOCK`, `ORT_GPU_VERSION`
+  (siehe `Dockerfile`).
+
+Ohne Docker verwenden Sie die Umgebungsvariable oder den Konfigurationsschlüssel:
 
 ```bash
 FACET_VRAM_PROFILE=8gb python facet.py /path/to/photos
 ```
 
-Die genauen Schwellenwerte, die `auto` anwendet, finden Sie unter
+Die Schwellenwerte, die `auto` anwendet, stehen unter
 [Konfiguration › Automatische VRAM-Erkennung](CONFIGURATION.md#automatische-vram-erkennung).
 
 ## Kommerzielle Installation und die eingeschränkten Pakete
 
-`insightface` und `pyiqa` (mit `openai-clip`, `facexlib` und `onnxruntime`, die nur sie benötigen) liefern Modellgewichte unter nichtkommerziellen Bedingungen. Sie gehören nicht mehr zur Basisinstallation: Sie liegen in den Extras `faces-insightface` und `iqa` sowie in `requirements.restricted.txt` (plus `requirements.restricted.lock.txt` und `requirements.legacy.restricted.lock.txt` für Docker).
+`insightface` und `pyiqa` (mit `openai-clip`, `facexlib` und `onnxruntime`, die nur sie
+benötigen) liefern Modellgewichte unter nichtkommerziellen Bedingungen. Sie gehören nicht
+zur Basisinstallation. Sie liegen in den Extras `faces-insightface` und `iqa` sowie in
+`requirements.restricted.txt` (plus `requirements.restricted.lock.txt` und
+`requirements.legacy.restricted.lock.txt` für Docker).
 
-> **Breaking Change.** `pip install -e .` und `pip install -r requirements.txt` allein enthalten insightface und pyiqa nicht mehr. Für das bisherige Verhalten verwenden Sie `pip install -e .[all]` oder `pip install -r requirements.txt -r requirements.restricted.txt`. `install.sh` und das Standard-Docker-Image installieren beides und verhalten sich daher wie bisher.
+> **Breaking Change.** `pip install -e .` und `pip install -r requirements.txt` allein
+> enthalten insightface und pyiqa nicht mehr. Verwenden Sie `pip install -e .[all]` oder
+> `pip install -r requirements.txt -r requirements.restricted.txt`. `install.sh` und das
+> Standard-Docker-Image installieren beides.
 
 | Ziel | Befehl |
-|------|--------|
+|------|---------|
 | Alles (Standard) | `bash install.sh` oder `pip install -e .[all]` |
 | Kommerziell unbedenklich | `bash install.sh --commercial` |
-| Kommerziell, von Hand | `pip install -r requirements.txt`, dann `pip install -e .[commercial]` und `pip install mediapipe==0.10.35 --no-deps` |
-| Kommerziell, Docker | `docker build --build-arg FACET_LICENSING=commercial .` |
+| Kommerziell unbedenklich, von Hand | `pip install -r requirements.txt`, dann `pip install -e .[commercial]` und `pip install mediapipe==0.10.35 --no-deps` |
+| Kommerziell unbedenklich, Docker | `docker build --build-arg FACET_LICENSING=commercial .` |
 
-`pip install -e .[all]` und das Extra `faces-insightface` installieren das
-CPU-`onnxruntime`, weil `insightface` davon abhängt. Führen Sie auf einem CUDA-Rechner
-danach den GPU-Befehl aus [ONNX Runtime für die
-Gesichtserkennung](#onnx-runtime-für-die-gesichtserkennung) aus; `bash install.sh` und die
-CUDA-Docker-Images tun das bereits.
+- `pip install -e .[all]` und das Extra `faces-insightface` installieren das
+  CPU-`onnxruntime`. Führen Sie auf einem CUDA-Rechner danach den GPU-Befehl aus
+  [ONNX Runtime für die Gesichtserkennung](#onnx-runtime-für-die-gesichtserkennung) aus.
+  `bash install.sh` und die CUDA-Images tun das bereits.
+- Installieren Sie `mediapipe` immer mit `--no-deps`, sonst installiert dessen
+  `opencv-contrib-python` den `cv2`-Namensraum doppelt. Das Extra `commercial` deklariert
+  dessen Laufzeitabhängigkeiten (`absl-py`, `flatbuffers`).
+- `python-ofiq` (die OFIQ-Gesichtsqualitäts-Bindings) bietet nur Wheels für Linux x86-64
+  und macOS arm64. Installieren Sie es dort, wo verfügbar, von Hand mit
+  `pip install python-ofiq`.
 
-`mediapipe` muss immer mit `--no-deps` installiert werden: Das mitgelieferte `opencv-contrib-python` würde sonst den `cv2`-Namensraum doppelt installieren. Das Extra `commercial` deklariert nur dessen Laufzeitabhängigkeiten (`absl-py`, `flatbuffers`). `python-ofiq` (die OFIQ-Gesichtsqualitäts-Bindings) liegt auf PyPI, bietet aber nur Wheels für Linux x86-64 und macOS arm64 und ist daher nicht Teil des Extras; installieren Sie es dort, wo ein Wheel existiert, manuell mit `pip install python-ofiq`.
-
-Eine kommerzielle Installation schaltet den Modus nicht von selbst um. Setzen Sie ihn in Ihrer `scoring_config.json`-Überschreibung (`{ "licensing": { "mode": "commercial" } }`); das Docker-Build-Argument setzt zusätzlich `FACET_LICENSING_MODE=commercial` im Image. `python facet.py --doctor` zeigt die aktive Lizenzlage. Im kommerziellen Modus listet es die Komponenten auf, die ein Scan tatsächlich lädt (YuNet, SFace, Q-ReAlign), nicht die, die das Profil lediglich nennt.
+Eine kommerzielle Installation schaltet den Modus nicht um. Setzen Sie ihn in Ihrer
+Überschreibung: `{ "licensing": { "mode": "commercial" } }`. Das Docker-Build-Argument
+setzt außerdem `FACET_LICENSING_MODE=commercial`. `python facet.py --doctor` zeigt den
+aktiven Lizenzmodus und im kommerziellen Modus die Komponenten, die ein Scan laden würde
+(YuNet, SFace, Q-ReAlign).
 
 ## Manuelle Installation ohne install.sh
 
@@ -389,34 +377,23 @@ Erfordert Python 3.12 (3.10+ funktioniert) und Node.js 20+ für den Galerie-Buil
 python3 -m venv venv
 source venv/bin/activate
 
-# 2. Zuerst PyTorch installieren, mit der Index-URL passend zu Ihrer CUDA-Version.
-#    cu128 zielt auf CUDA 12.8+/13.x ab; verwenden Sie cu126 für CUDA 12.6-12.7, cu124
-#    für CUDA 12.4-12.5, oder cu118 für CUDA 11.8-12.3.
-#    Auch Ihre KARTE zählt, nicht nur der Treiber: cu128 liefert keine Kernel
-#    unterhalb von sm_75, daher benötigt eine Maxwell-, Pascal- oder Volta-Karte
-#    (GTX 900/10-Serie, Titan V) selbst mit einem CUDA-12.8-Treiber cu126.
-#    install.sh wendet diese Untergrenze automatisch an; prüfen Sie Ihre mit `nvidia-smi --query-gpu=compute_cap --format=csv`.
+# 2. Zuerst PyTorch installieren, passend zu Ihrer CUDA-Version:
+#    cu128 = CUDA 12.8+/13.x, cu126 = 12.6-12.7, cu124 = 12.4-12.5, cu118 = 11.8-12.3.
+#    Auch Ihre KARTE zählt: Maxwell/Pascal/Volta (GTX 900/10-Serie, Titan V) brauchen cu126,
+#    selbst mit einem CUDA-12.8-Treiber. Prüfen: `nvidia-smi --query-gpu=compute_cap --format=csv`
 #    Im Zweifel kopieren Sie den Befehl von https://pytorch.org/get-started/locally/
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 
-# 3. Den Rest in einem Rutsch installieren, damit pip den gesamten Graphen auf einmal auflösen kann.
-#    requirements.txt enthält bereits transformers und accelerate, benötigt für die
-#    SigLIP/BiRefNet/VLM-Modelle, die von den 8gb+-Profilen verwendet werden.
+# 3. Den Rest in einem Rutsch installieren, damit pip den gesamten Graphen auflöst
 pip install -r requirements.txt -r requirements.restricted.txt
 
-# 4. Die Gesichtserkennung läuft über ONNX Runtime. insightface (Schritt 3) hat den CPU-Build
-#    installiert, also tauschen Sie ihn auf einem CUDA-Rechner NACH Schritt 3 gegen den GPU-Build:
-#    Die Pakete teilen sich Dateien, und das zuletzt installierte gewinnt. Wählen Sie den Bereich
-#    passend zu Ihrem PyTorch-CUDA-Build (siehe Tabelle unten), nicht zum CUDA Ihres Treibers.
+# 4. Nur CUDA, NACH Schritt 3: die GPU-ONNX-Runtime einsetzen (passend zu Ihrem PyTorch-CUDA-Build)
 pip uninstall -y onnxruntime onnxruntime-gpu
-pip install "onnxruntime-gpu>=1.19.0,<1.27"   # CUDA-12.x-PyTorch (cu124, cu126, cu128)
+pip install "onnxruntime-gpu>=1.19.0,<1.27"   # CUDA 12.x PyTorch (cu124, cu126, cu128)
 # Nur CPU oder CUDA 11.8 (cu118): Behalten Sie, was Schritt 3 installiert hat, oder installieren Sie es neu mit
 # pip install "onnxruntime>=1.15.0"
 
-# 5. Nur den Headless-Build von OpenCV behalten. Schritt 3 hat opencv-python installiert, den GUI-Build,
-#    der libGL.so.1 braucht (Debian, WSL und schlanke Hosts haben es nicht, und `import cv2` scheitert dann);
-#    die Pakete teilen sich cv2/, das zuletzt installierte gewinnt. Machen Sie das NACH Schritt 3 und 4:
-#    beide entfernen, den Headless-Build in derselben Version zurückinstallieren.
+# 5. NACH Schritt 3 und 4: nur den Headless-Build von OpenCV behalten (der GUI-Build braucht libGL.so.1)
 CV_VER=$(pip show opencv-python-headless opencv-python 2>/dev/null | awk '/^Version:/ {print $2; exit}')
 pip uninstall -y opencv-python opencv-python-headless
 pip install --no-deps "opencv-python-headless==$CV_VER"
@@ -429,23 +406,29 @@ python facet.py /path/to/photos
 python viewer.py
 ```
 
-Überprüfen Sie die Umgebung in einer Zeile:
+Die Reihenfolge der Schritte ist wichtig: Bei Paketen, die sich Dateien teilen
+(`onnxruntime`/`onnxruntime-gpu`, `opencv-python`/`opencv-python-headless`), gewinnt das
+zuletzt installierte. `install.sh` wendet die Untergrenze für die Karte und beide Tausche
+automatisch an.
+
+Überprüfen Sie die Umgebung:
 
 ```bash
 python -c "import torch, cv2, fastapi, insightface, open_clip, pyiqa, numpy, scipy, sklearn, PIL, imagehash, rawpy, tqdm, exifread; print('All imports successful')"
 ```
 
-Stoßen Sie auf Fehler? Siehe [Abhängigkeitskonflikte beheben](#abhängigkeitskonflikte-beheben).
+Fehler? Siehe [Abhängigkeitskonflikte beheben](#abhängigkeitskonflikte-beheben).
 
 ## install.sh-Optionen und Makefile-Kurzbefehle
 
-`install.sh` sucht ein Python 3.10+, legt das `venv` an, erkennt das Betriebssystem und
-die GPU (Apple Silicon → Metal, sonst `nvidia-smi` → passender CUDA-Build), installiert
-PyTorch, `requirements.txt`, `transformers` und `accelerate`, tauscht danach die richtige
-ONNX Runtime (siehe [ONNX Runtime für die Gesichtserkennung](#onnx-runtime-für-die-gesichtserkennung))
-und den Headless-Build von OpenCV (siehe [OpenCV Headless-Build](#opencv-headless-build)) nach allen
-übrigen Installationen ein, prüft auf `exiftool`, baut den Angular-Client und verifiziert jeden
-Import; schlägt einer fehl, endet das Skript mit Status 1.
+`install.sh`:
+
+1. sucht ein Python 3.10+ und legt das `venv` an;
+2. erkennt das Betriebssystem und die GPU (Apple Silicon → Metal, sonst `nvidia-smi` → passender CUDA-Build);
+3. installiert PyTorch, `requirements.txt`, `transformers` und `accelerate`;
+4. tauscht die richtige [ONNX Runtime](#onnx-runtime-für-die-gesichtserkennung) und den
+   [Headless-Build von OpenCV](#opencv-headless-build) ein;
+5. prüft auf `exiftool`, baut den Angular-Client und verifiziert jeden Import (Exit-Status 1, wenn einer fehlschlägt).
 
 | Flag | Wirkung |
 |------|--------|
@@ -468,8 +451,7 @@ Import; schlägt einer fehl, endet das Skript mit Status 1.
 ## exiftool
 
 exiftool liefert die beste EXIF-Extraktion für jedes Format. Ohne es greift Facet auf
-`exifread` zurück (eine Python-Bibliothek, die alle RAW-Formate verarbeitet), dann auf
-PIL (nur JPEG/TIFF/DNG).
+`exifread` zurück (verarbeitet alle RAW-Formate), dann auf PIL (nur JPEG/TIFF/DNG).
 
 | OS | Befehl |
 |----|---------|
@@ -479,23 +461,18 @@ PIL (nur JPEG/TIFF/DNG).
 
 ## ONNX Runtime für die Gesichtserkennung
 
-Die Gesichtserkennung (InsightFace) läuft über ONNX Runtime, das als zwei Pakete
-ausgeliefert wird: `onnxruntime` (CPU) und `onnxruntime-gpu` (CUDA). Beide installieren
-sich in dasselbe Verzeichnis `onnxruntime/` und teilen sich Dateien, sodass sie nicht
-nebeneinander bestehen können: Was pip zuletzt installiert, gewinnt. `insightface` hängt
-vom CPU-Paket `onnxruntime` ab; wer es installiert (`requirements.restricted.txt`,
-`pip install -e .[all]`, das Extra `faces-insightface`), bringt daher stets den CPU-Build
-zurück und überschreibt damit einen GPU-Build. Auf einem CUDA-Rechner kommt das GPU-Paket
-deshalb **nach** diesen Anforderungen, nachdem zuvor beide Namen entfernt wurden.
+Die Gesichtserkennung (InsightFace) läuft über ONNX Runtime: `onnxruntime` (CPU) oder
+`onnxruntime-gpu` (CUDA). Beide teilen sich das Verzeichnis `onnxruntime/`, daher kann nur
+eines installiert sein; das zuletzt von pip installierte gewinnt. `insightface` hängt vom
+CPU-Build ab, daher bringt seine Installation (`requirements.restricted.txt`,
+`pip install -e .[all]`, das Extra `faces-insightface`) den CPU-Build zurück. Installieren
+Sie auf einem CUDA-Rechner das GPU-Paket **nach** diesen und entfernen Sie zuvor beide Namen.
 
-`bash install.sh` erledigt das auf x86_64 für Sie: Installiert es ein CUDA-12-PyTorch,
-setzt es ONNX Runtime zuletzt und entfernt davor immer beide Pakete (führen Sie es
-erneut aus, um ein überschriebenes `venv` zu reparieren oder zwischen CPU und GPU zu
-wechseln); danach prüft es das Ergebnis mit einer echten CUDA-Testsitzung, derselben wie
-in `--doctor`. Die CUDA-Docker-Images machen dasselbe. CPU-Installationen, CUDA 11.8
-(cu118), macOS und das CPU-Image behalten `onnxruntime`. Für aarch64 gibt es kein
-CUDA-12-Wheel von `onnxruntime-gpu`; dort behält `install.sh` den CPU-Build und sagt
-das.
+`bash install.sh` erledigt das auf x86_64 mit einem CUDA-12-PyTorch und testet danach eine
+echte CUDA-Sitzung (wie `--doctor`). Führen Sie es erneut aus, um ein defektes `venv` zu
+reparieren oder zwischen CPU und GPU zu wechseln. Die CUDA-Docker-Images tun dasselbe.
+CPU-Installationen, CUDA 11.8 (cu118), macOS, das CPU-Image und aarch64 (kein
+CUDA-12-Wheel von `onnxruntime-gpu`) behalten `onnxruntime`.
 
 Wählen Sie von Hand die Zeile für Ihren **PyTorch**-CUDA-Build:
 
@@ -504,106 +481,70 @@ Wählen Sie von Hand die Zeile für Ihren **PyTorch**-CUDA-Build:
 | Nur CPU oder CUDA 11.8 (cu118) | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime>=1.15.0"` |
 | CUDA 12.x (cu124, cu126, cu128) | `pip uninstall -y onnxruntime onnxruntime-gpu && pip install "onnxruntime-gpu>=1.19.0,<1.27"` |
 
-Richten Sie sich nach dem CUDA-Build von PyTorch, nicht nach der CUDA-Version, die
-`nvidia-smi` oben rechts anzeigt: Das ist die neueste CUDA-Version, die der Treiber
-unterstützt, und ein CUDA-13-Treiber führt weiterhin das CUDA-12-PyTorch (cu128) aus, das
-`install.sh` installiert. `python facet.py --doctor` zeigt den PyTorch-Build in der Zeile
-`CUDA (compiled)`.
-
-Der Bereich ist wichtig. `onnxruntime-gpu` 1.19 bis 1.26 sind CUDA-12-Builds; 1.27 und
-neuer sind CUDA-13-Builds und benötigen CUDA-13-Bibliotheken, die ein CUDA-12-PyTorch
-nicht mitbringt. Ein solches Wheel listet weiterhin `CUDAExecutionProvider`, fällt aber
-beim Erzeugen einer Sitzung auf die CPU zurück; ein unbegrenztes `onnxruntime-gpu` wirkt
-also installiert und läuft auf der CPU. Die CUDA-Docker-Images enthalten 1.26.0, den
-letzten CUDA-12-Build. Haben Sie von Hand ein CUDA-13-PyTorch installiert, ist
-`"onnxruntime-gpu>=1.27.0"` die passende Anforderung (ungetestet: Der Installer von Facet
-installiert nie eines).
-
-Für CUDA 11.8 (cu118) gibt es keinen GPU-Build zum Installieren. Das einzige
-CUDA-11-`onnxruntime-gpu` (1.17 und älter) benötigt cuDNN 8, die cu118-PyTorch-Wheels,
-die Facet installiert, hängen aber von cuDNN 9 ab; sein CUDA-Provider lädt daher nie,
-und die Gesichtserkennung liefe trotzdem auf der CPU. `install.sh` behält dort deshalb
-das CPU-`onnxruntime` und sagt das. Für Gesichtserkennung auf der GPU aktualisieren Sie
-den NVIDIA-Treiber auf einen, der CUDA 12.4 oder neuer meldet, und führen `install.sh`
-erneut aus; es installiert dann ein CUDA-12-PyTorch und das passende `onnxruntime-gpu`.
-
-Setzen Sie die Anforderung in Anführungszeichen. Ohne sie liest die Shell `>` und `<`
-als Umleitungen: `pip install onnxruntime-gpu>=1.19.0,<1.27` legt im aktuellen
-Verzeichnis eine leere Datei namens `=1.19.0,` an und bricht dann mit
-`1.27: No such file or directory` ab, bevor pip läuft. Löschen Sie die Datei nach einem
-solchen Fehler.
-
-Wechseln Sie nicht mit `pip uninstall onnxruntime` gefolgt von
-`pip install onnxruntime-gpu`. Die Deinstallation löscht Dateien, die auch dem GPU-Paket
-gehören, pip meldet dann „Requirement already satisfied“, und `import onnxruntime` liefert
-nur noch ein leeres Paket: InsightFace scheitert mit
-`module 'onnxruntime' has no attribute 'InferenceSession'`. Deinstallieren Sie beide
-Namen, wie in der Tabelle.
+- **Richten Sie sich nach PyTorch, nicht nach dem Treiber.** Die CUDA-Version, die
+  `nvidia-smi` ausgibt, ist die neueste, die der Treiber unterstützt; ein CUDA-13-Treiber
+  führt weiterhin das cu128-PyTorch aus. `python facet.py --doctor` zeigt den Build von
+  PyTorch in der Zeile `CUDA (compiled)`.
+- **Behalten Sie den Versionsbereich.** `onnxruntime-gpu` 1.19–1.26 sind CUDA-12-Builds;
+  1.27+ benötigen CUDA-13-Bibliotheken. Eine unbegrenzte Installation wirkt in Ordnung,
+  läuft aber unbemerkt auf der CPU. Für ein von Hand installiertes CUDA-13-PyTorch passt
+  `"onnxruntime-gpu>=1.27.0"` (ungetestet).
+- **CUDA 11.8 hat keinen brauchbaren GPU-Build.** Das alte CUDA-11-`onnxruntime-gpu`
+  benötigt cuDNN 8, aber das cu118-PyTorch nutzt cuDNN 9. Für Gesichtserkennung auf der GPU
+  aktualisieren Sie den Treiber auf einen, der CUDA 12.4 oder neuer meldet, und führen
+  `install.sh` erneut aus.
+- **Setzen Sie die Anforderung in Anführungszeichen.** Ohne sie legt
+  `pip install onnxruntime-gpu>=1.19.0,<1.27` eine leere Datei namens `=1.19.0,` an und
+  scheitert mit `1.27: No such file or directory`. Löschen Sie diese Datei.
+- **Deinstallieren Sie beide Namen.** `pip uninstall onnxruntime` gefolgt von
+  `pip install onnxruntime-gpu` hinterlässt `import onnxruntime` als leeres Paket, und
+  InsightFace scheitert mit `module 'onnxruntime' has no attribute 'InferenceSession'`.
 
 Nach dem Tausch meldet `pip check`: „insightface ... requires onnxruntime, which is not
-installed“ (`uv pip check`: „The package `insightface` requires `onnxruntime`, but it's
-not installed“). Das ist erwartet und harmlos: `onnxruntime-gpu` stellt dasselbe Modul
-`onnxruntime` bereit.
+installed“ (`uv pip check`: „The package `insightface` requires `onnxruntime`, but it's not
+installed“). Das ist harmlos: `onnxruntime-gpu` stellt dasselbe Modul bereit. Ebenso ist es
+nach dem OpenCV-Tausch harmlos, dass `insightface` und `facexlib` `opencv-python` verlangen.
+Ein späteres `pip install -r requirements.txt` bringt das GUI-OpenCV zurück; wiederholen
+Sie den [OpenCV-Tausch](#opencv-headless-build) oder führen Sie `install.sh` erneut aus.
 
-Der OpenCV-Tausch hinterlässt dieselbe Art Meldung: `pip check` meldet auch, dass
-`insightface` und `facexlib` `opencv-python` verlangen. Auch das ist erwartet, denn
-`opencv-python-headless` stellt dasselbe Modul `cv2` bereit. Ein späteres manuelles
-`pip install -r requirements.txt` bringt den GUI-Build zurück; führen Sie den Tausch aus
-[OpenCV Headless-Build](#opencv-headless-build) erneut aus oder starten Sie `install.sh`
-erneut, um das zu beheben.
+**Prüfen:** Der Abschnitt **ONNX Runtime** von `python facet.py --doctor` listet Paket,
+Version und Execution Providers und warnt (mit der Abhilfe), wenn beide Pakete installiert
+sind oder der Import scheitert. Auf CUDA führt er eine Testsitzung aus; die Zeile
+`CUDA session` ist nur OK, wenn sie wirklich auf `CUDAExecutionProvider` läuft. Der Test
+benötigt das Paket `onnx` und entfällt auf der CPU und im kommerziellen Modus. Ein Scan auf
+CUDA warnt außerdem einmal, wenn InsightFace auf der CPU läuft.
 
-Prüfen Sie das Ergebnis mit `python facet.py --doctor` und lesen Sie den Abschnitt **ONNX
-Runtime**. Er listet das installierte Paket samt Version und die Execution Providers und
-warnt, wenn beide Pakete installiert sind oder sich das Paket nicht importieren lässt,
-jeweils mit dem Befehl, der es repariert. Läuft Facet auf CUDA, vergleicht er außerdem den
-CUDA-Build, für den ONNX Runtime kompiliert wurde, mit dem von PyTorch und führt eine
-Testsitzung mit einem einzigen Knoten aus. Die Zeile `CUDA session` ist nur dann OK, wenn
-diese Sitzung wirklich auf `CUDAExecutionProvider` läuft; andernfalls warnt die Diagnose
-mit der eigenen Begründung von ONNX Runtime und der Korrektur. Die Testsitzung benötigt
-das Paket `onnx` (ohne es meldet die Diagnose, dass sie nicht geprüft hat) und entfällt
-auf der CPU und im kommerziellen Modus, in dem InsightFace nicht verwendet wird. Ein Scan
-auf CUDA protokolliert außerdem eine Warnung, wenn die Sitzungen von InsightFace auf der
-CPU laufen. In einem Docker-Container geht der von der Diagnose ausgegebene
-Reparaturbefehl beim nächsten `docker run` verloren: ziehen Sie stattdessen ein
-aktuelles Image oder bauen Sie es neu (die CUDA-Images enthalten `onnxruntime-gpu`
-1.26.0 über das Build-Argument `ORT_GPU_VERSION`; setzen Sie nie einen Wert ab 1.27,
-denn das sind CUDA-13-Builds).
+In Docker geht eine Reparatur im Container beim nächsten `docker run` verloren: Ziehen Sie
+ein aktuelles Image oder bauen Sie es neu. Die CUDA-Images setzen `onnxruntime-gpu` 1.26.0
+über das Build-Argument `ORT_GPU_VERSION`; setzen Sie nie 1.27 oder neuer (CUDA 13).
 
 ## OpenCV Headless-Build
 
-`opencv-python` und `opencv-python-headless` installieren sich in dasselbe Verzeichnis
-`cv2/` und teilen sich Dateien, sodass sie nicht nebeneinander bestehen können: Was pip
-zuletzt installiert, gewinnt. Die Anforderungen von Facet verlangen beide (`requirements.txt`
-das Paket `opencv-python`, `pyiqa` den Headless-Build, `insightface` und `facexlib` wieder
-`opencv-python`); welches Paket `cv2` liefert, hängt daher von der Installationsreihenfolge
-ab. `opencv-python` ist der GUI-Build und bindet `libGL.so.1` ein, das Debian, WSL und
-schlanke Hosts nicht mitbringen: `import cv2` scheitert dann mit
-`ImportError: libGL.so.1: cannot open shared object file`. Facet ruft keine
-OpenCV-Fensterfunktion auf, der Headless-Build genügt also immer.
+`opencv-python` (GUI) und `opencv-python-headless` teilen sich das Verzeichnis `cv2/`; das
+zuletzt installierte gewinnt. Die Abhängigkeiten von Facet ziehen beide nach. Der GUI-Build
+braucht `libGL.so.1`, das Debian, WSL und schlanke Hosts nicht mitbringen, daher scheitert
+`import cv2` mit `ImportError: libGL.so.1: cannot open shared object file`. Facet öffnet
+keine OpenCV-Fenster, der Headless-Build genügt also.
 
-`bash install.sh` behält nur diesen Build, in jedem Modus einschließlich `--commercial`:
-Nach der letzten Installation von Abhängigkeiten entfernt es beide Pakete und installiert
-`opencv-python-headless` in der gefundenen Version neu. Die Docker-Images sind nicht
-betroffen (sie installieren `libgl1`). Um ein bestehendes `venv` von Hand zu reparieren,
-ersetzen Sie `<version>` durch die Version, die `pip list` für eines der beiden Pakete
-anzeigt:
+`bash install.sh` behält in jedem Modus nur den Headless-Build, auch bei `--commercial`.
+Die Docker-Images sind nicht betroffen (sie installieren `libgl1`). Um ein `venv` von Hand
+zu reparieren, ersetzen Sie `<version>` durch die Version, die `pip list` für eines der
+beiden Pakete zeigt:
 
 ```bash
 pip uninstall -y opencv-python opencv-python-headless && pip install --no-deps "opencv-python-headless==<version>"
 ```
 
-`python facet.py --doctor` hat dafür einen Abschnitt **OpenCV**. Er zeigt `[OK]`, wenn
-sich `cv2` importieren lässt. Gelingt das nicht, warnt er mit dem Importfehler und gibt den
-obigen Befehl mit Ihrer installierten Version aus. Sind beide Pakete installiert und der
-Import funktioniert, ist das eine Information und keine Warnung: Die Docker-Images liefern
-beide mit `libgl1` aus. Schlägt am Ende von `install.sh` ein Kern-Import fehl (auch `cv2`),
-gibt das Skript "Installation finished with errors" aus und endet mit Status 1, statt
-"Installation complete!" zu melden.
+Der Abschnitt **OpenCV** von `python facet.py --doctor` zeigt `[OK]`, wenn sich `cv2`
+importieren lässt, sonst den Importfehler und den Reparaturbefehl mit Ihrer eingesetzten
+Version. Beide Pakete bei funktionierendem Import sind in Ordnung (die Docker-Images
+liefern beide mit `libgl1`). Scheitert ein Kern-Import wie `cv2`, gibt `install.sh`
+„Installation finished with errors“ aus und endet mit Status 1.
 
 ## GPU-Gesichtsclustering mit RAPIDS cuML
 
-Für große Gesichtsdatenbanken (80.000+ Gesichter) beschleunigt cuML das Clustering
-erheblich. Es benötigt eine conda-Umgebung:
+Für große Gesichtsdatenbanken (80.000+ Gesichter) beschleunigt cuML das Clustering stark.
+Es benötigt conda:
 
 ```bash
 conda create -n facet python=3.12
@@ -617,74 +558,66 @@ pip uninstall -y opencv-python opencv-python-headless
 pip install --no-deps "opencv-python-headless==$CV_VER"
 ```
 
-Wenn cuML verfügbar ist, nutzt das Clustering automatisch die GPU
-(`face_clustering.use_gpu` in `scoring_config.json`). Das Docker-CUDA-Image bringt es
-bereits mit, sodass containerisierte `8gb`/`16gb`/`24gb`-Profile ohne zusätzlichen
-Schritt auf der GPU clustern; `legacy` clustert immer auf dem Prozessor.
+Ist cuML installiert, nutzt das Clustering automatisch die GPU (`face_clustering.use_gpu`
+in `scoring_config.json`). Die CUDA-Docker-Images bündeln es, sodass
+`8gb`/`16gb`/`24gb`-Container auf der GPU clustern. `legacy` clustert immer auf dem
+Prozessor.
 
 ## Apple Silicon (Metal/MPS)
 
-Es wird kein separates GPU-Paket benötigt. Installieren Sie mit `bash install.sh` und
-bestätigen Sie anschließend, dass `python facet.py --doctor` `Facet runtime device: mps`
-meldet. Facet aktiviert standardmäßig den CPU-Fallback von PyTorch für nicht
-unterstützte Operatoren. Zum Vergleich:
+Es wird kein zusätzliches GPU-Paket benötigt. Installieren Sie mit `bash install.sh` und
+prüfen Sie dann, ob `python facet.py --doctor` `Facet runtime device: mps` meldet. Facet
+aktiviert den CPU-Fallback von PyTorch für nicht unterstützte Operatoren. Zum Vergleich:
 
 ```bash
 FACET_DEVICE=cpu python facet.py /path/to/photos --pass embeddings --force
 FACET_DEVICE=mps python facet.py /path/to/photos --pass embeddings --force
 ```
 
-Setzen Sie `FACET_DEVICE=cpu`, um die Beschleunigung zu deaktivieren, oder
-`FACET_DEVICE=mps`, um sie zu erzwingen (und klar zu scheitern, wenn sie nicht
-verfügbar ist). InsightFace bleibt auf dem Prozessor, weil es ein
-ONNX-Runtime-Modell ist und kein PyTorch-Modell.
+- `FACET_DEVICE=cpu` deaktiviert die Beschleunigung; `FACET_DEVICE=mps` verlangt sie und
+  scheitert, wenn sie nicht verfügbar ist. `FACET_DEVICE=cuda` scheitert genauso, wenn
+  PyTorch kein CUDA-Gerät sieht (z. B. `CUDA_VISIBLE_DEVICES=''`).
+- InsightFace bleibt auf dem Prozessor (es ist ein ONNX-Runtime-Modell).
+- TOPIQ-Werte können leicht von CPU/CUDA abweichen. Auf MPS wird ein Foto, dessen Seiten
+  keine Vielfachen von 32 sind, zuerst mittig zugeschnitten (aus 1024×682 wird 1024×672).
 
-Eine CUDA-GPU zählt nur, wenn PyTorch mindestens ein Gerät sehen kann. Mit `CUDA_VISIBLE_DEVICES=''` fällt die automatische Wahl auf den Prozessor, und `FACET_DEVICE=cuda` bricht mit demselben Fehler „requested, but that device is not available“ ab wie ein nicht verfügbares `mps`.
-
-Metal hat keinen dedizierten Grafikspeicher, daher wird `vram_profile: "auto"` anhand
-des gesamten Unified Memory bemessen:
+`vram_profile: "auto"` bemisst das Profil anhand des gesamten Unified Memory:
 
 | Gesamter Unified Memory | Von `auto` gewähltes Profil |
 |----------------------|----------------------------|
-| unter 16 GB | `legacy` |
-| 16-31 GB | `8gb` |
-| 32-47 GB | `16gb` |
-| 48 GB und mehr | `24gb` |
+| unter 16GB | `legacy` |
+| 16-31GB | `8gb` |
+| 32-47GB | `16gb` |
+| 48GB und mehr | `24gb` |
 
-Jede Schwelle verlangt etwa das Doppelte des Modellspeicherbedarfs des Profils, denn
-der Unified Memory wird mit macOS, dem Window-Server und jeder anderen laufenden
-Anwendung geteilt — ein Mac, der auslagert, ist langsamer als einer mit einem
-kleineren Profil. Ein ausdrücklich konfiguriertes Profil wird immer so übernommen, wie
-es konfiguriert ist — setzen Sie eines, um diese Schwellen in beide Richtungen zu
-übersteuern.
+Jede Schwelle beträgt etwa das Doppelte des Modellspeicherbedarfs des Profils, weil macOS
+und andere Anwendungen diesen Speicher mitnutzen. Ein Mac, der auslagert, ist langsamer als
+einer mit einem kleineren Profil. Ein ausdrücklich gesetztes Profil wird immer so
+übernommen, wie es steht.
 
 ### Speicher auf einem Mac
 
-Wenn der Aktivitätsanzeige zufolge Facet mehr Speicher nutzt, als der Mac besitzt, oder
-der Swap-Speicher während eines Scans immer weiter wächst, versuchen Sie es in dieser
+Wenn die Aktivitätsanzeige zeigt, dass Facet mehr Speicher nutzt, als der Mac hat, oder
+der Swap-Speicher während eines Scans weiter wächst, versuchen Sie diese Schritte in dieser
 Reihenfolge.
 
-**Begrenzen Sie den Speicherpool von PyTorch.** PyTorch lässt seinen Metal-(MPS-)Pool
-sonst weit über die vom Mac empfohlene Arbeitsspeichergröße hinauswachsen:
+**1. Begrenzen Sie den Speicherpool von PyTorch:**
 
 ```bash
 PYTORCH_MPS_HIGH_WATERMARK_RATIO=1.0 python facet.py /path/to/photos
 ```
 
-`1.0` bedeutet „die vom Mac empfohlene Arbeitsspeichergröße, nicht mehr" — Facet setzt
-den passenden unteren Schwellenwert automatisch. Ein Durchlauf kann dann mit einem
-Speicherfehler abbrechen, statt in den Swap zu geraten — was besser ist, als den Mac
-lahmzulegen.
+`1.0` bedeutet „die vom Mac empfohlene Arbeitsspeichergröße, nicht mehr“. Ein Durchlauf
+kann dann mit „out of memory“ abbrechen, statt zu swappen, was besser ist, als wenn der Mac
+zum Stillstand kommt.
 
-**Modellgewichte werden einzeln nacheinander geladen.** Unter macOS setzt Facet standardmäßig
-`HF_DEACTIVATE_ASYNC_LOAD=1`, weil das mehrfädige Laden der Gewichte durch transformers auf
-MPS zu Race Conditions führen und einen Scan zum Absturz bringen kann. Es gibt nichts zu
-konfigurieren; wenn Sie das schnellere, gleichzeitige Laden zurückhaben möchten, setzen Sie
-selbst `HF_DEACTIVATE_ASYNC_LOAD=0`, bevor Facets Standardwert angewendet wird.
+**Gewichte werden einzeln geladen.** Unter macOS setzt Facet standardmäßig
+`HF_DEACTIVATE_ASYNC_LOAD=1`, weil gleichzeitiges Laden einen Scan auf MPS zum Absturz
+bringen kann. Es gibt nichts zu konfigurieren; setzen Sie selbst `HF_DEACTIVATE_ASYNC_LOAD=0`,
+um das gleichzeitige Laden zurückzubekommen.
 
-**Deaktivieren Sie die beiden aufwendigsten optionalen Modelle.** Fügen Sie
-`scoring_config.json` nur die Schlüssel hinzu, die Sie ändern — der Rest behält den
-mitgelieferten Standardwert:
+**2. Deaktivieren Sie die beiden aufwendigsten optionalen Modelle.** Fügen Sie
+`scoring_config.json` nur diese Schlüssel hinzu:
 
 ```json
 {
@@ -693,37 +626,35 @@ mitgelieferten Standardwert:
 }
 ```
 
-`saliency_enabled` schaltet die Motiverkennung ab (das Modell, das das Hauptmotiv
-findet und dessen Schärfe und Platzierung beurteilt); `qrealign` schaltet ein
-zusätzliches Bildqualitätsmodell ab. Ästhetik, Komposition, Gesichter und technische
-Qualität werden in beiden Fällen weiterhin bewertet. Der Profil-Schlüssel muss zu dem
-passen, den Ihr Mac tatsächlich nutzt — `"16gb"` auf einem Mac mit 32-47 GB, `"24gb"`
-ab 48 GB.
+`saliency_enabled` schaltet die Motiverkennung ab; `qrealign` schaltet ein zusätzliches
+Qualitätsmodell ab. Ästhetik, Komposition, Gesichter und technische Qualität werden weiterhin
+bewertet. Nutzen Sie den Profil-Schlüssel Ihres Mac: `"16gb"` bei 32-47GB, `"24gb"` ab 48GB.
 
-**Verarbeiten Sie weniger Fotos auf einmal:**
+**3. Verarbeiten Sie weniger Fotos auf einmal:**
 
 ```json
 { "processing": { "ram_chunk_size": 4,
                   "auto_tuning": { "min_ram_chunk_size": 4, "max_ram_chunk_size": 4 } } }
 ```
 
-Setzen Sie alle drei Schlüssel — sonst ändert die automatische Abstimmung die
-Chunk-Größe von selbst, nach unten bis `min_ram_chunk_size` oder nach oben bis
-`max_ram_chunk_size`.
+Setzen Sie alle drei, sonst verschiebt die automatische Abstimmung die Chunk-Größe zwischen
+`min_ram_chunk_size` und `max_ram_chunk_size`.
 
 ## Downloadgrößen
 
-Modelle werden bei der ersten Verwendung nach `~/.cache/huggingface/` (Hugging-Face-Modelle),
-`~/.cache/torch/hub/` (PyIQA-Gewichte) und `~/.insightface/` (Gesichtserkennung)
-heruntergeladen, oder in die benannten Docker-Volumes. `samp_net.pth`, `u2netp.pth`,
-`face_landmarker.task` und das `aesthetic_predictor_weights.pth` des CLIP-MLP-Ästhetik-Kopfs
-(nur `legacy`/`8gb`) landen alle in `pretrained_models/`, aufgelöst relativ zur
-Repository-Wurzel statt zum Arbeitsverzeichnis des Prozesses — unter Docker ist das das
-gemountete Volume `facet-pretrained`, sodass keines davon bei einer Container-Neuerstellung
-erneut heruntergeladen wird. Keine Modellgewichte sind ins Image eingebacken.
+Modelle werden bei der ersten Verwendung heruntergeladen nach:
 
-Die folgenden Größen sind dezimal (GB = 10⁹ Byte, MB = 10⁶ Byte), gemessen anhand der
-lokalen Modell-Caches und der Hugging-Face-API.
+- `~/.cache/huggingface/` (Hugging-Face-Modelle)
+- `~/.cache/torch/hub/` (PyIQA-Gewichte)
+- `~/.insightface/` (Gesichtserkennung)
+- `pretrained_models/` in der Repository-Wurzel: `samp_net.pth`, `u2netp.pth`,
+  `face_landmarker.task` und `aesthetic_predictor_weights.pth` (nur `legacy`/`8gb`)
+
+In Docker sind dies benannte Volumes (`pretrained_models/` ist `facet-pretrained`), sodass
+bei einer Neuerstellung des Containers nichts erneut heruntergeladen wird. Keine Gewichte
+sind ins Image eingebacken.
+
+Die Größen sind dezimal (GB = 10⁹ Byte, MB = 10⁶ Byte).
 
 | Modell | Größe | Profile |
 |-------|------|----------|
@@ -732,46 +663,46 @@ lokalen Modell-Caches und der Hugging-Face-API.
 | SigLIP 2 NaFlex SO400M (Embeddings) | 4,581 GB | `16gb`/`24gb` |
 | Qwen3.5-2B (VLM-Tagging) | 4,571 GB | `16gb` |
 | Qwen3.5-4B (VLM-Tagging) | 9,343 GB | `24gb` |
-| Qwen2-VL-2B (Komposition) | 4,430 GB | standardmäßig kein Profil — nur wenn Sie manuell `composition_model: "qwen2-vl-2b"` **und** `processing.mode: "single-pass"` setzen. Außerhalb des kommerziellen Modus funktioniert das nur bei `legacy`/`8gb`: Bei `16gb`/`24gb` fällt Single-Pass auf Multi-Pass zurück, das keinen Qwen2-VL-Pass hat |
-| InsightFace buffalo_l (Gesichter) | 289 MB Download / 630 MB auf der Platte (das Zip bleibt neben den extrahierten `.onnx`-Dateien erhalten) | alle |
+| Qwen2-VL-2B (Komposition) | 4,430 GB | standardmäßig keines; siehe Anmerkung 1 |
+| InsightFace buffalo_l (Gesichter) | 289 MB Download / 630 MB auf der Platte (das Zip bleibt neben den `.onnx`-Dateien erhalten) | alle |
 | SAMP-Net-Gewichte (Komposition) | 183 MB | alle |
-| U2-Net-P (Salienz-Untermodell von SAMP-Net) | 4,7 MB | dieselben Profile wie SAMP-Net |
+| U2-Net-P (Salienz-Untermodell von SAMP-Net) | 4,7 MB | wie SAMP-Net |
 | BiRefNet_dynamic (Motiverkennung) | 445 MB | alle |
 | TOPIQ NR (Ästhetikmodell) | 181 MB | `16gb`/`24gb` |
 | TOPIQ IAA (ergänzende Ästhetik) | 873 MB | alle |
 | TOPIQ NR-Face (ergänzende Gesichtsqualität) | 376 MB | alle |
 | LIQE (ergänzende Qualität/Verzerrung) | 708 MB | alle |
 | timm resnet50.a1_in1k (gemeinsames PyIQA-Backbone) | 102 MB | alle |
-| Q-ReAlign-Mini-0.8B (`iqa_extended.qrealign`) | 2,235 GB | `8gb`/`16gb`/`24gb`, **standardmäßig aktiv** (`"auto"` löst sich auf jedem Profil außer `legacy` als aktiv auf) |
+| Q-ReAlign-Mini-0.8B (`iqa_extended.qrealign`) | 2,235 GB | `8gb`/`16gb`/`24gb`, **standardmäßig aktiv** (`"auto"`) |
+
+1. Qwen2-VL-2B wird nur geladen, wenn Sie `composition_model: "qwen2-vl-2b"` **und**
+   `processing.mode: "single-pass"` setzen; es ersetzt SAMP-Net/U2-Net-P. Außerhalb des
+   kommerziellen Modus funktioniert das nur bei `legacy`/`8gb`: Bei `16gb`/`24gb` fällt
+   Single-Pass auf Multi-Pass zurück, das keinen Qwen2-VL-Pass hat.
 
 Summen pro Profil (Download): `legacy` 4,69 GB · `8gb` 6,93 GB · `16gb` 14,55 GB ·
-`24gb` 19,32 GB · `24gb` mit `composition_model: "qwen2-vl-2b"` und
-`processing.mode: "single-pass"` 23,56 GB (die manuelle Überschreibung ersetzt
-SAMP-Net/U2-Net-P, statt sie zu ergänzen). Außerhalb des kommerziellen Modus gilt diese letzte Summe nicht mehr: Bei `24gb` fällt Single-Pass auf Multi-Pass zurück, das Qwen2-VL nicht verwendet.
+`24gb` 19,32 GB · `24gb` mit Qwen2-VL-Komposition 23,56 GB (nur im kommerziellen Modus, siehe Anmerkung 1).
 
-Zum Vergleich: Das Docker-Image selbst (vor jedem Modell-Download) wiegt bei
-`latest` 3,34 GB entpackt, bei `latest-cuda` 13,1 GB und bei `latest-cuda-legacy`
-13,8 GB — siehe [Deployment › Image-Größe](DEPLOYMENT.md#image-größe) dafür, wie
-diese Werte gemessen wurden. Alle drei Images haben in diesem Release die Basis
-gewechselt (Issue #119); ihre komprimierten Downloadgrößen werden ergänzt, sobald
-diese Basis-Images veröffentlicht sind und ein Manifest zum Messen vorliegt.
+Die Docker-Images selbst, vor jedem Modell-Download: `latest` 3,34 GB entpackt,
+`latest-cuda` 13,1 GB, `latest-cuda-legacy` 13,8 GB
+([Bereitstellung › Image-Größe](DEPLOYMENT.md#image-größe)). Komprimierte Downloadgrößen
+sind noch nicht gemessen.
 
-Optionale Modelle, die in den obigen Summen nicht enthalten sind:
+Optionale Modelle, nicht in den Summen enthalten:
 
 | Modell | Größe | Auslöser |
-|-------|------|----------|
+|-------|------|---------|
 | DeQA-Score-Mix3 (`iqa_extended.deqa`) | 16,41 GB | standardmäßig aus |
-| SigLIP-so400m-patch14-384-Backbone (`iqa_extended.aesthetic_v25`) | 3,515 GB | standardmäßig aus, **veraltet** (AGPL-3.0, upstream unmaintained — `qrealign` vorziehen) |
-| Helsinki-NLP OPUS-MT, pro Zielsprache (Untertitel-Übersetzung) | en→fr 303 MB · en→de 298 MB · en→es 312 MB · en→it 343 MB · en→pt 465 MB | nur für aktivierte Sprachen |
+| SigLIP-so400m-patch14-384-Backbone (`iqa_extended.aesthetic_v25`) | 3,515 GB | standardmäßig aus, **veraltet** (`qrealign` vorziehen) |
+| Helsinki-NLP OPUS-MT, pro Zielsprache (Untertitel-Übersetzung) | en→fr 303 MB · en→de 298 MB · en→es 312 MB · en→it 343 MB · en→pt 465 MB | nur für die Sprachen, die Sie aktivieren |
 | MediaPipe `face_landmarker.task` | 3,76 MB | nur wenn `mediapipe` installiert ist |
 
-`reverse_geocoder` braucht keinen Download — seine Daten sind im Wheel enthalten.
+`reverse_geocoder` braucht keinen Download; seine Daten sind im Wheel enthalten.
 
 Die SAMP-Net-Gewichte stammen aus dem
-[model-weights-v1-Release](https://github.com/ncoevoet/facet/releases/download/model-weights-v1/samp_net.pth)
-des Projekts. Falls dieser Download fehlschlägt (offline oder eingeschränktes
-Netzwerk), sehen Sie `Failed to download SAMP-Net weights: HTTP Error 404: Not Found`
-— laden Sie die Datei manuell herunter und legen Sie sie unter
+[model-weights-v1-Release](https://github.com/ncoevoet/facet/releases/download/model-weights-v1/samp_net.pth).
+Sehen Sie `Failed to download SAMP-Net weights: HTTP Error 404: Not Found` (offline oder
+eingeschränktes Netzwerk), laden Sie die Datei herunter und legen Sie sie unter
 `pretrained_models/samp_net.pth` ab.
 
 ## Abhängigkeiten
@@ -799,34 +730,32 @@ Netzwerk), sehen Sie `Failed to download SAMP-Net weights: HTTP Error 404: Not F
 | `reverse_geocoder` | Reverse-Geocoding für GPS |
 | `psutil` | Auto-Tuning der Stapelverarbeitung (Systemüberwachung) |
 | `aiosqlite` | Asynchrones SQLite für die FastAPI-Lese-Endpunkte |
-| `sqlite-vec` | KNN auf Festplatte für die semantische Suche (greift auf den In-Memory-NumPy-Cache zurück, falls nicht vorhanden oder falls das SQLite dieses Pythons keine Erweiterungen laden kann; die Suche nach ähnlichen Fotos nutzt es nicht, sie durchsucht exakt); `pip install -e .[vec]` |
+| `sqlite-vec` | Semantische Suche auf der Festplatte (greift auf einen In-Memory-NumPy-Cache zurück); `pip install -e .[vec]` |
 | `tifffile`, `imagecodecs` | JPEG-XL-Fotos und Vorschauen zusammengefügter Lightroom-Classic-13+-DNGs (HDR/Panorama/Verbessern) |
 
-Alle diese sind in `requirements.txt` enthalten; kein Profil benötigt zusätzliche
-Basis-Pakete.
+Alle diese sind in `requirements.txt` enthalten, außer `pyiqa` und `insightface`, die in `requirements.restricted.txt` stehen (siehe [Kommerzielle Installation und die eingeschränkten Pakete](#kommerzielle-installation-und-die-eingeschränkten-pakete)). Kein Profil benötigt zusätzliche Basis-Pakete.
 
 ### Optionale Pakete
 
 Jedes schaltet eine Funktion frei; ohne es wird die Funktion übersprungen oder ein
 Fallback verwendet.
 
-| Paket | Schaltet frei / Zweck | Ohne es |
-|---------|-------------------|-----------|
-| `watchdog` | Watch-Modus (`--watch`-Daemon scannt neue Dateien erneut) — **nicht in `requirements.txt`**; wird nur über `pip install .[watch]` nachgezogen, sodass direkte `requirements.txt`-Nutzer `--watch` nicht erhalten | `--watch` nicht verfügbar |
+| Paket | Schaltet frei | Ohne es |
+|---------|---------|-----------|
+| `watchdog` | Watch-Modus (`--watch`); **nicht in `requirements.txt`**, Installation mit `pip install .[watch]` | `--watch` nicht verfügbar |
 | `pillow-heif` | HEIF/HEIC-Dekodierung | HEIF/HEIC-Dateien werden übersprungen |
-| `rawpy` | RAW-Dekodierung (CR2/CR3/NEF/ARW/…) | RAW-Dateien werden übersprungen (bereits in der Basis-`requirements.txt`) |
-| `cuml`, `cupy` | GPU-gestütztes Gesichtsclustering (conda + CUDA) | Clustering läuft auf der CPU via `hdbscan` (Standard) |
-| `onnxruntime-gpu` | GPU-gestützte Gesichtserkennung — wird **anstelle von** `onnxruntime` installiert, nie daneben; siehe [ONNX Runtime für die Gesichtserkennung](#onnx-runtime-für-die-gesichtserkennung) | CPU-`onnxruntime` (langsamer) |
-| `aesthetic-predictor-v2-5` | Erweiterte IQA-Stufe — `aesthetic_v25`-Bewerter (`pip install -e .[iqa-extended]`; `iqa_extended.aesthetic_v25` in `scoring_config.json`, standardmäßig aus). **Veraltet** — AGPL-3.0, seit dem 2024-12-18 unmaintained; bevorzugen Sie `qrealign`, das kein zusätzliches Paket benötigt (es wird nativ über `transformers` geladen) | `aesthetic_v25` nicht verfügbar |
+| `rawpy` | RAW-Dekodierung (CR2/CR3/NEF/ARW/…), bereits in `requirements.txt` | RAW-Dateien werden übersprungen |
+| `cuml`, `cupy` | GPU-Gesichtsclustering (conda + CUDA) | Clustering auf der CPU via `hdbscan` (Standard) |
+| `onnxruntime-gpu` | GPU-Gesichtserkennung, **anstelle von** `onnxruntime` ([Details](#onnx-runtime-für-die-gesichtserkennung)) | CPU-`onnxruntime` (langsamer) |
+| `aesthetic-predictor-v2-5` | Bewerter `aesthetic_v25` (`pip install -e .[iqa-extended]`, `iqa_extended.aesthetic_v25`, standardmäßig aus). **Veraltet** (AGPL-3.0, seit 2024-12-18 unmaintained); bevorzugen Sie `qrealign`, das kein zusätzliches Paket benötigt | `aesthetic_v25` nicht verfügbar |
 | `darktable-cli` (System) | RAW-/Darktable-Profil-Export aus dem Viewer | Nur Original-/eingebetteter Download angeboten |
 | `exiftool` (System) | Beste EXIF-/GPS-Extraktion | Greift auf `exifread`, dann PIL zurück |
 
 ## Funktionsanforderungen
 
-Der Großteil von Facet läuft überall (CPU, jedes Profil). Einige Funktionen benötigen
-eine GPU, ein höheres **VRAM-Profil**, ein optionales Paket oder das
-**Bearbeitungspasswort** / die **Superadmin**-Rolle des Viewers. In der gesamten
-Dokumentation verwendete Kennzeichnungen:
+Der Großteil von Facet läuft überall (CPU, jedes Profil). Einige Funktionen benötigen eine
+GPU, ein höheres **VRAM-Profil**, ein optionales Paket oder das **Bearbeitungspasswort** /
+die **Superadmin**-Rolle des Viewers. In der Dokumentation verwendete Kennzeichnungen:
 `[GPU]` · `[16gb/24gb]` (VRAM-Profil) · `[Edition]` · `[Superadmin]` · `[Optional: pkg]`.
 
 | Funktion | GPU | Profil | Auth | Optionales Paket |
@@ -844,44 +773,35 @@ Dokumentation verwendete Kennzeichnungen:
 | Gesichtserkennung / -extraktion (InsightFace) | empfohlen (CPU funktioniert, langsam) | beliebig | — | — |
 | Gesichtsclustering (HDBSCAN) | nein (CPU) | beliebig | — | `cuml`/`cupy` (optionale GPU-Beschleunigung) |
 | Semantische Suche | nein | beliebig | — | `sqlite-vec` (greift auf NumPy zurück) |
-| RAW-/HEIF-Decodierung | nein | beliebig | — | `rawpy` / `pillow-heif` |
+| RAW-/HEIF-Dekodierung | nein | beliebig | — | `rawpy` / `pillow-heif` |
 | Überwachungsmodus (`--watch`) | nein | beliebig | — | `watchdog` |
 | GPS-Extraktion / Darktable-Export | nein | beliebig | — | `exiftool` / `darktable-cli` |
-| Bewertungen, Favoriten, Gesichts- & Personenbearbeitungen, Auswahl | nein | beliebig | edition | — |
-| Scans über die Web-Oberfläche auslösen | nein | beliebig | Edition (Einzelbenutzer) / superadmin (Mehrbenutzer) | — |
+| Bewertungen, Favoriten, Gesichts- & Personenbearbeitungen, Aussortieren | nein | beliebig | edition | — |
+| Scans über die Web-Oberfläche auslösen | nein | beliebig | edition (Einzelbenutzer) / superadmin (Mehrbenutzer) | — |
 | Mehrbenutzerbetrieb (benutzerspezifische Bewertungen & Rollen) | nein | beliebig | rollenbasiert | — |
 
-> Das Gesichts-*Clustering* läuft standardmäßig über die CPU (eigenständiges
-> `hdbscan`); `cuml`/`cupy` fügen nur optionale GPU-Beschleunigung hinzu — sie sind
-> **nicht** erforderlich. Das Bearbeitungspasswort und die Benutzerrollen werden in
-> `scoring_config.json` konfiguriert — siehe [Konfiguration](CONFIGURATION.md) für die
-> Authentifizierung.
+Das Bearbeitungspasswort und die Benutzerrollen werden in `scoring_config.json` gesetzt;
+siehe [Konfiguration](CONFIGURATION.md).
 
-> Keine lokale GPU? Richten Sie VLM-Tagging, Beschreibungen und Kritik über
-> `vlm_backend` in `scoring_config.json` auf einen entfernten Ollama- oder
-> OpenAI-kompatiblen Server aus — diese Funktionen laufen dann auch auf den
-> CPU-Profilen `legacy`/`8gb`.
+> Keine lokale GPU? Richten Sie VLM-Tagging, Beschreibungen und Kritik mit `vlm_backend` in
+> `scoring_config.json` auf einen entfernten Ollama- oder OpenAI-kompatiblen Server aus.
+> Diese Funktionen laufen dann auch auf den Profilen `legacy`/`8gb`.
 
 ## Abhängigkeitskonflikte beheben
 
-Facet hat viele ML-Abhängigkeiten (`torch`, `open-clip-torch`, `insightface` usw.), die
-ihre eigenen transitiven Abhängigkeiten nachziehen. pip löst Abhängigkeiten sequenziell
-auf, was zu kaskadierenden Fehlern führen kann, bei denen die Installation eines
-Pakets ein anderes beschädigt.
+Die ML-Pakete von Facet (`torch`, `open-clip-torch`, `insightface`, …) ziehen viele
+Abhängigkeiten nach, und ihre einzelne Installation kann sich gegenseitig beschädigen.
 
-**Symptome:** Die Installation der Pakete einzeln löst Fehler aus, die zur Installation
-eines weiteren Pakets auffordern; Versionskonflikte zwischen `torch`, `numpy`,
-`huggingface-hub` oder `open-clip-torch`; `pip install` ist erfolgreich, aber `import`
-schlägt zur Laufzeit fehl.
+**Symptome:** Jede Installation verlangt noch ein weiteres Paket; Versionskonflikte zwischen
+`torch`, `numpy`, `huggingface-hub` oder `open-clip-torch`; `pip install` gelingt, aber
+`import` scheitert.
 
-**1. Alles auf einmal installieren** — `pip install -r requirements.txt` gibt pip den
-vollständigen Abhängigkeitsgraphen zum Auflösen. Installieren Sie Pakete **nicht**
-einzeln (`pip install open-clip-torch && pip install insightface && ...`) — das
-verhindert, dass pip den vollständigen Graphen auflöst.
+**1. Alles auf einmal installieren:** `pip install -r requirements.txt`, damit pip den
+vollständigen Graphen löst. Installieren Sie Pakete nicht einzeln
+(`pip install open-clip-torch && pip install insightface && ...`).
 
-**2. Verwenden Sie [uv](https://docs.astral.sh/uv/) statt pip** — `uv` löst den
-vollständigen Abhängigkeitsgraphen im Voraus auf, bevor irgendetwas installiert wird,
-und vermeidet so kaskadierende Konflikte:
+**2. Verwenden Sie [uv](https://docs.astral.sh/uv/)**: `uv` löst den ganzen Graphen vor der
+Installation auf:
 
 ```bash
 pip install uv
@@ -890,32 +810,27 @@ uv pip install -r requirements.txt
 uv pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu128
 ```
 
-**3. Neu beginnen** — wenn Ihre Umgebung bereits defekt ist: `deactivate`,
-`rm -rf venv`, und wiederholen Sie [Manuelle Installation](#manuelle-installation-ohne-installsh)
-(oder führen Sie einfach `install.sh` erneut aus).
+**3. Neu beginnen:** `deactivate`, `rm -rf venv`, und wiederholen Sie
+[Manuelle Installation](#manuelle-installation-ohne-installsh) (oder führen Sie `install.sh`
+erneut aus).
 
 ### Probleme bei der GPU-Erkennung
 
-Wenn Ihre GPU nicht erkannt wird (häufig bei neueren Karten), führen Sie die Diagnose
-aus:
+Wenn Ihre GPU nicht erkannt wird (häufig bei neueren Karten), führen Sie aus:
 
 ```bash
 python facet.py --doctor
 ```
 
-Dies prüft die CUDA-Unterstützung von PyTorch und die Treiberkompatibilität und
-schlägt den richtigen pip-Befehl vor. Es erkennt auch einen Fall, den
-`torch.cuda.is_available()` nicht erkennen kann: eine GPU, die der Treiber sieht, für
-die der installierte PyTorch-Build aber keine Kernel mitbringt — genau das war bei der
-RTX-50er-Serie (Blackwell, `sm_120`) auf einem Build vor CUDA 12.8 der Fall. Facet
-vergleicht die Compute Capability des Geräts mit der Architekturliste des Builds und
-startet vor der Festlegung eines VRAM-Profils testweise einen Kernel; bei einer
-Inkompatibilität fällt es auf CPU zurück, statt bei der ersten echten Operation
-abzustürzen, und `--doctor` benennt die Inkompatibilität sowie die Abhilfe — den
-passenden Image-Tag in Docker (`ghcr.io/ncoevoet/facet:latest-cuda-legacy` für
-Maxwell-/Pascal-/Volta-Karten) oder die richtige `--index-url` auf Bare Metal.
+Es prüft die CUDA-Unterstützung von PyTorch und den Treiber und schlägt den richtigen
+pip-Befehl vor. Es erkennt auch, was `torch.cuda.is_available()` übersieht: eine GPU, für
+die das installierte PyTorch keine Kernel mitbringt (z. B. RTX-50er-Serie bei einem Build
+vor CUDA 12.8). In diesem Fall fällt Facet auf die CPU zurück, statt abzustürzen, und
+`--doctor` benennt die Abhilfe: in Docker den richtigen Image-Tag
+(`ghcr.io/ncoevoet/facet:latest-cuda-legacy` für Maxwell/Pascal/Volta); auf Bare Metal die
+richtige `--index-url`.
 
-Sie können auch Hardware zum Testen simulieren:
+Um Hardware zum Testen zu simulieren:
 
 ```bash
 python facet.py --doctor --simulate-gpu "RTX 5070 Ti" --simulate-vram 16
@@ -923,8 +838,8 @@ python facet.py --doctor --simulate-gpu "RTX 5070 Ti" --simulate-vram 16
 
 ## Angular-Client
 
-Nur für die Entwicklung oder eigene Builds erforderlich — `install.sh` und das
-Docker-Image bauen ihn bereits.
+Nur für die Entwicklung oder eigene Builds erforderlich; `install.sh` und das Docker-Image
+bauen ihn bereits.
 
 ```bash
 cd client
@@ -933,8 +848,6 @@ npm run build    # Produktions-Build → client/dist/
 npm start        # Dev-Server unter http://localhost:4200 (leitet die API an :5000 weiter)
 ```
 
-> **`npm audit`-Warnungen:** Angular zieht einen tiefen Baum transitiver
-> Abhängigkeiten nach, und `npm audit` meldet Befunde, von denen die meisten in
-> Build-time-Dev-Abhängigkeiten liegen, die nie den Browser erreichen. Prüfen Sie die
-> Liste, bevor Sie `npm audit fix` ausführen — es kann stillschweigend Pakete
-> herabstufen oder entfernen.
+> **`npm audit`-Warnungen:** Die meisten Befunde liegen in Build-time-Dev-Abhängigkeiten,
+> die nie den Browser erreichen. Prüfen Sie sie, bevor Sie `npm audit fix` ausführen, das
+> Pakete herabstufen oder entfernen kann.

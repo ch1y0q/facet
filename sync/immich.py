@@ -101,6 +101,8 @@ class AssetIdentityError(ValueError):
 class ImmichClient:
     """Minimal REST client for the Immich API (``x-api-key`` auth)."""
 
+    response_byte_limit: int | None = None
+
     def __init__(self, url: str, api_key: str, timeout: int = 30, *,
                  owner_id: str = "", library_id: str = "") -> None:
         self.base_url = self._validate_url(url)
@@ -135,7 +137,9 @@ class ImmichClient:
             f"{self.base_url}{path}", data=data, headers=headers, method=method
         )
         with urllib_request.urlopen(req, timeout=self.timeout) as resp:
-            body = resp.read()
+            body = resp.read(self.response_byte_limit + 1) if self.response_byte_limit is not None else resp.read()
+            if self.response_byte_limit is not None and len(body) > self.response_byte_limit:
+                raise ValueError('Immich response exceeds the configured size limit')
         return json.loads(body) if body else None
 
     def ping(self) -> dict:

@@ -4,18 +4,56 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
-### Added
-
-- **Scores placed in the library.** Photo detail, the gallery side panel and the card score badge show where each score sits in the whole library: a sparkline of its distribution with this photo's bar lit, and "Top X% of the library" with the library range on hover or focus. Scores with no better end (ISO, aperture, face count…) show the range only.
-
 ### Changed
 
 - **The CPU Docker image pins torch.** It installs torch 2.11.0 and torchvision 0.26.0 from the CPU wheel index, the release the default CUDA image ships, instead of whatever the index serves on the day of the build. `CPU_TORCH_VERSION` and `CPU_TORCHVISION_VERSION` override them.
-- **The side panel is the default tooltip mode.** It now uses photo detail's layout, with the metrics in the same icon tabs (EXIF, Quality, Composition, Technical, Histogram), and both remember the same open tab. The **Hover** and **Click** bubbles are reduced to a glance: category, aggregate and its rank, four key scores and one EXIF line.
 
 ### Fixed
 
+- **Header and phone layouts no longer crush their controls.** Below 1680 px the secondary destinations move into a More menu, so the gallery search and Type selector keep their width and the culling filters stop scrolling; on phones the nav and culling bars lose their scrollbars, person rename boxes fit their tiles, long camera names no longer cut off the stats legend, and the photo page keeps room for the filename
+- **Stack browsing keeps the image in place.** Moving between known stack members preserves the thumbnail strip's measured space while fresh membership loads, without retaining old navigation controls.
+
+## [1.26.0] "Histogramme" — 2026-10-28
+
+### Added
+
+- **Manual photo stacks.** Group explicit photos behind a chosen cover, reorder or change membership, browse permitted members directly in the viewer with an ordered thumbnail strip, previous/next buttons and position counter, manage the stack separately and Undo organization changes without changing originals or review decisions. Gallery counts and whole-view selections include folded matching photos; stacks remain owner-private and survive rescans and relinking. Local assistant tools use the same permission and revision checks. A stack's cover carries a member-count badge on the card's bottom row (`viewer.badges.stack`) and an "Open photo stack" button in Customize card buttons.
+- **Previewed Immich stack import and push.** Local CLI plans require a reviewed digest before apply, create only fully mapped conflict-free groups, adopt exact matches and reconcile uncertain sends before retry. Existing stacks are never overwritten; no automatic sync or unstack propagation is added.
+- **Trash rejected photos from Culling.** Preview all rejected files, including hidden frames, and confirm moving them to the system trash without selecting photos individually. Apply rechecks the previewed file set and settings; changed previews are refused before writes, and partial failures require another preview. Oversized scopes explain the 10,000-photo limit and how to process smaller gallery batches. Navigation during Apply keeps its outcome visible; the dialog warns that shared files can be kept by other users.
+- **Scores placed in the library.** Photo detail, the gallery side panel and the card score badge show where each score sits in the whole library: a sparkline of its distribution with this photo's bar lit, and "Top X% of the library" with the library range on hover or focus. Scores with no better end (ISO, aperture, face count…) show the range only.
+- **Gallery and photo-page shortcuts are remappable.** User menu → Customize shortcuts opens a dialog where clicking an action and pressing a key reassigns it — favourite, reject, keep, search focus, the filter sidebar toggle and the grid/mosaic switch, stored per browser in `localStorage`. Every digit stays reserved (1–5 rate, 0 rejects), as do Space (selection) and `?` (the reference), and a key another action already holds is refused. The `?` shortcuts dialog, the Help dialog's gallery table and the focused-card hint always show the keys in effect.
+- **The running version in the user menu**, plus the `FACET_BUILD` build line when an image is built with it.
+- **Reset all filters from a notice.** While any gallery filter is on, a card in the floating notice stack (bottom right, beside the hidden-photos card) says how many are active and offers **Reset all filters**, the same reset as the sidebar button. Its × hides it for the tab until the set of active filters changes; it is not shown in an album view.
+
+- **Suggested photo stacks.** Editors review existing duplicate and burst groups within the current gallery filters one at a time: the focused frame is shown large and becomes the cover, `S` stacks, `X` skips, with progress and Undo. Skips are remembered per account until the group's photos change. The preview zooms with the wheel or a pinch and pans by dragging, as in photo detail; editing a suggestion's members down to a single photo offers **Skip this stack**. Suggestions preserve photo decisions and files.
+- **Stack from the darkroom.** In `/culling`, `S` (or the header button) stacks the open group with the focused frame as cover, without touching culling decisions.
+- **Immich diagnostics in the user menu.** Administrators can inspect a bounded path-mapping sample and explicitly test read-only connectivity without exposing API keys or modifying remote photos.
+- **Refresh selected photo previews and metadata.** Rebuild previews and read available source EXIF without rerunning AI or writing originals. Manual annotations stay intact; per-photo cache versions refresh gallery and detail images, and failed photos can be retried separately.
+- **The gallery notice stack folds itself away.** After six seconds without interaction the bottom-right cards collapse into a small count pill so they stop covering the grid; hovering the stack, a new or dismissed card, or a click on the pill unfolds it again with a fresh window. Keyboard focus on a card holds it open, a pill reached from the keyboard hands focus to the first card, and the countdown waits while the mobile filter drawer covers the stack. Returning from a photo restarts the countdown; nothing is persisted, the per-tab × dismissals work exactly as before, and the scroll-to-top button stays outside the collapse.
+- **The junk sweep shows its size.** The toolbar displays the candidate count for the current kind filter, counting down live as photos are kept or rejected, and a kind filter that comes up empty points back to **All kinds** instead of suggesting a rescan.
+
+### Changed
+
+- **Gallery sort is an icon button with a menu.** The desktop and mobile sort selects become a button showing the current sort's icon (tooltip `Sort by: <current sort>`), opening a grouped menu where every sort has a decorative icon or short model label, including relevance and My Taste, and the current one is checked. The direction toggle sits right beside it, followed by the filters button, and on small screens the scan button moves to the far right of the bottom bar.
+- **The tooltip-mode menu shows the current choice.** The tooltip-mode and side-panel activation menus tick the mode in force, the way the sort menu does, and screen readers announce them as radio choices.
+- **The side panel is the default tooltip mode.** It now uses photo detail's layout, with the metrics in the same icon tabs (EXIF, Quality, Composition, Technical, Histogram), and both remember the same open tab. The **Hover** and **Click** bubbles are reduced to a glance: category, aggregate and its rank, four key scores and one EXIF line.
+- **Gallery notices share one stack** (#371). Review progress and "Continue reviewing" join the hidden-photos and thumbnail-migration cards in the bottom-right stack; every card has a × that hides it for the browser tab until the notice changes, and focus moves to the next card.
+- **Correct capture date is easier to aim** (#371). Earlier/Later with day, hour, minute and second fields replace the signed seconds input, ±1 h and ±1 d quick buttons and "Set exact time" from a reference photo set the shift, a summary shows the reference photo's before → after, and the preview refreshes on its own.
+- **Header, photo detail and sidebar are tidier** (#371). Organization history joins the main navigation, the sort direction sits next to Sort by, Keep top N%, Download and Social crop are icon buttons, the capture date is edited from a calendar icon, the category explainer is a chevron in the chip, and the filter sidebar lists the advanced metric groups directly.
+
+### Fixed
+
+- **Suggested stack availability.** Similar Photos and semantic-search views no longer offer suggestions that their search scope cannot represent.
+- **TOPIQ scores 3:2 photos on Apple Silicon** (#377). On MPS, every photo whose bounded inference size had a side that was not a multiple of 32 (a 3:2 frame is scored at 1024×682) failed the quality pass, so a scan of a typical camera's JPEGs stored nothing. On MPS, TOPIQ's input is now centre-cropped to multiples of 32 (at most 31 px per axis); the other PyIQA models, and every model on CPU and CUDA, see the same pixels as before.
+- **Screen readers hear location search results and the culling skeleton** (#302). In the location editor, Enter in the address field runs the online search, the field is described by the privacy notice, the results list is named and the number of places found is announced. The culling page's loading skeleton announces "Loading" as text rather than an unread label.
+- **Keep keyboard arrows inside the visible photo stack.** Left/Right now follow the same members and boundaries as the stack buttons even when an exact photo list is active, without adding photos to that list. Handled arrow keys no longer trigger default browser movement.
+- **Refresh stack browsing after a history restore.** Reload membership for the open photo and discard older replies so restored or dissolved stacks do not leave stale navigation controls.
 - **The side panel no longer flickers open and closed.** A filter drawer animation event arriving after the drawer had already changed state flipped it back, in a loop.
+- **The Content sort group heading is translated.** It showed the raw key `sort_groups.content` in every language.
+
+### Security
+
+- **dnspython 2.9.0** (GHSA-45c3-73f7-pv4m, excessive CPU in `dns.name.from_wire_parser()`) in `requirements.lock.txt` and `requirements.legacy.lock.txt`. dnspython is pulled in only by `python-etcd`; Facet's code never imports either.
 
 ## [1.25.0] "Hyperfocale" — 2026-10-27
 

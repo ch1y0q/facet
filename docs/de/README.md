@@ -16,6 +16,7 @@ Copy-and-paste-Blöcken ab.
 | [Bewertung](SCORING.md) | Kategorien, Gewichte, Tuning-Anleitung |
 | [Gesichtserkennung](FACE_RECOGNITION.md) | Gesichts-Workflow, Clustering, Personenverwaltung |
 | [Viewer](VIEWER.md) | Funktionen und Nutzung der Web-Galerie |
+| [API](../API.md) | Referenz der HTTP-API des Viewers |
 | [Interop](INTEROP.md) | Bewertungen/Tags mit Lightroom, Capture One, digiKam, darktable austauschen |
 | [Immich](IMMICH.md) | Bewertungen und Favoriten mit Immich synchronisieren, plus der eingehende Webhook |
 | [Bereitstellung](DEPLOYMENT.md) | NAS, entfernte Server, HTTPS, Backups, Mehrbenutzerbetrieb |
@@ -25,10 +26,10 @@ Copy-and-paste-Blöcken ab.
 
 - **JPEG** (.jpg, .jpeg)
 - **HEIF/HEIC/HIF** (.heic, .heif, .hif) — erfordert `pillow-heif`; Canon-HDR-PQ-`.HIF`-Aufnahmen werden auf SDR-sRGB tone-gemappt
-- **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — übersprungen, wenn ein passendes JPEG/HEIC vorhanden ist
-- **PNG, GIF, WebP, BMP, TIFF** (.png, .gif, .webp, .bmp, .tif, .tiff) — 16-Bit-Graustufen werden auf 8 Bit skaliert, ein Alphakanal wird auf Weiß compositet, und animierte GIF/WebP werden anhand des ersten Frames bewertet; TIFF wird für den Browser in JPEG umgewandelt. PNG, WebP und TIFF enthalten EXIF, sofern das schreibende Programm es gespeichert hat; GIF und BMP können das nicht, daher bleiben bei diesen beiden `date_taken` sowie Kamera/Objektiv leer
-- **AVIF** (.avif) — erfordert ein Pillow, das mit AVIF-Unterstützung gebaut wurde (nativ ab `pillow>=11.3`); HDR-PQ-AVIF-Aufnahmen werden wie Canon-`.HIF` auf SDR-sRGB tone-gemappt; EXIF wird gelesen, wenn es vorhanden ist
-- **JPEG XL** (.jxl) — wird über die vorhandene Abhängigkeit `imagecodecs` in Standardinstallation und Docker dekodiert; kein Zusatzpaket nötig. Vorschauen verwenden 8-Bit-RGB ohne HDR-Tonemapping; bei animierten Dateien nur das erste Bild; gültiges EXIF wird gelesen. Rekonstruierte JPEGs behalten ICC-Farbmanagement; native JXL-Vorschauprofile sind über `imagecodecs` nicht verfügbar
+- **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — übersprungen, wenn ein passendes JPEG/HEIC vorhanden ist. Ein RAW, das LibRaw nicht dekodieren kann (ein Lightroom-Merge `-HDR.dng` / `-Pano.dng` oder eine Kamera, die neuer als LibRaw ist), wird über `exiftool` anhand seiner größten eingebetteten Vorschau bewertet; die Vorschau muss an der langen Kante mindestens 1024 px messen. Lightroom Classic 13+ speichert diese Vorschau als JPEG XL, das Facet direkt dekodiert
+- **PNG, GIF, WebP, BMP, TIFF** (.png, .gif, .webp, .bmp, .tif, .tiff) — 16-Bit-Graustufen werden auf 8 Bit skaliert, ein Alphakanal wird auf Weiß compositet, und animierte GIF/WebP werden anhand des ersten Frames bewertet. TIFF wird für den Browser in JPEG umgewandelt. PNG, WebP und TIFF enthalten EXIF, sofern das schreibende Programm es gespeichert hat; GIF und BMP können das nicht, daher bleiben bei diesen beiden `date_taken` sowie Kamera/Objektiv leer
+- **AVIF** (.avif) — erfordert ein Pillow, das mit AVIF-Unterstützung gebaut wurde (nativ ab `pillow>=11.3`); HDR-PQ-Aufnahmen werden auf SDR-sRGB tone-gemappt; EXIF wird gelesen, wenn es vorhanden ist
+- **JPEG XL** (.jxl) — funktioniert ohne Zusatzpaket über die Kernabhängigkeit `imagecodecs`, auch in Docker. HDR wird nicht tone-gemappt, animierte Dateien werden anhand des ersten Frames bewertet, und gültiges EXIF wird gelesen, wenn es vorhanden ist. Rekonstruierte JPEGs behalten ICC-Farbmanagement; native JXL-Farbprofile sind nicht verfügbar
 
 ## Häufige Fragen
 
@@ -36,6 +37,6 @@ Copy-and-paste-Blöcken ab.
 |-------|--------|
 | Welches Profil soll ich verwenden? | [Installation › Welches Profil passt zu meiner Hardware?](INSTALLATION.md#welches-profil-passt-zu-meiner-hardware) |
 | "externally-managed-environment" bei der Installation | Eine virtuelle Umgebung verwenden (oder Docker) — siehe [Installation](INSTALLATION.md) |
-| Langsame Verarbeitung | Das Profil prüfen; `--single-pass` kann bei den Profilen `legacy`/`8gb` mit viel VRAM helfen (außerhalb des kommerziellen Modus laufen `16gb`/`24gb` immer als Multi-Pass) |
+| Langsame Verarbeitung | Prüfen Sie das Profil. `--single-pass` kann bei den Profilen `legacy`/`8gb` mit viel VRAM helfen; `16gb`/`24gb` laufen immer als Multi-Pass (außer im kommerziellen Modus) |
 | Gesichtserkennung nutzt die GPU nicht | Führen Sie `python facet.py --doctor` aus (Abschnitt ONNX Runtime), installieren Sie dann `onnxruntime-gpu` anstelle von `onnxruntime`, nie daneben — siehe [Installation › ONNX Runtime für die Gesichtserkennung](INSTALLATION.md#onnx-runtime-für-die-gesichtserkennung) |
 | Fehlendes exiftool | Optional — siehe [Installation › exiftool](INSTALLATION.md#exiftool) |

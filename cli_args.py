@@ -412,6 +412,18 @@ Configuration:
     export_group.add_argument('--immich-test', action='store_true',
                         help='Test connectivity and authentication against the configured Immich server')
 
+    stacks_mode = export_group.add_mutually_exclusive_group()
+    stacks_mode.add_argument('--immich-stacks-plan', choices=('import', 'push'),
+                             help='Preview stack exchange; never changes local or remote groups')
+    stacks_mode.add_argument('--immich-stacks-apply', metavar='PLAN_JSON',
+                             help='Apply an explicit stack plan; requires --ack-stack-plan')
+    export_group.add_argument('--stack-plan-out', metavar='NEW_JSON',
+                              help='With --immich-stacks-plan: save a new private plan file')
+    export_group.add_argument('--ack-stack-plan', metavar='SHA256',
+                              help='With --immich-stacks-apply: acknowledge the exact plan digest')
+    export_group.add_argument('--stack-id', action='append', dest='immich_stack_ids', metavar='UUID',
+                              help='With --immich-stacks-plan: restrict to explicit local(push) or remote(import) IDs')
+
     # Culling
     cull_group = parser.add_argument_group('Culling')
     cull_group.add_argument('--auto-cull', type=str, nargs='?', const='all', metavar='PATH',

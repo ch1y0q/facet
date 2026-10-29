@@ -188,6 +188,42 @@ describe('GpsEditDialogComponent', () => {
       expect(mockSnackBar.open).not.toHaveBeenCalled();
     });
 
+    const onlineInput = (): HTMLInputElement => fixture.nativeElement.querySelector('input[aria-describedby="gps-online-notice"]');
+
+    it('describes the query by the privacy notice', () => {
+      expect(onlineInput().getAttribute('aria-describedby')).toBe('gps-online-notice');
+      expect(fixture.nativeElement.querySelector('#gps-online-notice')).not.toBeNull();
+    });
+
+    it('keeps the result-count live region in the DOM before any search', () => {
+      const regions = [...fixture.nativeElement.querySelectorAll('[role="status"].sr-only')] as HTMLElement[];
+      expect(regions.length).toBe(1);
+      expect(regions[0].textContent?.trim()).toBe('');
+    });
+
+    it.each([
+      [1, 'photo_detail.gps.online_results'], [2, 'photo_detail.gps.online_results_plural'],
+    ] as const)('searches on Enter and announces %i result(s) in a named list', async (count, key) => {
+      onlineInput().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+      request().flush({ results: Array.from({ length: count }, (_, i) => ({ label: `P${i}`, latitude: i, longitude: i })) });
+      await vi.waitFor(() => expect(component.onlineResults().length).toBe(count));
+      fixture.detectChanges();
+      const list: HTMLElement = fixture.nativeElement.querySelector('ul[aria-label="photo_detail.gps.online_results_label"]');
+      expect(list.querySelectorAll('li').length).toBe(count);
+      const region: HTMLElement = fixture.nativeElement.querySelector('[role="status"].sr-only');
+      expect(region.textContent).toContain(key);
+    });
+
+    it('does not search on the Enter that commits an IME composition', () => {
+      onlineInput().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true }));
+      http.expectNone(req => req.url === '/api/places/search');
+    });
+
+    it('does not search on the Enter Safari sends after committing an IME candidate', () => {
+      onlineInput().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 229 }));
+      http.expectNone(req => req.url === '/api/places/search');
+    });
+
     it('cancels an obsolete lookup on real navigation without reporting a failure', async () => {
       const pending = component.searchOnline(); const lookup = request();
       events.next(new NavigationStart(1, '/other'));

@@ -7,6 +7,7 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from db.preview_versions import attach_preview_versions_async
 from api.auth import CurrentUser, get_optional_user
 from api.config import VIEWER_CONFIG
 from api.database import get_async_db
@@ -63,7 +64,9 @@ async def _fetch_grouped_summaries_async(conn, from_clause, where_clauses, sql_p
     cursor = await conn.execute(query, sql_params)
     rows = await cursor.fetchall()
     await cursor.close()
-    return rows
+    summaries = [dict(row) for row in rows]
+    await attach_preview_versions_async(conn, summaries, 'hero_photo_path')
+    return summaries
 
 
 
@@ -288,7 +291,7 @@ async def api_timeline_dates(
             )
 
             dates = [
-                {'date': row['group_key'], 'count': row['cnt'], 'hero_photo_path': row['hero_photo_path']}
+                {'date': row['group_key'], 'count': row['cnt'], 'hero_photo_path': row['hero_photo_path'], 'preview_revision': row.get('preview_revision')}
                 for row in rows
             ]
 
@@ -335,7 +338,7 @@ async def api_timeline_years(
             )
 
             years = [
-                {'year': row['group_key'], 'count': row['cnt'], 'hero_photo_path': row['hero_photo_path']}
+                {'year': row['group_key'], 'count': row['cnt'], 'hero_photo_path': row['hero_photo_path'], 'preview_revision': row.get('preview_revision')}
                 for row in rows
             ]
 
@@ -379,7 +382,7 @@ async def api_timeline_months(
             )
 
             months = [
-                {'month': row['group_key'], 'count': row['cnt'], 'hero_photo_path': row['hero_photo_path']}
+                {'month': row['group_key'], 'count': row['cnt'], 'hero_photo_path': row['hero_photo_path'], 'preview_revision': row.get('preview_revision')}
                 for row in rows
             ]
 

@@ -82,6 +82,7 @@ class CullApplyResponse(BaseModel):
 
     action: str
     dry_run: bool
+    preview_digest: Optional[str] = None
     would_copy: Optional[list[str]] = None
     would_move: Optional[list[str]] = None
     would_trash: Optional[list[str]] = None
@@ -167,6 +168,7 @@ class FolderEntry(BaseModel):
     path: str
     photo_count: int
     cover_photo_path: Optional[str] = None
+    preview_revision: Optional[str] = None
 
 
 class FoldersResponse(BaseModel):

@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { Subject, of, throwError } from 'rxjs';
+import { NEVER, Subject, of, throwError } from 'rxjs';
+import { provideRouter } from '@angular/router';
+import { AuthService } from '../../core/services/auth.service';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ApiService } from '../../core/services/api.service';
@@ -7,6 +9,12 @@ import { I18nService } from '../../core/services/i18n.service';
 import { CullDialogComponent } from './cull-dialog.component';
 
 describe('CullDialogComponent', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({ providers: [
+      provideRouter([]),
+      { provide: AuthService, useValue: { identity: () => 'alice', isEdition: () => true } },
+    ] });
+  });
   let component: CullDialogComponent;
   let post: ReturnType<typeof vi.fn>;
   let dialogClose: ReturnType<typeof vi.fn>;
@@ -19,7 +27,7 @@ describe('CullDialogComponent', () => {
         { provide: ApiService, useValue: { post } },
         { provide: MatSnackBar, useValue: { open: vi.fn() } },
         { provide: I18nService, useValue: { t: (k: string) => k } },
-        { provide: MatDialogRef, useValue: { close: dialogClose } },
+        { provide: MatDialogRef, useValue: { close: dialogClose, beforeClosed: () => NEVER } },
         { provide: MAT_DIALOG_DATA, useValue: { paths, trashAvailable, allowTrash } },
       ],
     });
@@ -63,6 +71,28 @@ describe('CullDialogComponent', () => {
     expect(actions()).toContain('trash_rejects');
   });
 
+  it('a preset action is the only one offered and previews on open', () => {
+    post = vi.fn(() => of({ would_trash: ['/r.jpg'], skipped: [], matched: 1 }));
+    const filters = { show_rejected: '1' };
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: ApiService, useValue: { post } },
+        { provide: MatSnackBar, useValue: { open: vi.fn() } },
+        { provide: I18nService, useValue: { t: (k: string) => k } },
+        { provide: MatDialogRef, useValue: { close: vi.fn(), beforeClosed: () => NEVER } },
+        { provide: MAT_DIALOG_DATA,
+          useValue: { paths: [], filters, trashAvailable: true, action: 'trash_rejects' } },
+      ],
+    });
+    component = TestBed.runInInjectionContext(() => new CullDialogComponent());
+
+    expect(actions()).toEqual(['trash_rejects']);
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledWith('/cull/apply', expect.objectContaining({
+      action: 'trash_rejects', filters, dry_run: true, include_companions: false,
+    }));
+  });
+
   describe('trash availability message', () => {
     function buildRendered(trashAvailable?: boolean, allowTrash?: boolean) {
       TestBed.configureTestingModule({
@@ -71,7 +101,7 @@ describe('CullDialogComponent', () => {
           { provide: ApiService, useValue: { post: vi.fn(() => of({ would_copy: [], skipped: [] })) } },
           { provide: MatSnackBar, useValue: { open: vi.fn() } },
           { provide: I18nService, useValue: { t: (k: string) => k, translations: () => ({}) } },
-          { provide: MatDialogRef, useValue: { close: vi.fn() } },
+          { provide: MatDialogRef, useValue: { close: vi.fn(), beforeClosed: () => NEVER } },
           { provide: MAT_DIALOG_DATA, useValue: { paths: ['/a.jpg'], trashAvailable, allowTrash } },
         ],
       });
@@ -117,6 +147,7 @@ describe('CullDialogComponent', () => {
   it('apply posts dry_run=false and closes with true', async () => {
     build();
     set('targetDir', '/dest');
+    await component.runPreview();
     await component.apply();
     expect(post).toHaveBeenCalledWith('/cull/apply', expect.objectContaining({ dry_run: false }));
     expect(dialogClose).toHaveBeenCalledWith(true);
@@ -125,6 +156,7 @@ describe('CullDialogComponent', () => {
   it('does not close on apply error', async () => {
     build();
     set('targetDir', '/dest');
+    await component.runPreview();
     post.mockReturnValueOnce(throwError(() => new Error('boom')));
     await component.apply();
     expect(dialogClose).not.toHaveBeenCalled();
@@ -133,6 +165,7 @@ describe('CullDialogComponent', () => {
   it('surfaces the server-supplied reason in the dialog on apply failure', async () => {
     build();
     set('targetDir', '/dest');
+    await component.runPreview();
     post.mockReturnValueOnce(throwError(() => ({
       error: { detail: 'target_dir is not an allowed export location. Configure viewer.export.allowed_target_dirs' },
     })));
@@ -145,14 +178,26 @@ describe('CullDialogComponent', () => {
   it('surfaces the server-supplied reason in the dialog on preview failure', async () => {
     build();
     set('targetDir', '/dest');
+    await component.runPreview();
     post.mockReturnValueOnce(throwError(() => ({ error: { detail: 'no allowed roots configured' } })));
     await component.runPreview();
     expect(read<string | null>('errorDetail')).toBe('no allowed roots configured');
   });
 
+  it('preserves the server cap detail for ordinary filtered previews', async () => {
+    build();
+    set('targetDir', '/dest');
+    post.mockReturnValueOnce(throwError(() => ({ status: 412,
+      error: { detail: 'This view holds 10001 photos. Narrow the filters and try again.' } })));
+    await component.runPreview();
+    expect(read<string | null>('errorDetail')).toBe(
+      'This view holds 10001 photos. Narrow the filters and try again.');
+  });
+
   it('falls back to null errorDetail when the error has no detail', async () => {
     build();
     set('targetDir', '/dest');
+    await component.runPreview();
     post.mockReturnValueOnce(throwError(() => new Error('boom')));
     await component.apply();
     expect(read<string | null>('errorDetail')).toBeNull();
@@ -161,6 +206,7 @@ describe('CullDialogComponent', () => {
   it('clears a prior errorDetail on a new attempt', async () => {
     build();
     set('targetDir', '/dest');
+    await component.runPreview();
     post.mockReturnValueOnce(throwError(() => ({ error: { detail: 'first failure' } })));
     await component.apply();
     expect(read<string | null>('errorDetail')).toBe('first failure');
@@ -214,7 +260,7 @@ describe('CullDialogComponent', () => {
           { provide: ApiService, useValue: { post } },
           { provide: MatSnackBar, useValue: { open: vi.fn() } },
           { provide: I18nService, useValue: { t: (k: string) => k } },
-          { provide: MatDialogRef, useValue: { close: dialogClose } },
+          { provide: MatDialogRef, useValue: { close: dialogClose, beforeClosed: () => NEVER } },
           { provide: MAT_DIALOG_DATA, useValue: { paths, filters, exclude, count } },
         ],
       });
@@ -238,6 +284,7 @@ describe('CullDialogComponent', () => {
       buildFiltered({ camera: 'Canon' }, ['/skip.jpg'], 650);
       set('targetDir', '/dest');
 
+      await component.runPreview();
       await component.apply();
 
       expect(post).toHaveBeenCalledWith('/cull/apply', expect.objectContaining({
@@ -263,7 +310,7 @@ describe('CullDialogComponent', () => {
           { provide: ApiService, useValue: { post } },
           { provide: MatSnackBar, useValue: { open: vi.fn() } },
           { provide: I18nService, useValue: { t: (k: string) => k, translations: () => ({}) } },
-          { provide: MatDialogRef, useValue: { close: vi.fn() } },
+          { provide: MatDialogRef, useValue: { close: vi.fn(), beforeClosed: () => NEVER } },
           { provide: MAT_DIALOG_DATA, useValue: { paths } },
         ],
       });

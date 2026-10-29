@@ -16,6 +16,7 @@ copiar e colar.
 | [Pontuação](SCORING.md) | Categorias, pesos, guia de ajuste |
 | [Reconhecimento Facial](FACE_RECOGNITION.md) | Fluxo de trabalho de rostos, agrupamento, gerenciamento de pessoas |
 | [Visualizador](VIEWER.md) | Recursos e uso da galeria web |
+| [API](../API.md) | Referência da API HTTP do visualizador |
 | [Interoperabilidade](INTEROP.md) | Trocar classificações/tags com Lightroom, Capture One, digiKam, darktable |
 | [Immich](IMMICH.md) | Sincronizar avaliações e favoritos com o Immich, além do webhook de entrada |
 | [Implantação](DEPLOYMENT.md) | NAS, servidores remotos, HTTPS, backups, multiusuário |
@@ -25,10 +26,10 @@ copiar e colar.
 
 - **JPEG** (.jpg, .jpeg)
 - **HEIF/HEIC/HIF** (.heic, .heif, .hif) — requer `pillow-heif`; fotos `.HIF` Canon HDR PQ são convertidas (tone mapping) para sRGB SDR
-- **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — pulado quando existe um JPEG/HEIC correspondente
-- **PNG, GIF, WebP, BMP, TIFF** (.png, .gif, .webp, .bmp, .tif, .tiff) — a escala de cinza de 16 bits é convertida para 8 bits, um canal alfa é composto sobre branco, e GIF/WebP animados são pontuados pelo primeiro quadro; o TIFF é convertido para JPEG para o navegador. PNG, WebP e TIFF contêm EXIF quando o programa que os gravou o armazenou; GIF e BMP não podem, então para esses dois `date_taken` e câmera/lente ficam vazios
-- **AVIF** (.avif) — precisa de um Pillow compilado com suporte a AVIF (nativo a partir de `pillow>=11.3`); fotos AVIF HDR PQ são convertidas (tone mapping) para sRGB SDR, como os `.HIF` Canon; o EXIF é lido quando está presente
-- **JPEG XL** (.jxl) — descodificado pela dependência existente `imagecodecs` nas instalações padrão e no Docker; não precisa de pacote adicional. As pré-visualizações usam RGB de 8 bits sem mapeamento de tons HDR; animações usam apenas o primeiro quadro e o EXIF válido é lido. Os JPEG reconstruídos mantêm a gestão ICC; o `imagecodecs` não disponibiliza os perfis das pré-visualizações JXL nativas
+- **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — pulado quando existe um JPEG/HEIC correspondente. Um RAW que o LibRaw não consegue decodificar (uma mesclagem `-HDR.dng` / `-Pano.dng` do Lightroom ou uma câmera mais nova que o LibRaw) é pontuado a partir da maior pré-visualização incorporada, via `exiftool`; a pré-visualização precisa ter pelo menos 1024 px no lado maior. O Lightroom Classic 13+ armazena essa pré-visualização como JPEG XL, que o Facet decodifica diretamente
+- **PNG, GIF, WebP, BMP, TIFF** (.png, .gif, .webp, .bmp, .tif, .tiff) — a escala de cinza de 16 bits é convertida para 8 bits, um canal alfa é composto sobre branco, e GIF/WebP animados são pontuados pelo primeiro quadro. O TIFF é convertido para JPEG para o navegador. PNG, WebP e TIFF contêm EXIF quando o programa que os gravou o armazenou; GIF e BMP não podem, então `date_taken` e câmera/lente ficam vazios para eles
+- **AVIF** (.avif) — precisa de um Pillow compilado com suporte a AVIF (nativo a partir de `pillow>=11.3`); fotos HDR PQ são convertidas (tone mapping) para sRGB SDR; o EXIF é lido quando está presente
+- **JPEG XL** (.jxl) — funciona de imediato pela dependência principal `imagecodecs`, inclusive no Docker. O HDR não passa por tone mapping, arquivos animados são pontuados pelo primeiro quadro e o EXIF válido é lido quando presente. Os JPEG reconstruídos mantêm a gestão de cor ICC; os perfis de cor JXL nativos não estão disponíveis
 
 ## Perguntas frequentes
 

@@ -108,7 +108,7 @@ class TestAllowlist:
                      "/api/comparison/category_weights", "/api/comparison/preview_score",
                      # the optimizer's suggestion (stores nothing), the snapshot list and the recompute status
                      "/api/comparison/learned_weights", "/api/comparison/confidence", "/api/config/weight_snapshots",
-                     "/api/scan/recompute_status")
+                     "/api/scan/recompute_status", "/api/organization_history")
     ALLOWED_PREFIXED = ("/api/scan/start", "/api/scan/status", "/api/scan/directories", "/api/config/scoring_contexts",
                         "/api/config/weight_snapshots", "/api/config/update_weights", "/api/config/restore_weights",
                         "/api/scan/recompute", "/api/scan/recompute_status")

@@ -4,9 +4,11 @@ Facet is a photo analysis engine with a Python/FastAPI backend and an Angular 22
 
 ## Development Setup
 
+Fork the repository on GitHub, then:
+
 ```bash
-# Clone and set up Python environment
-git clone git@github.com:ncoevoet/facet.git
+# Clone your fork and set up the Python environment
+git clone https://github.com/<you>/facet.git
 cd facet
 bash install.sh          # venv/, PyTorch for your GPU, deps, Angular build
 source venv/bin/activate
@@ -24,103 +26,96 @@ python facet.py --doctor
 Prefer to set the environment up yourself? See
 [Installation › Install by hand](docs/INSTALLATION.md#install-by-hand-without-installsh).
 
+Using an AI coding assistant? Point it at [`AGENTS.md`](AGENTS.md) and [`CLAUDE.md`](CLAUDE.md):
+they collect the project rules and the feedback that comes up most in review.
+
 ## Architecture Overview
 
 | Directory | Responsibility |
 |-----------|---------------|
 | `facet.py` | Main CLI entry point, `ModelManager` (VRAM-aware model loading), `BatchProcessor` (GPU batching) |
-| `api/` | FastAPI application. Routers live in `api/routers/` (gallery, faces, albums, search, critique, etc.). Pydantic types in `api/types.py` and `api/models/`. |
-| `config/` | `ScoringConfig` (weights/thresholds from `scoring_config.json`), `CategoryFilter` (rule evaluation), `PercentileNormalizer` |
-| `models/` | Vision model wrappers: TOPIQ, CLIP, SigLIP, VLM taggers (Qwen), SAMP-Net (composition), BiRefNet (saliency) |
-| `processing/` | Scoring pipeline: `batch_processor` (continuous GPU inference), `multi_pass` (pass orchestration), `scorer` (aggregate calculation) |
+| `api/` | FastAPI application. Routers in `api/routers/`, Pydantic types in `api/types.py` and `api/models/` |
+| `config/` | `ScoringConfig` (weights/thresholds from `scoring_config.json`), `CategoryFilter`, `PercentileNormalizer` |
+| `models/` | Vision model wrappers: TOPIQ, CLIP, SigLIP, VLM taggers (Qwen), SAMP-Net, BiRefNet |
+| `processing/` | Scoring pipeline: `batch_processor`, `multi_pass` (pass orchestration), `scorer` (aggregates) |
 | `analyzers/` | Technical metrics, face analysis, composition analysis |
-| `faces/` | Face detection (`processor`), HDBSCAN clustering (`clusterer`), merge analysis |
+| `faces/` | Face detection, HDBSCAN clustering, merge analysis |
 | `db/` | SQLite schema, connection pool, stats cache, maintenance utilities |
 | `utils/` | Image loading, burst detection, duplicate detection, embedding helpers |
 | `i18n/` | Translations for 7 languages (`en`, `fr`, `de`, `es`, `it`, `pt`, `zh`) |
-| `client/` | Angular 22 SPA with standalone components and signal-based state management |
+| `client/` | Angular 22 SPA with standalone components and signal-based state |
 
 Other entry points: `viewer.py` (FastAPI server), `database.py` (schema migrations, stats, optimization).
 
-## Adding a New Scoring Metric
+## Common Changes
 
-Follow the checklist at [`.claude/patterns/new-metric-checklist.md`](.claude/patterns/new-metric-checklist.md). The high-level steps:
-
-1. **Schema** -- Add column in `db/schema.py`
-2. **Scorer** -- Wire into `processing/scorer.py` aggregate calculation
-3. **Config** -- Add to `VALID_WEIGHT_COLUMNS` in `config/scoring_config.py` and set weights in `config/scoring_config.default.json` (the tracked defaults; `scoring_config.json` is the operator's untracked override)
-4. **Model** -- Add loader in `models/model_manager.py`, register pass in `processing/multi_pass.py`
-5. **API** -- Add range filter in `api/routers/gallery.py`
-6. **Client** -- Add to photo model, tooltip, gallery store, filter sidebar, and sort options
-7. **i18n** -- Add keys in all 6 translation files
-
-## Adding a New API Endpoint
-
-1. Create a router file in `api/routers/` (follow existing patterns, e.g., `api/routers/albums.py`)
-2. Register the router in `api/__init__.py`
-3. Define request/response models in `api/types.py` or `api/models/`
-4. Add any user-facing strings to all 6 files in `i18n/translations/` using full dot-path keys (e.g., `ui.buttons.export`, not `buttons.export`)
+- **New scoring metric** — follow [`.claude/patterns/new-metric-checklist.md`](.claude/patterns/new-metric-checklist.md) (schema, scorer, config, model pass, API filter, client, i18n).
+- **New API endpoint** — add a router in `api/routers/` (e.g. `albums.py`), register it in `api/__init__.py`, define models in `api/types.py` or `api/models/`, then run `cd client && npm run gen:api` and commit the regenerated `schema.d.ts`.
+- **New or renamed UI strings** — update all 7 files in `i18n/translations/`, then `cd client && npm run gen:i18n`. See [`.claude/patterns/i18n-sync.md`](.claude/patterns/i18n-sync.md).
 
 ## Code Style
 
 ### Python
 
-- No backward-compatibility fallbacks. When renaming config keys, methods, or APIs, update all references and remove old names entirely.
-- Use structured logging (the `logging` module), never `print()`.
+- No backward-compatibility fallbacks. When renaming config keys, methods or APIs, update every reference and remove the old name.
+- Use the `logging` module, never `print()`.
 - Type hints on function signatures.
 
 ### Angular
 
-- Pure Tailwind CSS utilities only. Never define custom CSS classes in component `styles`.
-- Use Angular `host` property for `:host` styling (e.g., `host: { class: 'block h-full' }`).
-- Use pipes for template data transformation, not method calls (avoids unnecessary change detection).
-- Prefer signals and `computed()` over RxJS for component state.
-- Standalone components throughout.
+- Tailwind CSS utilities only; no custom CSS classes in component `styles`. Use the `host` property for `:host` styling (e.g. `host: { class: 'block h-full' }`).
+- Use pipes in templates, not method calls.
+- Prefer signals and `computed()` over RxJS for component state. Standalone components throughout.
+- Icon-only buttons need an `aria-label` (CI checks this). Never use a raw i18n key as a label; translate it.
+- Show dates as `dd/MM/yyyy`.
 
 ### i18n
 
-- Translation keys use the full dot-path from the JSON root: `ui.buttons.remove`, not `buttons.remove`.
-- When adding or renaming strings, update all 6 language files. See [`.claude/patterns/i18n-sync.md`](.claude/patterns/i18n-sync.md).
+- Keys use the full dot-path from the JSON root: `ui.buttons.remove`, not `buttons.remove`.
+- Every key exists in all 7 language files.
 
-## Testing
+## Tests
 
-- **Angular**: Vitest (`cd client && npm test`)
-- **Python**: pytest (`pytest`)
-- **System diagnostics**: `python facet.py --doctor` (checks Python, GPU, dependencies, config, database)
+- **A new test must fail when your fix is removed.** Check it: revert the fix, see the test fail, restore. Tests that only check a response's shape, or mock away the code they claim to cover, are sent back.
+- Build test databases with `db.schema.init_database` or the `seeded_photos` / `seed_photos_prefix` fixtures in `tests/conftest.py`, never a hand-written `CREATE TABLE photos`. See [`.claude/patterns/test-fixtures.md`](.claude/patterns/test-fixtures.md).
+- For auth, use the `edition_client` / `regular_client` / `superadmin_client` / `anonymous_client` fixtures or `app.dependency_overrides`, never `mock.patch` on a FastAPI dependency (it silently does nothing).
 
-## Pre-commit Hooks
+## Before You Open a PR
 
-Local hooks mirror the fast CI lint guards (ruff + the FastAPI auth-mock check)
-so failures surface before push:
+Run what CI runs:
+
+```bash
+venv/bin/python -m ruff check .
+venv/bin/python -m pytest tests/ -q
+python scripts/check_mypy_ratchet.py     # from a venv holding only mypy
+python scripts/audit_i18n.py             # translation bundles match en.json
+
+cd client
+npm test
+npx ng lint
+npx tsc --noEmit -p tsconfig.app.json && npx tsc --noEmit -p tsconfig.spec.json
+npm run gen:api && npm run gen:i18n      # commit any change these produce
+```
+
+Typecheck the two projects above, not the root `tsconfig.json`: it compiles nothing and always passes.
+
+Optional local hooks run ruff, the auth-mock guard and the commit-message guard (no `Claude-Session:` or
+`Co-Authored-By: Claude` trailers; CI rejects them too):
 
 ```bash
 pip install pre-commit
-pre-commit install
-```
-
-CI also runs `mypy api/` as a blocking ratchet: the build fails when the error
-count rises above the baseline in `mypy-baseline.txt` (currently 0). Run it locally with
-`python scripts/check_mypy_ratchet.py` from a venv holding only mypy.
-
-A `commit-msg` guard (`.githooks/commit-msg`) rejects commit messages that
-contain Claude session links or AI attribution trailers (`Claude-Session:`,
-`Co-Authored-By: Claude`, ...); CI enforces the same rule on every push and PR.
-Register it through pre-commit:
-
-```bash
 pre-commit install --hook-type pre-commit --hook-type commit-msg
 ```
 
-or, if you do not use pre-commit:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-Pick one — `pre-commit install` refuses to run while `core.hooksPath` is set.
+Without pre-commit, use `git config core.hooksPath .githooks` instead. Pick one: `pre-commit install` refuses
+to run while `core.hooksPath` is set.
 
 ## Pull Requests
 
-- Branch from `master`.
-- Keep PRs focused on a single concern.
-- Rebuild the Angular client (`cd client && npm run build`) before submitting if you changed frontend code.
+- Branch from `master`. Keep each PR to a single concern.
+- Update the English docs in `docs/` when you change behaviour.
+- If you changed frontend code, rebuild the Angular client (`cd client && npm run build`) before submitting.
+- Add a `CHANGELOG.md` entry under `## [Unreleased]`, in the matching section (`### Added`, `### Fixed`, ...).
+- **Don't edit the translated docs** (`docs/<lang>/`, `README.<lang>.md`). The maintainer updates the translations.
+- Leave **Allow edits by maintainers** on. The maintainer may push fixes to your branch, so pull before pushing again, and never force-push.
+- CI on a fork waits for maintainer approval before it runs. A PR is merged once every required check is green on its latest commit.

@@ -8,6 +8,8 @@ import { Album } from '../../core/services/album.service';
 import { i18nKeys } from '../../core/i18n/keys';
 
 export type SheetAction =
+  | { kind: 'refresh' }
+  | { kind: 'stack' }
   | { kind: 'favorite' }
   | { kind: 'reject' }
   | { kind: 'review'; decision: 'kept' | 'undecided' }
@@ -34,6 +36,8 @@ export interface GalleryActionsSheetData {
   downloadProfiles: string[];
   /** Whether the selection size is within the compare surface's pane bounds. */
   canCompare: boolean;
+  canStack?: boolean;
+  viewScoped?: boolean;
   /** Gates the delete entry -- `_cull_capabilities.trash_available`, never the
    *  raw `allow_trash` flag (a button gated on that alone would 400 on an
    *  install where the flag is on but `send2trash` isn't installed). */
@@ -54,7 +58,14 @@ export interface GalleryActionsSheetData {
         </button>
       </div>
 
+      @if (data.viewScoped) { <p class="px-4 py-2 text-sm">{{ I18N.stacks.folded_scope | translate }}</p> }
       @if (data.isEdition) {
+        <button mat-button [disabled]="data.viewScoped || data.count > 100" (click)="pick({ kind: 'refresh' })">
+          <mat-icon>refresh</mat-icon>{{ I18N.photo_refresh.title | translate }}
+        </button>
+        <button class="flex items-center gap-3 w-full px-4 py-3 text-sm text-left hover:bg-white/10 cursor-pointer disabled:opacity-40" (click)="pick({ kind: 'stack' })" [disabled]="!data.canStack">
+          <mat-icon aria-hidden="true">photo_library</mat-icon>{{ I18N.stacks.create | translate }}
+        </button>
         <button class="flex items-center gap-3 w-full px-4 py-3 text-sm text-left hover:bg-white/10 cursor-pointer" (click)="pick({ kind: 'favorite' })">
           <mat-icon aria-hidden="true">favorite</mat-icon>
           {{ I18N.gallery.selection.favorite | translate }}

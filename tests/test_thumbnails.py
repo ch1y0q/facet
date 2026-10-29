@@ -565,7 +565,7 @@ class TestThumbnailRenderedFromOriginal:
         class TimingOutFlight(Future):
             def result(self, timeout=None):
                 raise Py310FuturesTimeout()
-        key = (thumbnails.resolve_photo_disk_path(str(path)), os.path.getmtime(path), None)
+        key = (thumbnails.resolve_photo_disk_path(str(path)), os.path.getmtime(path), None, None)
         with mock.patch.object(thumbnails, "FuturesTimeoutError", Py310FuturesTimeout), \
                 mock.patch.dict(thumbnails._render_inflight, {key: TimingOutFlight()}), \
                 mock.patch("api.raw_processing.load_viewer_image") as load:
@@ -581,7 +581,7 @@ class TestThumbnailRenderedFromOriginal:
         """_render_from_original checks first, so only a direct call reaches the leader's recheck."""
         from api.routers import thumbnails
         path = photo(name="photo.png", original=_make_jpeg_bytes((3000, 2000)))
-        key = (thumbnails.resolve_photo_disk_path(str(path)), os.path.getmtime(path), None)
+        key = (thumbnails.resolve_photo_disk_path(str(path)), os.path.getmtime(path), None, None)
         thumbnails._no_signal_renders[key] = True
         with mock.patch("api.raw_processing.load_viewer_image") as load:
             assert thumbnails._coalesced_render(key) is None
@@ -697,7 +697,7 @@ class TestImage:
         raw_file.write_bytes(b"not a real raw file")
 
         mock_conn = mock.MagicMock()
-        photo_row = {"path": "/library/photo.cr2", "sequence_kind": None}
+        photo_row = {"path": "/library/photo.cr2", "sequence_kind": None, "preview_revision": None}
         thumbnail_row = {"thumbnail": jpeg_bytes}
         mock_conn.execute.side_effect = [
             mock.Mock(fetchone=mock.Mock(return_value=photo_row)),
@@ -725,7 +725,7 @@ class TestImage:
         raw_file.write_bytes(b"not a real raw file")
 
         mock_conn = mock.MagicMock()
-        photo_row = {"path": "/library/photo.cr2", "sequence_kind": None}
+        photo_row = {"path": "/library/photo.cr2", "sequence_kind": None, "preview_revision": None}
         mock_conn.execute.return_value.fetchone.return_value = photo_row
 
         with mock.patch("api.routers.thumbnails.get_db", _cm(mock_conn)), \

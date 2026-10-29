@@ -2035,24 +2035,27 @@ _LOCK_EXEMPT_WRITERS = {
              "daemon itself must not hold it for days",
     "auto_cull": "takes the library lock itself, only with --apply, and reuses the scan lock "
                  "in scan-then-cull",
+    "immich_stacks_apply": "uses short transactions for explicit stack membership, history and "
+                           "exchange receipts, like the viewer's stack edits; no photo rewrite "
+                           "or SQLite write lock across remote requests",
 }
 
 _JOB_MODIFIERS = frozenset({
-    "apply", "apply_recommendations", "candidates", "config", "copy_keepers", "cull_group_by",
+    "ack_stack_plan", "apply", "apply_recommendations", "candidates", "config", "copy_keepers", "cull_group_by",
     "cull_min_keep", "cull_min_score", "cull_strictness", "cull_trim_brackets", "db",
     "discover_min_cluster_size", "dry_run", "eval_out",
     "dry_run_count", "embed_originals", "force", "force_library_lock", "force_low_space",
-    "force_since", "limit", "merge_threshold", "optimize_category", "optimize_force",
+    "force_since", "immich_stack_ids", "limit", "merge_threshold", "optimize_category", "optimize_force",
     "optimize_sources", "overwrite_manual_gps", "overwrite_sidecar_review", "ranker_category", "refresh_thumbnails_workers", "resume",
     "retry_failed", "score_to_stars", "reconcile_keywords", "sidecar_fields", "sidecar_naming",
-    "simulate", "simulate_gpu", "simulate_vram", "single_pass", "single_pass_name",
+    "simulate", "simulate_gpu", "simulate_vram", "single_pass", "single_pass_name", "stack_plan_out",
     "train_keeper_force", "train_ranker_force", "user", "verbose", "watch_debounce",
 })
 
 _READ_ONLY_LIBRARY_COMMANDS = frozenset({
     "auto_tune_categories", "check_raw_rendering", "comparison_stats", "doctor",
     "eval_iqa_srcc", "evaluate_models", "export_csv",
-    "export_json", "export_manifest", "immich_sync", "immich_test", "list_models",
+    "export_json", "export_manifest", "immich_stacks_plan", "immich_sync", "immich_test", "list_models",
     "mine_insights", "report_unreviewed_bursts", "suggest_person_merges",
     "sweep_dedup_thresholds", "validate_categories",
 })
