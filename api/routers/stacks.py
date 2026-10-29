@@ -92,7 +92,12 @@ def preview_stack_regroup(body: StackRegroupPreviewRequest, response: Response,
     try:
         with get_db() as conn, conn:
             conn.execute('BEGIN')
-            return stack_regroup.preview_regroup(conn, stack_owner(user.user_id), body.selected_paths, body.mode, **_scope(user))
+            result = stack_regroup.preview_regroup(conn, stack_owner(user.user_id), body.selected_paths, body.mode, **_scope(user))
+            # Caller permissions are presentation, independent of the membership token.
+            editable = user.is_edition
+            for source in result['source_stacks']:
+                source['editable'] = editable
+            return result
     except stacks.StackError as exc:
         raise HTTPException(exc.status, str(exc), headers={'Cache-Control': 'no-store'}) from exc
 

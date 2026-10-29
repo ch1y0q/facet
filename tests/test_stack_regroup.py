@@ -394,6 +394,34 @@ def test_regroup_response_schema_requires_authoritative_fields(http_client):
     assert set(schemas['StackRegroupMutation']['required']) == {'stack', 'undo', 'affected_paths', 'changed'}
 
 
+def test_preview_editability_matches_get_and_token_survives_edition_login(conn, http_client):
+    original = create(conn, ['a', 'b', 'c'], owner='')
+    reader = http_client(CurrentUser(user_id='alice'))
+    editor = http_client(CurrentUser(user_id='alice', edition_authenticated=True))
+    request = {'selected_paths': ['a', 'd'], 'mode': 'selected'}
+    before = state(conn)
+    drafts = []
+    for client, editable in [(reader, False), (editor, True)]:
+        response = client.post('/api/stacks/regroup/preview', json=request)
+        assert response.status_code == 200, response.text
+        draft = response.json()
+        stored = client.get('/api/stacks/' + original['id'])
+        assert stored.status_code == 200, stored.text
+        assert draft['source_stacks'][0]['editable'] is editable
+        assert draft['source_stacks'][0] == stored.json()
+        drafts.append(draft)
+    assert state(conn) == before
+    assert drafts[0]['expected_state'] == drafts[1]['expected_state']
+    apply_request = {**request, 'paths': ['a', 'd'], 'cover_path': 'a',
+                     'expected_state': drafts[0]['expected_state']}
+    assert reader.post('/api/stacks/regroup/apply', json=apply_request).status_code == 403
+    assert state(conn) == before
+    response = editor.post('/api/stacks/regroup/apply', json=apply_request)
+    assert response.status_code == 200, response.text
+    assert response.json()['changed'] is True
+    assert member_paths(response.json()['stack']) == ['a', 'd']
+
+
 def test_http_undo_refuses_intervening_residual_edit_atomically(conn, http_client):
     client = http_client(CurrentUser(user_id='alice', edition_authenticated=True))
     original = create(conn, ['a', 'b', 'c'], owner='')
