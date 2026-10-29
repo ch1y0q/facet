@@ -596,23 +596,29 @@ def test_http_excluded_sources_leave_identical_stack_unchanged(conn, http_client
 
 @pytest.mark.skipif(not hasattr(sqlite3.Connection, 'setlimit'),
                     reason='Python 3.10 cannot lower the SQLite connection variable limit')
-def test_regroup_http_reserves_legacy_bindings_through_preview_apply_and_undo(conn, http_client, monkeypatch):
+@pytest.mark.parametrize(('grants', 'source_count'), [(350, 299), (499, 2)])
+def test_regroup_http_reserves_legacy_bindings_through_preview_apply_and_undo(
+        conn, http_client, monkeypatch, grants, source_count):
     from api import config, db_helpers
     from api.routers import stacks as routes
 
-    paths = [f'/regroup-budget/visible/{i:04}.jpg' for i in range(598)]
+    paths = [f'/regroup-budget/visible/{i:04}.jpg' for i in range(source_count * 2)]
     hidden = '/regroup-budget/hidden/member.jpg'
     with conn:
         conn.executemany('INSERT INTO photos(path) VALUES (?)', [(p,) for p in [*paths, hidden]])
         for index in range(0, len(paths), 2):
             stacks.create_stack(conn, 'alice', paths[index:index + 2], paths[index])
+        other = stacks.create_stack(conn, 'bob', [paths[0], hidden], paths[0])['stack']
+    other_before = stacks.get_stack(conn, 'bob', other['id'])
     monkeypatch.setattr(db_helpers, 'is_multi_user_enabled', lambda: True)
     monkeypatch.setattr(db_helpers, '_CASE_INSENSITIVE_HOST', False)
     monkeypatch.setattr(routes, 'is_multi_user_enabled', lambda: True)
-    monkeypatch.setitem(config._FULL_CONFIG, 'users', {'alice': {'directories': [
-        '/regroup-budget/visible/', *[f'/regroup-budget/unrelated-{i}/' for i in range(349)]]}})
+    directories = ['/regroup-budget/visible/',
+                   *[f'/regroup-budget/unrelated-{i}/' for i in range(grants - 1)]]
+    monkeypatch.setitem(config._FULL_CONFIG, 'users', {
+        owner: {'directories': directories} for owner in ('alice', 'bob')})
     clause, params = db_helpers.get_visibility_clause('alice')
-    assert len(params) == 700
+    assert len(params) == grants * 2
     conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999)
     assert conn.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER) == 999
     # Confirm that the test connection really enforces the legacy ceiling.
@@ -620,7 +626,7 @@ def test_regroup_http_reserves_legacy_bindings_through_preview_apply_and_undo(co
         conn.execute('SELECT 1 WHERE 1 IN (' + ','.join('?' for _ in range(1000)) + ')', [1] * 1000)
     client = http_client(CurrentUser(user_id='alice', role='admin', edition_authenticated=True))
     selected = paths[::2]
-    assert len(selected) == 299
+    assert len(selected) == source_count
     first = stacks.get_stack_by_photo(conn, 'alice', paths[0], visibility_sql=clause, visibility_params=params)
     assert member_paths(first) == paths[:2]
     before = state(conn)
@@ -628,14 +634,21 @@ def test_regroup_http_reserves_legacy_bindings_through_preview_apply_and_undo(co
     assert response.status_code == 200, response.text
     draft = response.json()
     assert draft['paths'] == draft['affected_paths'] == paths
-    assert len(draft['source_stacks']) == 299
+    assert len(draft['source_stacks']) == source_count
+    assert other['id'] not in [source['id'] for source in draft['source_stacks']]
+    assert hidden not in response.text
+    assert client.get('/api/stacks/' + other['id']).json() is None
     assert state(conn) == before
     request = {key: draft[key] for key in ('selected_paths', 'mode', 'paths', 'cover_path', 'expected_state')}
+    other_client = http_client(CurrentUser(user_id='bob', role='admin', edition_authenticated=True))
+    assert other_client.post('/api/stacks/regroup/apply', json=request).status_code == 409
+    assert state(conn) == before
     response = client.post('/api/stacks/regroup/apply', json=request)
     assert response.status_code == 200, response.text
     result = response.json()
     assert member_paths(result['stack']) == paths
-    assert conn.execute('SELECT COUNT(*) FROM photo_stacks').fetchone()[0] == 1
+    assert stacks.get_stack(conn, 'bob', other['id']) == other_before
+    assert conn.execute("SELECT COUNT(*) FROM photo_stacks WHERE owner='alice'").fetchone()[0] == 1
     # Shared ordinary GET and strict update must retain their authorization and conflict semantics.
     stack_id = result['stack']['id']
     assert member_paths(client.get('/api/stacks/' + stack_id).json()) == paths
@@ -648,10 +661,11 @@ def test_regroup_http_reserves_legacy_bindings_through_preview_apply_and_undo(co
         'expected_revision': result['stack']['revision']}).status_code == 409
     response = client.post(f"/api/organization_history/{result['undo']['entry_id']}/revert?kind=stack")
     assert response.status_code == 200, response.text
-    assert response.json()['changed'] == 598
+    assert response.json()['changed'] == len(paths)
     assert state(conn)['photo_stack_members'] == before['photo_stack_members']
     assert state(conn)['photos'] == before['photos']
-    assert conn.execute('SELECT COUNT(*) FROM photo_stacks').fetchone()[0] == 299
+    assert conn.execute("SELECT COUNT(*) FROM photo_stacks WHERE owner='alice'").fetchone()[0] == source_count
+    assert stacks.get_stack(conn, 'bob', other['id']) == other_before
     # A hidden expanded member is refused before writing, even when the selected members are visible.
     source = stacks.get_stack_by_photo(conn, 'alice', paths[-2])
     with conn:
@@ -663,3 +677,23 @@ def test_regroup_http_reserves_legacy_bindings_through_preview_apply_and_undo(co
         assert response.status_code == 409, response.text
         assert response.json()['detail'] == 'Stack unavailable'
         assert state(conn) == before_refusal
+
+
+@pytest.mark.parametrize('wrong_parent', [True, False])
+def test_regroup_does_not_trust_cross_owner_memberships(conn, wrong_parent):
+    alice = create(conn, ['a', 'b'])
+    bob = create(conn, ['c', 'd'], owner='bob')
+    # External writers can omit foreign_keys; parent ownership must still gate source authorization.
+    assert conn.execute('PRAGMA foreign_keys').fetchone()[0] == 0
+    with conn:
+        conn.execute('INSERT INTO photo_stack_members(stack_id,owner,photo_path,position) VALUES (?,?,?,2)',
+                     (bob['id'] if wrong_parent else alice['id'], 'alice' if wrong_parent else 'bob', 'h'))
+    before = state(conn)
+    if wrong_parent:
+        with pytest.raises(stacks.StackError, match='Stack unavailable'):
+            preview(conn, ['a', 'h'])
+    else:
+        draft = preview(conn, ['a', 'e'], visibility_sql='photos.path != ?', visibility_params=['h'])
+        assert draft['paths'] == ['a', 'b', 'e']
+        assert [source['id'] for source in draft['source_stacks']] == [alice['id']]
+    assert state(conn) == before

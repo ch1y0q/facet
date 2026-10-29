@@ -26,24 +26,30 @@ def _resolve(conn, owner, selected_paths, mode, visibility_sql, visibility_param
     for start in range(0, len(selected_paths), 300):
         chunk = selected_paths[start:start + 300]
         marks = ','.join('?' for _ in chunk)
-        membership.update(conn.execute(
-            f'SELECT photo_path,stack_id FROM photo_stack_members WHERE owner=? AND photo_path IN ({marks})',
-            [owner, *chunk]))
+        for path, stack_id in conn.execute(f'''SELECT m.photo_path,s.id
+            FROM photo_stack_members m LEFT JOIN photo_stacks s ON s.id=m.stack_id AND s.owner=m.owner
+            WHERE m.owner=? AND m.photo_path IN ({marks})''', [owner, *chunk]):
+            if stack_id is None:
+                raise stacks.StackError()
+            membership[path] = stack_id
     source_ids = list(dict.fromkeys(membership[p] for p in selected_paths if p in membership))
     unstacked = [p for p in selected_paths if p not in membership]
     total_members = len(unstacked)
     # Check full authorization before revealing even a limit refusal. Counts
     # keep oversized source sets bounded without loading their member paths.
-    # Reserve both directory visibility and the owner predicate under the legacy 999-variable ceiling.
-    count_chunk_size = max(1, min(300, 999 - len(visibility_params) - 1))
+    # Source IDs came from this owner's parent stacks above, in this same transaction.
+    # IDs are globally unique; matching parent/member owners retains that authorization
+    # without rebinding owner, leaving one ID slot even with 998 visibility bindings.
+    count_chunk_size = max(1, min(300, 999 - len(visibility_params)))
     for start in range(0, len(source_ids), count_chunk_size):
         chunk = source_ids[start:start + count_chunk_size]
         marks = ','.join('?' for _ in chunk)
         count, permitted = conn.execute(f'''SELECT COUNT(*),
             COALESCE(SUM(CASE WHEN photos.path IS NOT NULL AND ({visibility_sql}) THEN 1 ELSE 0 END),0)
-            FROM photo_stack_members m LEFT JOIN photos ON photos.path=m.photo_path
-            WHERE m.owner=? AND m.stack_id IN ({marks})''',
-            [*visibility_params, owner, *chunk]).fetchone()
+            FROM photo_stack_members m JOIN photo_stacks s ON s.id=m.stack_id AND s.owner=m.owner
+            LEFT JOIN photos ON photos.path=m.photo_path
+            WHERE s.id IN ({marks})''',
+            [*visibility_params, *chunk]).fetchone()
         if count != permitted:
             raise stacks.StackError()
         total_members += count
