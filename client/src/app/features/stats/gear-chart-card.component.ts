@@ -7,12 +7,25 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Chart } from 'chart.js';
+import { Chart, type ChartType, type LegendItem } from 'chart.js';
 import 'chartjs-adapter-date-fns';
 import { ThemeService } from '../../core/services/theme.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { ChartHeightPipe } from './chart-height.pipe';
 import { downloadCsv } from '../../shared/utils/csv';
+
+export const GEAR_LEGEND_MAX_CHARS = 24;
+
+/** Shortens a legend label to `max` characters with a trailing ellipsis; the dataset label (tooltip) stays full. */
+export function truncateLegendLabel(text: string, max: number = GEAR_LEGEND_MAX_CHARS): string {
+  return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
+}
+
+/** Chart.js legend items with their text shortened so a narrow canvas never clips the point marker. */
+export function truncatedLegendLabels(chart: Chart): LegendItem[] {
+  const base = Chart.defaults.plugins.legend.labels.generateLabels(chart as Chart<ChartType>);
+  return base.map(item => ({ ...item, text: truncateLegendLabel(item.text) }));
+}
 
 export interface GearItem {
   name: string;
@@ -173,7 +186,7 @@ export class GearChartCardComponent {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-              legend: { display: true, position: 'bottom', labels: { color: '#d4d4d4', usePointStyle: true, boxWidth: 8 } },
+              legend: { display: true, position: 'bottom', labels: { color: '#d4d4d4', usePointStyle: true, boxWidth: 8, generateLabels: truncatedLegendLabels } },
               tooltip: {
                 mode: 'index',
                 intersect: false,

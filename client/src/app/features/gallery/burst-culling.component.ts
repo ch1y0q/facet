@@ -224,7 +224,7 @@ interface SceneSummary {
                py-1.5 / pr-1.5 leave room for the icon buttons' 48px touch targets: they
                overhang the 36px buttons, and in a scrolling row that overhang alone
                produced a scrollbar on a header with plenty of free width. -->
-          <div class="flex flex-nowrap items-center gap-3 md:gap-4 min-w-0 flex-1 overflow-x-auto py-1.5 pr-1.5">
+          <div class="flex flex-nowrap items-center gap-3 md:gap-4 min-w-0 flex-1 overflow-x-auto max-lg:[scrollbar-width:none] py-1.5 pr-1.5">
             @if (scoped()) {
               <button mat-icon-button (click)="exitScope()"
                       [matTooltip]="I18N.culling.exit_scene | translate"

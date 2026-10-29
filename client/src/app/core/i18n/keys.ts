@@ -1053,6 +1053,7 @@ export const I18N = {
     capsules: "nav.capsules",
     junk_sweep: "nav.junk_sweep",
     help: "nav.help",
+    more: "nav.more",
   },
   auth: {
     logout: "auth.logout",

@@ -1038,7 +1038,8 @@
     "map": "Carte",
     "capsules": "Capsules",
     "junk_sweep": "Nettoyage",
-    "help": "Aide"
+    "help": "Aide",
+    "more": "Plus"
   },
   "auth": {
     "logout": "Se déconnecter",

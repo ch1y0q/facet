@@ -141,7 +141,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
          Type filter + semantic search, rebound to the gallery store. -->
     <ng-template #galleryToolbar>
       @if (!pinned()) {
-        <mat-form-field class="!hidden lg:!inline-flex w-44 ml-2 2xl:shrink-0" subscriptSizing="dynamic">
+        <mat-form-field class="!hidden lg:!inline-flex w-44 ml-2 shrink-0" subscriptSizing="dynamic">
           <mat-label>{{ I18N.ui.filters.type | translate }}</mat-label>
           <mat-select panelWidth="auto" panelClass="nowrap-panel !max-h-[70vh]" [value]="store.filters().type" (selectionChange)="onTypeChange($event.value)">
             <mat-option value="">{{ I18N.gallery.all_photos | translate }}</mat-option>
@@ -156,7 +156,7 @@ type ReturnTarget = { scroll: number; focus: Element | null } & (
              you type (400 ms debounce; Enter and leaving the box commit, so
              clicking a photo never drops typed text). flex-1 fills whatever
              the type dropdown and the buttons leave. -->
-        <mat-form-field class="!hidden min-[1360px]:!inline-flex min-w-0 flex-1 mr-2" subscriptSizing="dynamic">
+        <mat-form-field class="!hidden min-[1360px]:!inline-flex min-w-48 flex-1 mr-2" subscriptSizing="dynamic">
           <input
             #toolbarSearch
             matInput

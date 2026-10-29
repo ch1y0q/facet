@@ -269,6 +269,11 @@ export class App implements OnInit {
   protected readonly isCompareRoute = computed(() => this.url().split('?')[0] === '/compare');
   protected readonly isAlbumsRoute = computed(() => this.url().split('?')[0] === '/albums');
   protected readonly isPersonsRoute = computed(() => this.url().split('?')[0] === '/persons');
+  /** Routes that live in the lg..1679px nav overflow menu; colours its trigger. */
+  protected readonly isOverflowNavRoute = computed(() => {
+    const path = this.url().split('?')[0];
+    return ['/map', '/culling', '/junk', '/stats', '/compare'].includes(path);
+  });
   protected readonly isMapRoute = computed(() => this.url().split('?')[0] === '/map');
   protected readonly isCapsuleRoute = computed(() => this.url().split('?')[0] === '/capsules');
   protected readonly isTimelineRoute = computed(() => this.url().split('?')[0].startsWith('/timeline'));
