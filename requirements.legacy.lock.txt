@@ -109,9 +109,10 @@ pre_commit==4.6.2
 propcache==0.5.4
 protobuf==7.36.2
 # pyarrow 24.0.0 crashed every scan of a native Windows install on one machine (0xc0000005 in
-# arrow.dll, loaded through pandas); 23.0.0 scans clean with an identical face report. Windows
+# arrow.dll, loaded through pandas); 23.0.x scans clean with an identical face report, and 23.0.1
+# fixes GHSA-rgxp-2hwp-jwgg (use-after-free reading an Arrow IPC file). Windows
 # only: Linux and the Docker images keep 24.0.0.
-pyarrow==23.0.0 ; sys_platform == "win32"
+pyarrow==23.0.1 ; sys_platform == "win32"
 pyarrow==24.0.0 ; sys_platform != "win32"
 pycparser==3.11
 pydantic==2.14.1

@@ -31,7 +31,7 @@ updates:
       # of the 1.13.1 lock against the 2.11.0 base plans torch 2.6.0 plus 13 CUDA
       # 12.4 wheels. This pin moves only when the base image does (issue #119).
       - dependency-name: "sympy"
-      # pyarrow is pinned twice in each lock, split by a sys_platform marker: 23.0.0 on
+      # pyarrow is pinned twice in each lock, split by a sys_platform marker: 23.0.1 on
       # Windows (24.0.0 crashed native scans there) and 24.0.0 elsewhere. Dependabot can
       # bump both lines alike or fold them into one, bringing 24.x back to Windows, so
       # both pins move by hand, after a native Windows scan.
