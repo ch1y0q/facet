@@ -1773,6 +1773,42 @@ describe('CullingStore suggested stacks HTTP isolation', () => {
     expect(http.match(() => true)).toHaveLength(0);
   });
 
+  it('keeps refill work bounded after many completed batches replace the single Undo slot', async () => {
+    const groups = (batch: number) => Array.from({ length: 4 }, (_, index) => {
+      const id = batch * 4 + index;
+      return { ...makeGroup(id, 'duplicate', [`/${id}-a.jpg`, `/${id}-b.jpg`], `/${id}-a.jpg`), suggestionKey: `batch-${id}` };
+    });
+    await enter(groups(0));
+    const identities = vi.spyOn(store as unknown as { suggestionIdentity: (group: CullingGroup) => string }, 'suggestionIdentity');
+    for (let batch = 0; batch < 6; batch++) {
+      for (const group of [...store.groups()]) {
+        const skipped = store.skipSuggestion(group);
+        http.expectOne('/api/stacks/suggestions/dismissals').flush(null); await skipped;
+        commands.splice(0, commands.length - 1); // UndoService retains one command.
+      }
+      expect(store.groups()).toHaveLength(0);
+      identities.mockClear();
+      await flushBatch(batch < 5 ? groups(batch + 1) : []);
+      expect(identities.mock.calls.length).toBeLessThanOrEqual(4);
+    }
+    commands.length = 0; // The last Undo expires.
+    identities.mockClear(); store.resetForReload(); await flushBatch([]);
+    expect(identities.mock.calls.length).toBe(0);
+  });
+
+  it('suppresses a restored group completed again while a pre-write batch is pending', async () => {
+    await enter(); const [one, two] = store.groups();
+    store.completeStackSuggestion(one); store.completeStackSuggestion(two);
+    const request = http.expectOne('/api/stacks/suggestions');
+    store.restoreStackSuggestion(two); expect(store.groups()).toEqual([two]);
+    store.completeStackSuggestion(two);
+    request.flush(response([second])); await Promise.resolve(); await Promise.resolve();
+    expect(store.groups()).toHaveLength(0);
+    await flushBatch([]); // Completing during the pending refill schedules a fresh read.
+    expect(store.groups()).toHaveLength(0);
+    store.restoreStackSuggestion(two); expect(store.groups()).toEqual([two]);
+  });
+
   it('stacks the explicit second group and focused cover, skips full first membership, and undoes across batches', async () => {
     await enter();
     const stacked = store.stackSuggestion(store.groups()[1], '/d.jpg');

@@ -235,7 +235,10 @@ export class CullingStore {
   private stackRefillVersion = 0;
   private readonly stackDecisions = new Set<string>();
   private readonly suggestionProvenance = new WeakMap<CullingGroup, LoadedStackSuggestion>();
-  private readonly completedSuggestions = new Map<LoadedStackSuggestion, CullingGroup>();
+  // Only a live inverse command should keep completed photo rows reachable.
+  private completedSuggestions = new WeakMap<LoadedStackSuggestion, CullingGroup>();
+  // Suppress only completions that could race the current read snapshot.
+  private stackBatchCompletions: Set<string> | null = null;
 
   /** Set before the page starts any cull effects. A held global assistant pin belongs to its owner. */
   enterStackMode(filters: Record<string, string>): void {
@@ -253,7 +256,8 @@ export class CullingStore {
     this.stackBatchPending = null;
     this.stackRefillVersion = 0;
     this.stackDecisions.clear();
-    this.completedSuggestions.clear();
+    this.completedSuggestions = new WeakMap();
+    this.stackBatchCompletions = null;
     this.batchFull.set(false);
     this.stackScopeInvalid.set(false);
     this.resetFeed();
@@ -265,7 +269,8 @@ export class CullingStore {
     this.stackSession = null;
     this.stackBatchPending = null;
     this.stackDecisions.clear();
-    this.completedSuggestions.clear();
+    this.completedSuggestions = new WeakMap();
+    this.stackBatchCompletions = null;
     this.mode.set('cull');
     this.stackFilters.set({});
     this.batchFull.set(false);
@@ -302,6 +307,8 @@ export class CullingStore {
     const epoch = this.visitEpoch;
     const generation = ++this.loadGenerationId;
     const refillVersion = this.stackRefillVersion;
+    const completed = new Set<string>();
+    this.stackBatchCompletions = completed;
     let refillRequired = false;
     this.loading.set(true);
     const run = (async () => {
@@ -321,7 +328,6 @@ export class CullingStore {
         // Undo can restore an earlier batch while this request is running. Retain it and dedupe by both identities.
         this.groups.update(retained => {
           const keys = new Set(retained.map(group => this.suggestionIdentity(group)));
-          const completed = new Set([...this.completedSuggestions.values()].map(group => this.suggestionIdentity(group)));
           return [...retained, ...incoming.filter(group => {
             const key = this.suggestionIdentity(group);
             if (keys.has(key) || completed.has(key)) return false;
@@ -345,6 +351,7 @@ export class CullingStore {
         if (epoch === this.visitEpoch && generation === this.loadGenerationId) {
           this.loading.set(false);
           this.stackBatchPending = null;
+          this.stackBatchCompletions = null;
           if (refillRequired) void this.loadStackBatch();
         }
       }
@@ -410,6 +417,7 @@ export class CullingStore {
     const loaded = this.loadedSuggestion(group);
     if (!loaded) return false;
     this.completedSuggestions.set(this.suggestionProvenance.get(loaded)!, loaded);
+    this.stackBatchCompletions?.add(this.suggestionIdentity(loaded));
     this.groups.update(groups => groups.filter(item => item !== loaded));
     this.totalGroups.set(this.groups().length);
     if (this.groups().length === 0) {

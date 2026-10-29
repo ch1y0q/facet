@@ -40,6 +40,7 @@ import { PanoramaSettingsService } from '../comparison/panorama-settings.service
 import { SequenceOverrideService, SequenceKind } from '../../core/services/sequence-override.service';
 import { UndoService } from '../../core/services/undo.service';
 import { StackActionsService } from './stack-actions.service';
+import { stackEditorReturnUrl } from './stack-editor-history';
 import { SequenceKindLabelPipe, SUPPRESSED_OVERRIDE } from '../../shared/pipes/sequence-kind.pipe';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AssistantChangesService } from '../../core/agent/assistant-changes.service';
@@ -2146,7 +2147,8 @@ export class BurstCullingComponent implements OnDestroy {
   private pageNavigating = false;
   private pageOwner = this.auth.identity();
   private secondaryEditor: { close: () => void } | null = null;
-  private stackNavigationSource: { owner: string; filters: Record<string, string> } | null = null;
+  private stackNavigationSource: { owner: string; filters: Record<string, string> | null } | null = null;
+  private detectionGeneration = 0;
 
   private clearStackView(): void {
     this.secondaryEditor?.close();
@@ -2164,17 +2166,14 @@ export class BurstCullingComponent implements OnDestroy {
   }
 
   private setStackReturnUrl(target: string): void {
-    try {
-      if (!target.startsWith('/') || target.startsWith('//') || target.includes('\\')) throw new Error('Invalid return');
-      decodeURIComponent(target);
-      const root = this.router.parseUrl(target).root.children;
-      const primary = root['primary'];
-      if (Object.keys(root).some(key => key !== 'primary')
-        || (primary && Object.keys(primary.children).length)
-        || (primary && !(primary.segments.length === 0
-          || primary.segments.length === 2 && primary.segments[0].path === 'album' && /^\d+$/.test(primary.segments[1].path)))) throw new Error('Invalid return');
-      this.stackReturnUrl = target;
-    } catch { this.stackReturnUrl = '/'; }
+    this.stackReturnUrl = stackEditorReturnUrl(this.router, target);
+  }
+
+  private loadCullingAuxiliaryState(): void {
+    void this.loadAlbums();
+    void this.cull.loadCullProfiles();
+    void this.cull.refreshComparisonStats();
+    void this.cull.refreshRankerStatus();
   }
 
   /** A cancelled visit has a new root navigation context; old decisions and Undo must stay expired. */
@@ -2185,18 +2184,18 @@ export class BurstCullingComponent implements OnDestroy {
     const tree = this.router.parseUrl(this.router.url);
     const segments = tree.root.children['primary']?.segments;
     if (segments?.length !== 1 || segments[0].path !== 'culling') return;
+    if (tree.queryParamMap.get('mode') !== 'stacks' && source.filters === null) return;
     if (this.auth.identity() !== source.owner || !this.auth.isEdition()) { this.leaveStacks(); return; }
     if (tree.queryParamMap.get('mode') !== 'stacks') {
       this.cull.leaveStackMode();
       if (!this.planService.pin()) void this.cull.loadGroups();
-      void this.loadAlbums();
-      void this.cull.loadCullProfiles();
-      void this.cull.refreshComparisonStats();
-      void this.cull.refreshRankerStatus();
+      this.loadCullingAuxiliaryState();
       return;
     }
     try {
       const filters = parseStackReviewFilters(tree.queryParamMap.get('filters'));
+      this.stopDetectionPolling();
+      this.clearStackView();
       this.cull.enterStackMode(filters);
       this.setStackReturnUrl(tree.queryParamMap.get('return') ?? '/');
       void this.cull.loadGroups();
@@ -2222,10 +2221,7 @@ export class BurstCullingComponent implements OnDestroy {
     this.stackNotice.set(true);
     void this.router.navigate(['/culling'], { replaceUrl: true });
     void this.cull.loadGroups();
-    void this.loadAlbums();
-    void this.cull.loadCullProfiles();
-    void this.cull.refreshComparisonStats();
-    void this.cull.refreshRankerStatus();
+    this.loadCullingAuxiliaryState();
   }
 
   protected backToGallery(): void { void this.router.navigateByUrl(this.stackReturnUrl); }
@@ -2256,11 +2252,11 @@ export class BurstCullingComponent implements OnDestroy {
         this.pageNavigating = true;
         this.trashNavigation++;
         this.pageEpoch++;
+        this.stackNavigationSource ??= { owner: this.pageOwner, filters: this.stacksMode() ? { ...this.cull.stackFilters() } : null };
         if (this.stacksMode()) {
-          this.stackNavigationSource ??= { owner: this.pageOwner, filters: { ...this.cull.stackFilters() } };
           this.clearStackView();
           // Invalidate the old visit without ever enabling cull writes beneath a stack URL.
-          this.cull.enterStackMode(this.stackNavigationSource.filters);
+          this.cull.enterStackMode(this.stackNavigationSource.filters ?? {});
           this.cull.loading.set(true);
         } else this.secondaryEditor?.close();
       } else if (event instanceof NavigationEnd || event instanceof NavigationCancel
@@ -2333,10 +2329,7 @@ export class BurstCullingComponent implements OnDestroy {
       if (pin && !this.stacksMode() && !this.pageNavigating) untracked(() => { void this.followPin(pin); });
     });
     if (!this.stacksMode()) {
-      void this.loadAlbums();
-      void this.cull.loadCullProfiles();
-      void this.cull.refreshComparisonStats();
-      void this.cull.refreshRankerStatus();
+      this.loadCullingAuxiliaryState();
     }
     // Keep the keyboard selection in bounds as groups load / get hidden, preserving
     // the identity of the highlighted group when an earlier one drops out of the list.
@@ -3421,9 +3414,12 @@ export class BurstCullingComponent implements OnDestroy {
    * already holds it.
    */
   protected async rerunDetection(): Promise<void> {
-    const current = this.pageSession();
-    if (this.stacksMode() || !current()) return;
-    if (this.detecting()) return;
+    if (this.stacksMode() || !this.pageSession()() || this.detecting()) return;
+    const owner = this.auth.identity();
+    const generation = ++this.detectionGeneration;
+    // The whole-library start survives cancelled navigation, but never a new owner or stack visit.
+    const current = () => this.pageAlive && !this.destroyRef.destroyed && generation === this.detectionGeneration
+      && this.auth.identity() === owner && owner === this.pageOwner && this.auth.isEdition() && !this.stacksMode();
     this.detecting.set(true);
     this.detectFailed.set(false);
     this.detectMessage.set('');
@@ -3466,6 +3462,7 @@ export class BurstCullingComponent implements OnDestroy {
   }
 
   private stopDetectionPolling(): void {
+    this.detectionGeneration++;
     this.detecting.set(false);
     if (this.detectPollTimer !== null) {
       clearInterval(this.detectPollTimer);
