@@ -2532,7 +2532,7 @@ Expose les outils décrits dans [Agents IA (MCP)](AGENTS.md) sur `POST /mcp` : 
 
 Sur une installation ouverte (sans `viewer.password`) :
 - `/mcp` ne sert qu'une clé anonyme en lecture seule, qui ne montre rien que l'`/api` ouverte ne montre déjà.
-- Un nouveau jeton est `readonly`, sauf si `viewer.trusted_local_editing` autorise un jeton Édition complète pour les requêtes de la même machine.
+- Un nouveau jeton est `readonly`, sauf si `viewer.trusted_local_editing` est activé ou si la session est connectée avec `viewer.edition_password` : l'un comme l'autre peut créer un jeton Édition complète, qui ne modifie que pour les requêtes de la même machine.
 - Les jetons ne peuvent être créés, listés et révoqués que depuis l'ordinateur qui exécute Facet (ou dans une session d'édition lorsque `viewer.edition_password` est défini).
 
 ```json
