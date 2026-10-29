@@ -139,6 +139,24 @@ python database.py --migrate-user-preferences --user alice
 
 La recherche textuelle de la galerie conserve les mots Unicode et traite la ponctuation des noms de fichiers comme des séparateurs de mots. `IMG_0042.JPG` recherche ensemble les préfixes `IMG`, `0042` et `JPG`. Les termes cyrilliques et CJK fonctionnent. Les opérateurs FTS comme `OR` sont traités comme des mots littéraux.
 
+### Onglets de la barre latérale
+
+La barre latérale de filtres regroupe ses sections en cinq onglets, affichés sous forme d'icônes (survolez pour voir le nom). Un petit badge sur une icône compte les filtres actifs de l'onglet, et l'onglet garde son nom pour les lecteurs d'écran (« Parcourir, 2 actif(s) »). Le dernier onglet utilisé est mémorisé dans ce navigateur (`facet_sidebar_tab`). Parcourir, Qualité et Sujet ont des panneaux repliables, chacun mémorisant s'il est ouvert ; Tri et Affichage n'en ont pas.
+
+| Onglet | Sections |
+|--------|----------|
+| **Parcourir** | Recherche sémantique, Personnes, Plage de dates, Contenu, Albums, Localisation, Dossier, Équipement |
+| **Tri** | Une ligne de menu chacune pour la décision, puis les rafales, les doublons, les clignements, les bracketings, les panoramas et les rejetées, une note par étoiles, les bascules Favoris et Monochrome et, pour les éditeurs, *Visages manuels à vérifier* et *Corrections de panorama* |
+| **Qualité** | Qualité, Couleur et qualité, Qualité étendue, Technique, Exposition & Plage (la qualité de l'image) |
+| **Sujet** | Métriques visage, Composition, Saillance du sujet, Moments (ce qui est dans le cadre) |
+| **Affichage** | Vue (taille des cartes, disposition, défilement rapide, actions des cartes) |
+
+L'en-tête, **Rechercher un filtre**, l'avis d'album intelligent et la recherche par nom de fichier restent au-dessus des onglets sur chacun d'eux, donc `/` fonctionne depuis n'importe lequel. Saisir dans **Rechercher un filtre** masque les onglets et liste les curseurs correspondants de tous les onglets.
+
+Le nombre à côté de **Filtres** est le total de tous les filtres actifs. Une plage min/max compte une fois, tout comme le filtre de localisation. La recherche par nom de fichier et *Similaire à* n'ont pas de section : ils ne sont comptés que dans ce total, tout comme un filtre sur une métrique que cette installation masque, afin que **Réinitialiser** puisse quand même l'effacer. **Réinitialiser** (avec une infobulle) apparaît à côté du nombre tant qu'au moins un filtre est actif ; le simple **X** tout à droite ne fait que fermer la barre latérale sur les écrans étroits.
+
+Dans l'onglet Tri, la décision et chaque série (par exemple Doublons) est une ligne affichant sa valeur actuelle (comme Masqués, Affichés ou Seulement ceux-ci) qui ouvre un menu de choix, chacun avec une explication d'une ligne. Une ligne laissée sur sa valeur par défaut ne compte pas dans le badge de l'onglet ni de l'en-tête. *Seulement* et *Masqués* s'excluent mutuellement. Tant qu'une décision est choisie, Rejetées est verrouillé, et son infobulle en donne la raison. Le bouton étoile définit une note minimale : chaque clic l'augmente d'un cran, et le clic après 5, ou après un maximum venu d'un lien, l'efface. Il partage une ligne avec les bascules Favoris et Monochrome, réduites à une icône et dotées d'infobulles. Dans les onglets Qualité et Sujet, survoler le nom d'un réglage explique ce qui est noté et par quel modèle, et les contrôles de Tri ont aussi des infobulles.
+
 <details><summary>Barre latérale de filtres complète — toutes les sections développées (cliquer pour voir)</summary>
 <p align="center"><img src="screenshots/filter-sidebar-full.jpg" alt="Filter sidebar with every section expanded" width="360"></p>
 </details>
@@ -390,7 +408,7 @@ Champs de réponse et codes de statut : [API.md](../API.md).
 - **Meilleure du bracketing** — n'affiche que l'exposition de référence de chaque bracketing. **Activé par défaut.** Indépendant de Meilleure de la rafale, car la tête de rafale d'un bracketing n'est pas toujours son exposition de référence.
 - **Meilleure du panorama** — n'affiche que la vue centrale de chaque panorama ou panorama HDR. **Activé par défaut.**
 - **Défilement infini** — les photos se chargent au fil du défilement
-- **Défilement rapide (virtualisé)** — ne rend que les rangées proches de la fenêtre, ce qui garde un défilement profond rapide. Activé par défaut. Désactivez-le dans la section Affichage de la barre latérale si vous rencontrez des problèmes de mise en page. Le mode grille avec détails affichés se rend toujours en entier. Enregistré dans localStorage (`facet_virtual_scroll`).
+- **Défilement rapide (virtualisé)** — ne rend que les rangées proches de la fenêtre, ce qui garde un défilement profond rapide. Activé par défaut. Désactivez-le dans l'onglet Affichage de la barre latérale si vous rencontrez des problèmes de mise en page. Le mode grille avec détails affichés se rend toujours en entier. Enregistré dans localStorage (`facet_virtual_scroll`).
 
 ### Photos similaires
 
@@ -446,7 +464,7 @@ Les vues d'un panorama sont destinées à être assemblées et celles d'un brack
 - Si une vue marquée disparaît ou perd ses données d'exposition ou de date, toute la série attend que chaque membre soit de nouveau éligible.
 - **Le marquage l'emporte sur la détection de panoramas** : un panorama détecté contenant des vues marquées est abandonné à l'exécution suivante.
 
-**Les corrections s'appliquent à la prochaine exécution de détection.** Une correction est enregistrée aussitôt et affichée comme en attente : un badge d'horloge sur la vignette de la galerie, une puce *Correction en attente* dans le tri. La page de tri affiche une bannière avec un bouton **Relancer la détection**. Le filtre *Corrections de panorama* de la barre latérale (édition uniquement, sous Affiner) liste les corrections en attente sur toute la bibliothèque. *Abandonner la correction* en retire une plus tard.
+**Les corrections s'appliquent à la prochaine exécution de détection.** Une correction est enregistrée aussitôt et affichée comme en attente : un badge d'horloge sur la vignette de la galerie, une puce *Correction en attente* dans le tri. La page de tri affiche une bannière avec un bouton **Relancer la détection**. Le filtre *Corrections de panorama* de la barre latérale (édition uniquement, dans l'onglet Tri) liste les corrections en attente sur toute la bibliothèque. *Abandonner la correction* en retire une plus tard.
 
 **Le régler.** L'onglet Panoramas sous Comparer contient les seuils calibrés : nombre minimal de vues, balayage minimal, plus grand écart et écart d'exposition HDR. Les enregistrer ne change rien tant que vous ne relancez pas la détection (le bouton est à côté d'Enregistrer). Voir [CONFIGURATION.md](CONFIGURATION.md#détection-de-panoramas).
 
@@ -1391,7 +1409,7 @@ Facet analyse le JPEG XL (`.jxl`) grâce à la dépendance principale `imagecode
 
 ### Vérifier les repères manuels de visages enregistrés
 
-Trouvez les photos dont les rectangles de visages enregistrés doivent être vérifiés. Dans les filtres Affiner de la galerie, activez **Visages manuels à vérifier** (éditeurs). Ouvrez l'éditeur de visages d'une photo et ajustez puis enregistrez, ou supprimez, chaque rectangle signalé. La photo quitte alors la liste. Le filtre fonctionne dans les albums intelligents et les sélections de toute la vue, et s'affiche comme une puce amovible.
+Trouvez les photos dont les rectangles de visages enregistrés doivent être vérifiés. Dans l'onglet Tri de la barre latérale de la galerie, activez **Visages manuels à vérifier** (éditeurs). Ouvrez l'éditeur de visages d'une photo et ajustez puis enregistrez, ou supprimez, chaque rectangle signalé. La photo quitte alors la liste. Le filtre fonctionne dans les albums intelligents et les sélections de toute la vue, et s'affiche comme une puce amovible.
 
 - La liste reflète le dernier scan ou la dernière vérification de l'éditeur, pas une surveillance de fichiers en direct. Les scans vérifient les photos avec marques manuelles même quand la détection de visages est désactivée.
 - Ouvrir l'éditeur revérifie l'original et fait foi.
