@@ -1938,7 +1938,7 @@ describe('CullingStore suggested stacks HTTP isolation', () => {
 
   it.each(['groups', 'photos'])('marks a batch full at the %s cap', async cap => {
     const groups = cap === 'groups' ? Array.from({ length: 20 }, (_, i) => ({ ...first, group_id: i, suggestionKey: `members-${i}` }))
-      : [{ ...first, photos: Array.from({ length: 2000 }, (_, i) => ({ ...first.photos[0], path: `/frame-${i}.jpg` })) }];
+      : [first, second].map((group, index) => ({ ...group, best_path: `/frame-${index}-0.jpg`, count: 1000, photos: Array.from({ length: 1000 }, (_, i) => ({ ...group.photos[0], path: `/frame-${index}-${i}.jpg` })) }));
     await enter(groups);
     expect(store.batchFull()).toBe(true);
   });
@@ -1955,6 +1955,110 @@ describe('CullingStore suggested stacks HTTP isolation', () => {
     http.expectOne('/api/stacks/suggestions').flush({}, { status: 500, statusText: 'failed' }); await failed;
     expect(store.stackScopeInvalid()).toBe(false);
     expect(store.mode()).toBe('stacks');
+  });
+
+
+  it('refills after a consumed stale duplicate reveals an overlapping two-member burst', async () => {
+    const burst = { ...second, photos: [first.photos[0], second.photos[1]] };
+    await enter([first]); const group = store.groups()[0];
+    const skipped = store.skipSuggestion(group);
+    http.expectOne('/api/stacks/suggestions/dismissals').flush(null); expect(await skipped).toBe(true);
+    const stale = http.expectOne('/api/stacks/suggestions');
+    const undone = commands[0].undo();
+    http.expectOne('/api/stacks/suggestions/dismissals/dup-members').flush(null); await undone;
+    const again = store.skipSuggestion(group);
+    http.expectOne('/api/stacks/suggestions/dismissals').flush(null); expect(await again).toBe(true);
+    expect(http.match('/api/stacks/suggestions')).toHaveLength(0);
+    stale.flush(response([first])); await Promise.resolve(); await Promise.resolve();
+    const refresh = http.match('/api/stacks/suggestions');
+    for (const request of refresh) request.flush(response([burst]));
+    await Promise.resolve(); await Promise.resolve();
+    expect(refresh).toHaveLength(1);
+    expect(store.groups()).toEqual([burst]);
+    expect(store.batchFull()).toBe(false);
+    expect(store.loading()).toBe(false);
+    expect(http.match(() => true)).toHaveLength(0);
+  });
+
+  it('stops after a fresh genuinely empty refill instead of looping', async () => {
+    await enter([first]);
+    const skipped = store.skipSuggestion(store.groups()[0]);
+    http.expectOne('/api/stacks/suggestions/dismissals').flush(null); await skipped;
+    http.expectOne('/api/stacks/suggestions').flush(response([]));
+    await Promise.resolve(); await Promise.resolve();
+    expect(store.groups()).toEqual([]); expect(store.loading()).toBe(false);
+    expect(http.match(() => true)).toHaveLength(0);
+  });
+
+  it('bounds a stale exhausted refill with a fresh empty result', async () => {
+    await enter([first]); const group = store.groups()[0];
+    const skipped = store.skipSuggestion(group);
+    http.expectOne('/api/stacks/suggestions/dismissals').flush(null); await skipped;
+    const stale = http.expectOne('/api/stacks/suggestions');
+    const undone = commands[0].undo();
+    http.expectOne('/api/stacks/suggestions/dismissals/dup-members').flush(null); await undone;
+    const again = store.skipSuggestion(group);
+    http.expectOne('/api/stacks/suggestions/dismissals').flush(null); await again;
+    stale.flush(response([first])); await Promise.resolve(); await Promise.resolve();
+    const refresh = http.match('/api/stacks/suggestions');
+    for (const request of refresh) request.flush(response([]));
+    await Promise.resolve(); await Promise.resolve();
+    expect(refresh).toHaveLength(1);
+    expect(store.groups()).toEqual([]); expect(store.loading()).toBe(false);
+    expect(http.match(() => true)).toHaveLength(0);
+  });
+
+  it.each(['old first', 'new first'])('resetForReload replaces the pending stack batch, with %s completion', async order => {
+    store.enterStackMode(filters); const old = store.loadGroups();
+    const stale = http.expectOne('/api/stacks/suggestions');
+    store.resetForReload();
+    const requests = http.match('/api/stacks/suggestions');
+    expect(requests).toHaveLength(1);
+    const fresh = requests[0];
+    const joined = store.loadGroups();
+    expect(http.match('/api/stacks/suggestions')).toHaveLength(0);
+    if (order === 'old first') {
+      stale.flush(response([first])); await old;
+      expect(store.groups()).toEqual([]); expect(store.loading()).toBe(true);
+      const rejoined = store.loadGroups();
+      expect(http.match('/api/stacks/suggestions')).toHaveLength(0);
+      fresh.flush(response([second])); await rejoined;
+    } else {
+      fresh.flush(response([second])); await joined;
+      stale.flush(response([first])); await old;
+    }
+    await joined;
+    expect(store.groups()).toEqual([second]); expect(store.loading()).toBe(false);
+    expect(http.match(() => true)).toHaveLength(0);
+  });
+
+  it('resetFeed releases the superseded stack promise so an explicit retry can load', async () => {
+    store.enterStackMode(filters); const old = store.loadGroups();
+    const stale = http.expectOne('/api/stacks/suggestions');
+    store.resetFeed();
+    stale.flush(response([first])); await old;
+    expect(store.groups()).toEqual([]); expect(store.loading()).toBe(false);
+    const retry = store.loadGroups();
+    const requests = http.match('/api/stacks/suggestions');
+    for (const request of requests) request.flush(response([second]));
+    expect(requests).toHaveLength(1); await retry;
+    expect(store.groups()).toEqual([second]); expect(store.loading()).toBe(false);
+  });
+
+  it('preserves visit Undo across explicit reload and merges it into the replacement batch', async () => {
+    await enter([first]);
+    const skipped = store.skipSuggestion(store.groups()[0]);
+    http.expectOne('/api/stacks/suggestions/dismissals').flush(null); await skipped;
+    const stale = http.expectOne('/api/stacks/suggestions');
+    store.resetForReload();
+    const replacements = http.match('/api/stacks/suggestions');
+    expect(replacements).toHaveLength(1);
+    const undone = commands[0].undo();
+    http.expectOne('/api/stacks/suggestions/dismissals/dup-members').flush(null); await undone;
+    replacements[0].flush(response([first, second])); await Promise.resolve(); await Promise.resolve();
+    stale.flush(response([])); await Promise.resolve(); await Promise.resolve();
+    expect(store.groups()).toEqual([first, second]); expect(store.loading()).toBe(false);
+    expect(http.match(() => true)).toHaveLength(0);
   });
 
   const guardCases: { name: string; run: (s: CullingStore, g: CullingGroup) => unknown }[] = [

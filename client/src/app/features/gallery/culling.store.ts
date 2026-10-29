@@ -225,6 +225,8 @@ export class CullingStore {
   private stackSession: (() => boolean) | null = null;
   private stackScope = '';
   private stackBatchPending: Promise<void> | null = null;
+  /** Exhaustion decisions newer than a pending snapshot still require a fresh batch when it lands empty. */
+  private stackRefillVersion = 0;
   private readonly stackDecisions = new Set<string>();
   private readonly completedSuggestions = new Map<CullingGroup, number>();
 
@@ -242,6 +244,7 @@ export class CullingStore {
     this.stackScope = JSON.stringify(this.stackFilters());
     this.stackSession = this.stacks.context();
     this.stackBatchPending = null;
+    this.stackRefillVersion = 0;
     this.stackDecisions.clear();
     this.completedSuggestions.clear();
     this.batchFull.set(false);
@@ -284,6 +287,8 @@ export class CullingStore {
     if (this.stackBatchPending) return this.stackBatchPending;
     const epoch = this.visitEpoch;
     const generation = ++this.loadGenerationId;
+    const refillVersion = this.stackRefillVersion;
+    let refillRequired = false;
     this.loading.set(true);
     const run = (async () => {
       try {
@@ -314,6 +319,7 @@ export class CullingStore {
         this.batchFull.set(result.suggestions.length >= CULL_PAGE_SIZE
           || result.suggestions.reduce((count, group) => count + group.paths.length, 0) >= 2000);
         this.selectionsMap.set(new Map());
+        refillRequired = this.groups().length === 0 && refillVersion !== this.stackRefillVersion;
       } catch (error) {
         if (this.stackVisitCurrent(epoch) && generation === this.loadGenerationId) {
           this.stackScopeInvalid.set((error as { status?: number } | null)?.status === 422);
@@ -323,6 +329,7 @@ export class CullingStore {
         if (epoch === this.visitEpoch && generation === this.loadGenerationId) {
           this.loading.set(false);
           this.stackBatchPending = null;
+          if (refillRequired) void this.loadStackBatch();
         }
       }
     })();
@@ -389,7 +396,10 @@ export class CullingStore {
     this.completedSuggestions.set(loaded, this.visitEpoch);
     this.groups.update(groups => groups.filter(item => item !== loaded));
     this.totalGroups.set(this.groups().length);
-    if (this.groups().length === 0) void this.loadStackBatch();
+    if (this.groups().length === 0) {
+      this.stackRefillVersion++;
+      void this.loadStackBatch();
+    }
     return true;
   }
 
@@ -662,6 +672,11 @@ export class CullingStore {
   /** Drop the loaded feed and its per-feed decisions, invalidating any load in flight. */
   resetFeed(): void {
     this.loadGenerationId++;
+    if (this.mode() === 'stacks') {
+      // A reset supersedes the request, not the visit: its Undo commands remain valid.
+      this.stackBatchPending = null;
+      this.loading.set(false);
+    }
     // The superseded loadMore's finally no longer matches the generation, so it will not clear this itself.
     this.loadingMore.set(false);
     this.pendingReload.set(false);
