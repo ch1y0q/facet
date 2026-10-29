@@ -7,6 +7,7 @@ import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { StackDialogComponent } from './stack-dialog.component';
 import { MatDialog } from '@angular/material/dialog';
+import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { Subject } from 'rxjs';
 import { BurstCullingComponent } from './burst-culling.component';
 import { CullingStore } from './culling.store';
@@ -58,6 +59,8 @@ describe('Suggested stacks routed darkroom', () => {
     TestBed.configureTestingModule({ providers: [
       provideHttpClient(), provideHttpClientTesting(), provideNativeDateAdapter(),
       provideRouter([{ path: 'culling', component: BurstCullingComponent },
+        { path: 'blocked', component: GalleryDestination, canActivate: [() => false] },
+        { path: 'load-failed', loadComponent: async () => { throw new Error('Chunk download failed'); } },
         { path: '', component: GalleryDestination }, { path: 'album/:id', component: GalleryDestination }]),
       { provide: AuthService, useValue: { identity, isEdition: edition } },
       { provide: GalleryStore, useValue: { config: () => null, refreshPaths: async () => undefined } },
@@ -69,6 +72,260 @@ describe('Suggested stacks routed darkroom', () => {
     harness = await RouterTestingHarness.create();
   });
   afterEach(() => { try { http.verify(); } finally { TestBed.resetTestingModule(); } });
+
+  it('retains the stack-mode safety boundary after actual cancelled navigation', async () => {
+    await enter(); batch(); await settle();
+    const before = TestBed.inject(Router).url;
+    expect(await TestBed.inject(Router).navigateByUrl('/blocked')).toBe(false);
+    await settle();
+    expect(TestBed.inject(Router).url).toBe(before);
+    expect(cull.mode()).toBe('stacks');
+    expect(dom().querySelector('[data-testid="stack-review-header"]')).not.toBeNull();
+    expect(cull.cullWritesAllowed()).toBe(false); expect(cull.groups()).toHaveLength(0);
+    batch(); await settle(); expect(cull.groups()).toHaveLength(2);
+  });
+
+  it.each(['ctrlKey', 'metaKey', 'altKey', 'isComposing'])('does not stack on header S with %s', async modifier => {
+    await enter(); batch(); await settle(); key('Enter'); await settle();
+    const control = dom().querySelector('button[aria-keyshortcuts="S"]')!;
+    expect(control).not.toBeNull();
+    control.dispatchEvent(new KeyboardEvent('keydown', { key: 's', [modifier]: true, bubbles: true, cancelable: true }));
+    const writes = http.match('/api/stacks');
+    for (const write of writes) write.flush({}, { status: 500, statusText: 'failed' });
+    await settle();
+    expect(writes).toHaveLength(0);
+  });
+
+  it('does not stack on a composing grid S', async () => {
+    await enter(); batch(); await settle();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 's', isComposing: true, bubbles: true, cancelable: true }));
+    const writes = http.match('/api/stacks');
+    for (const write of writes) write.flush({}, { status: 500, statusText: 'failed' });
+    await settle(); expect(writes).toHaveLength(0);
+  });
+  it.each(['dialog.cancel', 'slideshow.fullscreen'])('leaves native Enter for the %s button', async label => {
+    await enter(); batch(); await settle(); key('Enter'); await settle();
+    const button = dom().querySelector(`button[aria-label="${label}"]`)!;
+    expect(button).not.toBeNull();
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    button.dispatchEvent(event);
+    const writes = http.match('/api/stacks');
+    for (const write of writes) write.flush({}, { status: 500, statusText: 'failed' });
+    await settle();
+    expect(writes).toHaveLength(0);
+    expect(event.defaultPrevented).toBe(false);
+    const space = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    button.dispatchEvent(space); expect(space.defaultPrevented).toBe(false);
+    const fullscreen = vi.fn().mockResolvedValue(undefined);
+    Element.prototype.requestFullscreen = fullscreen;
+    (button as HTMLButtonElement).click(); await settle();
+    if (label === 'dialog.cancel') expect(page['lightboxGroupId']()).toBeNull();
+    else expect(fullscreen).toHaveBeenCalledOnce();
+    expect(http.match('/api/stacks')).toHaveLength(0);
+  });
+
+  it('keeps shortcut S inert while a bottom sheet covers the darkroom', async () => {
+    await enter(); batch(); await settle();
+    const ref = TestBed.inject(MatBottomSheet).open(GalleryDestination); await settle();
+    const sheet = document.querySelector('mat-bottom-sheet-container')!; expect(sheet).not.toBeNull();
+    try {
+      sheet.dispatchEvent(new KeyboardEvent('keydown', { key: 's', bubbles: true, cancelable: true }));
+      const writes = http.match('/api/stacks');
+      for (const write of writes) write.flush({}, { status: 500, statusText: 'failed' });
+      await settle(); expect(writes).toHaveLength(0);
+    } finally { ref.dismiss(); await settle(); }
+  });
+
+  it('retains stack mode when destination lazy loading fails', async () => {
+    await enter(); batch(); await settle();
+    const before = TestBed.inject(Router).url;
+    await expect(TestBed.inject(Router).navigateByUrl('/load-failed')).rejects.toThrow('Chunk download failed');
+    await settle();
+    expect(TestBed.inject(Router).url).toBe(before);
+    expect(cull.mode()).toBe('stacks');
+    expect(cull.cullWritesAllowed()).toBe(false); batch(); await settle();
+  });
+
+  describe('shared stack shortcut admission', () => {
+    const invalidKeys: [string, KeyboardEventInit][] = [
+      ['Ctrl', { ctrlKey: true }], ['Meta', { metaKey: true }], ['Alt', { altKey: true }],
+      ['composition', { isComposing: true }], ['legacy composition', { keyCode: 229 }],
+      ['repeat', { repeat: true }],
+    ];
+    it.each(['s', 'x'])('rejects modified/composing/repeated %s through the header and document paths', async action => {
+      await enter(); batch(); await settle();
+      for (const surface of ['grid', 'darkroom']) {
+        if (surface === 'darkroom') { key('Enter'); await settle(); }
+        for (const [, init] of invalidKeys) {
+          const target = surface === 'grid' ? document : dom().querySelector('button[aria-keyshortcuts="S"]')!;
+          target.dispatchEvent(new KeyboardEvent('keydown', { key: action, ...init, bubbles: true, cancelable: true }));
+          // Reach the direct path as well as Angular's document modifier matcher.
+          page[action === 's' ? 'onStackKey' : 'onSkipSuggestionKey'](new KeyboardEvent('keydown', { key: action, ...init }));
+          const writes = http.match(request => request.method !== 'GET');
+          for (const write of writes) write.flush({}, { status: 500, statusText: 'failed' });
+          await settle(); expect(writes, surface + JSON.stringify(init)).toHaveLength(0);
+        }
+      }
+    });
+
+    it.each(['s', 'x', 'Enter'])('leaves typing %s alone on the document and inner darkroom paths', async action => {
+      await enter(); batch(); await settle();
+      const input = document.createElement('input'); dom().append(input);
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: action, bubbles: true, cancelable: true }));
+      key('Enter'); await settle();
+      dom().querySelector('button[aria-keyshortcuts="S"]')!.parentElement!.append(input);
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: action, bubbles: true, cancelable: true }));
+      expect(http.match(request => request.method !== 'GET')).toHaveLength(0);
+      expect(page['lightboxGroup']()?.group_id).toBe(1);
+    });
+
+    it.each(['dialog', 'bottom_sheet', 'slideshow'])('blocks S and X behind an active %s on both paths', async overlay => {
+      await enter(); batch(); await settle(); key('Enter'); await settle();
+      const close = overlay === 'dialog' ? (() => { const ref = TestBed.inject(MatDialog).open(GalleryDestination); return () => ref.close(); })()
+        : overlay === 'bottom_sheet' ? (() => { const ref = TestBed.inject(MatBottomSheet).open(GalleryDestination); return () => ref.dismiss(); })()
+          : TestBed.inject(PageContextService).registerOverlay('slideshow');
+      await settle();
+      for (const action of ['s', 'x']) {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: action, bubbles: true, cancelable: true }));
+        dom().querySelector('button[aria-keyshortcuts="S"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: action, bubbles: true, cancelable: true }));
+      }
+      const writes = http.match(request => request.method !== 'GET');
+      for (const write of writes) write.flush({}, { status: 500, statusText: 'failed' });
+      close(); await settle(); expect(writes).toHaveLength(0);
+      expect(cull.groups()).toHaveLength(2);
+    });
+  });
+
+  it('keeps unmodified inner-header S and X actionable after shortcut admission', async () => {
+    await enter(); batch(); await settle(); key('Enter'); await settle();
+    const header = dom().querySelector('button[aria-keyshortcuts="S"]')!;
+    header.dispatchEvent(new KeyboardEvent('keydown', { key: 's', bubbles: true, cancelable: true }));
+    const create = http.expectOne('/api/stacks');
+    expect(create.request.body).toEqual({ paths: ['/b.jpg', '/a.jpg'], cover_path: '/b.jpg' });
+    create.flush({}, { status: 500, statusText: 'failed' }); await settle();
+    expect(page['lightboxGroup']()?.group_id).toBe(1);
+    header.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', bubbles: true, cancelable: true }));
+    http.expectOne('/api/stacks/suggestions/dismissals').flush(null);
+    await vi.waitFor(() => expect(page['lightboxGroup']()?.group_id).toBe(2));
+    expect(http.match(() => true)).toHaveLength(0);
+  });
+
+  it('stacks the focused photo with plain Enter from the real darkroom pane', async () => {
+    await enter(); batch(); await settle(); key('Enter'); await settle();
+    (dom().querySelectorAll('[data-stack-filmstrip] button')[1] as HTMLButtonElement).click(); await settle();
+    dom().querySelector('app-synced-zoom')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    const create = http.expectOne('/api/stacks');
+    expect(create.request.body).toEqual({ paths: ['/b.jpg', '/a.jpg'], cover_path: '/a.jpg' });
+    create.flush({}, { status: 500, statusText: 'failed' }); await settle();
+    expect(cull.groups()).toHaveLength(2);
+  });
+
+  describe('interrupted stack navigation', () => {
+    function delayedNavigation() {
+      const router = TestBed.inject(Router);
+      const answer = new Subject<boolean>();
+      let start!: () => void;
+      const started = new Promise<void>(resolve => { start = resolve; });
+      router.resetConfig([...router.config, { path: 'delayed', component: GalleryDestination,
+        canActivate: [() => { start(); return answer; }] }]);
+      return { answer, started, navigating: router.navigateByUrl('/delayed') };
+    }
+
+    it('clears private rows while a guard waits, expires old decisions/editor/Undo, and recovers a usable fresh visit', async () => {
+      await enter(); batch(); await settle();
+      const router = TestBed.inject(Router); const before = router.url;
+      const oldFirst = cull.groups()[0];
+      const stacking = page['stackGroup'](oldFirst);
+      http.expectOne('/api/stacks').flush({ undo: { entry_id: 50 } }); await stacking;
+      expect(commands).toHaveLength(1);
+      const oldUndo = commands[0]; const oldSecond = cull.groups()[0];
+      const skipping = page['skipStackSuggestion'](oldSecond);
+      const oldWrite = http.expectOne('/api/stacks/suggestions/dismissals');
+      const editing = page['editSuggestion'](oldSecond); await settle();
+      await vi.waitFor(() => expect(TestBed.inject(MatDialog).openDialogs).toHaveLength(1));
+      const ref = TestBed.inject(MatDialog).openDialogs[0];
+      const oldEditorUndo = ref.componentInstance.data.onUndone;
+      http.expectOne('/api/photos/by_paths').flush({ photos: oldSecond.photos, missing: [] }); await settle();
+      page['openLightbox'](oldSecond, 0);
+      const navigation = delayedNavigation(); await navigation.started; await settle();
+      expect(cull.mode()).toBe('stacks'); expect(cull.cullWritesAllowed()).toBe(false);
+      expect(cull.groups()).toHaveLength(0); expect(page['lightboxGroupId']()).toBeNull();
+      expect(dom().querySelector('[data-pidx]')).toBeNull();
+      expect(dom().querySelector('app-synced-zoom')).toBeNull();
+      await editing; expect(TestBed.inject(MatDialog).openDialogs).toHaveLength(0);
+      expect(http.match('/api/stacks/suggestions')).toHaveLength(0);
+      navigation.answer.next(false); navigation.answer.complete(); expect(await navigation.navigating).toBe(false);
+      expect(router.url).toBe(before); expect(cull.groups()).toHaveLength(0);
+      const fresh = http.expectOne('/api/stacks/suggestions'); expect(fresh.request.body).toEqual({ filters, include_photos: true });
+      oldWrite.flush(null); await skipping; oldEditorUndo();
+      await expect(oldUndo.undo()).rejects.toThrow('Stack session expired');
+      expect(http.match('/api/organization_history/50/revert')).toHaveLength(0);
+      expect(commands).toHaveLength(1); expect(cull.groups()).toHaveLength(0);
+      fresh.flush({ suggestions: [response.suggestions[1]] }); await settle();
+      expect(cull.groups()[0]).not.toBe(oldSecond);
+      expect(TestBed.inject(PageContextService).snapshot()).toEqual({ id: 'culling', mode: 'stacks' });
+      const freshDecision = page['stackGroup'](cull.groups()[0]);
+      http.expectOne('/api/stacks').flush({ undo: { entry_id: 51 } }); await freshDecision;
+      http.expectOne('/api/stacks/suggestions').flush({ suggestions: [] }); await settle();
+      expect(commands).toHaveLength(2);
+    });
+
+    it('keeps failed recovery empty and in stacks, with the real Reload action retrying only its captured scope', async () => {
+      await enter(); batch(); await settle();
+      expect(await TestBed.inject(Router).navigateByUrl('/blocked')).toBe(false);
+      http.expectOne('/api/stacks/suggestions').flush({}, { status: 500, statusText: 'failed' }); await settle();
+      expect(cull.mode()).toBe('stacks'); expect(cull.cullWritesAllowed()).toBe(false);
+      expect(dom().querySelector('[data-pidx]')).toBeNull();
+      expect(dom().querySelector('[aria-label^="culling.confirm"]')).toBeNull();
+      const reload = [...dom().querySelectorAll('button')].find(button => button.textContent?.trim() === 'stacks.suggestions_reload') as HTMLButtonElement;
+      expect(reload).toBeDefined(); reload.click(); batch(); await settle();
+      expect(cull.groups()).toHaveLength(2); expect(http.match(() => true)).toHaveLength(0);
+    });
+
+    it.each(['blocked', 'same'])('recovers once after a guard redirect to %s', async target => {
+      await enter(); batch(); await settle(); const router = TestBed.inject(Router); const before = router.url;
+      router.resetConfig([...router.config, { path: 'redirected', component: GalleryDestination,
+        canActivate: [() => router.parseUrl(target === 'same' ? before : '/blocked')] }]);
+      expect(await router.navigateByUrl('/redirected')).toBe(target === 'same');
+      expect(router.url).toBe(before); expect(cull.mode()).toBe('stacks');
+      batch(); await settle(); expect(http.match(() => true)).toHaveLength(0);
+    });
+
+    it('waits for a superseding navigation before recovering once', async () => {
+      await enter(); batch(); await settle();
+      const navigation = delayedNavigation(); await navigation.started;
+      expect(await TestBed.inject(Router).navigateByUrl('/blocked')).toBe(false);
+      expect(await navigation.navigating).toBe(false);
+      batch(); await settle(); expect(cull.mode()).toBe('stacks');
+      expect(http.match(() => true)).toHaveLength(0);
+    });
+
+    it('reuses the component on a completed normal culling navigation and initializes that feed', async () => {
+      await enter(); batch(); await settle();
+      expect(await TestBed.inject(Router).navigateByUrl('/culling')).toBe(true); await settle();
+      expect(harness.routeDebugElement!.componentInstance).toBe(page);
+      expect(cull.mode()).toBe('cull'); expect(cull.cullWritesAllowed()).toBe(true);
+      expect(TestBed.inject(PageContextService).snapshot()).toEqual({ id: 'culling', mode: 'cull' });
+      expect(dom().querySelector('[data-testid="stack-review-header"]')).toBeNull();
+      expect(http.match('/api/stacks/suggestions')).toHaveLength(0);
+      const reads = http.match(() => true); expect(reads.some(request => request.request.url === '/api/culling-groups')).toBe(true);
+      for (const request of reads) request.flush(request.request.url.includes('/culling-groups')
+        ? { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 } : {});
+      await settle();
+    });
+
+    it('revalidates a changed scope and return URL on a completed same-component stack navigation', async () => {
+      await enter(); batch(); await settle(); const router = TestBed.inject(Router);
+      const nextFilters = { album_id: '43', camera: 'Another camera' }; const nextOrigin = '/album/43?camera=other#new';
+      expect(await router.navigateByUrl(url(nextOrigin, JSON.stringify(nextFilters)))).toBe(true);
+      expect(harness.routeDebugElement!.componentInstance).toBe(page);
+      expect(cull.mode()).toBe('stacks'); expect(cull.groups()).toHaveLength(0);
+      const request = http.expectOne('/api/stacks/suggestions');
+      expect(request.request.body).toEqual({ filters: nextFilters, include_photos: true });
+      request.flush(response); await settle(); expect(http.match(() => true)).toHaveLength(0);
+      page['backToGallery'](); await settle(); await vi.waitFor(() => expect(router.url).toBe(nextOrigin));
+    });
+  });
 
   it('initializes stack mode before effects and makes only the exact scoped suggestion request', async () => {
     const plan = TestBed.inject(AssistantCullPlanService);

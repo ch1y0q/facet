@@ -1,6 +1,6 @@
 import { SEQUENCE_KINDS_KEPT_WHOLE } from '../../shared/pipes/sequence-kind.pipe';
 import { Component, DestroyRef, inject, signal, linkedSignal, computed, effect, untracked, viewChild, ElementRef, OnDestroy, HostListener, TemplateRef, ChangeDetectionStrategy } from '@angular/core';
-import { NavigationStart, NavigationEnd, NavigationCancel, NavigationError, Router, ActivatedRoute } from '@angular/router';
+import { NavigationStart, NavigationEnd, NavigationCancel, NavigationCancellationCode, NavigationError, NavigationSkipped, Router, ActivatedRoute } from '@angular/router';
 import { ViewActionRegistry } from '../../core/agent/view-action-registry.service';
 import { UiToolError } from '../../core/agent/ui-tool.types';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -80,6 +80,14 @@ const CULL_FACE_SIZE_KEY = 'facet_culling_face_size';
 const CULL_LEGEND_KEY = 'facet_culling_legend';
 const CULL_DARKROOM_LOUPE_KEY = 'facet_culling_darkroom_loupe';
 const CULL_SWIPE_HINT_KEY = 'facet_culling_swipe_hint';
+
+/** The gallery payload is JSON of string-valued API filters, independent of its return URL. */
+function parseStackReviewFilters(raw: string | null): Record<string, string> {
+  const filters: unknown = raw ? JSON.parse(raw) : null;
+  if (!filters || typeof filters !== 'object' || Array.isArray(filters)
+    || Object.entries(filters).some(([key, value]) => !key || typeof value !== 'string')) throw new Error('Invalid stack scope');
+  return filters as Record<string, string>;
+}
 
 /** Stored face-panel slider value (0-10); 0 = highlight filter off. */
 function readStoredFaceMin(key: string): number {
@@ -1534,6 +1542,7 @@ export class BurstCullingComponent implements OnDestroy {
   protected readonly auth = inject(AuthService);
   protected readonly store = inject(GalleryStore);
   private readonly dialog = inject(MatDialog);
+  private readonly pageContext = inject(PageContextService);
   private readonly destroyRef = inject(DestroyRef);
   private trashOpening = false;
   private trashNavigation = 0;
@@ -1976,9 +1985,10 @@ export class BurstCullingComponent implements OnDestroy {
 
   /** Measure a frame once, for the composition grid's viewBox. */
   private async ensureFrameSize(path: string): Promise<void> {
+    const current = this.pageSession();
     if (this.frameSizes().has(path)) return;
     const size = await this.measureFrame(this.frameSource(path, false));
-    if (size) updateMapSignal(this.frameSizes, path, size);
+    if (size && current()) updateMapSignal(this.frameSizes, path, size);
   }
 
   /** Seam over the image load, for the same reason as renderPeaking. */
@@ -2136,6 +2146,62 @@ export class BurstCullingComponent implements OnDestroy {
   private pageNavigating = false;
   private pageOwner = this.auth.identity();
   private secondaryEditor: { close: () => void } | null = null;
+  private stackNavigationSource: { owner: string; filters: Record<string, string> } | null = null;
+
+  private clearStackView(): void {
+    this.secondaryEditor?.close();
+    this.secondaryEditor = null;
+    this.closeLightbox();
+    this.faceMap.set(new Map());
+    this.subjectMap.set(new Map());
+    this.keySubjectMap.set(new Map());
+    this.frameSizes.set(new Map());
+    this.failedRenderPaths.set(new Set());
+    this.sharpPath.set(null);
+    this.clearPeaking();
+    this.abortPrefetch(this.neighbourThumbs);
+    this.abortPrefetch(this.neighbourRenders);
+  }
+
+  private setStackReturnUrl(target: string): void {
+    try {
+      if (!target.startsWith('/') || target.startsWith('//') || target.includes('\\')) throw new Error('Invalid return');
+      decodeURIComponent(target);
+      const root = this.router.parseUrl(target).root.children;
+      const primary = root['primary'];
+      if (Object.keys(root).some(key => key !== 'primary')
+        || (primary && Object.keys(primary.children).length)
+        || (primary && !(primary.segments.length === 0
+          || primary.segments.length === 2 && primary.segments[0].path === 'album' && /^\d+$/.test(primary.segments[1].path)))) throw new Error('Invalid return');
+      this.stackReturnUrl = target;
+    } catch { this.stackReturnUrl = '/'; }
+  }
+
+  /** A cancelled visit has a new root navigation context; old decisions and Undo must stay expired. */
+  private recoverStackVisit(): void {
+    const source = this.stackNavigationSource;
+    this.stackNavigationSource = null;
+    if (!source || !this.pageAlive || this.destroyRef.destroyed) return;
+    const tree = this.router.parseUrl(this.router.url);
+    const segments = tree.root.children['primary']?.segments;
+    if (segments?.length !== 1 || segments[0].path !== 'culling') return;
+    if (this.auth.identity() !== source.owner || !this.auth.isEdition()) { this.leaveStacks(); return; }
+    if (tree.queryParamMap.get('mode') !== 'stacks') {
+      this.cull.leaveStackMode();
+      if (!this.planService.pin()) void this.cull.loadGroups();
+      void this.loadAlbums();
+      void this.cull.loadCullProfiles();
+      void this.cull.refreshComparisonStats();
+      void this.cull.refreshRankerStatus();
+      return;
+    }
+    try {
+      const filters = parseStackReviewFilters(tree.queryParamMap.get('filters'));
+      this.cull.enterStackMode(filters);
+      this.setStackReturnUrl(tree.queryParamMap.get('return') ?? '/');
+      void this.cull.loadGroups();
+    } catch { this.leaveStacks(); }
+  }
 
   private pageSession(): () => boolean {
     const epoch = this.pageEpoch;
@@ -2149,12 +2215,8 @@ export class BurstCullingComponent implements OnDestroy {
   private leaveStacks(): void {
     this.pageEpoch++;
     this.stopDetectionPolling();
-    this.secondaryEditor?.close();
-    this.secondaryEditor = null;
-    this.closeLightbox();
-    this.faceMap.set(new Map());
-    this.subjectMap.set(new Map());
-    this.keySubjectMap.set(new Map());
+    this.stackNavigationSource = null;
+    this.clearStackView();
     this.cull.leaveStackMode();
     this.pageOwner = this.auth.identity();
     this.stackNotice.set(true);
@@ -2173,24 +2235,9 @@ export class BurstCullingComponent implements OnDestroy {
     const qp = this.route.snapshot.queryParamMap;
     if (qp.get('mode') === 'stacks') {
       try {
-        const raw = qp.get('filters');
-        const filters: unknown = raw ? JSON.parse(raw) : null;
-        if (!this.auth.isEdition() || !filters || typeof filters !== 'object' || Array.isArray(filters)
-          || Object.entries(filters).some(([key, value]) => !key || typeof value !== 'string')) throw new Error('Invalid stack scope');
-        this.cull.enterStackMode(filters as Record<string, string>);
-        const target = qp.get('return') ?? '/';
-        try {
-          if (!target.startsWith('/') || target.startsWith('//') || target.includes('\\')) throw new Error('Invalid return');
-          decodeURIComponent(target);
-          const tree = this.router.parseUrl(target);
-          const root = tree.root.children;
-          const primary = root['primary'];
-          if (Object.keys(root).some(key => key !== 'primary')
-            || (primary && Object.keys(primary.children).length)
-            || (primary && !(primary.segments.length === 0
-              || primary.segments.length === 2 && primary.segments[0].path === 'album' && /^\d+$/.test(primary.segments[1].path)))) throw new Error('Invalid return');
-          this.stackReturnUrl = target;
-        } catch { this.stackReturnUrl = '/'; }
+        if (!this.auth.isEdition()) throw new Error('Invalid stack session');
+        this.cull.enterStackMode(parseStackReviewFilters(qp.get('filters')));
+        this.setStackReturnUrl(qp.get('return') ?? '/');
       } catch {
         this.stackNotice.set(true);
         void this.router.navigate(['/culling'], { replaceUrl: true });
@@ -2209,13 +2256,19 @@ export class BurstCullingComponent implements OnDestroy {
         this.pageNavigating = true;
         this.trashNavigation++;
         this.pageEpoch++;
-        this.secondaryEditor?.close();
         if (this.stacksMode()) {
-          this.closeLightbox(); this.faceMap.set(new Map()); this.subjectMap.set(new Map()); this.keySubjectMap.set(new Map());
-          this.cull.leaveStackMode();
-        }
-      } else if (event instanceof NavigationEnd || event instanceof NavigationCancel || event instanceof NavigationError) {
+          this.stackNavigationSource ??= { owner: this.pageOwner, filters: { ...this.cull.stackFilters() } };
+          this.clearStackView();
+          // Invalidate the old visit without ever enabling cull writes beneath a stack URL.
+          this.cull.enterStackMode(this.stackNavigationSource.filters);
+          this.cull.loading.set(true);
+        } else this.secondaryEditor?.close();
+      } else if (event instanceof NavigationEnd || event instanceof NavigationCancel
+        || event instanceof NavigationError || event instanceof NavigationSkipped) {
+        if (event instanceof NavigationCancel && (event.code === NavigationCancellationCode.Redirect
+          || event.code === NavigationCancellationCode.SupersededByNewNavigation)) return;
         this.pageNavigating = false;
+        this.recoverStackVisit();
       }
     });
     effect(() => this.pageHelp.setDescription(this.stacksMode() ? this.I18N.stacks.review_help : this.I18N.culling.help_text));
@@ -2239,7 +2292,7 @@ export class BurstCullingComponent implements OnDestroy {
     });
     inject(DestroyRef).onDestroy(() => this.journal.darkroomFocus.set(null));
     // The auto-cull confirm is a custom modal MatDialog cannot see; the lightbox is the page's working surface and is not one.
-    const pageContext = inject(PageContextService);
+    const pageContext = this.pageContext;
     effect(onCleanup => {
       if (this.cull.autoCullPreview()) onCleanup(pageContext.registerOverlay('dialog'));
     });
@@ -2758,6 +2811,7 @@ export class BurstCullingComponent implements OnDestroy {
   protected onDarkroomKeydown(event: KeyboardEvent): void {
     event.stopPropagation();
     if (this.stacksMode()) {
+      if (this.shortcutsBlocked(event)) return;
       if (event.key === 'Enter' && isControlActivation(event)) return;
       if (event.key === ' ' && !isControlActivation(event) && !isTypingContext(event)) event.preventDefault();
       if (event.key === 's' || event.key === 'S' || event.key === 'Enter') this.onStackKey(event);
@@ -2949,7 +3003,11 @@ export class BurstCullingComponent implements OnDestroy {
   }
 
   private shortcutsBlocked(event: Event): boolean {
-    return event.defaultPrevented || this.dialog.openDialogs.length > 0;
+    if (event.defaultPrevented || this.dialog.openDialogs.length > 0) return true;
+    if (!this.stacksMode()) return false;
+    const key = event as KeyboardEvent;
+    return this.pageNavigating || isTypingContext(event) || key.ctrlKey || key.metaKey || key.altKey
+      || key.isComposing || key.keyCode === 229 || key.repeat || this.pageContext.overlays().length > 0;
   }
 
   @HostListener('document:keydown.arrowleft', ['$event'])
@@ -3177,7 +3235,7 @@ export class BurstCullingComponent implements OnDestroy {
 
   @HostListener('document:keydown.enter', ['$event'])
   protected onEnter(event: Event): void {
-    if (this.shortcutsBlocked(event)) return;
+    if (this.shortcutsBlocked(event) || isTypingContext(event) || isControlActivation(event)) return;
     if (this.lightboxGroup()) {
       if (this.stacksMode()) this.onStackKey(event);
       return;
@@ -3203,7 +3261,7 @@ export class BurstCullingComponent implements OnDestroy {
   @HostListener('document:keydown.space', ['$event'])
   protected onSpace(event: Event): void {
     if (this.stacksMode()) {
-      if (!isTypingContext(event) && !isControlActivation(event)) event.preventDefault();
+      if (!this.shortcutsBlocked(event) && !isControlActivation(event)) event.preventDefault();
       return;
     }
     if (this.shortcutsBlocked(event)) return;
@@ -3235,7 +3293,7 @@ export class BurstCullingComponent implements OnDestroy {
   @HostListener('document:keydown.shift.space', ['$event'])
   protected onShiftSpace(event: Event): void {
     if (this.stacksMode()) {
-      if (!isTypingContext(event) && !isControlActivation(event)) event.preventDefault();
+      if (!this.shortcutsBlocked(event) && !isControlActivation(event)) event.preventDefault();
       return;
     }
     if (this.shortcutsBlocked(event)) return;
