@@ -1038,7 +1038,8 @@
     "map": "Map",
     "capsules": "Capsules",
     "junk_sweep": "Junk Sweep",
-    "help": "Help"
+    "help": "Help",
+    "more": "More"
   },
   "auth": {
     "logout": "Log out",

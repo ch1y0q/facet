@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Pipe, PipeTransform } from '@angular/core';
-import { GearChartCardComponent, GearItem } from './gear-chart-card.component';
+import { GearChartCardComponent, GearItem, truncateLegendLabel } from './gear-chart-card.component';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 
 @Pipe({
@@ -119,5 +119,22 @@ describe('GearChartCardComponent', () => {
     const select = (fixture.nativeElement as HTMLElement).querySelector('mat-select') as HTMLElement;
     expect(select.getAttribute('aria-label')).toBe('trans_stats.gear_metric_label');
     expect((fixture.nativeElement as HTMLElement).querySelector('mat-label')).toBeNull();
+  });
+});
+
+describe('truncateLegendLabel', () => {
+  it('leaves a short label untouched', () => {
+    expect(truncateLegendLabel('Canon EOS R5')).toBe('Canon EOS R5');
+  });
+
+  it('shortens a long label to the limit with an ellipsis', () => {
+    const out = truncateLegendLabel('KODAK EASYSHARE ZD710 ZOOM DIGITAL CAMERA');
+    expect(out.length).toBeLessThanOrEqual(24);
+    expect(out.endsWith('…')).toBe(true);
+  });
+
+  it('keeps a label of exactly the limit', () => {
+    const exact = 'x'.repeat(24);
+    expect(truncateLegendLabel(exact)).toBe(exact);
   });
 });

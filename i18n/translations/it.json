@@ -1038,7 +1038,8 @@
     "map": "Mappa",
     "capsules": "Capsule",
     "junk_sweep": "Pulizia",
-    "help": "Aiuto"
+    "help": "Aiuto",
+    "more": "Altro"
   },
   "auth": {
     "logout": "Esci",

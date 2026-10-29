@@ -89,28 +89,17 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
         <button mat-icon-button (click)="goBack()" [matTooltip]="I18N.photo_detail.back | translate" [attr.aria-label]="I18N.photo_detail.back | translate">
           <mat-icon>arrow_back</mat-icon>
         </button>
-        <span class="flex-1 truncate font-medium">{{ p.filename }}</span>
+        <span class="min-w-0 flex-1 truncate font-medium">{{ p.filename }}</span>
         @if (auth.isEdition()) {
-          <button mat-icon-button (click)="refreshPhoto(p)" [matTooltip]="I18N.photo_refresh.title | translate" [attr.aria-label]="I18N.photo_refresh.title | translate"><mat-icon>refresh</mat-icon></button>
+          <button mat-icon-button class="max-md:!hidden" (click)="refreshPhoto(p)" [matTooltip]="I18N.photo_refresh.title | translate" [attr.aria-label]="I18N.photo_refresh.title | translate"><mat-icon>refresh</mat-icon></button>
         }
 
 
         @if (store.config()?.features?.show_similar_button) {
-          <button mat-icon-button [matMenuTriggerFor]="similarMenu"
+          <button mat-icon-button class="max-md:!hidden" [matMenuTriggerFor]="similarMenu"
             [matTooltip]="I18N.similar.find_similar | translate" [attr.aria-label]="I18N.similar.find_similar | translate">
             <mat-icon>image_search</mat-icon>
           </button>
-          <mat-menu #similarMenu="matMenu">
-            <button mat-menu-item (click)="openSimilar(p, 'visual')">
-              <mat-icon>image_search</mat-icon> {{ I18N.similar.mode_visual | translate }}
-            </button>
-            <button mat-menu-item (click)="openSimilar(p, 'color')">
-              <mat-icon>palette</mat-icon> {{ I18N.similar.mode_color | translate }}
-            </button>
-            <button mat-menu-item (click)="openSimilar(p, 'person')">
-              <mat-icon>person_search</mat-icon> {{ I18N.similar.mode_person | translate }}
-            </button>
-          </mat-menu>
         }
 
         @if (store.config()?.features?.show_critique) {
@@ -121,36 +110,28 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
         }
 
         @if (auth.isEdition() && store.config()?.cull?.trash_available) {
-          <button mat-icon-button (click)="deletePhoto()"
+          <button mat-icon-button class="max-md:!hidden" (click)="deletePhoto()"
             [matTooltip]="I18N.photo_detail.delete.button_label | translate" [attr.aria-label]="I18N.photo_detail.delete.button_label | translate">
             <mat-icon>delete</mat-icon>
           </button>
         }
 
         @if (auth.isEdition()) {
-          <button mat-icon-button [matMenuTriggerFor]="categoryOverrideMenu"
+          <button mat-icon-button class="max-md:!hidden" [matMenuTriggerFor]="categoryOverrideMenu"
             [matTooltip]="I18N.photo.category_override.menu_tooltip | translate" [attr.aria-label]="I18N.photo.category_override.menu_tooltip | translate">
             <mat-icon>category</mat-icon>
           </button>
-          <mat-menu #categoryOverrideMenu="matMenu">
-            <button mat-menu-item (click)="openCategoryOverride(p)">
-              <mat-icon>edit</mat-icon> {{ I18N.photo.category_override.set_action | translate }}
-            </button>
-            <button mat-menu-item (click)="clearCategoryOverride(p)">
-              <mat-icon>restart_alt</mat-icon> {{ I18N.photo.category_override.clear_action | translate }}
-            </button>
-          </mat-menu>
         }
 
         @if (auth.isEdition()) {
-          <button mat-icon-button (click)="openManualFaces(p)"
+          <button mat-icon-button class="max-md:!hidden" (click)="openManualFaces(p)"
             [matTooltip]="I18N.manual_faces.title | translate" [attr.aria-label]="I18N.manual_faces.title | translate">
             <mat-icon>crop_free</mat-icon>
           </button>
         }
 
         @if (auth.isEdition() && p.unassigned_faces > 0) {
-          <button mat-icon-button (click)="openAddPerson(p)"
+          <button mat-icon-button class="max-md:!hidden" (click)="openAddPerson(p)"
             [matTooltip]="I18N.manage_persons.assign_face | translate" [attr.aria-label]="I18N.manage_persons.assign_face | translate">
             <mat-icon>person_add</mat-icon>
           </button>
@@ -181,16 +162,67 @@ const SOCIAL_SOURCE_KEYS: Record<string, string> = {
         }
 
         @if (socialExportEnabled()) {
-          <button mat-icon-button [matMenuTriggerFor]="socialMenu" [disabled]="downloading()"
+          <button mat-icon-button class="max-md:!hidden" [matMenuTriggerFor]="socialMenu" [disabled]="downloading()"
             [matTooltip]="(socialCropTooltipKey() | translate)" [attr.aria-label]="I18N.photo_detail.social_crop | translate">
             <mat-icon>crop</mat-icon>
           </button>
-          <mat-menu #socialMenu="matMenu">
-            @for (preset of socialPresets(); track preset.key) {
-              <button mat-menu-item (click)="downloadSocialCrop(p.path, preset.key)">
-                <mat-icon>crop</mat-icon>
-                {{ preset.label_key | translate }}
-              </button>
+        }
+
+        <!-- Declared outside their @if so both the inline buttons and the overflow menu can target them. -->
+        <mat-menu #similarMenu="matMenu">
+          <button mat-menu-item (click)="openSimilar(p, 'visual')">
+            <mat-icon>image_search</mat-icon> {{ I18N.similar.mode_visual | translate }}
+          </button>
+          <button mat-menu-item (click)="openSimilar(p, 'color')">
+            <mat-icon>palette</mat-icon> {{ I18N.similar.mode_color | translate }}
+          </button>
+          <button mat-menu-item (click)="openSimilar(p, 'person')">
+            <mat-icon>person_search</mat-icon> {{ I18N.similar.mode_person | translate }}
+          </button>
+        </mat-menu>
+        <mat-menu #categoryOverrideMenu="matMenu">
+          <button mat-menu-item (click)="openCategoryOverride(p)">
+            <mat-icon>edit</mat-icon> {{ I18N.photo.category_override.set_action | translate }}
+          </button>
+          <button mat-menu-item (click)="clearCategoryOverride(p)">
+            <mat-icon>restart_alt</mat-icon> {{ I18N.photo.category_override.clear_action | translate }}
+          </button>
+        </mat-menu>
+        <mat-menu #socialMenu="matMenu">
+          @for (preset of socialPresets(); track preset.key) {
+            <button mat-menu-item (click)="downloadSocialCrop(p.path, preset.key)">
+              <mat-icon>crop</mat-icon>
+              {{ preset.label_key | translate }}
+            </button>
+          }
+        </mat-menu>
+
+        <!-- Below md the secondary actions fold into this menu so the filename keeps its room;
+             back, critique and download stay in the row. Same handlers and conditions as the inline buttons. -->
+        @if (auth.isEdition() || store.config()?.features?.show_similar_button || socialExportEnabled()) {
+          <button mat-icon-button class="md:!hidden" [matMenuTriggerFor]="moreActionsMenu"
+            [matTooltip]="I18N.nav.more | translate" [attr.aria-label]="I18N.nav.more | translate">
+            <mat-icon>more_vert</mat-icon>
+          </button>
+          <mat-menu #moreActionsMenu="matMenu">
+            @if (auth.isEdition()) {
+              <button mat-menu-item (click)="refreshPhoto(p)"><mat-icon>refresh</mat-icon> {{ I18N.photo_refresh.title | translate }}</button>
+            }
+            @if (store.config()?.features?.show_similar_button) {
+              <button mat-menu-item [matMenuTriggerFor]="similarMenu"><mat-icon>image_search</mat-icon> {{ I18N.similar.find_similar | translate }}</button>
+            }
+            @if (auth.isEdition() && store.config()?.cull?.trash_available) {
+              <button mat-menu-item (click)="deletePhoto()"><mat-icon>delete</mat-icon> {{ I18N.photo_detail.delete.button_label | translate }}</button>
+            }
+            @if (auth.isEdition()) {
+              <button mat-menu-item [matMenuTriggerFor]="categoryOverrideMenu"><mat-icon>category</mat-icon> {{ I18N.photo.category_override.menu_tooltip | translate }}</button>
+              <button mat-menu-item (click)="openManualFaces(p)"><mat-icon>crop_free</mat-icon> {{ I18N.manual_faces.title | translate }}</button>
+            }
+            @if (auth.isEdition() && p.unassigned_faces > 0) {
+              <button mat-menu-item (click)="openAddPerson(p)"><mat-icon>person_add</mat-icon> {{ I18N.manage_persons.assign_face | translate }}</button>
+            }
+            @if (socialExportEnabled()) {
+              <button mat-menu-item [matMenuTriggerFor]="socialMenu" [disabled]="downloading()"><mat-icon>crop</mat-icon> {{ I18N.photo_detail.social_crop | translate }}</button>
             }
           </mat-menu>
         }

@@ -20,7 +20,7 @@
              unstyled overflow-y would grow a stray vertical scrollbar next to the icons
              (auto comes from the overflow-x side of the pair); the 2px crop per edge is
              inside the button's own padding, never through the glyph. -->
-        <nav class="flex items-center gap-0 lg:gap-1 max-lg:min-w-0 max-lg:overflow-x-auto max-lg:overflow-y-hidden max-lg:px-1.5">
+        <nav class="flex items-center gap-0 lg:gap-1 max-lg:min-w-0 max-lg:overflow-x-auto max-lg:overflow-y-hidden max-lg:[scrollbar-width:none] max-lg:px-1.5">
           <a mat-icon-button class="lg:!hidden" routerLink="/" routerLinkActive #rlGalleryM="routerLinkActive" [routerLinkActiveOptions]="{exact:true}" [style.color]="rlGalleryM.isActive ? 'var(--mat-sys-primary)' : ''" [matTooltip]="I18N.nav.gallery_tooltip | translate" [attr.aria-label]="I18N.nav.gallery_tooltip | translate" (dblclick)="resetAllFilters()">
             <mat-icon>diamond</mat-icon>
           </a>
@@ -105,38 +105,64 @@
             <mat-icon>people</mat-icon>
           </a>
           @if (store.config()?.features?.show_map && hasGeoPhotos()) {
-            <a mat-icon-button class="!hidden lg:!inline-flex" routerLink="/map" routerLinkActive #rlMap="routerLinkActive" [style.color]="rlMap.isActive ? 'var(--mat-sys-primary)' : ''" [matTooltip]="I18N.nav.map | translate" [attr.aria-label]="I18N.nav.map | translate">
+            <a mat-icon-button class="!hidden min-[1680px]:!inline-flex" routerLink="/map" routerLinkActive #rlMap="routerLinkActive" [style.color]="rlMap.isActive ? 'var(--mat-sys-primary)' : ''" [matTooltip]="I18N.nav.map | translate" [attr.aria-label]="I18N.nav.map | translate">
               <mat-icon>map</mat-icon>
             </a>
           }
           @if (auth.isEdition()) {
-            <a mat-icon-button class="!hidden lg:!inline-flex" routerLink="/culling" routerLinkActive #rlCulling="routerLinkActive" [style.color]="rlCulling.isActive ? 'var(--mat-sys-primary)' : ''" [matTooltip]="I18N.nav.culling | translate" [attr.aria-label]="I18N.nav.culling | translate">
+            <a mat-icon-button class="!hidden min-[1680px]:!inline-flex" routerLink="/culling" routerLinkActive #rlCulling="routerLinkActive" [style.color]="rlCulling.isActive ? 'var(--mat-sys-primary)' : ''" [matTooltip]="I18N.nav.culling | translate" [attr.aria-label]="I18N.nav.culling | translate">
               <mat-icon>burst_mode</mat-icon>
             </a>
             @if (store.config()?.features?.show_junk_sweep) {
-              <a mat-icon-button class="!hidden lg:!inline-flex" routerLink="/junk" routerLinkActive #rlJunk="routerLinkActive" [style.color]="rlJunk.isActive ? 'var(--mat-sys-primary)' : ''" [matTooltip]="I18N.nav.junk_sweep | translate" [attr.aria-label]="I18N.nav.junk_sweep | translate">
+              <a mat-icon-button class="!hidden min-[1680px]:!inline-flex" routerLink="/junk" routerLinkActive #rlJunk="routerLinkActive" [style.color]="rlJunk.isActive ? 'var(--mat-sys-primary)' : ''" [matTooltip]="I18N.nav.junk_sweep | translate" [attr.aria-label]="I18N.nav.junk_sweep | translate">
                 <mat-icon>delete_sweep</mat-icon>
               </a>
             }
           }
-          <a mat-icon-button class="!hidden lg:!inline-flex" routerLink="/stats" routerLinkActive #rlStats="routerLinkActive" [style.color]="rlStats.isActive ? 'var(--mat-sys-primary)' : ''" [matTooltip]="I18N.nav.stats | translate" [attr.aria-label]="I18N.nav.stats | translate">
+          <a mat-icon-button class="!hidden min-[1680px]:!inline-flex" routerLink="/stats" routerLinkActive #rlStats="routerLinkActive" [style.color]="rlStats.isActive ? 'var(--mat-sys-primary)' : ''" [matTooltip]="I18N.nav.stats | translate" [attr.aria-label]="I18N.nav.stats | translate">
             <mat-icon>bar_chart</mat-icon>
           </a>
           @if (auth.isEdition()) {
-            <a mat-icon-button class="!hidden lg:!inline-flex" routerLink="/compare" routerLinkActive #rlCompare="routerLinkActive" [style.color]="rlCompare.isActive ? 'var(--mat-sys-primary)' : ''" [matTooltip]="I18N.nav.compare | translate" [attr.aria-label]="I18N.nav.compare | translate">
+            <a mat-icon-button class="!hidden min-[1680px]:!inline-flex" routerLink="/compare" routerLinkActive #rlCompare="routerLinkActive" [style.color]="rlCompare.isActive ? 'var(--mat-sys-primary)' : ''" [matTooltip]="I18N.nav.compare | translate" [attr.aria-label]="I18N.nav.compare | translate">
               <mat-icon>compare</mat-icon>
             </a>
           }
           @if (store.config()?.features?.show_memories && hasMemories()) {
-            <button mat-icon-button class="!hidden lg:!inline-flex" (click)="playMemories()" [matTooltip]="I18N.memories.tooltip | translate" [attr.aria-label]="I18N.nav.memories | translate">
+            <button mat-icon-button class="!hidden min-[1680px]:!inline-flex" (click)="playMemories()" [matTooltip]="I18N.memories.tooltip | translate" [attr.aria-label]="I18N.nav.memories | translate">
               <mat-icon>auto_awesome</mat-icon>
             </button>
           }
           @if (auth.isEdition()) {
-            <button mat-icon-button class="!hidden lg:!inline-flex" (click)="openOrganizationHistory()" [matTooltip]="I18N.organization_history.title | translate" [attr.aria-label]="I18N.organization_history.title | translate">
+            <button mat-icon-button class="!hidden min-[1680px]:!inline-flex" (click)="openOrganizationHistory()" [matTooltip]="I18N.organization_history.title | translate" [attr.aria-label]="I18N.organization_history.title | translate">
               <mat-icon>history</mat-icon>
             </button>
           }
+          <!-- Overflow: below 1680px the seven secondary destinations collapse into this menu
+               (the header-slot and right-side controls need the room); same conditions as the inline set. -->
+          <button mat-icon-button class="!hidden lg:max-[1679px]:!inline-flex" [matMenuTriggerFor]="navMoreMenu" [style.color]="isOverflowNavRoute() ? 'var(--mat-sys-primary)' : ''" [matTooltip]="I18N.nav.more | translate" [attr.aria-label]="I18N.nav.more | translate">
+            <mat-icon>more_horiz</mat-icon>
+          </button>
+          <mat-menu #navMoreMenu="matMenu">
+            @if (store.config()?.features?.show_map && hasGeoPhotos()) {
+              <a mat-menu-item routerLink="/map" routerLinkActive="!text-[var(--mat-sys-primary)]"><mat-icon>map</mat-icon>{{ I18N.nav.map | translate }}</a>
+            }
+            @if (auth.isEdition()) {
+              <a mat-menu-item routerLink="/culling" routerLinkActive="!text-[var(--mat-sys-primary)]"><mat-icon>burst_mode</mat-icon>{{ I18N.nav.culling | translate }}</a>
+              @if (store.config()?.features?.show_junk_sweep) {
+                <a mat-menu-item routerLink="/junk" routerLinkActive="!text-[var(--mat-sys-primary)]"><mat-icon>delete_sweep</mat-icon>{{ I18N.nav.junk_sweep | translate }}</a>
+              }
+            }
+            <a mat-menu-item routerLink="/stats" routerLinkActive="!text-[var(--mat-sys-primary)]"><mat-icon>bar_chart</mat-icon>{{ I18N.nav.stats | translate }}</a>
+            @if (auth.isEdition()) {
+              <a mat-menu-item routerLink="/compare" routerLinkActive="!text-[var(--mat-sys-primary)]"><mat-icon>compare</mat-icon>{{ I18N.nav.compare | translate }}</a>
+            }
+            @if (store.config()?.features?.show_memories && hasMemories()) {
+              <button mat-menu-item (click)="playMemories()"><mat-icon>auto_awesome</mat-icon>{{ I18N.nav.memories | translate }}</button>
+            }
+            @if (auth.isEdition()) {
+              <button mat-menu-item (click)="openOrganizationHistory()"><mat-icon>history</mat-icon>{{ I18N.organization_history.title | translate }}</button>
+            }
+          </mat-menu>
         </nav>
       }
 

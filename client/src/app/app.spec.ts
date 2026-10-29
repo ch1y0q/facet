@@ -1056,6 +1056,17 @@ describe('App', () => {
       expect(buttons.length).toBe(edition ? 2 : 0);
     });
 
+    it('folds the secondary destinations into one More menu below 1680px and keeps the inline set above it', () => {
+      const { root } = render(true);
+      const more = root.querySelector<HTMLButtonElement>(`nav button[aria-label="${I18N.nav.more}"]`)!;
+      expect(more.classList.contains('!hidden')).toBe(true);
+      expect(more.classList.contains('lg:max-[1679px]:!inline-flex')).toBe(true);
+      const stats = root.querySelector<HTMLElement>(`nav a[aria-label="${I18N.nav.stats}"].\\!hidden`)!;
+      expect(stats.classList.contains('min-[1680px]:!inline-flex')).toBe(true);
+      const persons = root.querySelector<HTMLElement>(`nav a[aria-label="${I18N.nav.persons}"].\\!hidden`)!;
+      expect(persons.classList.contains('lg:!inline-flex')).toBe(true);
+    });
+
     it.each([['kept', 1], ['lost', 0]])('opens the history dialog after the lazy load only while edition is %s', async (state, opens) => {
       const { fixture } = render(true);
       const app = fixture.componentInstance as unknown as { openOrganizationHistory: () => Promise<void> };
