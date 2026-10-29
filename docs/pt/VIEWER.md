@@ -254,11 +254,7 @@ Se as fotos selecionadas já pertencem a pilhas, **Combinar pilhas** é a opçã
 
 O indicador ou uma foto empilhada abre o visualizador com miniaturas, botões anterior/seguinte e contador na ordem guardada. As setas permanecem na pilha. **Gerir pilha** abre o editor maior: clique numa miniatura ou use Esquerda/Direita para a pré-visualização grande, escolha **Capa**, reordene com os botões de seta ou remova membros. Abri-lo por si só mantém a edição normal: membros removidos ficam sem pilha, remover a capa escolhe o primeiro membro restante e menos de dois membros ou **Desempilhar** dissolve a pilha. **Adicionar fotos selecionadas** de outra pilha ativa explicitamente a pré-visualização de reagrupamento e os dois modos. Ficheiros, metadados, estrelas e decisões Manter/Rejeitar ficam intactos.
 
-- Uma foto pertence a uma pilha manual por proprietário. As pilhas nunca são fundidas automaticamente.
-- Abra o indicador de contagem ou uma foto empilhada para navegar pelos seus membros no visualizador. As setas e a tira seguem a ordem da pilha e ficam dentro dela.
-- **Gerir pilha** permite escolher a capa, reordenar e adicionar ou remover fotos. Remover a capa escolhe o primeiro membro restante. Menos de dois membros dissolve a pilha, assim como **Desempilhar**.
 - Ações de avaliação, Manter/Rejeitar, metadados, download, álbum e exclusão nunca ampliam uma pilha implicitamente.
-- As edições de pilha nunca tocam arquivos, metadados, avaliações ou decisões Manter/Rejeitar. Desfaça-as pelo [Histórico de organização](#histórico-de-organização) enquanto nada tiver mudado desde então; edições posteriores causam conflito.
 
 **Na galeria.** Uma pilha se recolhe em um cartão; **Expandir todas as pilhas** é uma preferência salva. Filtros e álbuns se aplicam às fotos individuais: a capa aparece se corresponder, senão o primeiro membro correspondente. A navegação por pilha ignora o ocultamento automático de rajadas/duplicatas. Linha do tempo e mapa exibem fotos individuais.
 

@@ -254,11 +254,7 @@ Se le foto selezionate appartengono già a pile, **Unisci pile** è l’opzione 
 
 Il badge o una foto impilata apre il visualizzatore con miniature, pulsanti precedente/successiva e contatore nell’ordine memorizzato. Le frecce restano nella pila. **Gestisci pila** apre l’editor più ampio: fai clic su una miniatura o usa Sinistra/Destra per l’anteprima grande, scegli **Copertina**, riordina con i pulsanti freccia o rimuovi membri. Aprirlo da solo mantiene la normale modifica: i membri rimossi diventano indipendenti, togliere la copertina sceglie il primo membro rimasto e meno di due membri o **Separa la pila** scioglie la pila. **Aggiungi foto selezionate** da un’altra pila attiva esplicitamente l’anteprima di raggruppamento e le due modalità. File, metadati, stelle e decisioni Conserva/Scarta restano intatti.
 
-- Una foto appartiene a una sola pila manuale per proprietario. Le pile non vengono mai unite automaticamente.
-- Apri il badge del conteggio o una foto impilata per sfogliarne i membri nel visualizzatore. Frecce e striscia seguono l'ordine della pila e restano al suo interno.
-- **Gestisci pila** permette di scegliere la copertina, riordinare e aggiungere o rimuovere foto. Rimuovere la copertina sceglie il membro rimasto più antico. Meno di due membri scioglie la pila, come **Separa la pila**.
 - Le azioni di valutazione, Conserva/Rifiuta, metadati, download, album ed eliminazione non espandono mai una pila implicitamente.
-- Le modifiche alle pile non toccano mai file, metadati, valutazioni o decisioni Conserva/Rifiuta. Annullale da [Cronologia delle modifiche](#cronologia-delle-modifiche) finché nulla è cambiato nel frattempo; modifiche successive causano un conflitto.
 
 **Nella galleria.** Una pila si ripiega in una tessera; **Espandi tutte le pile** è una preferenza ricordata. Filtri e appartenenza agli album si applicano alle singole foto: la copertina compare se corrisponde, altrimenti compare il primo membro che corrisponde. Sfogliare una pila aggira il nascondimento automatico di raffiche/duplicati. Cronologia e mappa mostrano le singole foto.
 

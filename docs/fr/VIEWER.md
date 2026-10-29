@@ -254,11 +254,7 @@ Si les photos sélectionnées appartiennent déjà à des piles, **Combiner les 
 
 Le badge ou une photo empilée ouvre la visionneuse : bande de vignettes, boutons précédent/suivant et compteur suivent l’ordre enregistré. Les flèches restent dans la pile. **Gérer la pile** ouvre l’éditeur agrandi : cliquez sur une vignette ou utilisez Gauche/Droite pour son grand aperçu, choisissez **Couverture**, réordonnez avec les boutons fléchés ou retirez des membres. L’ouverture seule conserve l’édition ordinaire : un membre retiré devient indépendant, retirer la couverture choisit le premier membre restant, et moins de deux membres ou **Dissocier** dissout la pile. **Ajouter les photos sélectionnées** depuis une autre pile active explicitement l’aperçu de regroupement et ses deux modes. Fichiers, métadonnées, notes et décisions Garder/Rejeter restent intacts.
 
-- Une photo appartient à une seule pile manuelle par propriétaire. Les piles ne sont jamais fusionnées automatiquement.
-- Ouvrez le badge de compteur ou une photo empilée pour parcourir ses membres dans la visionneuse de photos. Les flèches et la bande suivent l'ordre de la pile et restent dans la pile.
-- **Gérer la pile** permet de choisir la couverture, de réordonner, et d'ajouter ou retirer des photos. Retirer la couverture choisit le plus ancien membre restant. Moins de deux membres dissout la pile, tout comme **Dissocier**.
 - Les actions de notation, Garder/Rejeter, métadonnées, téléchargement, album et suppression n'étendent jamais implicitement une pile.
-- Les modifications de pile ne touchent jamais les fichiers, les métadonnées, les notes ni les décisions Garder/Rejeter. Annulez-les depuis l'[Historique des modifications](#historique-des-modifications) tant que rien n'a changé depuis ; des modifications ultérieures provoquent un conflit.
 
 **Dans la galerie.** Une pile se replie en une seule vignette ; **Développer toutes les piles** est une préférence mémorisée. Les filtres et l'appartenance aux albums s'appliquent aux photos individuelles : la couverture s'affiche si elle correspond, sinon le premier membre correspondant. Le parcours d'une pile contourne le masquage automatique des rafales/doublons. La chronologie et la carte affichent les photos individuelles.
 
