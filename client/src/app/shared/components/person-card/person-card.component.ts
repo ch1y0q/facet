@@ -9,6 +9,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslatePipe } from '../../pipes/translate.pipe';
 import { PersonThumbnailUrlPipe } from '../../pipes/thumbnail-url.pipe';
 import { PersonNameSuggestionsComponent } from '../person-name-suggestions/person-name-suggestions.component';
+import { EnterPickGuard } from '../../utils/enter-pick-guard';
 import { PersonNameOption } from '../../utils/person-name';
 
 export interface Person {
@@ -207,8 +208,8 @@ export class PersonCardComponent {
   private readonly autocomplete = viewChild(MatAutocompleteTrigger);
   /** What is typed in the name line, which filters the suggestions. */
   protected readonly draft = signal('');
-  /** Set when an Enter keydown picked a suggestion, so its keyup does not also save. */
-  private enterPicked = false;
+  /** Keeps an Enter keydown that picked a suggestion from also saving on its keyup. */
+  private readonly enterGuard = new EnterPickGuard();
 
   readonly selected = output<number>();
   readonly viewPhotos = output<number>();
@@ -222,16 +223,11 @@ export class PersonCardComponent {
   readonly findMore = output<number>();
 
   protected onEnterDown(): void {
-    const trigger = this.autocomplete();
-    this.enterPicked = !!trigger?.panelOpen && !!trigger.activeOption;
+    this.enterGuard.down(this.autocomplete());
   }
 
   protected onEnterUp(): void {
-    if (this.enterPicked) {
-      this.enterPicked = false;
-      return;
-    }
-    this.onSave();
+    if (this.enterGuard.up()) this.onSave();
   }
 
   onSave(): void {

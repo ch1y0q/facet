@@ -35,8 +35,7 @@ import {
   FindMoreFacesResult,
 } from './find-more-faces-dialog.component';
 import { RenamePersonResponse, SameNamePerson, SameNameMergeService } from './same-name-merge.service';
-import { UndoService } from '../../core/services/undo.service';
-import { IGNORE_UNDO_MS } from './person-face-menu.component';
+import { PersonHideService } from './person-hide.service';
 import { PersonNameOption, personNameOptions } from '../../shared/utils/person-name';
 import { PersonFaceBoxesService } from '../../shared/components/photo-card/person-face-boxes.service';
 import { onPageQuery } from '../../shared/utils/page-query';
@@ -512,7 +511,7 @@ export class ManagePersonsComponent implements OnInit {
   private snackBar = inject(MatSnackBar);
   private readonly sameNameMerge = inject(SameNameMergeService);
   private readonly faceBoxes = inject(PersonFaceBoxesService);
-  private readonly undo = inject(UndoService);
+  private readonly hide = inject(PersonHideService);
   private readonly personsToolbar = viewChild<TemplateRef<unknown>>('personsToolbar');
 
   readonly persons = signal<Person[]>([]);
@@ -963,53 +962,35 @@ export class ManagePersonsComponent implements OnInit {
 
   async setHidden(personId: number, hidden: boolean): Promise<void> {
     const known = this.persons().find((p) => p.id === personId) ?? this.needsNaming().find((p) => p.id === personId);
-    try {
-      await firstValueFrom(
-        this.api.post(`/persons/${personId}/${hidden ? 'hide' : 'unhide'}`),
+    // Reload instead of restoring a snapshot on Undo: anything done since the ignore stays.
+    const stored = await this.hide.setHidden(personId, hidden,
+      async () => { await Promise.all([this.loadPersons(true), this.loadNeedsNaming(), this.loadIgnored()]); });
+    if (!stored) return;
+    // Ignoring moves a person out of Needs naming and into Ignored; restoring
+    // moves it back, to whichever list its name decides. Ignored is patched in
+    // place so the pages already loaded there stay loaded.
+    if (hidden) {
+      this.needsNaming.update((list) => list.filter((p) => p.id !== personId));
+      if (known) this.addIgnored({ ...known, is_hidden: true });
+    } else {
+      if (this.ignored().some((p) => p.id === personId)) {
+        this.ignored.update((list) => list.filter((p) => p.id !== personId));
+        this.ignoredTotal.update((t) => Math.max(0, t - 1));
+      }
+      void this.loadNeedsNaming();
+    }
+    if (hidden && !this.personsFilters.showHidden()) {
+      // Drop the person from the list when hidden persons are not shown; one only
+      // in Needs naming was never counted in the grid's total (the Named tab count).
+      if (this.persons().some((p) => p.id === personId)) this.total.update((t) => t - 1);
+      this.persons.update((list) => list.filter((p) => p.id !== personId));
+    } else if (!hidden && !this.persons().some((p) => p.id === personId)) {
+      // A restored person the grid does not hold comes back into it, and its count.
+      void this.loadPersons(true);
+    } else {
+      this.persons.update((list) =>
+        list.map((p) => (p.id === personId ? { ...p, is_hidden: hidden } : p)),
       );
-      this.journal.record('person', [], { action: hidden ? 'hide' : 'unhide', person_id: personId });
-      // Ignoring moves a person out of Needs naming and into Ignored; restoring
-      // moves it back, to whichever list its name decides. Ignored is patched in
-      // place so the pages already loaded there stay loaded.
-      if (hidden) {
-        this.needsNaming.update((list) => list.filter((p) => p.id !== personId));
-        if (known) this.addIgnored({ ...known, is_hidden: true });
-      } else {
-        if (this.ignored().some((p) => p.id === personId)) {
-          this.ignored.update((list) => list.filter((p) => p.id !== personId));
-          this.ignoredTotal.update((t) => Math.max(0, t - 1));
-        }
-        void this.loadNeedsNaming();
-      }
-      if (hidden && !this.personsFilters.showHidden()) {
-        // Drop the person from the list when hidden persons are not shown; one only
-        // in Needs naming was never counted in the grid's total (the Named tab count).
-        if (this.persons().some((p) => p.id === personId)) this.total.update((t) => t - 1);
-        this.persons.update((list) => list.filter((p) => p.id !== personId));
-      } else if (!hidden && !this.persons().some((p) => p.id === personId)) {
-        // A restored person the grid does not hold comes back into it, and its count.
-        void this.loadPersons(true);
-      } else {
-        this.persons.update((list) =>
-          list.map((p) => (p.id === personId ? { ...p, is_hidden: hidden } : p)),
-        );
-      }
-      if (hidden) {
-        this.undo.register({
-          labelKey: I18N.persons.hidden_done,
-          durationMs: IGNORE_UNDO_MS,
-          undo: async () => {
-            await firstValueFrom(this.api.post(`/persons/${personId}/unhide`));
-            this.journal.record('person', [], { action: 'unhide', person_id: personId });
-            // Reload instead of restoring a snapshot: anything done since the ignore stays.
-            await Promise.all([this.loadPersons(true), this.loadNeedsNaming(), this.loadIgnored()]);
-          },
-        });
-      } else {
-        this.snackBar.open(this.i18n.t(I18N.persons.unhidden_done), '', { duration: 2000 });
-      }
-    } catch {
-      this.snackBar.open(this.i18n.t(I18N.persons.hide_error), '', { duration: 3000 });
     }
   }
 

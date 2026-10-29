@@ -103,7 +103,7 @@ describe('FindMoreFacesDialogComponent', () => {
     it('searches every face, ungrouped and unnamed groups by default, at Normal', async () => {
       await render();
       expect(searches()[0]).toEqual({
-        scope: 'all', owners: 'ungrouped,unnamed_group', limit: FIND_MORE_FETCH, min_similarity: FIND_MORE_STRICTNESS.normal,
+        scope: 'all', owners: 'ungrouped,unnamed_group,named', per_owner: 'true', limit: FIND_MORE_FETCH, min_similarity: FIND_MORE_STRICTNESS.normal,
       });
       expect(FIND_MORE_STRICTNESS).toEqual({ very_strict: 0.6, strict: 0.5, normal: 0.35, loose: 0.25, very_loose: 0.2 });
       const chips = [...fixture.nativeElement.querySelectorAll('[data-owner]')] as HTMLElement[];
@@ -114,14 +114,39 @@ describe('FindMoreFacesDialogComponent', () => {
       expect(component.chips().map((c) => c.count)).toEqual([4, 2, 3]);
     });
 
-    it('toggling a chip searches again with that owner, and the match count follows', async () => {
+    it('toggling a chip filters the fetched faces without a new search, and the match count follows', async () => {
       await render();
       expect(component.matchCount()).toBe(6);
+      expect(component.faces().map((f) => f.face_id)).toEqual([1, 2]);
       q<HTMLButtonElement>('[data-owner="named"]')!.click();
       await settle();
-      expect(searches()[1]).toMatchObject({ scope: 'all', owners: 'ungrouped,unnamed_group,named' });
+      expect(searches().length).toBe(1);
+      expect(component.faces().map((f) => f.face_id)).toEqual([1, 2, 3]);
       expect(component.matchCount()).toBe(9);
       expect(q('[data-match-count]')!.textContent).toContain('persons.find_more_matches');
+      q<HTMLButtonElement>('[data-owner="ungrouped"]')!.click();
+      await settle();
+      expect(searches().length).toBe(1);
+      expect(component.faces().map((f) => f.face_id)).toEqual([3]);
+    });
+
+    it('changing the strictness still searches again', async () => {
+      await render();
+      component.setStrictness('loose');
+      await settle();
+      expect(searches().length).toBe(2);
+      expect(searches()[1]).toMatchObject({ min_similarity: FIND_MORE_STRICTNESS.loose, per_owner: 'true' });
+    });
+
+    it('in the narrowed search a chip toggle searches again, as before', async () => {
+      search.mockReturnValueOnce(overCeiling());
+      await render();
+      expect(component.fallback()).toBe('ungrouped');
+      const before = searches().length;
+      component.toggleOwner('named');
+      await settle();
+      expect(searches().length).toBe(before + 1);
+      expect(searches().at(-1)).toMatchObject({ scope: 'unassigned', owners: 'ungrouped' });
     });
 
     it('the last chip on cannot be turned off', async () => {
@@ -135,6 +160,8 @@ describe('FindMoreFacesDialogComponent', () => {
 
     it('a named face says whose it is, starts unticked, and ticking it warns that it moves', async () => {
       await render();
+      component.toggleOwner('named');
+      await settle();
       expect(text()).toContain('persons.find_more_from');
       expect(component.selectedIds().has(3)).toBe(false);
       expect(q('[data-moves-warning]')).toBeNull();
@@ -147,6 +174,8 @@ describe('FindMoreFacesDialogComponent', () => {
   describe('confidence', () => {
     it('badges strong (50%+) and possible matches, with the percentage', async () => {
       await render();
+      component.toggleOwner('named');
+      await settle();
       const rows = component.rows();
       expect(rows.map((r) => [r.face_id, r.strong, r.percent])).toEqual([[1, true, 80], [2, false, 45], [3, true, 70]]);
       const badges = ([...fixture.nativeElement.querySelectorAll('[data-face]')] as HTMLElement[]).map((b) => b.textContent!);
@@ -166,6 +195,8 @@ describe('FindMoreFacesDialogComponent', () => {
     it('pre-ticks strong matches no other named person owns', async () => {
       search.mockReturnValue(of(answer([face(5, 0.9, 'named', 'Anna'), face(6, 0.9, 'named', 'Bob'), face(8, 0.9, 'unnamed_group')])));
       await render();
+      component.toggleOwner('named');
+      await settle();
       expect([...component.selectedIds()].sort()).toEqual([5, 8]);
     });
   });
@@ -230,7 +261,7 @@ describe('FindMoreFacesDialogComponent', () => {
       expect(q('[data-try-loose]')).toBeNull();
       q<HTMLButtonElement>('[data-include-named]')!.click();
       await settle();
-      expect(searches().at(-1)).toMatchObject({ owners: 'ungrouped,unnamed_group,named' });
+      expect(component.owners().has('named')).toBe(true);
       expect(q('[data-include-named]')).toBeNull();
     });
 
@@ -289,6 +320,8 @@ describe('FindMoreFacesDialogComponent', () => {
   describe('selection', () => {
     it('Select all strong ticks the 50%+ faces only', async () => {
       await render();
+      component.toggleOwner('named');
+      await settle();
       component.clearSelection();
       component.selectStrong();
       expect([...component.selectedIds()].sort()).toEqual([1, 3]);
@@ -437,6 +470,8 @@ describe('FindMoreFacesDialogComponent', () => {
   describe('face tile name', () => {
     it('carries the match detail and the owner it comes from', async () => {
       await render();
+      component.toggleOwner('named');
+      await settle();
       expect(q('[data-face="1"]')!.getAttribute('aria-label')).toContain('persons.find_more_select_face_detail');
       expect(q('[data-face="1"]')!.getAttribute('aria-label')).not.toContain('persons.find_more_from');
       expect(q('[data-face="3"]')!.getAttribute('aria-label')).toContain('persons.find_more_from');

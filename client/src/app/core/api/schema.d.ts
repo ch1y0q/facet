@@ -2529,7 +2529,8 @@ export interface paths {
          *     Besides the faces, the response says why the list looks the way it does: ``counts`` of
          *     the qualifying faces per owner class, ``best_similarity`` over everything scanned (so an
          *     empty list can say how close the closest face came), and ``similar_groups``, other persons
-         *     whose centroid is close enough to merge wholesale.
+         *     whose centroid is close enough to merge wholesale. With ``per_owner`` the ``limit`` caps each
+         *     owner class separately, so one scan can serve a client that filters by owner.
          */
         get: operations["api_person_possible_faces_api_person__person_id__possible_faces_get"];
         put?: never;
@@ -13301,6 +13302,8 @@ export interface operations {
                 date_to?: string | null;
                 /** @description Comma list drawn from ungrouped, unnamed_group, named: keep only faces with such an owner. Applied before the limit; counts ignore it. */
                 owners?: string | null;
+                /** @description Apply ``limit`` to each owner class (ungrouped, unnamed_group, named) instead of to the whole list: up to ``limit`` faces of each class, the combined list sorted by similarity, descending. ``owners`` still selects the classes. */
+                per_owner?: boolean;
             };
             header?: never;
             path: {

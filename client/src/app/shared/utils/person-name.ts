@@ -50,3 +50,12 @@ export function matchPersonNames(
   const key = personNameKey(query);
   return (key ? options.filter((o) => personNameKey(o.name).includes(key)) : options).slice(0, limit);
 }
+
+/**
+ * True when a person has no usable name: NULL, empty, or spaces only. Mirrors the
+ * server's ``person_unnamed_clause`` (SQL ``TRIM`` strips spaces only, not tabs or
+ * newlines), so the client and the API agree on which people still need naming.
+ */
+export function isUnnamedPerson(name: string | null | undefined): boolean {
+  return (name ?? '').replace(/^ +| +$/g, '') === '';
+}

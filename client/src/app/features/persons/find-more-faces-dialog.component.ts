@@ -18,7 +18,7 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PluralKeyPipe } from '../../shared/pipes/plural-key.pipe';
 import { FaceThumbnailUrlPipe, PersonThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
 import { i18nKeys, I18N } from '../../core/i18n/keys';
-import { sameName } from '../../shared/utils/person-name';
+import { isUnnamedPerson, sameName } from '../../shared/utils/person-name';
 import { PersonFaceBoxesService } from '../../shared/components/photo-card/person-face-boxes.service';
 import { ConfirmDialogComponent } from '../../shared/components/confirm-dialog/confirm-dialog.component';
 
@@ -341,20 +341,35 @@ export class FindMoreFacesDialogComponent implements OnInit {
   readonly loading = signal(true);
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
-  readonly faces = signal<PossibleFace[]>([]);
   readonly counts = signal<PossibleFaceCounts | null>(null);
   readonly bestSimilarity = signal<number | null>(null);
   readonly similarGroups = signal<SimilarGroup[]>([]);
   readonly selectedIds = signal<Set<number>>(new Set());
   /** Faces shown in an earlier round and left unticked: not offered again. */
   private readonly dismissed = new Set<number>();
-  /** This round's results not yet dismissed or added; ``faces`` is its first page. */
-  private buffer: PossibleFace[] = [];
+  /**
+   * This round's results not yet dismissed or added, every owner class the search
+   * fetched. The owner chips filter it client-side (``visible``), so toggling one
+   * does not search again.
+   */
+  private readonly buffer = signal<PossibleFace[]>([]);
   private added = 0;
   /** The face a shift-click extends the selection from. */
   private anchor: number | null = null;
   /** Only the latest search may show its answer. */
   private loadToken = 0;
+
+  /**
+   * The buffered faces the active owner chips list. The narrowed (412) searches
+   * fetch ungrouped faces only and ignore the chips, so they are shown whole.
+   */
+  private readonly visible = computed(() => {
+    const on = this.owners();
+    return this.fallback() === 'none' ? this.buffer().filter((f) => on.has(f.owner)) : this.buffer();
+  });
+
+  /** The first page of the visible faces. */
+  readonly faces = computed(() => this.visible().slice(0, FIND_MORE_PAGE));
 
   protected readonly displayName = computed(() => this.data.personName || this.i18n.t(I18N.persons.unnamed));
 
@@ -396,7 +411,7 @@ export class FindMoreFacesDialogComponent implements OnInit {
   readonly groups = computed(() => {
     const named = this.owners().has('named');
     return this.similarGroups()
-      .filter((g) => named || !g.name)
+      .filter((g) => named || isUnnamedPerson(g.name))
       .map((g) => ({ ...g, percent: Math.round(g.similarity * 100) }));
   });
 
@@ -433,7 +448,8 @@ export class FindMoreFacesDialogComponent implements OnInit {
   private params(): Record<string, string | number> {
     const base = { limit: FIND_MORE_FETCH, min_similarity: FIND_MORE_STRICTNESS[this.strictness()] };
     if (this.fallback() === 'none') {
-      return { ...base, scope: 'all', owners: FACE_OWNERS.filter((o) => this.owners().has(o)).join(',') };
+      // Every owner class, FIND_MORE_FETCH of each (``per_owner``), so the chips can filter without a new search.
+      return { ...base, scope: 'all', owners: FACE_OWNERS.join(','), per_owner: 'true' };
     }
     // The indexed scope, so the narrowed search reads fewer faces, not just shows fewer.
     const narrowed = { ...base, scope: 'unassigned', owners: 'ungrouped' };
@@ -458,7 +474,7 @@ export class FindMoreFacesDialogComponent implements OnInit {
           this.counts.set(res.counts ?? null);
           this.bestSimilarity.set(res.best_similarity ?? null);
           this.similarGroups.set(res.similar_groups ?? []);
-          this.buffer = (res.faces ?? []).filter((f) => !this.dismissed.has(f.face_id));
+          this.buffer.set((res.faces ?? []).filter((f) => !this.dismissed.has(f.face_id)));
           this.showPage();
           return;
         } catch (err) {
@@ -488,8 +504,7 @@ export class FindMoreFacesDialogComponent implements OnInit {
   }
 
   private clearResults(): void {
-    this.buffer = [];
-    this.faces.set([]);
+    this.buffer.set([]);
     this.selectedIds.set(new Set());
   }
 
@@ -503,10 +518,9 @@ export class FindMoreFacesDialogComponent implements OnInit {
     }
   }
 
-  /** Show the buffer's first page, ticking the strong matches no other named person owns. */
+  /** Show the visible faces' first page, ticking the strong matches no other named person owns. */
   private showPage(): void {
-    const faces = this.buffer.slice(0, FIND_MORE_PAGE);
-    this.faces.set(faces);
+    const faces = this.faces();
     this.anchor = null;
     // A face owned by a person of the same name is a split-off cluster of this one, not someone else.
     this.selectedIds.set(new Set(
@@ -526,7 +540,12 @@ export class FindMoreFacesDialogComponent implements OnInit {
       next.add(owner);
     }
     this.owners.set(next);
-    void this.load();
+    // The narrowed searches ignore the chips: ask again, as before. Otherwise the buffer already holds every owner.
+    if (this.fallback() === 'none') {
+      this.showPage();
+    } else {
+      void this.load();
+    }
   }
 
   setStrictness(strictness: FindMoreStrictness): void {
@@ -609,8 +628,8 @@ export class FindMoreFacesDialogComponent implements OnInit {
       for (const f of this.faces()) {
         if (!chosen.has(f.face_id)) this.dismissed.add(f.face_id);
       }
-      this.buffer = this.buffer.filter((f) => !chosen.has(f.face_id) && !this.dismissed.has(f.face_id));
-      if (this.buffer.length === 0) {
+      this.buffer.update((list) => list.filter((f) => !chosen.has(f.face_id) && !this.dismissed.has(f.face_id)));
+      if (this.visible().length === 0) {
         await this.load();
       } else {
         this.showPage();
@@ -625,12 +644,13 @@ export class FindMoreFacesDialogComponent implements OnInit {
   /** Fold a whole look-alike group into this person; a named one is confirmed first. */
   async mergeGroup(group: SimilarGroup): Promise<void> {
     if (this.busy()) return;
-    if (group.name) {
+    const name = group.name ?? '';
+    if (!isUnnamedPerson(name)) {
       const ref = this.dialog.open(ConfirmDialogComponent, {
         data: {
-          title: this.i18n.t(I18N.persons.find_more_merge_named_title, { name: group.name }),
+          title: this.i18n.t(I18N.persons.find_more_merge_named_title, { name }),
           message: this.i18n.t(I18N.persons.find_more_merge_named_message,
-            { name: group.name, count: group.face_count, target: this.displayName() }),
+            { name, count: group.face_count, target: this.displayName() }),
           confirmLabel: this.i18n.t(I18N.persons.find_more_merge_all),
         },
       });

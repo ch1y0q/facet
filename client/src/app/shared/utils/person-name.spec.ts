@@ -1,4 +1,4 @@
-import { personNameKey, sameName } from './person-name';
+import { isUnnamedPerson, personNameKey, sameName } from './person-name';
 
 describe('person name folding', () => {
   it('ignores case and outer spaces, like casefold', () => {
@@ -19,5 +19,20 @@ describe('person name folding', () => {
   it('never matches an empty name', () => {
     expect(sameName('  ', '  ')).toBe(false);
     expect(sameName(null, 'x')).toBe(false);
+  });
+});
+
+describe('isUnnamedPerson', () => {
+  it('is true for null, undefined, empty and space-only names', () => {
+    expect(isUnnamedPerson(null)).toBe(true);
+    expect(isUnnamedPerson(undefined)).toBe(true);
+    expect(isUnnamedPerson('')).toBe(true);
+    expect(isUnnamedPerson('   ')).toBe(true);
+  });
+
+  it('is false for a real name, and for tab-only names exactly as the SQL TRIM is', () => {
+    expect(isUnnamedPerson('Ann')).toBe(false);
+    expect(isUnnamedPerson(' Ann ')).toBe(false);
+    expect(isUnnamedPerson('\t')).toBe(false);
   });
 });

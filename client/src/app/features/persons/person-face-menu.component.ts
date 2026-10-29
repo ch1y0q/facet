@@ -10,12 +10,10 @@ import { I18nService } from '../../core/services/i18n.service';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { GalleryStore } from '../gallery/gallery.store';
 import { PersonFaceBoxesService } from '../../shared/components/photo-card/person-face-boxes.service';
-import { UndoService } from '../../core/services/undo.service';
+import { PersonHideService } from './person-hide.service';
 import { TranslatePipe } from '../../shared/pipes/translate.pipe';
+import { isUnnamedPerson } from '../../shared/utils/person-name';
 import { i18nKeys, I18N } from '../../core/i18n/keys';
-
-/** How long an Ignore can be undone. */
-export const IGNORE_UNDO_MS = 10_000;
 
 /** The person a menu is about. ``hidden`` decides between Ignore and Restore in person-only mode. */
 export interface MenuPerson {
@@ -58,7 +56,7 @@ export interface PersonFaceMenuTarget {
         @if (v.personId) {
           <button mat-menu-item (click)="viewPhotos()">
             <mat-icon>photo_library</mat-icon>
-            {{ (v.name ? I18N.photo_faces.view_photos : I18N.photo_faces.view_group_photos) | translate:{ name: v.name || '' } }}
+            {{ (v.unnamed ? I18N.photo_faces.view_group_photos : I18N.photo_faces.view_photos) | translate:{ name: v.name || '' } }}
           </button>
         }
         @if (canEdit()) {
@@ -72,17 +70,17 @@ export interface PersonFaceMenuTarget {
             @if (v.hasFace) {
               <button mat-menu-item (click)="usePicture()">
                 <mat-icon>account_circle</mat-icon>
-                {{ (v.name ? I18N.photo_faces.use_picture : I18N.photo_faces.use_group_picture) | translate:{ name: v.name || '' } }}
+                {{ (v.unnamed ? I18N.photo_faces.use_group_picture : I18N.photo_faces.use_picture) | translate:{ name: v.name || '' } }}
               </button>
             }
             <button mat-menu-item (click)="findMore()">
               <mat-icon>person_search</mat-icon>
-              {{ (v.name ? I18N.photo_faces.find_more : I18N.photo_faces.find_more_group) | translate:{ name: v.name || '' } }}
+              {{ (v.unnamed ? I18N.photo_faces.find_more_group : I18N.photo_faces.find_more) | translate:{ name: v.name || '' } }}
             </button>
             @if (v.hasFace) {
               <button mat-menu-item (click)="notThisPerson()">
                 <mat-icon>person_remove</mat-icon>
-                {{ (v.name ? I18N.photo_faces.not_person : I18N.photo_faces.not_group) | translate:{ name: v.name || '' } }}
+                {{ (v.unnamed ? I18N.photo_faces.not_group : I18N.photo_faces.not_person) | translate:{ name: v.name || '' } }}
               </button>
             } @else {
               <button mat-menu-item (click)="setHidden(!v.hidden)">
@@ -111,7 +109,7 @@ export class PersonFaceMenuComponent {
   private readonly router = inject(Router);
   private readonly journal = inject(UserActivityJournal);
   private readonly faceBoxes = inject(PersonFaceBoxesService);
-  private readonly undo = inject(UndoService);
+  private readonly hide = inject(PersonHideService);
 
   /** The photo the face belongs to; face actions need it. */
   readonly path = input<string | null>(null);
@@ -136,6 +134,7 @@ export class PersonFaceMenuComponent {
     return {
       personId: t.person?.id ?? null,
       name: t.person?.name ?? null,
+      unnamed: isUnnamedPerson(t.person?.name),
       hidden: !!t.person?.hidden,
       hasFace: t.face !== null,
     };
@@ -248,31 +247,13 @@ export class PersonFaceMenuComponent {
     }
   }
 
-  /** Ignore (undoable for ``IGNORE_UNDO_MS``) or restore the person, through the persons page's hide/unhide call. */
+  /** Ignore (undoable, see ``PersonHideService``) or restore the person, through the persons page's hide/unhide call. */
   async setHidden(hidden: boolean): Promise<void> {
     const person = this.target()?.person;
     if (!person) return;
-    try {
-      await firstValueFrom(this.api.post(`/persons/${person.id}/${hidden ? 'hide' : 'unhide'}`));
-    } catch {
-      this.snackBar.open(this.i18n.t(I18N.persons.hide_error), '', { duration: 3000 });
-      return;
+    if (await this.hide.setHidden(person.id, hidden, () => this.applyHidden(person.id, false))) {
+      await this.applyHidden(person.id, hidden);
     }
-    this.journal.record('person', [], { action: hidden ? 'hide' : 'unhide', person_id: person.id });
-    if (hidden) {
-      this.undo.register({
-        labelKey: I18N.persons.hidden_done,
-        durationMs: IGNORE_UNDO_MS,
-        undo: async () => {
-          await firstValueFrom(this.api.post(`/persons/${person.id}/unhide`));
-          this.journal.record('person', [], { action: 'unhide', person_id: person.id });
-          await this.applyHidden(person.id, false);
-        },
-      });
-    } else {
-      this.snackBar.open(this.i18n.t(I18N.persons.unhidden_done), '', { duration: 2000 });
-    }
-    await this.applyHidden(person.id, hidden);
   }
 
   private async applyHidden(personId: number, hidden: boolean): Promise<void> {

@@ -1,5 +1,5 @@
 import type { Mock } from 'vitest';
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, DefaultUrlSerializer, NavigationEnd, Router } from '@angular/router';
 import { Subject, of, throwError } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
@@ -974,6 +974,59 @@ describe('ManagePersonsComponent', () => {
       fixture.detectChanges();
       expect(order()).toEqual([7, 8, 9]);
       toolbar.destroy();
+    });
+
+    describe('restore-only cards', () => {
+      const IGNORED = { id: 55, name: 'Staff', face_count: 2, face_thumbnail: true, is_hidden: true };
+
+      beforeEach(() => {
+        mockApi.get.mockImplementation((url: string, params?: { hidden_only?: boolean }) => {
+          if (url === '/persons/needs_naming') return of({ persons: waiting, total: waiting.length });
+          if (url === '/filter_options/persons') return of({ persons: [] });
+          if (params?.hidden_only) return of({ persons: [IGNORED], total: 1 });
+          return of(named);
+        });
+      });
+
+      const cards = (fixture: ComponentFixture<ManagePersonsComponent>) =>
+        fixture.debugElement.queryAll(By.directive(PersonCardComponent))
+          .map((d) => ({
+            id: (d.componentInstance as PersonCardComponent).person().id,
+            restoreOnly: (d.componentInstance as PersonCardComponent).restoreOnly(),
+            labels: [...(d.nativeElement as HTMLElement).querySelectorAll('button[aria-label]')]
+              .map((b) => b.getAttribute('aria-label')),
+          }));
+
+      it('Ignored cards are restore-only: Restore stays, Rename, Split and Find more go', async () => {
+        withTab(null);
+        const fixture = await render();
+        fixture.componentInstance.ignoredExpanded.set(true);
+        fixture.detectChanges();
+        const ignored = cards(fixture).find((c) => c.id === 55)!;
+        expect(ignored.restoreOnly).toBe(true);
+        expect(ignored.labels).toContain('persons.unhide');
+        for (const gone of ['persons.rename', 'persons.split', 'persons.find_more']) {
+          expect(ignored.labels).not.toContain(gone);
+        }
+      });
+
+      it('Named cards are not restore-only', async () => {
+        withTab(null);
+        const fixture = await render();
+        fixture.componentInstance.ignoredExpanded.set(true);
+        fixture.detectChanges();
+        const alice = cards(fixture).find((c) => c.id === 1)!;
+        expect(alice.restoreOnly).toBe(false);
+        expect(alice.labels).toEqual(expect.arrayContaining(['persons.rename', 'persons.split', 'persons.find_more']));
+      });
+
+      it('Needs naming cards are not restore-only', async () => {
+        withTab('naming');
+        const fixture = await render();
+        const waitingCard = cards(fixture).find((c) => c.id === 7)!;
+        expect(waitingCard.restoreOnly).toBe(false);
+        expect(waitingCard.labels).toContain('persons.find_more');
+      });
     });
 
     it('ignoring a person waiting for a name leaves the Named count alone', async () => {

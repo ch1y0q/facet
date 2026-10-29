@@ -15,7 +15,7 @@ from api.config import VIEWER_CONFIG, invalidate_stats_cache
 from api.database import get_async_db, get_db
 from api.db_helpers import (
     assert_faces_visible, get_visibility_clause, reassign_faces_to_person, person_visibility_exists,
-    select_in_chunks,
+    person_unnamed_clause, select_in_chunks,
 )
 from db import person_not_hidden_clause
 from db.embedding_space import ARCFACE_MODEL, active_embedding_model, tag_matches
@@ -42,7 +42,7 @@ _SORT_CLAUSES = {
 # A person still waiting for a name: none, or only spaces. Shared by the
 # needs-naming list and the persons list's ``named_only`` filter so the two
 # partition the persons exactly.
-_UNNAMED_SQL = "(p.name IS NULL OR TRIM(p.name) = '')"
+_UNNAMED_SQL = person_unnamed_clause('p')
 
 # --- Pydantic request bodies ---
 
@@ -196,7 +196,7 @@ async def list_persons(
         ) """
         from_clause += ' LEFT JOIN visible_counts ON visible_counts.person_id = p.id'
         count_column = 'COALESCE(visible_counts.face_count, 0)'
-        where_parts.append("TRIM(COALESCE(p.name, '')) != ''")
+        where_parts.append(f"NOT {_UNNAMED_SQL}")
         recent_order = ('CASE p.id ' + ' '.join(f'WHEN ? THEN {rank}' for rank in range(len(recent)))
                         + f' ELSE {len(recent)} END, ') if recent else ''
         order_params = recent

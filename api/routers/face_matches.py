@@ -13,7 +13,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from api.auth import CurrentUser, require_authenticated
 from api.database import get_db
-from api.db_helpers import get_visibility_clause, person_visibility_exists, select_in_chunks
+from api.db_helpers import (
+    get_visibility_clause, is_unnamed, person_unnamed_clause, person_visibility_exists, select_in_chunks)
 from api.models.culling import PossibleFacesResponse
 from db.embedding_space import ARCFACE_MODEL, expected_dim, tag_matches
 from db.schema import person_not_hidden_clause
@@ -41,7 +42,7 @@ MAX_SIMILAR_GROUPS = 10
 # yet. ``unassigned`` is the narrower "in no cluster at all".
 _SCOPE_SQL = {
     "unassigned": "f.person_id IS NULL",
-    "unnamed": "(f.person_id IS NULL OR (f.person_id != ? AND (pe.name IS NULL OR TRIM(pe.name) = '')))",
+    "unnamed": f"(f.person_id IS NULL OR (f.person_id != ? AND {person_unnamed_clause('pe')}))",
     "other_persons": "f.person_id IS NOT NULL AND f.person_id != ?",
     "all": "(f.person_id IS NULL OR f.person_id != ?)",
 }
@@ -84,7 +85,7 @@ def _named_person_ids(conn) -> np.ndarray:
     """Ids of every person with a non-blank name: the ``named`` owner class."""
     return np.fromiter(
         (row[0] for row in conn.execute(
-            "SELECT id FROM persons WHERE name IS NOT NULL AND TRIM(name) != ''")),
+            f"SELECT id FROM persons WHERE NOT {person_unnamed_clause('persons')}")),
         dtype=np.int64)
 
 
@@ -95,13 +96,21 @@ def _owner_codes(person_ids: np.ndarray, named_ids: np.ndarray) -> np.ndarray:
     return codes
 
 
+def _top_indices(sims: np.ndarray, indices: np.ndarray, keep: int) -> np.ndarray:
+    """The ``keep`` entries of ``indices`` with the highest ``sims``."""
+    if len(indices) <= keep:
+        return indices
+    return indices[np.argpartition(-sims[indices], keep - 1)[:keep]]
+
+
 def _scan(conn, from_sql: str, where_sql: str, params: list, centroid: np.ndarray, dim: int,
-          min_similarity: float, keep: int, owners: frozenset = frozenset(OWNERS)) -> dict:
+          min_similarity: float, keep: int, owners: frozenset = frozenset(OWNERS), per_owner: bool = False) -> dict:
     """Stream the candidates and score them against ``centroid``.
 
     Returns ``scanned``, the best ``keep`` ``ids`` / ``sims`` among faces whose owner is in
     ``owners`` (filtered here, before the keep cut, so a narrow owner set is never starved by
-    better faces it excludes), the per-owner ``counts`` over every scanned face at or above
+    better faces it excludes; with ``per_owner`` the cut is ``keep`` per owner class instead of
+    overall), the per-owner ``counts`` over every scanned face at or above
     ``min_similarity`` whatever ``owners`` says, and ``best``, the top similarity of all.
     """
     named_ids = _named_person_ids(conn)
@@ -112,6 +121,7 @@ def _scan(conn, from_sql: str, where_sql: str, params: list, centroid: np.ndarra
         [*params, dim * FLOAT_BYTES])
     best_ids = np.empty(0, dtype=np.int64)
     best_sims = np.empty(0, dtype=np.float32)
+    best_codes = np.empty(0, dtype=np.int64)
     counts = np.zeros(len(OWNERS), dtype=np.int64)
     best = None
     scanned = 0
@@ -133,9 +143,14 @@ def _scan(conn, from_sql: str, where_sql: str, params: list, centroid: np.ndarra
         hit = above & np.isin(codes, allowed)
         best_ids = np.concatenate([best_ids, ids[hit]])
         best_sims = np.concatenate([best_sims, sims[hit].astype(np.float32)])
-        if len(best_ids) > keep:
+        best_codes = np.concatenate([best_codes, codes[hit]])
+        if per_owner:
+            kept = np.concatenate([_top_indices(best_sims, np.flatnonzero(best_codes == code), keep)
+                                   for code in allowed]).astype(np.int64)
+            best_ids, best_sims, best_codes = best_ids[kept], best_sims[kept], best_codes[kept]
+        elif len(best_ids) > keep:
             top = np.argpartition(-best_sims, keep - 1)[:keep]
-            best_ids, best_sims = best_ids[top], best_sims[top]
+            best_ids, best_sims, best_codes = best_ids[top], best_sims[top], best_codes[top]
     return {"scanned": scanned, "ids": best_ids, "sims": best_sims,
             "counts": dict(zip(OWNERS, (int(c) for c in counts))), "best": best}
 
@@ -169,7 +184,7 @@ def _similar_groups(conn, person_id: int, user_id, model: str, dim: int,
         other = np.frombuffer(row[3], dtype=np.float32)
         similarity = float(other @ centroid / (np.linalg.norm(other) + 1e-10))
         if similarity >= min_similarity:
-            name = row[1].strip() if row[1] and row[1].strip() else None
+            name = None if is_unnamed(row[1]) else row[1].strip()
             groups.append({"person_id": row[0], "name": name, "face_count": row[2] or 0,
                            "similarity": round(similarity, 4)})
     groups.sort(key=lambda group: (-group["similarity"], group["person_id"]))
@@ -192,6 +207,11 @@ def api_person_possible_faces(
         None, max_length=64,
         description="Comma list drawn from ungrouped, unnamed_group, named: keep only faces with "
                     "such an owner. Applied before the limit; counts ignore it."),
+    per_owner: bool = Query(
+        False,
+        description="Apply ``limit`` to each owner class (ungrouped, unnamed_group, named) instead "
+                    "of to the whole list: up to ``limit`` faces of each class, the combined list "
+                    "sorted by similarity, descending. ``owners`` still selects the classes."),
     user: CurrentUser = Depends(require_authenticated),
 ):
     """Faces most like ``person_id``'s centroid, best first (same embedding model only).
@@ -199,7 +219,8 @@ def api_person_possible_faces(
     Besides the faces, the response says why the list looks the way it does: ``counts`` of
     the qualifying faces per owner class, ``best_similarity`` over everything scanned (so an
     empty list can say how close the closest face came), and ``similar_groups``, other persons
-    whose centroid is close enough to merge wholesale.
+    whose centroid is close enough to merge wholesale. With ``per_owner`` the ``limit`` caps each
+    owner class separately, so one scan can serve a client that filters by owner.
     """
     owner_set = _parse_owners(owners)
     user_id = user.user_id if user else None
@@ -233,15 +254,23 @@ def api_person_possible_faces(
                 detail=(f"{candidates} faces would be scanned, over the ceiling of {MAX_FACE_SCAN}; "
                         "narrow the scan with scope, path_prefix, date_from or date_to"))
         scan = _scan(conn, from_sql, where_sql, params, centroid, dim,
-                     min_similarity, KEEP_FACTOR * limit, owner_set)
+                     min_similarity, KEEP_FACTOR * limit, owner_set, per_owner)
         similarity = {int(i): float(s) for i, s in zip(scan["ids"], scan["sims"])}
         faces = _resolve(conn, model, similarity)
         similar_groups = _similar_groups(conn, person_id, user_id, model, dim, centroid, min_similarity)
     faces.sort(key=lambda face: -face["similarity"])
+    if per_owner:
+        taken = dict.fromkeys(OWNERS, 0)
+        capped = []
+        for face in faces:
+            if taken[face["owner"]] < limit:
+                taken[face["owner"]] += 1
+                capped.append(face)
+        faces = capped
     logger.info("possible_faces person=%d scanned=%d kept=%d ms=%d", person_id, scan["scanned"], len(faces),
                 (time.monotonic() - started) * 1000)
     best = scan["best"]
-    return {"faces": faces[:limit], "faces_scanned": scan["scanned"], "candidates": candidates,
+    return {"faces": faces if per_owner else faces[:limit], "faces_scanned": scan["scanned"], "candidates": candidates,
             "counts": scan["counts"], "best_similarity": None if best is None else round(best, 4),
             "similar_groups": similar_groups}
 
@@ -266,4 +295,4 @@ def _owner_of(person_id, name) -> str:
     """The ``OWNERS`` class of one resolved face; the same rule as ``_owner_codes``."""
     if person_id is None:
         return "ungrouped"
-    return "named" if name and name.strip() else "unnamed_group"
+    return "unnamed_group" if is_unnamed(name) else "named"

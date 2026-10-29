@@ -340,6 +340,34 @@ class TestPossibleFacesOwners:
         assert {f["face_id"]: f["owner"] for f in body["faces"]} == {
             in_unnamed: "unnamed_group", in_bob: "named"}
 
+    def test_per_owner_limit_applies_to_each_class(self, regular_client, seed_people):
+        target, ungrouped, in_unnamed, in_bob = self._crowd(seed_people)
+
+        body = self._get(regular_client, target, limit=1, per_owner="true").json()
+
+        assert [(f["face_id"], f["owner"]) for f in body["faces"]] == [
+            (ungrouped[0], "ungrouped"), (in_unnamed, "unnamed_group"), (in_bob, "named")]
+        sims = [f["similarity"] for f in body["faces"]]
+        assert sims == sorted(sims, reverse=True)
+        assert body["counts"] == {"ungrouped": 5, "unnamed_group": 1, "named": 1}
+
+    def test_per_owner_still_honours_owners(self, regular_client, seed_people):
+        target, ungrouped, _, in_bob = self._crowd(seed_people)
+
+        body = self._get(regular_client, target, limit=2, per_owner="true",
+                         owners="ungrouped,named").json()
+
+        assert [f["face_id"] for f in body["faces"]] == [ungrouped[0], ungrouped[1], in_bob]
+
+    def test_default_keeps_one_global_limit(self, regular_client, seed_people):
+        target, ungrouped, *_ = self._crowd(seed_people)
+
+        explicit = self._get(regular_client, target, limit=2, per_owner="false").json()
+        default = self._get(regular_client, target, limit=2).json()
+
+        assert explicit == default
+        assert [f["face_id"] for f in default["faces"]] == ungrouped[:2]
+
     def test_best_similarity_when_every_face_is_below_the_threshold(self, regular_client, seed_people):
         target = seed_people.person("Anna")
         _set_centroid(target, _vector(1.0))
@@ -497,3 +525,15 @@ def test_rename_same_name_persons_omit_a_person_only_in_other_directories(
 
     assert resp.status_code == 200, resp.text
     assert [p["id"] for p in resp.json()["same_name_persons"]] == [mine]
+
+
+def test_unnamed_sql_clause_and_python_predicate_agree():
+    from api.db_helpers import is_unnamed, person_unnamed_clause
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE p (name TEXT)")
+    for name in (None, "", "  ", "\t", "Ann"):
+        conn.execute("DELETE FROM p")
+        conn.execute("INSERT INTO p VALUES (?)", (name,))
+        in_sql = bool(conn.execute(f"SELECT {person_unnamed_clause('p')} FROM p").fetchone()[0])
+        assert in_sql == is_unnamed(name), repr(name)
+    conn.close()

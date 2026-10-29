@@ -1155,6 +1155,23 @@ def repair_stale_representative(conn, person_id):
         )
 
 
+def person_unnamed_clause(alias: str) -> str:
+    """SQL predicate selecting persons without a name: NULL or only spaces.
+
+    The one definition of "unnamed" on the server; ``is_unnamed`` is its Python mirror.
+    """
+    return f"({alias}.name IS NULL OR TRIM({alias}.name) = '')"
+
+
+def is_unnamed(name: Optional[str]) -> bool:
+    """Python mirror of ``person_unnamed_clause``.
+
+    SQLite ``TRIM`` strips only spaces while ``str.strip()`` strips every whitespace
+    character, so this strips spaces alone to agree with the SQL exactly.
+    """
+    return not (name or '').strip(' ')
+
+
 def reassign_faces_to_person(conn, person_id, face_ids):
     """Reassign a set of faces to ``person_id``; auto-delete emptied old persons.
 

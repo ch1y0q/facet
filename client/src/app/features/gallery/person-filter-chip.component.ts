@@ -11,7 +11,8 @@ import { TranslatePipe } from '../../shared/pipes/translate.pipe';
 import { PersonThumbnailUrlPipe } from '../../shared/pipes/thumbnail-url.pipe';
 import { GalleryStore } from './gallery.store';
 import { RenamePersonResponse, SameNameMergeService } from '../persons/same-name-merge.service';
-import { personNameOptions, sameName } from '../../shared/utils/person-name';
+import { EnterPickGuard } from '../../shared/utils/enter-pick-guard';
+import { isUnnamedPerson, personNameOptions, sameName } from '../../shared/utils/person-name';
 import { PersonNameSuggestionsComponent } from '../../shared/components/person-name-suggestions/person-name-suggestions.component';
 import { PersonFaceMenuComponent } from '../persons/person-face-menu.component';
 import { i18nKeys, I18N } from '../../core/i18n/keys';
@@ -44,14 +45,14 @@ const CHIP_BUTTON = 'inline-flex items-center justify-center w-6 h-6 shrink-0 ro
   template: `
     <div data-person-chip
          class="inline-flex items-center gap-1 pl-0.5 pr-1 py-0.5 min-h-9 rounded-full border-2 bg-[var(--mat-sys-secondary-container)] text-[var(--mat-sys-on-secondary-container)] text-xs font-medium"
-         [class]="name() ? 'border-solid border-transparent' : 'border-dashed border-[var(--mat-sys-primary)]'"
+         [class]="unnamed() ? 'border-dashed border-[var(--mat-sys-primary)]' : 'border-solid border-transparent'"
          [attr.data-person-id]="personId()">
       <img data-person-chip-avatar [src]="personId() | personThumbnailUrl" class="w-8 h-8 rounded-full object-cover shrink-0" [alt]="label()" />
       @if (editing()) {
         <input #nameInput
           data-person-name-input
           class="bg-transparent border-0 border-b-2 border-[var(--mat-sys-outline)] focus:border-[var(--mat-sys-primary)] !outline-none focus-visible:!outline-none py-0.5 w-48 min-w-24 text-sm"
-          [placeholder]="(name() ? I18N.gallery.person_chip.rename_placeholder : I18N.gallery.person_chip.name_placeholder) | translate"
+          [placeholder]="(unnamed() ? I18N.gallery.person_chip.name_placeholder : I18N.gallery.person_chip.rename_placeholder) | translate"
           [attr.aria-label]="I18N.gallery.person_chip.name_placeholder | translate"
           autocomplete="off"
           [matAutocomplete]="suggestions.panel"
@@ -122,12 +123,13 @@ export class PersonFilterChipComponent {
   private readonly autocomplete = viewChild(MatAutocompleteTrigger);
   private readonly nameInput = viewChild<ElementRef<HTMLInputElement>>('nameInput');
   private readonly menu = viewChild(PersonFaceMenuComponent);
-  /** Set when an Enter keydown picked a suggestion, so its keyup does not also save. */
-  private enterPicked = false;
+  /** Keeps an Enter keydown that picked a suggestion from also saving on its keyup. */
+  private readonly enterGuard = new EnterPickGuard();
 
   readonly person = computed(() => this.options().find((o) => o.id === this.personId()) ?? null);
   readonly name = computed(() => this.person()?.name ?? null);
-  protected readonly label = computed(() => this.name() || this.i18n.t(I18N.persons.unnamed));
+  protected readonly unnamed = computed(() => isUnnamedPerson(this.name()));
+  protected readonly label = computed(() => (this.unnamed() ? null : this.name()) || this.i18n.t(I18N.persons.unnamed));
 
   /** Every other named person, one per folded name, for the suggestions. */
   readonly otherNames = computed(() =>
@@ -183,16 +185,11 @@ export class PersonFilterChipComponent {
   }
 
   protected onEnterDown(): void {
-    const trigger = this.autocomplete();
-    this.enterPicked = !!trigger?.panelOpen && !!trigger.activeOption;
+    this.enterGuard.down(this.autocomplete());
   }
 
   protected onEnterUp(): void {
-    if (this.enterPicked) {
-      this.enterPicked = false;
-      return;
-    }
-    void this.assign();
+    if (this.enterGuard.up()) void this.assign();
   }
 
   async assign(): Promise<void> {
