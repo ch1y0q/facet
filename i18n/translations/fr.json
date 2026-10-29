@@ -3052,7 +3052,8 @@
     "regroup_absorbed": "Tous les membres rejoignent la nouvelle pile",
     "regroup_retry": "Réessayer",
     "regroup_limit": "Ce regroupement dépasse les limites prises en charge. Réduisez la sélection.",
-    "regroup_minimum": "Conservez au moins deux photos dans la nouvelle pile."
+    "regroup_minimum": "Conservez au moins deux photos dans la nouvelle pile.",
+    "regroup_summary": "Piles d’origine : {combined} combinées, {retained} conservées. Photos hors pile : {unstacked}."
   },
   "immich_diagnostics": {
     "title": "Diagnostic Immich",

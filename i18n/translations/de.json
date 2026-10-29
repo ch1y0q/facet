@@ -3052,7 +3052,8 @@
     "regroup_absorbed": "Alle Mitglieder wechseln in den neuen Stapel",
     "regroup_retry": "Erneut versuchen",
     "regroup_limit": "Diese Gruppierung überschreitet die unterstützten Grenzen. Wählen Sie weniger Fotos aus.",
-    "regroup_minimum": "Behalten Sie mindestens zwei Fotos im neuen Stapel."
+    "regroup_minimum": "Behalten Sie mindestens zwei Fotos im neuen Stapel.",
+    "regroup_summary": "Ursprüngliche Stapel: {combined} zusammengeführt, {retained} erhalten. Fotos ohne Stapel: {unstacked}."
   },
   "immich_diagnostics": {
     "title": "Immich-Diagnose",

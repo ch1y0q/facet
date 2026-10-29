@@ -3052,7 +3052,8 @@
     "regroup_absorbed": "All members move to the new stack",
     "regroup_retry": "Retry",
     "regroup_limit": "This regroup exceeds the supported limits. Use a smaller selection.",
-    "regroup_minimum": "Keep at least two photos in the new stack."
+    "regroup_minimum": "Keep at least two photos in the new stack.",
+    "regroup_summary": "Source stacks: {combined} combined, {retained} retained. Photos left unstacked: {unstacked}."
   },
   "immich_diagnostics": {
     "title": "Immich diagnostics",

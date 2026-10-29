@@ -44,7 +44,10 @@ describe('shared regroup editor through Material, Router and HTTP', () => {
     http = TestBed.inject(HttpTestingController);
     fixture = TestBed.createComponent(HostComponent); fixture.detectChanges();
   });
-  afterEach(() => { http.verify({ ignoreCancelled: true }); TestBed.inject(MatDialog).closeAll(); fixture.destroy(); TestBed.resetTestingModule(); });
+  afterEach(() => {
+    try { http.verify({ ignoreCancelled: true }); }
+    finally { TestBed.inject(MatDialog).closeAll(); fixture.destroy(); TestBed.resetTestingModule(); }
+  });
   async function open() {
     (fixture.nativeElement as HTMLElement).querySelector('button')!.focus();
     const ref = TestBed.inject(MatDialog).open(StackDialogComponent, stackDialogConfig({ paths: ['/a.jpg', '/d.jpg'] }));
@@ -84,6 +87,7 @@ describe('shared regroup editor through Material, Router and HTTP', () => {
     expect(root().querySelectorAll('[data-stack-tile]')).toHaveLength(2);
     expect(root().querySelector('[data-stack-source]')!.textContent).toContain('stacks.regroup_retained');
     expect(root().querySelector('[data-stack-source]')!.textContent).toContain('"count":2');
+    expect(root().querySelector('[data-stack-source-summary]')!.textContent).toContain('{"combined":0,"retained":1,"unstacked":0}');
     http.expectNone('/api/stacks/regroup/apply');
   });
   it('refreshes a stale preview retaining exclusions, cover and order, appending only new members', async () => {
@@ -228,6 +232,86 @@ describe('shared regroup editor through Material, Router and HTTP', () => {
     await open(); button('[data-stack-focus="/b.jpg"]').click(); await render();
     const remove = button('[data-stack-remove="/b.jpg"]'); remove.focus(); remove.click(); await render();
     expect(document.activeElement).toBe(button('[data-stack-focus="/c.jpg"]'));
+  });
+
+  it('keeps expanded companions out of explicit selection after Add, remove, Add and selected-only', async () => {
+    TestBed.inject(MatDialog).open(StackDialogComponent, stackDialogConfig({ stackId: source.id, selectedPaths: ['/d.jpg'] }));
+    fixture.detectChanges(); http.expectOne('/api/stacks/source').flush(source); await render();
+    const explicit = ['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg'];
+    const combined = { ...preview, selected_paths: explicit, paths: [...explicit, '/e.jpg'],
+      source_stacks: [source, { ...source, id: 'other', cover_path: '/d.jpg', members: [{ path: '/d.jpg', position: 0 }, { path: '/e.jpg', position: 1 }] }] };
+    button('[data-stack-add]').click();
+    const first = http.expectOne('/api/stacks/regroup/preview'); expect(first.request.body.selected_paths).toEqual(explicit);
+    first.flush(combined); await render();
+    button('[data-stack-remove="/d.jpg"]').click(); await render();
+    button('[data-stack-add]').click();
+    const second = http.expectOne('/api/stacks/regroup/preview'); expect(second.request.body.selected_paths).toEqual(explicit);
+    second.flush(combined); await render();
+    button('[data-stack-mode="selected"]').click();
+    const selected = http.expectOne('/api/stacks/regroup/preview'); expect(selected.request.body.selected_paths).toEqual(explicit);
+    selected.flush({ ...combined, mode: 'selected', paths: explicit }); await render();
+    expect([...root().querySelectorAll('[data-stack-focus]')].map(node => node.getAttribute('data-stack-focus'))).toEqual(explicit);
+    expect(root().textContent).toContain('stacks.regroup_counts {"selected":4,"effective":4}');
+    button('[data-stack-save]').click();
+    const apply = http.expectOne('/api/stacks/regroup/apply');
+    expect(apply.request.body.selected_paths).toEqual(explicit); expect(apply.request.body.paths).toEqual(explicit);
+    apply.flush({ stack: source, undo: null, changed: true, affected_paths: combined.paths }); await render();
+  });
+  it.each([false, true])('retries failed Unstack as DELETE for a dirty=%s draft and journals exactly one success', async dirty => {
+    TestBed.inject(MatDialog).open(StackDialogComponent, stackDialogConfig({ stackId: source.id }));
+    fixture.detectChanges(); http.expectOne('/api/stacks/source').flush(source); await render();
+    if (dirty) button('[data-stack-cover="/c.jpg"]').click();
+    [...root().querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent?.trim() === 'stacks.unstack')!.click();
+    const initial = http.expectOne('/api/stacks/source?expected_revision=7'); expect(initial.request.method).toBe('DELETE');
+    initial.flush({}, { status: 503, statusText: 'Unavailable' }); await render();
+    expect(TestBed.inject(UserActivityJournal).since().items).toHaveLength(0);
+    button('[data-stack-retry]').click();
+    const retry = http.expectOne('/api/stacks/source?expected_revision=7'); expect(retry.request.method).toBe('DELETE');
+    http.expectNone(request => request.method === 'PUT');
+    retry.flush({ stack: null, undo: { entry_id: 42 } }); await render();
+    expect(TestBed.inject(UserActivityJournal).since().items).toEqual([expect.objectContaining({ kind: 'stack', value: 'unstack', paths: ['/a.jpg', '/b.jpg', '/c.jpg'] })]);
+    expect(register).toHaveBeenCalledTimes(1); expect(refresh).toHaveBeenCalledTimes(1);
+    const undo = register.mock.calls[0][0].undo();
+    http.expectOne('/api/organization_history/42/revert').flush({ changed: 3 }); await undo;
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+  it('renders a visible check for the selected policy while reserving the other icon slot', async () => {
+    await open();
+    const combine = button('[data-stack-mode="combine"]'); const selected = button('[data-stack-mode="selected"]');
+    expect(combine.querySelector('mat-icon')?.textContent?.trim()).toBe('check');
+    expect(combine.querySelector('mat-icon')?.classList.contains('invisible')).toBe(false);
+    expect(selected.querySelector('mat-icon')?.classList.contains('invisible')).toBe(true);
+    selected.click(); http.expectOne('/api/stacks/regroup/preview').flush({ ...preview, mode: 'selected', paths: preview.selected_paths }); await render();
+    expect(selected.querySelector('mat-icon')?.textContent?.trim()).toBe('check');
+    expect(selected.querySelector('mat-icon')?.classList.contains('invisible')).toBe(false);
+    expect(combine.querySelector('mat-icon')?.classList.contains('invisible')).toBe(true);
+    expect(button('[data-stack-mode="selected"]')).toBe(selected);
+  });
+  it('shows a concise source-effects summary before the large preview with details collapsed', async () => {
+    await open();
+    const summary = root().querySelector('[data-stack-source-summary]')!;
+    expect(summary).not.toBeNull();
+    expect(summary.textContent).toContain('stacks.regroup_summary {"combined":1,"retained":0,"unstacked":0}');
+    expect(summary.compareDocumentPosition(root().querySelector('[data-stack-preview]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(root().querySelector('details')?.open).toBe(false);
+    root().querySelector('summary')!.click(); await render();
+    expect(root().querySelector('details')?.open).toBe(true);
+    expect(root().querySelector('details > div')?.classList.contains('max-h-36')).toBe(true);
+    expect(root().querySelector('details > div')?.classList.contains('overflow-y-auto')).toBe(true);
+    expect(root().querySelector('[data-stack-source]')?.textContent).toContain('stacks.regroup_absorbed');
+  });
+
+  it('refreshes stale Unstack membership instead of retrying a write without a new review', async () => {
+    TestBed.inject(MatDialog).open(StackDialogComponent, stackDialogConfig({ stackId: source.id }));
+    fixture.detectChanges(); http.expectOne('/api/stacks/source').flush(source); await render();
+    [...root().querySelectorAll<HTMLButtonElement>('button')].find(node => node.textContent?.trim() === 'stacks.unstack')!.click();
+    http.expectOne('/api/stacks/source?expected_revision=7').flush({}, { status: 409, statusText: 'Conflict' }); await render();
+    button('[data-stack-retry]').click();
+    const refresh = http.expectOne('/api/stacks/source'); expect(refresh.request.method).toBe('GET');
+    refresh.flush({ ...source, revision: 8 }); await render();
+    http.expectNone(request => request.method !== 'GET');
+    expect(TestBed.inject(UserActivityJournal).since().items).toHaveLength(0);
+    expect(register).not.toHaveBeenCalled();
   });
 
 });

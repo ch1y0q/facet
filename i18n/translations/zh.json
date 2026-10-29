@@ -3052,7 +3052,8 @@
     "regroup_absorbed": "全部照片移入新堆叠",
     "regroup_retry": "重试",
     "regroup_limit": "此次重新分组超出支持的限制。请减少所选照片。",
-    "regroup_minimum": "新堆叠中至少需要两张照片。"
+    "regroup_minimum": "新堆叠中至少需要两张照片。",
+    "regroup_summary": "原堆叠：合并 {combined} 个，保留 {retained} 个。取消堆叠的照片：{unstacked} 张。"
   },
   "immich_diagnostics": {
     "title": "Immich 诊断",

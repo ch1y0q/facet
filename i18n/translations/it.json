@@ -3052,7 +3052,8 @@
     "regroup_absorbed": "Tutti i membri passano alla nuova pila",
     "regroup_retry": "Riprova",
     "regroup_limit": "Questo raggruppamento supera i limiti supportati. Riduci la selezione.",
-    "regroup_minimum": "Mantieni almeno due foto nella nuova pila."
+    "regroup_minimum": "Mantieni almeno due foto nella nuova pila.",
+    "regroup_summary": "Pile originali: {combined} unite, {retained} mantenute. Foto fuori dalle pile: {unstacked}."
   },
   "immich_diagnostics": {
     "title": "Diagnostica Immich",

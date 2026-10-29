@@ -57,8 +57,12 @@ function captureDateKey(date: string | null | undefined): string {
         <fieldset class="border-0 p-0 mb-3" [disabled]="saving() || !editable()">
           <legend class="text-sm font-medium mb-1">{{ I18N.stacks.regroup_policy | translate }}</legend>
           <div class="flex flex-wrap gap-2">
-            <button mat-stroked-button data-stack-mode="combine" [attr.aria-pressed]="mode() === 'combine'" (click)="changeMode('combine')">{{ I18N.stacks.regroup_combine | translate }}</button>
-            <button mat-stroked-button data-stack-mode="selected" [attr.aria-pressed]="mode() === 'selected'" (click)="changeMode('selected')">{{ I18N.stacks.regroup_selected | translate }}</button>
+            <button mat-stroked-button data-stack-mode="combine" class="aria-pressed:!bg-[var(--mat-sys-secondary-container)] aria-pressed:!text-[var(--mat-sys-on-secondary-container)]" [attr.aria-pressed]="mode() === 'combine'" (click)="changeMode('combine')">
+              <mat-icon aria-hidden="true" [class.invisible]="mode() !== 'combine'">check</mat-icon>{{ I18N.stacks.regroup_combine | translate }}
+            </button>
+            <button mat-stroked-button data-stack-mode="selected" class="aria-pressed:!bg-[var(--mat-sys-secondary-container)] aria-pressed:!text-[var(--mat-sys-on-secondary-container)]" [attr.aria-pressed]="mode() === 'selected'" (click)="changeMode('selected')">
+              <mat-icon aria-hidden="true" [class.invisible]="mode() !== 'selected'">check</mat-icon>{{ I18N.stacks.regroup_selected | translate }}
+            </button>
           </div>
           <p class="text-sm mt-2 opacity-80">{{ (mode() === 'combine' ? I18N.stacks.regroup_combine_hint : I18N.stacks.regroup_selected_hint) | translate }}</p>
         </fieldset>
@@ -76,6 +80,19 @@ function captureDateKey(date: string | null | undefined): string {
           @if (regrouping()) { <p>{{ I18N.stacks.regroup_counts | translate:{ selected: explicitPaths().length, effective: paths().length } }}</p> }
         </div>
         @if (extraCount()) { <p class="text-sm mb-2" role="status">{{ extraCount() | pluralKey:I18N.stacks.regroup_extra:I18N.stacks.regroup_extra_plural | translate:{ count: extraCount() } }}</p> }
+        @if (sourceEffects().length) {
+          <section class="rounded-lg border border-current/20 p-3 text-sm mb-3 shrink-0" [attr.aria-label]="I18N.stacks.regroup_sources | translate">
+            <p data-stack-source-summary aria-live="polite">{{ I18N.stacks.regroup_summary | translate:sourceSummary() }}</p>
+            <details class="mt-1">
+              <summary class="cursor-pointer font-medium">{{ I18N.stacks.regroup_sources | translate }}</summary>
+              <div class="max-h-36 overflow-y-auto mt-2">
+                @for (source of sourceEffects(); track source.id) {
+                  <p data-stack-source class="mb-1"><span class="font-medium">{{ source.cover | filename }}</span>: {{ I18N.stacks.regroup_moved | translate:{ moved: source.moved, total: source.total } }} · {{ I18N.stacks[source.outcome] | translate:{ count: source.remaining } }}</p>
+                }
+              </div>
+            </details>
+          </section>
+        }
         @if (focused(); as path) {
           <div class="relative bg-black/90 rounded-xl flex items-center justify-center shrink-0 h-[28dvh] min-h-32 sm:h-[36dvh] overflow-hidden">
             <img data-stack-preview [src]="path | thumbnailUrl:1920" [alt]="path | filename" decoding="async" class="w-full h-full object-contain" />
@@ -109,14 +126,6 @@ function captureDateKey(date: string | null | undefined): string {
             </li>
           }
         </ol>
-        @if (sourceEffects().length) {
-          <section class="rounded-lg border border-current/20 p-3 text-sm mb-3" [attr.aria-label]="I18N.stacks.regroup_sources | translate">
-            <h3 class="font-medium mb-2">{{ I18N.stacks.regroup_sources | translate }}</h3>
-            @for (source of sourceEffects(); track source.id) {
-              <p data-stack-source class="mb-1"><span class="font-medium">{{ source.cover | filename }}</span>: {{ I18N.stacks.regroup_moved | translate:{ moved: source.moved, total: source.total } }} · {{ I18N.stacks[source.outcome] | translate:{ count: source.remaining } }}</p>
-            }
-          </section>
-        }
         @if (editable() && additions().length) {
           <button mat-button data-stack-add (click)="addSelected()" [disabled]="saving() || loading() || paths().length + additions().length > STACK_MAX_MEMBERS">{{ additions().length | pluralKey:I18N.stacks.add_selected:I18N.stacks.add_selected_plural | translate:{ count: additions().length } }}</button>
         }
@@ -150,7 +159,7 @@ export class StackDialogComponent implements OnInit {
   private readonly session = this.stacks.context();
   private readonly initialEdition = this.auth.isEdition();
   private readonly cancelLoad = new Subject<void>();
-  private retryAction: 'load' | 'save' | 'add' = 'load';
+  private retryAction: 'load' | 'save' | 'unstack' | 'add' = 'load';
   private readonly closeButton = viewChild<ElementRef<HTMLButtonElement>>('closeButton');
   private readonly thumbnails = viewChildren<ElementRef<HTMLButtonElement>>('thumbnail');
   private closing = false;
@@ -166,6 +175,12 @@ export class StackDialogComponent implements OnInit {
   readonly previewCurrent = signal(false);
   private readonly excluded = new Set<string>();
   readonly sourceEffects = computed(() => regroupSourceEffects(this.regrouping() ? this.preview() : null, this.paths()));
+  readonly sourceSummary = computed(() => {
+    const effects = this.sourceEffects();
+    return { combined: effects.filter(source => source.remaining === 0).length,
+      retained: effects.filter(source => source.remaining >= 2).length,
+      unstacked: effects.filter(source => source.remaining === 1).length };
+  });
   readonly extraCount = computed(() => this.regrouping() ? this.paths().filter(path => !this.explicitPaths().includes(path)).length : 0);
   readonly ready = signal(false);
   readonly loading = signal(false);
@@ -263,6 +278,7 @@ export class StackDialogComponent implements OnInit {
   }
   retry(): void {
     if (this.retryAction === 'add') void this.addSelected();
+    else if (this.retryAction === 'unstack' && this.error() === 'error') void this.unstack();
     else if (this.retryAction === 'save' && this.error() === 'error') void this.save();
     else void this.load();
   }
@@ -315,11 +331,13 @@ export class StackDialogComponent implements OnInit {
       || this.paths().length + this.additions().length > STACK_MAX_MEMBERS) return;
     const additions = this.additions();
     const paths = [...this.paths(), ...additions];
+    // Expanded companions are draft members, never implicit explicit selections.
+    const selectedPaths = this.regrouping() ? [...new Set([...this.explicitPaths(), ...additions])] : paths;
     const mode = this.regrouping() ? this.mode() : 'combine';
     const sequence = ++this.loadSequence;
     this.loading.set(true); this.error.set(null); this.retryAction = 'add';
     try {
-      const preview = await firstValueFrom(this.stacks.previewRegroup(paths, mode)
+      const preview = await firstValueFrom(this.stacks.previewRegroup(selectedPaths, mode)
         .pipe(takeUntil(this.cancelLoad), takeUntilDestroyed(this.destroyRef)));
       if (!this.current() || sequence !== this.loadSequence) return;
       if (preview.source_stacks.some(source => source.id !== this.stack()?.id) || this.regrouping()) {
@@ -327,7 +345,7 @@ export class StackDialogComponent implements OnInit {
         const sourcePaths = this.stack()?.members.map(member => member.path) ?? [];
         sourcePaths.filter(path => !paths.includes(path)).forEach(path => this.excluded.add(path));
         additions.forEach(path => this.excluded.delete(path));
-        this.explicitPaths.set(paths); this.mode.set(mode); this.regrouping.set(true);
+        this.explicitPaths.set(selectedPaths); this.mode.set(mode); this.regrouping.set(true);
         const draft = reconcileRegroupDraft(preview, { paths, cover: this.cover() }, this.excluded);
         this.preview.set(preview); this.paths.set(draft.paths); this.cover.set(draft.cover); this.previewCurrent.set(true);
       } else this.paths.set(paths);
@@ -380,7 +398,7 @@ export class StackDialogComponent implements OnInit {
       if (applied) this.dialog.close(true);
     } catch (failure) {
       if (this.current()) {
-        this.retryAction = 'save'; this.showFailure(failure);
+        this.retryAction = action === 'unstack' ? 'unstack' : 'save'; this.showFailure(failure);
       }
     } finally {
       if (this.current()) { this.saving.set(false); this.dialog.disableClose = false; }

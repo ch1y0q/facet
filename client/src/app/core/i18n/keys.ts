@@ -3067,6 +3067,7 @@ export const I18N = {
     regroup_retry: "stacks.regroup_retry",
     regroup_limit: "stacks.regroup_limit",
     regroup_minimum: "stacks.regroup_minimum",
+    regroup_summary: "stacks.regroup_summary",
   },
   immich_diagnostics: {
     title: "immich_diagnostics.title",
