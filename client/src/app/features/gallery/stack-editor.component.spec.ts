@@ -2,7 +2,6 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient, withXhr } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { NavigationStart, Router } from '@angular/router';
 import { NEVER, Subject } from 'rxjs';
 import { I18nService } from '../../core/services/i18n.service';
@@ -10,13 +9,14 @@ import { AuthService } from '../../core/services/auth.service';
 import { UndoService } from '../../core/services/undo.service';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
 import { GalleryStore } from './gallery.store';
-import { SKIP_SUGGESTION, StackDialogComponent, StackDialogData } from './stack-dialog.component';
+import { StackEditorComponent } from './stack-editor.component';
+import { STACK_EDITOR_HOST, SKIP_SUGGESTION, StackEditorData } from './stack-editor-host';
 
 const stack = { id: 's1', revision: 7, cover_path: '/a.jpg', editable: true,
   members: [{ path: '/b.jpg', position: 0 }, { path: '/a.jpg', position: 1 }] };
 
 describe('StackDialog HTTP workflow', () => {
-  let component: StackDialogComponent;
+  let component: StackEditorComponent;
   let http: HttpTestingController;
   let identity: ReturnType<typeof signal<string>>;
   let events: Subject<unknown>;
@@ -24,20 +24,25 @@ describe('StackDialog HTTP workflow', () => {
   let register: ReturnType<typeof vi.fn>;
   let journal: ReturnType<typeof vi.fn>;
   let refresh: ReturnType<typeof vi.fn>;
-  function create(data: StackDialogData = { stackId: 's1', selectedPaths: ['/c.jpg'] }) {
+  function create(data: StackEditorData = { stackId: 's1', selectedPaths: ['/c.jpg'] }) {
     identity = signal('alice'); events = new Subject(); close = vi.fn(); register = vi.fn(); journal = vi.fn(); refresh = vi.fn(async () => undefined);
-    TestBed.configureTestingModule({ providers: [StackDialogComponent,
+    TestBed.configureTestingModule({ providers: [StackEditorComponent,
       provideHttpClient(withXhr()), provideHttpClientTesting(),
-      { provide: MAT_DIALOG_DATA, useValue: data },
+      { provide: STACK_EDITOR_HOST, useValue: { data, presentation: 'dialog', keydown$: NEVER, closing$: NEVER, setBusy: vi.fn(),
+         finish: (result: string) => (close as (value?: unknown) => void)(result === 'saved' ? true : result === 'skip' ? SKIP_SUGGESTION : undefined), invalidate: close } },
       { provide: I18nService, useValue: { translations: signal({}), t: (key: string) => key } },
-      { provide: MatDialogRef, useValue: { close, beforeClosed: () => NEVER } },
       { provide: Router, useValue: { url: '/gallery', events, navigate: vi.fn() } },
       { provide: AuthService, useValue: { identity, isEdition: signal(true) } },
       { provide: GalleryStore, useValue: { pinnedPaths: signal(null), refreshPaths: refresh, restoreSelection: vi.fn(), showPaths: vi.fn(async () => []), loadError: signal(false), photos: signal(stack.members.map(m => ({ path: m.path }))) } },
       { provide: UndoService, useValue: { register } },
       { provide: UserActivityJournal, useValue: { record: journal } },
     ] });
-    component = TestBed.inject(StackDialogComponent); http = TestBed.inject(HttpTestingController);
+    component = TestBed.inject(StackEditorComponent); http = TestBed.inject(HttpTestingController);
+  }
+  async function addSelected() {
+    const done = component.addSelected();
+    http.expectOne('/api/stacks/regroup/preview').flush({ selected_paths: ['/b.jpg', '/a.jpg', '/c.jpg'], mode: 'combine', paths: ['/b.jpg', '/a.jpg', '/c.jpg'], cover_path: '/a.jpg', source_stacks: [stack], unstacked_paths: ['/c.jpg'], affected_paths: ['/b.jpg', '/a.jpg', '/c.jpg'], expected_state: 'a'.repeat(64) });
+    await done;
   }
   async function load() {
     const done = component.load();
@@ -48,14 +53,14 @@ describe('StackDialog HTTP workflow', () => {
   it('renders compact filenames with full-path tooltips, accessible names and unchanged thumbnail identities', async () => {
     create();
     const paths = ['/a/very/long/directory/same.jpg', '/another/long/directory/same.jpg'];
-    const fixture = TestBed.createComponent(StackDialogComponent); fixture.detectChanges();
+    const fixture = TestBed.createComponent(StackEditorComponent); fixture.detectChanges();
     http.expectOne('/api/stacks/s1').flush({ ...stack, cover_path: paths[0], members: paths.map((path, position) => ({ path, position })) });
     await fixture.whenStable(); fixture.detectChanges();
     const labels = [...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('[data-stack-filename]')];
     expect(labels.map(label => label.textContent?.trim())).toEqual(['same.jpg', 'same.jpg']);
     expect(labels.map(label => label.title)).toEqual(paths);
     expect(labels.map(label => label.getAttribute('aria-label'))).toEqual(paths);
-    const images = [...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLImageElement>('img')];
+    const images = [...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLImageElement>('[data-stack-tile] img')];
     expect(images.map(image => new URL(image.src).searchParams.get('path'))).toEqual(paths);
     expect(labels.every(label => label.classList.contains('truncate'))).toBe(true);
     expect((fixture.nativeElement as HTMLElement).querySelector('[data-stack-member-count]')?.textContent?.trim()).toBe('stacks.member_count_plural');
@@ -65,7 +70,7 @@ describe('StackDialog HTTP workflow', () => {
   });
 
   it('reviews chronological initial order separately from the selected cover and writes explicit paths', async () => {
-    create({ paths: ['/a.jpg', '/b.jpg'], activePath: '/a.jpg' });
+    create({ paths: ['/a.jpg', '/b.jpg'], activePath: '/a.jpg', skippable: true });
     const loading = component.load();
     http.expectOne('/api/photos/by_paths').flush({ photos: [
       { path: '/a.jpg', date_taken: '2025-02-02', filename: 'a.jpg' },
@@ -80,7 +85,7 @@ describe('StackDialog HTTP workflow', () => {
     expect(register).toHaveBeenCalled(); expect(journal).toHaveBeenCalledWith('stack', ['/b.jpg', '/a.jpg'], 'create');
   });
   it('orders equivalent EXIF and ISO capture dates together and leaves missing dates last', async () => {
-    create({ paths: ['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg'], activePath: '/b.jpg' });
+    create({ paths: ['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg'], activePath: '/b.jpg', skippable: true });
     const loading = component.load();
     http.expectOne('/api/photos/by_paths').flush({ photos: [
       { path: '/a.jpg', date_taken: '2025:01:01 10:00:00' },
@@ -98,7 +103,7 @@ describe('StackDialog HTTP workflow', () => {
     await saving;
   });
   it('edits order, cover and selected additions with the loaded revision', async () => {
-    create(); await load(); component.addSelected(); component.move(2, -1); component.setCover('/c.jpg');
+    create(); await load(); await addSelected(); component.move(2, -1); component.setCover('/c.jpg');
     const saving = component.save();
     const req = http.expectOne('/api/stacks/s1');
     expect(req.request.method).toBe('PUT');
@@ -117,7 +122,7 @@ describe('StackDialog HTTP workflow', () => {
     http.expectNone(request => /delete|reject/.test(request.url));
   });
   it('offers to skip a suggestion only once its draft is too small to create', async () => {
-    const draft = async (data: StackDialogData) => {
+    const draft = async (data: StackEditorData) => {
       create(data);
       const loading = component.load();
       http.expectOne('/api/photos/by_paths').flush({ photos: [
@@ -133,7 +138,10 @@ describe('StackDialog HTTP workflow', () => {
     expect(close).toHaveBeenCalledWith(SKIP_SUGGESTION);
     http.expectNone('/api/stacks');
     TestBed.resetTestingModule();
-    await draft({ paths: ['/a.jpg', '/b.jpg'], activePath: '/a.jpg' });
+    create({ paths: ['/a.jpg', '/b.jpg'], activePath: '/a.jpg' });
+    const loading = component.load();
+    http.expectOne('/api/stacks/regroup/preview').flush({ selected_paths: ['/a.jpg', '/b.jpg'], mode: 'combine', paths: ['/a.jpg', '/b.jpg'], cover_path: '/a.jpg', source_stacks: [], unstacked_paths: ['/a.jpg', '/b.jpg'], affected_paths: ['/a.jpg', '/b.jpg'], expected_state: 'a'.repeat(64) });
+    await loading;
     component.remove('/b.jpg');
     expect(component.skippable()).toBe(false);
   });
@@ -173,7 +181,7 @@ describe('StackDialog HTTP workflow', () => {
     expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/photo'], { queryParams: { path: '/a.jpg' }, state: { photo }, replaceUrl: false });
   });
   it('opens a newly added draft member without saving or changing gallery scope', async () => {
-    create(); await load(); component.addSelected();
+    create(); await load(); await addSelected();
     const opening = component.openMember('/c.jpg');
     const photo = { path: '/c.jpg' };
     http.expectOne(request => request.url === '/api/photo').flush(photo); await opening;
@@ -233,7 +241,7 @@ describe('StackDialog HTTP workflow', () => {
   });
   it('chunks initial photo metadata reads at the exact-list endpoint cap', async () => {
     const paths = Array.from({ length: 1000 }, (_, i) => `/photo-${i}.jpg`);
-    create({ paths }); const loading = component.load();
+    create({ paths, skippable: true }); const loading = component.load();
     for (const offset of [0, 500]) {
       const request = http.expectOne('/api/photos/by_paths');
       expect(request.request.body.paths).toEqual(paths.slice(offset, offset + 500));
@@ -257,10 +265,10 @@ describe('StackDialog HTTP workflow', () => {
     expect(TestBed.inject(GalleryStore).restoreSelection).toHaveBeenCalledWith(['/b.jpg', '/a.jpg']);
   });
   describe('unavailable and error outcomes', () => {
-    const renderedFailure = (fixture: ReturnType<typeof TestBed.createComponent<StackDialogComponent>>) =>
-      (fixture.nativeElement as HTMLElement).querySelector('[role="alert"]')?.textContent?.trim();
+    const renderedFailure = (fixture: ReturnType<typeof TestBed.createComponent<StackEditorComponent>>) =>
+      (fixture.nativeElement as HTMLElement).querySelector('[role="alert"] p')?.textContent?.trim();
     it('reports an unavailable stack when the server returns none, and offers a reload', async () => {
-      create(); const fixture = TestBed.createComponent(StackDialogComponent); fixture.detectChanges();
+      create(); const fixture = TestBed.createComponent(StackEditorComponent); fixture.detectChanges();
       http.expectOne('/api/stacks/s1').flush(null); await fixture.whenStable(); fixture.detectChanges();
       expect(component.ready()).toBe(false); expect(fixture.componentInstance.error()).toBe('unavailable');
       expect(renderedFailure(fixture)).toBe('stacks.unavailable');
@@ -273,7 +281,7 @@ describe('StackDialog HTTP workflow', () => {
       http.expectNone(() => true);
     });
     it('reports unavailable when the exact-list read misses a photo', async () => {
-      create({ paths: ['/a.jpg', '/b.jpg'] }); const loading = component.load();
+      create({ paths: ['/a.jpg', '/b.jpg'], skippable: true }); const loading = component.load();
       http.expectOne('/api/photos/by_paths').flush({ photos: [{ path: '/a.jpg', date_taken: null }], missing: ['/b.jpg'] }); await loading;
       expect(component.error()).toBe('unavailable'); expect(component.ready()).toBe(false);
     });

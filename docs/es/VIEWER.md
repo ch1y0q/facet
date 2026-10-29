@@ -266,13 +266,15 @@ Usa **Estado de revisión → Por revisar** en la galería para recorrer las fot
 
 ### Pilas de fotos manuales
 
-Agrupa fotos relacionadas bajo una sola miniatura de portada. Selecciona **2–1000 fotos** de forma explícita, elige **Apilar fotos** en la barra de selección y confirma la portada. Una selección de toda la vista no puede crear una pila.
+Selecciona **2–1000 fotos explícitas** y elige **Apilar fotos** en la barra o pulsa **S** para abrir el editor de página completa en `/stacks/edit`. Una selección de toda la vista no crea pilas. S abre una vista previa; nunca guarda directamente. Menú de usuario → **Personalizar atajos** cambia la tecla de la galería; la ayuda emergente, Ayuda y la referencia `?` muestran la tecla actual. Si una configuración anterior ya usa S, se conserva y Apilar queda **Sin asignar** hasta elegir una tecla libre. Se requieren permisos de edición. Cada foto pertenece a una pila por propietario. La página centra una vista previa con zoom sobre una tira de miniaturas permanente. Pulsa una miniatura o usa `←`/`→` para enfocar una foto y sus controles de portada, orden o eliminación de la pila. El botón de zoom, la rueda o un doble clic permiten examinar los detalles.
 
-- Una foto pertenece a una sola pila manual por propietario. Las pilas nunca se fusionan automáticamente.
-- Abre la insignia de recuento o una foto apilada para recorrer sus miembros en el visor de fotos. Las flechas y la tira siguen el orden de la pila y se quedan dentro de ella.
-- **Gestionar pila** permite elegir la portada, reordenar, y añadir o quitar fotos. Quitar la portada elige el miembro restante más antiguo. Con menos de dos miembros la pila se disuelve, igual que con **Desapilar**.
+Si las fotos seleccionadas ya pertenecen a pilas, **Combinar pilas** es la opción inicial: la vista previa incluye sus demás miembros. **Solo fotos seleccionadas** mueve únicamente la selección explícita. El editor muestra los recuentos seleccionado y final, miembros adicionales y un resumen de efectos; despliega los detalles para revisar cada pila de origen. Dos o más miembros restantes conservan su pila; uno solo queda sin apilar y un origen vacío desaparece. Excluir una foto de la nueva pila la deja en su origen según las mismas reglas. La pila final y el total de fotos afectadas tienen un límite de 1000 cada uno; se rechazan orígenes no disponibles o parcialmente visibles. Cambiar de modo conserva el orden, la portada y las exclusiones que sigan siendo aplicables.
+
+Revisa la vista previa actualizada por el servidor y pulsa **Apilar fotos** para guardar. La página sigue abierta para examinar el resultado; la notificación ofrece **Deshacer** mientras esté disponible y coincidan las revisiones. **Seguir editando** obtiene una vista previa nueva antes de volver a guardar. **Volver a la galería** regresa a la galería o al álbum de origen con su URL exacta y caduca el Deshacer anterior. Salir sin guardar no cambia nada. Recargar el navegador restaura la selección solo para la misma cuenta, tras una autorización nueva; abrir la URL sin una selección válida ofrece una forma de volver.
+
+La insignia o una foto apilada abre el visor con miniaturas, botones anterior/siguiente y contador en el orden guardado. Las flechas permanecen en la pila. **Gestionar pila** abre un diálogo secundario: pulsa una miniatura o usa Izquierda/Derecha para ver su vista previa grande, elige **Portada**, reordena con los botones de flecha o quita miembros. Abrirlo por sí solo conserva la edición habitual: los miembros retirados quedan sin apilar, quitar la portada elige el primer miembro restante y menos de dos miembros o **Desapilar** disuelve la pila. **Añadir fotos seleccionadas** de otra pila activa explícitamente la vista previa de reagrupación y sus dos modos. Archivos, metadatos, estrellas y decisiones Conservar/Rechazar permanecen intactos.
+
 - Las acciones de valoración, Conservar/Rechazar, metadatos, descarga, álbum y eliminación nunca expanden una pila de forma implícita.
-- Editar una pila nunca toca archivos, metadatos, valoraciones ni decisiones de Conservar/Rechazar. Deshazlo desde el [Historial de organización](#historial-de-organización) mientras no haya cambiado nada; las ediciones posteriores provocan un conflicto.
 
 **En la galería.** Una pila se pliega en una sola miniatura; **Expandir todas las pilas** es una preferencia recordada. Los filtros y la pertenencia a álbumes se aplican a las fotos individuales: la portada se muestra si coincide; si no, el primer miembro que coincide. La exploración de pilas omite el ocultado automático de ráfagas/duplicados. La línea de tiempo y el mapa muestran fotos individuales.
 
@@ -286,15 +288,13 @@ Agrupa fotos relacionadas bajo una sola miniatura de portada. Selecciona **2–1
 - Las exportaciones completas de la base de datos del visor omiten las pilas y los álbumes inteligentes cuyos filtros nombran una pila privada, además de los álbumes inteligentes con filtros ilegibles (JSON no válido, anidamiento excesivo o más de 1 MiB). Las actualizaciones incrementales conservan los álbumes y pilas propios del destino.
 - La [importación/envío de pilas de Immich](IMMICH.md#importar-y-enviar-pilas-manuales) es una operación de CLI independiente.
 
-**Pilas sugeridas** revisa, de una en una, los grupos de duplicados y ráfagas existentes dentro de los filtros actuales. Ignora el ocultado de ráfagas/duplicados para que veas todos los miembros.
+**Pilas sugeridas** abre la revisión de página completa en `/culling?mode=stacks`, con los filtros actuales y la vuelta a la galería o al álbum de origen. Requiere permisos de edición. Revisa grupos de duplicados y ráfagas existentes sin ocultar sus miembros.
 
-- El fotograma enfocado se muestra grande y se convierte en la portada. `←`/`→` mueven el foco.
-- **`S`** (o **Apilar con esta portada**) apila el grupo; **`X`** (o **Omitir**) lo pasa por alto. Ambas ofrecen Deshacer. **Editar miembros** abre primero el editor de pilas.
-- Una omisión se guarda por cuenta y dura hasta que cambian los miembros del grupo.
-- Los grupos con fotos ya apiladas o fotogramas de bracketing/panorámica se omiten. Los grupos solapados se omiten enteros, dando preferencia a los grupos de duplicados.
-- Cada lote contiene como máximo 20 propuestas y 2000 fotos (1000 por grupo). **Recargar** obtiene el siguiente lote.
-- No se ofrece en listas fijadas, Fotos similares ni búsqueda semántica. Los usuarios de solo lectura pueden mirar, pero no apilar ni omitir.
-- Las sugerencias nunca rechazan una foto ni cambian un archivo.
+- En la cuadrícula, `↑`/`↓` seleccionan un grupo, **Intro** abre su cuarto oscuro y **S** lo apila con la portada propuesta. En el cuarto oscuro, `←`/`→` enfocan una foto y **S** o **Intro** apilan con esa portada. **X** omite el grupo; apilar y omitir ofrecen Deshacer.
+- El cuarto oscuro conserva la vista previa grande con zoom, la lupa, la comparación y la tira de miniaturas. **Z** alterna el zoom, **P** el resaltado de enfoque, **F** la pantalla completa; **G** recorre las cuadrículas de composición; **Escape** vuelve a la cuadrícula de grupos. **Editar miembros** abre un diálogo secundario; reducir la sugerencia a una foto ofrece **Omitir esta pila**.
+- Las omisiones se guardan por cuenta hasta que cambien los miembros del grupo. Se excluyen grupos con fotos ya apiladas o de horquillado/panorama; los grupos solapados se excluyen enteros, priorizando duplicados.
+- La cabecera cuenta sugerencias cargadas, no el total de la biblioteca. Cada lote contiene hasta 20 propuestas y 2000 fotos (1000 por grupo). El siguiente se carga automáticamente solo cuando todas las sugerencias cargadas se hayan apilado u omitido. **Recargar sugerencias** recarga el mismo ámbito; **Volver a la galería** regresa al origen.
+- No se ofrece en listas fijadas, Fotos similares ni búsqueda semántica. La revisión de pilas no tiene controles de descarte, entrenamiento ni decisiones Conservar/Rechazar y nunca cambia originales, metadatos o valoraciones.
 
 ### Tarjetas de foto
 
@@ -1126,11 +1126,12 @@ Los atajos de una sola tecla están inactivos mientras el foco está en un campo
 | `F` | Marca / desmarca como favorita la foto enfocada (modo de edición) |
 | `X` o `0` | Rechaza / deshace el rechazo de la foto enfocada (modo de edición; avanza automáticamente) |
 | `/` | Enfoca la búsqueda de la barra de herramientas (se muestra desde 1360 px de ancho); más estrecho, abre la búsqueda de la barra lateral de filtros |
+| `S` | Abre el editor de pilas para la selección explícita (modo de edición; reasignable, puede quedar sin asignar) |
 | `B` | Muestra / oculta la barra lateral de filtros |
 | `V` | Cambia entre el diseño de cuadrícula y de mosaico |
 | `?` | Muestra la referencia de atajos de teclado (todas las páginas; también en menú de usuario → Ayuda) |
 
-**Reasignar teclas.** `K`, `F`, `X`, `/`, `B` y `V` son valores por defecto. Menú de usuario → **Personalizar atajos** te permite hacer clic en una acción y pulsar una tecla nueva (`Esc` o `Tab` cancela). Los dígitos, `Space` y `?` están reservados, y una tecla ya en uso se rechaza. **Restablecer todo** restaura los valores por defecto. La asignación se guarda por navegador (`localStorage`). La página de la foto usa las mismas teclas, y la referencia `?` siempre muestra las teclas en vigor.
+**Reasignar teclas.** `K`, `F`, `X`, `/`, `B`, `V` y `S` son valores por defecto. Menú de usuario → **Personalizar atajos** te permite hacer clic en una acción y pulsar una tecla nueva (`Esc` o `Tab` cancela). Los dígitos, `Space` y `?` están reservados, y una tecla ya en uso se rechaza. **Restablecer todo** restaura los valores por defecto. La asignación se guarda por navegador (`localStorage`). La página de la foto usa las mismas teclas, y la referencia `?` siempre muestra las teclas en vigor.
 
 **Foto actual.** La foto sobre la que actúan las teclas de valoración, favorito y rechazo tiene un contorno de 4 px; las demás tarjetas se atenúan al 50 %. No se marca nada hasta que te mueves a una foto. Hacer clic en una foto mueve el marcador a ella. Volver desde una foto deja el marcador en la última que viste. La pista de la tarjeta enfocada aparece solo en modo de edición con `viewer.features.show_rating_controls` activado.
 

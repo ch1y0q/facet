@@ -266,13 +266,15 @@ Wählen Sie in der Galerie **Auswahlstatus → Zu prüfen**, um unentschiedene F
 
 ### Manuelle Fotostapel
 
-Gruppieren Sie zusammengehörige Fotos unter einer Titelbild-Kachel. Wählen Sie **2–1000 Fotos** ausdrücklich aus, wählen Sie in der Auswahlleiste **Fotos stapeln** und bestätigen Sie das Titelbild. Eine Gesamtauswahl der Ansicht kann keinen Stapel erstellen.
+Wählen Sie **2–1000 konkrete Fotos**, dann **Fotos stapeln** in der Auswahlleiste oder drücken Sie **S**, um den ganzseitigen Editor unter `/stacks/edit` zu öffnen. Eine Gesamtauswahl der Ansicht erstellt keinen Stapel. S öffnet nur die Vorschau und speichert nicht. Benutzermenü → **Tastenkürzel anpassen** ändert die Galeriebelegung; Tooltip, Hilfe und `?` zeigen die aktuelle Taste. Belegt eine ältere gespeicherte Einstellung bereits S, bleibt sie erhalten und Stapeln ist **Nicht zugewiesen**, bis Sie eine freie Taste wählen. Bearbeitungsrechte sind erforderlich. Jedes Foto gehört je Eigentümer höchstens einem Stapel. Die Seite zeigt mittig eine zoombare Vorschau über einem dauerhaften Miniaturstreifen. Klicken Sie auf eine Miniatur oder verwenden Sie `←`/`→`, um ein Foto zu fokussieren; die zugehörigen Schaltflächen wählen das Titelbild, ändern die Reihenfolge oder entfernen es. Zoomtaste, Mausrad oder Doppelklick zeigen Details.
 
-- Ein Foto gehört je Eigentümer zu höchstens einem manuellen Stapel. Stapel werden nie automatisch zusammengeführt.
-- Öffnen Sie das Zählabzeichen oder ein gestapeltes Foto, um dessen Mitglieder in der Fotoansicht zu durchblättern. Pfeiltasten und Streifen folgen der Stapelreihenfolge und bleiben im Stapel.
-- Mit **Stapel verwalten** wählen Sie das Titelbild, ordnen um und fügen Fotos hinzu oder entfernen sie. Beim Entfernen des Titelbilds wird das früheste verbleibende Mitglied gewählt. Unter zwei Mitgliedern wird der Stapel aufgelöst, ebenso mit **Stapel auflösen**.
+Gehören ausgewählte Fotos bereits zu Stapeln, ist **Stapel zusammenführen** die Vorgabe: Die Vorschau nimmt deren übrige Mitglieder hinzu. **Nur ausgewählte Fotos** verschiebt nur die konkrete Auswahl. Der Editor zeigt Auswahl- und Ergebnisanzahl, zusätzliche Mitglieder und eine Zusammenfassung der Folgen; klappen Sie die Details für jeden Quellstapel auf. Mindestens zwei zurückbleibende Mitglieder behalten ihren Stapel; ein einzelnes wird unabhängig und eine leere Quelle verschwindet. Aus dem neuen Stapel ausgeschlossene Fotos bleiben nach denselben Regeln in ihrer Quelle. Zielstapel und insgesamt betroffene Fotos sind jeweils auf 1000 begrenzt; nicht verfügbare oder teilweise sichtbare Quellen werden abgelehnt. Beim Moduswechsel bleiben weiterhin passende Reihenfolge, Titelbild und Ausschlüsse erhalten.
+
+Prüfen Sie die vom Server aktualisierte Vorschau und speichern Sie mit **Fotos stapeln**. Die Seite bleibt zur Ergebniskontrolle offen; die Benachrichtigung bietet **Rückgängig**, solange sie verfügbar ist und die Revisionen passen. **Weiter bearbeiten** lädt vor erneutem Speichern eine frische Vorschau. **Zurück zur Galerie** führt zur ursprünglichen Galerie oder zum Album mit der genauen URL zurück und beendet das bisherige Rückgängig. Verlassen ohne Speichern ändert nichts. Neuladen im Browser stellt die Auswahl nur für dasselbe Konto und nach erneuter Autorisierung her; eine URL ohne gültigen Auswahlzustand bietet einen Rückweg.
+
+Das Zählabzeichen oder ein gestapeltes Foto öffnet die Fotoansicht mit Vorschaustreifen, Vor-/Zurück-Schaltflächen und Positionsanzeige in gespeicherter Reihenfolge. Pfeiltasten bleiben im Stapel. **Stapel verwalten** öffnet einen zusätzlichen Dialog: Klicken Sie auf eine Miniatur oder nutzen Sie Links/Rechts für die große Vorschau, wählen Sie **Titelbild**, ändern Sie die Reihenfolge mit den Pfeilschaltflächen oder entfernen Sie Mitglieder. Allein das Öffnen behält die normale Bearbeitung bei: Entfernte Mitglieder werden unabhängig, nach Entfernen des Titelbilds wird das erste verbleibende gewählt, und unter zwei Mitgliedern oder mit **Stapel auflösen** wird die Gruppe aufgelöst. Das ausdrückliche **Hinzufügen ausgewählter Fotos** aus einem anderen Stapel wechselt zur Gruppierungsvorschau mit beiden Modi. Dateien, Metadaten, Bewertungen und Behalten/Ablehnen bleiben unverändert.
+
 - Aktionen für Bewertung, Behalten/Ablehnen, Metadaten, Download, Album und Löschen erweitern einen Stapel nie implizit.
-- Stapelbearbeitungen ändern nie Dateien, Metadaten, Bewertungen oder Behalten/Ablehnen-Entscheidungen. Machen Sie sie im [Änderungsverlauf](#änderungsverlauf) rückgängig, solange sich nichts geändert hat; spätere Änderungen führen zu einem Konflikt.
 
 **In der Galerie.** Ein Stapel klappt zu einer Kachel zusammen; **Alle Stapel aufklappen** ist eine gemerkte Einstellung. Filter und Albummitgliedschaft gelten für einzelne Fotos: Das Titelbild erscheint, wenn es passt, sonst das erste passende Mitglied. Das Durchblättern eines Stapels umgeht das automatische Ausblenden von Serien/Duplikaten. Zeitleiste und Karte zeigen einzelne Fotos.
 
@@ -286,15 +288,13 @@ Gruppieren Sie zusammengehörige Fotos unter einer Titelbild-Kachel. Wählen Sie
 - Vollständige Viewer-Datenbankexporte lassen Stapel und intelligente Alben weg, deren Filter einen privaten Stapel nennen, sowie intelligente Alben mit unlesbaren Filtern (ungültiges JSON, zu tiefe Verschachtelung oder über 1 MiB). Inkrementelle Aktualisierungen bewahren die eigenen Alben und Stapel des Ziels.
 - [Immich-Import/Übertragung von Stapeln](IMMICH.md#manuelle-stapel-importieren-und-übertragen) ist ein getrennter CLI-Vorgang.
 
-**Vorgeschlagene Stapel** prüft vorhandene Duplikat- und Serien-Gruppen innerhalb der aktuellen Filter, eine nach der anderen. Es ignoriert das Ausblenden von Serien/Duplikaten, damit Sie jedes Mitglied sehen.
+**Vorgeschlagene Stapel** öffnet die ganzseitige Prüfung unter `/culling?mode=stacks` mit den aktuellen Galeriefiltern und einem Rückweg zur ursprünglichen Galerie oder zum Album. Bearbeitungsrechte sind erforderlich. Vorhandene Duplikat- und Seriengruppen werden ohne Ausblenden ihrer Mitglieder geprüft.
 
-- Das fokussierte Bild erscheint groß und wird zum Titelbild. `←`/`→` verschieben den Fokus.
-- **`S`** (oder **Mit diesem Titelbild stapeln**) stapelt die Gruppe; **`X`** (oder **Überspringen**) lässt sie aus. Beides bietet Rückgängig. **Mitglieder bearbeiten** öffnet zuvor den Stapel-Editor.
-- Ein Überspringen wird pro Konto gespeichert und gilt, bis sich die Mitglieder der Gruppe ändern.
-- Gruppen mit bereits gestapelten Fotos oder Belichtungsreihen-/Panoramabildern werden übersprungen. Überlappende Gruppen entfallen ganz, Duplikatgruppen haben Vorrang.
-- Jeder Schwung enthält höchstens 20 Vorschläge und 2000 Fotos (1000 pro Gruppe). **Neu laden** holt den nächsten Schwung.
-- Nicht angeboten in angehefteten Listen, bei Ähnlichen Fotos oder in der semantischen Suche. Nur-Lese-Benutzer können ansehen, aber weder stapeln noch überspringen.
-- Vorschläge verwerfen nie ein Foto und ändern keine Datei.
+- Im Raster wählen `↑`/`↓` eine Gruppe, **Enter** öffnet ihre Dunkelkammer und **S** stapelt sie mit dem vorgeschlagenen Titelbild. In der Dunkelkammer fokussieren `←`/`→` ein Bild; **S** oder **Enter** stapelt mit diesem Titelbild. **X** überspringt; Stapeln und Überspringen bieten Rückgängig.
+- Die Dunkelkammer behält große zoombare Vorschau, Lupe, Vergleich und Miniaturstreifen. **Z** schaltet Zoom, **P** Fokus-Peaking, **F** Vollbild um; **G** wechselt das Kompositionsraster; **Escape** führt zum Gruppenraster zurück. **Mitglieder bearbeiten** öffnet einen zusätzlichen Dialog; bei nur noch einem Foto bietet er **Diesen Stapel überspringen**.
+- Übersprungene Gruppen werden je Konto bis zur Änderung ihrer Mitglieder gespeichert. Gruppen mit bereits gestapelten Fotos oder Belichtungsreihen-/Panoramabildern werden ausgeschlossen; überlappende Gruppen werden ganz ausgeschlossen, mit Vorrang für Duplikate.
+- Die Kopfzeile zählt geladene Vorschläge, nicht die gesamte Bibliothek. Ein Durchgang umfasst höchstens 20 Vorschläge und 2000 Fotos (1000 je Gruppe). Der nächste lädt erst automatisch, wenn alle geladenen Vorschläge gestapelt oder übersprungen wurden. **Vorschläge neu laden** lädt denselben Bereich erneut; **Zurück zur Galerie** führt zum Ursprung.
+- Nicht in angehefteten Listen, Ähnliche Fotos oder semantischer Suche angeboten. Die Stapelprüfung hat keine Aussortiersteuerung, kein Training und keine Behalten/Ablehnen-Entscheidungen und ändert weder Originale noch Metadaten oder Bewertungen.
 
 ### Fotokarten
 
@@ -1124,11 +1124,12 @@ Einzeltasten-Kürzel sind inaktiv, solange der Fokus in einem Textfeld, Menü od
 | `F` | Das fokussierte Foto favorisieren / Favorit aufheben (Bearbeitungsmodus) |
 | `X` oder `0` | Das fokussierte Foto ablehnen / Ablehnung aufheben (Bearbeitungsmodus; springt automatisch weiter) |
 | `/` | Die Suche der Symbolleiste fokussieren (ab 1360 px Breite sichtbar); schmaler öffnet es die Suche der Filter-Seitenleiste |
+| `S` | Den Stapel-Editor für die ausdrückliche Auswahl öffnen (Bearbeitungsmodus; umbelegbar, kann unbelegt bleiben) |
 | `B` | Die Filter-Seitenleiste ein-/ausblenden |
 | `V` | Zwischen Raster- und Mosaiklayout wechseln |
 | `?` | Die Tastenkürzel-Referenz anzeigen (auf jeder Seite; auch unter Benutzermenü → Hilfe) |
 
-**Tasten umbelegen.** `K`, `F`, `X`, `/`, `B` und `V` sind Standardwerte. Unter Benutzermenü → **Tastenkürzel anpassen** klicken Sie eine Aktion an und drücken eine neue Taste (`Esc` oder `Tab` bricht ab). Ziffern, `Space` und `?` sind reserviert, und eine bereits verwendete Taste wird abgelehnt. **Alle zurücksetzen** stellt die Standardwerte wieder her. Die Belegung wird pro Browser gespeichert (`localStorage`). Die Fotoseite verwendet dieselben Tasten, und die Referenz unter `?` zeigt immer die geltenden Tasten.
+**Tasten umbelegen.** `K`, `F`, `X`, `/`, `B`, `V` und `S` sind Standardwerte. Unter Benutzermenü → **Tastenkürzel anpassen** klicken Sie eine Aktion an und drücken eine neue Taste (`Esc` oder `Tab` bricht ab). Ziffern, `Space` und `?` sind reserviert, und eine bereits verwendete Taste wird abgelehnt. **Alle zurücksetzen** stellt die Standardwerte wieder her. Die Belegung wird pro Browser gespeichert (`localStorage`). Die Fotoseite verwendet dieselben Tasten, und die Referenz unter `?` zeigt immer die geltenden Tasten.
 
 **Aktuelles Foto.** Das Foto, auf das die Tasten für Bewertung, Favorit und Ablehnung wirken, hat eine 4px-Kontur; andere Karten werden auf 50 % abgedunkelt. Nichts ist markiert, bis Sie sich auf ein Foto bewegen. Ein Klick auf ein Foto verschiebt die Markierung darauf. Die Rückkehr von einem Foto lässt die Markierung auf dem zuletzt betrachteten. Der Hinweis zur fokussierten Karte erscheint nur im Bearbeitungsmodus bei aktivem `viewer.features.show_rating_controls`.
 

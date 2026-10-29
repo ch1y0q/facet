@@ -43,6 +43,14 @@ describe('HelpDialogComponent', () => {
     expect(root.textContent).toContain(`${I18N.culling.my_taste_learning}:12`);
   });
 
+  it('renders the actual Stack mapping or its unassigned status in gallery Help', () => {
+    const section = galleryShortcutSection({ ...DEFAULT_KEYMAP, stack: '' });
+    const root = render({ key: I18N.gallery.help, shortcutSections: [section] });
+    const label = Array.from(root.querySelectorAll('span')).find(node => node.textContent?.trim() === I18N.shortcuts.stack)!;
+    expect(label.parentElement!.textContent).toContain(I18N.shortcuts.unassigned);
+    expect(label.parentElement!.querySelector('kbd')).toBeNull();
+  });
+
   it('renders the keyboard sections the opener passed', () => {
     const section = galleryShortcutSection(DEFAULT_KEYMAP);
     const root = render({ key: I18N.gallery.help, shortcutSections: [section] });

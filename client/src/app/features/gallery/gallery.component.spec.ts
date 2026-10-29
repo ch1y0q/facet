@@ -5853,25 +5853,20 @@ describe('GalleryComponent', () => {
         expect(dialog.open).not.toHaveBeenCalled();
       });
 
-      it('opens discovery from the rendered toolbar with the ordinary view filters', async () => {
+      it('navigates from the toolbar with the exact filter payload and opaque return URL', async () => {
+        mockStore.filters.set({ ...DEFAULT_FILTERS, album_id: '42', camera: 'Camera & Lens' });
         const filters = mockStore.filterPayload();
-        expect(filters).not.toBeNull();
-        const dialog = dialogForSuggestions();
+        expect(filters).toMatchObject({ album_id: '42', camera: 'Camera & Lens' });
+        const router = TestBed.inject(Router);
+        const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+        vi.spyOn(router, 'url', 'get').mockReturnValue('/album/42?sort=date&tag=a%20b#focused');
         const button = host.nativeElement.querySelector('[data-stack-suggestions]') as HTMLButtonElement;
-        expect(button).not.toBeNull();
         button.click();
-        await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledOnce());
-        expect(dialog.open).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ data: { filters } }));
+        expect(navigate).toHaveBeenCalledWith(['/culling'], { queryParams: {
+          mode: 'stacks', filters: JSON.stringify(filters), return: '/album/42?sort=date&tag=a%20b#focused',
+        } });
       });
 
-      it('refuses discovery when the view becomes unsupported while the dialog loads', async () => {
-        const dialog = dialogForSuggestions();
-        const opening = (gallery as unknown as { openStackSuggestions(): Promise<void> }).openStackSuggestions();
-        mockStore.filters.set({ ...DEFAULT_FILTERS, semanticQuery: 'photos of mountains' });
-        mockStore.canScopeSelectionToView.set(false);
-        await opening;
-        expect(dialog.open).not.toHaveBeenCalled();
-      });
     });
 
     describe('search delay', () => {
@@ -6000,8 +5995,8 @@ describe('GalleryComponent', () => {
 
       it('focuses the search with a remapped key, and no longer with /', () => {
         stubWide(true);
-        TestBed.inject(KeyboardMappingService).setKey('focusSearch', 's');
-        expect(key({ key: 's' }).defaultPrevented).toBe(true);
+        TestBed.inject(KeyboardMappingService).setKey('focusSearch', 'g');
+        expect(key({ key: 'g' }).defaultPrevented).toBe(true);
         expect(document.activeElement).toBe(search);
         search.blur();
         expect(key({ key: '/' }).defaultPrevented).toBe(false);

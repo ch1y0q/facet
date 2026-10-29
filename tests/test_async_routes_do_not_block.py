@@ -215,6 +215,11 @@ def _drive(requests, statuses=None):
             preview = client.post('/api/photos/capture_date/preview', json=draft)
             assert preview.status_code == 200, preview.text
             body = {**draft, 'preview_token': preview.json()['preview_token']}
+        if path == '/api/stacks/regroup/apply':
+            preview = client.post('/api/stacks/regroup/preview', json={
+                'selected_paths': body['selected_paths'], 'mode': body['mode']})
+            assert preview.status_code == 200, preview.text
+            body = {**body, 'expected_state': preview.json()['expected_state']}
         _cold_caches()
         with loop_guard() as hits:
             resp = client.request(method, path, params=params, json=body)
@@ -313,6 +318,10 @@ def _bind(requests, photo_path, album_id, history_id, job_id, stack_paths=None):
             path = path.replace('/not-a-job', '/' + job_id, 1)
         if method == 'POST' and path == '/api/stacks' and stack_paths:
             body = {'paths': stack_paths, 'cover_path': stack_paths[0]}
+        if method == 'POST' and path.startswith('/api/stacks/regroup/') and stack_paths:
+            body = {'selected_paths': stack_paths, 'mode': 'combine',
+                    'paths': list(reversed(stack_paths)), 'cover_path': stack_paths[0],
+                    'expected_state': '0' * 64}
         if method == 'POST' and path == '/api/export/sidecar_jobs':
             body = {'paths': [photo_path]}
         if path == '/api/organization_history/1/revert':

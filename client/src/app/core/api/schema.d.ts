@@ -4501,6 +4501,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stacks/regroup/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Stack Regroup */
+        post: operations["apply_stack_regroup_api_stacks_regroup_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/stacks/regroup/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Stack Regroup */
+        post: operations["preview_stack_regroup_api_stacks_regroup_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/stacks/suggestions": {
         parameters: {
             query?: never;
@@ -8912,10 +8946,71 @@ export interface components {
             stack: components["schemas"]["PhotoStack"] | null;
             undo: components["schemas"]["StackUndo"] | null;
         };
+        /** StackRegroupApply */
+        StackRegroupApply: {
+            /** Cover Path */
+            cover_path: string;
+            /** Expected State */
+            expected_state: string;
+            /**
+             * Mode
+             * @default combine
+             * @enum {string}
+             */
+            mode?: "combine" | "selected";
+            /** Paths */
+            paths: string[];
+            /** Selected Paths */
+            selected_paths: string[];
+        };
+        /** StackRegroupMutation */
+        StackRegroupMutation: {
+            /** Affected Paths */
+            affected_paths: string[];
+            /** Changed */
+            changed: boolean;
+            stack: components["schemas"]["PhotoStack"] | null;
+            undo: components["schemas"]["StackUndo"] | null;
+        };
+        /** StackRegroupPreview */
+        StackRegroupPreview: {
+            /** Affected Paths */
+            affected_paths: string[];
+            /** Cover Path */
+            cover_path: string;
+            /** Expected State */
+            expected_state: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "combine" | "selected";
+            /** Paths */
+            paths: string[];
+            /** Selected Paths */
+            selected_paths: string[];
+            /** Source Stacks */
+            source_stacks: components["schemas"]["PhotoStack"][];
+            /** Unstacked Paths */
+            unstacked_paths: string[];
+        };
+        /** StackRegroupPreviewRequest */
+        StackRegroupPreviewRequest: {
+            /**
+             * Mode
+             * @default combine
+             * @enum {string}
+             */
+            mode?: "combine" | "selected";
+            /** Selected Paths */
+            selected_paths: string[];
+        };
         /** StackSuggestion */
         StackSuggestion: {
             /** Cover Path */
             cover_path: string;
+            /** Group Id */
+            group_id: number;
             /** Key */
             key: string;
             /**
@@ -8925,6 +9020,8 @@ export interface components {
             kind: "duplicate" | "burst";
             /** Paths */
             paths: string[];
+            /** Photos */
+            photos: components["schemas"]["StackSuggestionPhoto"][] | null;
         };
         /** StackSuggestionDismissal */
         StackSuggestionDismissal: {
@@ -8936,12 +9033,55 @@ export interface components {
             /** Paths */
             paths: string[];
         };
+        /**
+         * StackSuggestionPhoto
+         * @description Darkroom rows in detector order, with the caller's current marks.
+         */
+        StackSuggestionPhoto: {
+            /** Aesthetic */
+            aesthetic: number | null;
+            /** Aggregate */
+            aggregate: number | null;
+            /** Burst Score */
+            burst_score: number;
+            /** Date Taken */
+            date_taken: string | null;
+            /** Expression Score */
+            expression_score: number | null;
+            /** Eyes Open Score */
+            eyes_open_score: number | null;
+            /** Filename */
+            filename: string;
+            /** Is Blink */
+            is_blink: number | null;
+            /** Is Burst Lead */
+            is_burst_lead: number | null;
+            /** Is Favorite */
+            is_favorite: number | null;
+            /** Is Kept */
+            is_kept: number | null;
+            /** Is Rejected */
+            is_rejected: number | null;
+            /** Path */
+            path: string;
+            /** Preview Revision */
+            preview_revision: string | null;
+            /** Star Rating */
+            star_rating: number | null;
+            /** Tech Sharpness */
+            tech_sharpness: number | null;
+        };
         /** StackSuggestionsRequest */
         StackSuggestionsRequest: {
             /** Filters */
             filters?: {
                 [key: string]: string | number | boolean;
             };
+            /**
+             * Include Photos
+             * @default false
+             */
+            include_photos?: boolean;
         };
         /** StackSuggestionsResponse */
         StackSuggestionsResponse: {
@@ -16169,6 +16309,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PhotoStack"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_stack_regroup_api_stacks_regroup_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StackRegroupApply"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StackRegroupMutation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_stack_regroup_api_stacks_regroup_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StackRegroupPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StackRegroupPreview"];
                 };
             };
             /** @description Validation Error */
