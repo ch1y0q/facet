@@ -34,15 +34,14 @@ class InflightGate:
         ``GenerationInterrupted`` for a cancellation), so they never hang.
         """
         with self._lock:
-            flight = self._flights.get(key)
-            leader = flight is None
-            if leader:
-                flight = Future()
+            joined = self._flights.get(key)
+            if joined is None:
+                flight: Future = Future()
                 self._flights[key] = flight
-        if not leader:
+        if joined is not None:
             # Shielded: cancelling one joiner must not cancel the shared future,
             # which would fail the leader's set_result and every other joiner.
-            return await asyncio.shield(asyncio.wrap_future(flight)), False
+            return await asyncio.shield(asyncio.wrap_future(joined)), False
         try:
             result = await work()
         except Exception as ex:
