@@ -22,14 +22,12 @@ interface HelpDialogData { key?: string | null; note?: PageHelpNote | null; shor
   imports: [MatButtonModule, MatDialogModule, MatIconModule, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.Eager,
   template: `
-    <div class="px-6 pt-5">
-      <div class="flex items-center gap-3 mb-3">
-        <div class="w-9 h-9 rounded-lg bg-[var(--mat-sys-primary-container)] flex items-center justify-center shrink-0">
-          <mat-icon class="!text-base !w-5 !h-5 !leading-5 text-[var(--mat-sys-on-primary-container)]">help_outline</mat-icon>
-        </div>
-        <h2 mat-dialog-title class="!text-base !font-semibold !m-0 !p-0">{{ I18N.nav.help | translate }}</h2>
-      </div>
-    </div>
+    <h2 mat-dialog-title class="!flex !items-center !gap-3 !text-base !font-semibold !m-0 !px-6 !pt-5 !mb-3">
+      <span class="w-9 h-9 rounded-lg bg-[var(--mat-sys-primary-container)] flex items-center justify-center shrink-0">
+        <mat-icon aria-hidden="true" class="!text-base !w-5 !h-5 !leading-5 text-[var(--mat-sys-on-primary-container)]">help_outline</mat-icon>
+      </span>
+      {{ I18N.nav.help | translate }}
+    </h2>
     <mat-dialog-content class="!px-6">
       @if (descriptionKey; as key) {
         <ul class="m-0 pl-0 list-none flex flex-col gap-2.5 mb-1">
