@@ -169,7 +169,7 @@ jobs:
         if: needs.changes.outputs.scope == 'full'
         with:
           python-version: "3.12"
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         if: needs.changes.outputs.scope == 'full'
         with:
           pattern: coverage-shard-*
