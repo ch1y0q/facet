@@ -266,13 +266,15 @@ Use **Estado de revisão → Precisa de revisão** na galeria para percorrer fot
 
 ### Pilhas de fotos manuais
 
-Agrupe fotos relacionadas sob um cartão de capa. Selecione **2–1000 fotos** explicitamente, escolha **Empilhar fotos** na barra de seleção e confirme a capa. Uma seleção de toda a visualização não pode criar uma pilha.
+Selecione **2–1000 fotos explícitas** e escolha **Empilhar fotos** na barra ou prima **S** para abrir o editor de página inteira em `/stacks/edit`. Selecionar toda a visualização não cria pilhas. S abre uma pré-visualização, sem guardar diretamente. Menu do utilizador → **Personalizar atalhos** muda a tecla da galeria; a dica, a Ajuda e a referência `?` mostram a tecla atual. Se uma configuração anterior já usa S, é preservada e Empilhar fica **Não atribuído** até escolher uma tecla livre. São necessárias permissões de edição. Cada foto pertence a uma pilha por proprietário. A página centra uma pré-visualização com zoom sobre uma faixa de miniaturas permanente. Clique numa miniatura ou use `←`/`→` para focar uma foto e os seus controlos de capa, ordem ou remoção da pilha. O botão de zoom, a roda ou um duplo clique permitem examinar detalhes.
 
-- Uma foto pertence a uma pilha manual por proprietário. As pilhas nunca são fundidas automaticamente.
-- Abra o indicador de contagem ou uma foto empilhada para navegar pelos seus membros no visualizador. As setas e a tira seguem a ordem da pilha e ficam dentro dela.
-- **Gerir pilha** permite escolher a capa, reordenar e adicionar ou remover fotos. Remover a capa escolhe o primeiro membro restante. Menos de dois membros dissolve a pilha, assim como **Desempilhar**.
+Se as fotos selecionadas já pertencem a pilhas, **Combinar pilhas** é a opção inicial: a pré-visualização inclui os outros membros. **Apenas fotos selecionadas** move apenas a seleção explícita. O editor mostra as contagens selecionada e final, membros adicionais e um resumo dos efeitos; expanda os detalhes para cada pilha de origem. Dois ou mais membros restantes conservam a pilha; um só fica sem pilha e uma origem vazia desaparece. Excluir uma foto da nova pilha deixa-a na origem segundo as mesmas regras. A pilha final e o total de fotos afetadas têm um limite de 1000 cada; origens indisponíveis ou parcialmente visíveis são recusadas. Mudar de modo conserva a ordem, a capa e as exclusões ainda aplicáveis.
+
+Reveja a pré-visualização atualizada pelo servidor e escolha **Empilhar fotos** para guardar. A página continua aberta para examinar o resultado; a notificação oferece **Desfazer** enquanto estiver disponível e as revisões corresponderem. **Continuar a editar** obtém uma nova pré-visualização antes de guardar outra vez. **Voltar à galeria** regressa à galeria ou ao álbum de origem com o URL exato e faz expirar o Desfazer anterior. Sair sem guardar não altera nada. Recarregar o navegador restaura a seleção apenas para a mesma conta, após nova autorização; abrir o URL sem seleção válida oferece uma forma de voltar.
+
+O indicador ou uma foto empilhada abre o visualizador com miniaturas, botões anterior/seguinte e contador na ordem guardada. As setas permanecem na pilha. **Gerir pilha** abre uma janela de diálogo secundária: clique numa miniatura ou use Esquerda/Direita para a pré-visualização grande, escolha **Capa**, reordene com os botões de seta ou remova membros. Abri-lo por si só mantém a edição normal: membros removidos ficam sem pilha, remover a capa escolhe o primeiro membro restante e menos de dois membros ou **Desempilhar** dissolve a pilha. **Adicionar fotos selecionadas** de outra pilha ativa explicitamente a pré-visualização de reagrupamento e os dois modos. Ficheiros, metadados, estrelas e decisões Manter/Rejeitar ficam intactos.
+
 - Ações de avaliação, Manter/Rejeitar, metadados, download, álbum e exclusão nunca ampliam uma pilha implicitamente.
-- As edições de pilha nunca tocam arquivos, metadados, avaliações ou decisões Manter/Rejeitar. Desfaça-as pelo [Histórico de organização](#histórico-de-organização) enquanto nada tiver mudado desde então; edições posteriores causam conflito.
 
 **Na galeria.** Uma pilha se recolhe em um cartão; **Expandir todas as pilhas** é uma preferência salva. Filtros e álbuns se aplicam às fotos individuais: a capa aparece se corresponder, senão o primeiro membro correspondente. A navegação por pilha ignora o ocultamento automático de rajadas/duplicatas. Linha do tempo e mapa exibem fotos individuais.
 
@@ -286,15 +288,13 @@ Agrupe fotos relacionadas sob um cartão de capa. Selecione **2–1000 fotos** e
 - As exportações completas do banco de dados do visualizador omitem as pilhas e os álbuns inteligentes cujos filtros indicam uma pilha privada, além dos álbuns inteligentes com filtros ilegíveis (JSON inválido, aninhamento excessivo ou mais de 1 MiB). As atualizações incrementais preservam os álbuns e pilhas do próprio destino.
 - A [importação/envio de pilhas Immich](IMMICH.md#importar-e-enviar-pilhas-manuais) é uma operação de CLI separada.
 
-**Pilhas sugeridas** revisa, um de cada vez, os grupos de duplicatas e rajadas existentes dentro dos filtros atuais. Ignora o ocultamento de rajadas/duplicatas para que você veja cada membro.
+**Pilhas sugeridas** abre a revisão de página inteira em `/culling?mode=stacks`, com os filtros atuais e o regresso à galeria ou ao álbum de origem. Requer permissões de edição. Revê grupos de duplicados e rajadas existentes sem ocultar os seus membros.
 
-- O quadro em foco aparece em grande e passa a ser a capa. `←`/`→` movem o foco.
-- **`S`** (ou **Empilhar com esta capa**) empilha o grupo; **`X`** (ou **Pular**) passa à frente. Ambas oferecem Desfazer. **Editar membros** abre antes o editor de pilhas.
-- Um "pular" é salvo por conta e dura até os membros do grupo mudarem.
-- Grupos com fotos já empilhadas ou com quadros de bracketing/panorâmica são ignorados. Grupos sobrepostos são ignorados por inteiro, com preferência pelos grupos de duplicatas.
-- Cada lote tem no máximo 20 propostas e 2000 fotos (1000 por grupo). **Recarregar** obtém o lote seguinte.
-- Não é oferecido em listas fixadas, Fotos semelhantes nem na busca semântica. Usuários somente leitura podem ver, mas não empilhar nem pular.
-- As sugestões nunca rejeitam uma foto nem alteram um arquivo.
+- Na grelha, `↑`/`↓` selecionam um grupo, **Enter** abre a câmara escura e **S** empilha-o com a capa proposta. Na câmara escura, `←`/`→` focam uma foto e **S** ou **Enter** empilham com essa capa. **X** ignora o grupo; empilhar e ignorar oferecem Desfazer.
+- A câmara escura conserva a pré-visualização grande com zoom, a lupa, a comparação e a faixa de miniaturas. **Z** alterna o zoom, **P** o realce de foco, **F** o ecrã inteiro; **G** percorre as grelhas de composição; **Escape** regressa à grelha dos grupos. **Editar membros** abre uma janela secundária; reduzir a sugestão a uma foto oferece **Ignorar esta pilha**.
+- Os grupos ignorados são guardados por conta até os seus membros mudarem. São excluídos grupos com fotos já empilhadas ou imagens de bracketing/panorama; grupos sobrepostos são excluídos por inteiro, dando prioridade aos duplicados.
+- O cabeçalho conta sugestões carregadas, não o total da biblioteca. Cada lote contém no máximo 20 propostas e 2000 fotos (1000 por grupo). O seguinte só carrega automaticamente depois de empilhar ou ignorar todas as sugestões carregadas. **Recarregar sugestões** recarrega o mesmo âmbito; **Voltar à galeria** regressa à origem.
+- Não disponível em listas fixadas, Fotos semelhantes ou pesquisa semântica. A revisão de pilhas não tem controlos de seleção para descarte, treino nem decisões Manter/Rejeitar e nunca altera originais, metadados ou avaliações.
 
 ### Cartões de Foto
 
@@ -1122,11 +1122,12 @@ Os atalhos de uma tecla ficam inativos enquanto o foco está em um campo de text
 | `F` | Favorita / desfavorita a foto em foco (modo de edição) |
 | `X` ou `0` | Rejeita / desfaz a rejeição da foto em foco (modo de edição; avança sozinho) |
 | `/` | Foca a busca da barra de ferramentas (mostrada a partir de 1360 px de largura); em larguras menores, abre a busca da barra lateral de filtros |
+| `S` | Abre o editor de pilhas para a seleção explícita (modo de edição; remapeável, pode ficar sem atribuição) |
 | `B` | Mostra / oculta a barra lateral de filtros |
 | `V` | Alterna entre o layout em grade e em mosaico |
 | `?` | Mostra a referência de atalhos de teclado (em todas as páginas; também no menu do usuário → Ajuda) |
 
-**Remapear teclas.** `K`, `F`, `X`, `/`, `B` e `V` são padrões. Menu do usuário → **Personalizar atalhos** permite clicar em uma ação e pressionar uma nova tecla (`Esc` ou `Tab` cancela). Dígitos, `Space` e `?` são reservados, e uma tecla já em uso é recusada. **Restaurar tudo** restaura os padrões. O mapeamento é salvo por navegador (`localStorage`). A página da foto usa as mesmas teclas, e a referência `?` sempre mostra as teclas em vigor.
+**Remapear teclas.** `K`, `F`, `X`, `/`, `B`, `V` e `S` são padrões. Menu do usuário → **Personalizar atalhos** permite clicar em uma ação e pressionar uma nova tecla (`Esc` ou `Tab` cancela). Dígitos, `Space` e `?` são reservados, e uma tecla já em uso é recusada. **Restaurar tudo** restaura os padrões. O mapeamento é salvo por navegador (`localStorage`). A página da foto usa as mesmas teclas, e a referência `?` sempre mostra as teclas em vigor.
 
 **Foto atual.** A foto sobre a qual agem as teclas de avaliação, favorito e rejeição tem um contorno de 4px; os outros cartões esmaecem para 50%. Nada é marcado até você passar para uma foto. Clicar em uma foto leva o marcador até ela. Voltar de uma foto deixa o marcador na última que você viu. A dica do cartão em foco aparece apenas no modo de edição com `viewer.features.show_rating_controls` ligado.
 

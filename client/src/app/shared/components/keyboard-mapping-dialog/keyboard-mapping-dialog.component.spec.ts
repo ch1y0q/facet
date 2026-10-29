@@ -42,11 +42,24 @@ describe('KeyboardMappingDialogComponent', () => {
   it('lists every remappable action with its current key', () => {
     const root = render();
     const buttons = actionButtons(root);
-    expect(buttons.length).toBe(6);
+    expect(buttons.length).toBe(7);
     // Each row reads label + key cap together.
     expect(buttons[0].textContent!.trim().endsWith(DEFAULT_KEYMAP.favourite.toUpperCase())).toBe(true);
     expect(buttons[2].textContent!.trim().endsWith(DEFAULT_KEYMAP.keep.toUpperCase())).toBe(true);
     expect(buttons[3].textContent!.trim().endsWith('/')).toBe(true);
+  });
+
+  it('shows Stack unassigned and captures a free binding without replacing the older S action', () => {
+    const root = render();
+    const service = TestBed.inject(KeyboardMappingService);
+    service.keymap.set({ ...DEFAULT_KEYMAP, stack: '', focusSearch: 's' });
+    fixture.detectChanges();
+    const button = actionButtons(root).find(row => row.querySelector('span')?.textContent?.trim() === I18N.shortcuts.stack)!;
+    expect(button.querySelector('kbd')!.textContent!.trim()).toBe(I18N.shortcuts.unassigned);
+    expect(button.querySelector('span')!.textContent).toContain(I18N.shortcuts.stack);
+    button.click(); press('g');
+    expect(button.querySelector('kbd')!.textContent!.trim()).toBe('G');
+    expect(service.keymap().focusSearch).toBe('s');
   });
 
   it('captures a pressed key into the clicked action and persists it', () => {

@@ -266,13 +266,15 @@ Utilisez **Décision de tri → À examiner** dans la galerie pour parcourir les
 
 ### Piles de photos manuelles
 
-Regroupez des photos liées sous une seule vignette de couverture. Sélectionnez explicitement **2 à 1000 photos**, choisissez **Empiler les photos** dans la barre de sélection et confirmez la couverture. Une sélection de toute la vue ne peut pas créer de pile.
+Sélectionnez **2 à 1000 photos explicites**, puis **Empiler les photos** dans la barre de sélection ou appuyez sur **S** pour ouvrir l’éditeur pleine page à `/stacks/edit`. Une sélection de toute la vue ne crée pas de pile. S ouvre un aperçu sans enregistrer. Le menu utilisateur → **Personnaliser les raccourcis** permet de modifier cette touche ; l’infobulle, l’Aide et la référence `?` affichent la touche actuelle. Si un ancien réglage utilise déjà S, il est conservé et l’action Empiler reste **Non attribuée** jusqu’au choix d’une touche libre. Les droits d’édition sont nécessaires. Une photo appartient à une seule pile par propriétaire. La page centre un aperçu avec zoom au-dessus d’une bande de vignettes permanente. Cliquez sur une vignette ou utilisez `←`/`→` pour cibler une photo, puis ses commandes de couverture, d’ordre ou de retrait. Le bouton de zoom, la molette ou un double-clic permettent d’examiner les détails.
 
-- Une photo appartient à une seule pile manuelle par propriétaire. Les piles ne sont jamais fusionnées automatiquement.
-- Ouvrez le badge de compteur ou une photo empilée pour parcourir ses membres dans la visionneuse de photos. Les flèches et la bande suivent l'ordre de la pile et restent dans la pile.
-- **Gérer la pile** permet de choisir la couverture, de réordonner, et d'ajouter ou retirer des photos. Retirer la couverture choisit le plus ancien membre restant. Moins de deux membres dissout la pile, tout comme **Dissocier**.
+Si les photos sélectionnées appartiennent déjà à des piles, **Combiner les piles** est le choix par défaut : l’aperçu inclut leurs autres membres. **Photos sélectionnées uniquement** déplace seulement la sélection explicite. L’éditeur affiche les nombres sélectionné et final, les membres supplémentaires et un résumé des effets ; développez les détails pour examiner chaque pile source. Au moins deux membres restants conservent leur pile ; un seul redevient indépendant et une source vide disparaît. Exclure une photo de la nouvelle pile la laisse dans sa source selon ces mêmes règles. La pile finale et l’ensemble des photos concernées sont chacun limités à 1000 ; une source indisponible ou partiellement visible est refusée. Changer de mode conserve l’ordre, la couverture et les exclusions encore applicables.
+
+Vérifiez l’aperçu actualisé par le serveur puis choisissez **Empiler les photos** pour enregistrer. La page reste ouverte pour examiner le résultat ; la notification propose **Annuler** tant qu’elle reste disponible et que les révisions correspondent. **Continuer la modification** récupère un nouvel aperçu avant tout autre enregistrement. **Retour à la galerie** revient à la galerie ou à l’album d’origine avec son URL exacte et invalide l’annulation précédente. Partir sans enregistrer ne change rien. Recharger le navigateur restaure la sélection uniquement pour le même compte, après une nouvelle autorisation ; ouvrir l’URL sans sélection valide permet de revenir en arrière.
+
+Le badge ou une photo empilée ouvre la visionneuse : bande de vignettes, boutons précédent/suivant et compteur suivent l’ordre enregistré. Les flèches restent dans la pile. **Gérer la pile** ouvre une boîte de dialogue secondaire : cliquez sur une vignette ou utilisez Gauche/Droite pour son grand aperçu, choisissez **Couverture**, réordonnez avec les boutons fléchés ou retirez des membres. L’ouverture seule conserve l’édition ordinaire : un membre retiré devient indépendant, retirer la couverture choisit le premier membre restant, et moins de deux membres ou **Dissocier** dissout la pile. **Ajouter les photos sélectionnées** depuis une autre pile active explicitement l’aperçu de regroupement et ses deux modes. Fichiers, métadonnées, notes et décisions Garder/Rejeter restent intacts.
+
 - Les actions de notation, Garder/Rejeter, métadonnées, téléchargement, album et suppression n'étendent jamais implicitement une pile.
-- Les modifications de pile ne touchent jamais les fichiers, les métadonnées, les notes ni les décisions Garder/Rejeter. Annulez-les depuis l'[Historique des modifications](#historique-des-modifications) tant que rien n'a changé depuis ; des modifications ultérieures provoquent un conflit.
 
 **Dans la galerie.** Une pile se replie en une seule vignette ; **Développer toutes les piles** est une préférence mémorisée. Les filtres et l'appartenance aux albums s'appliquent aux photos individuelles : la couverture s'affiche si elle correspond, sinon le premier membre correspondant. Le parcours d'une pile contourne le masquage automatique des rafales/doublons. La chronologie et la carte affichent les photos individuelles.
 
@@ -286,15 +288,13 @@ Regroupez des photos liées sous une seule vignette de couverture. Sélectionnez
 - Les exports complets de la base de données de la visionneuse omettent les piles et les albums intelligents dont les filtres nomment une pile privée, ainsi que les albums intelligents aux filtres illisibles (JSON invalide, imbrication excessive ou plus de 1 Mio). Les mises à jour incrémentales conservent les albums et piles propres à la destination.
 - L'[import/envoi de piles Immich](IMMICH.md#piles-manuelles-import-et-envoi) est une opération CLI distincte.
 
-**Piles suggérées** passe en revue, une par une, les groupes de doublons et de rafales existants dans les filtres courants. Elle ignore le masquage des rafales/doublons pour que vous voyiez tous les membres.
+**Piles suggérées** ouvre la revue pleine page à `/culling?mode=stacks`, avec les filtres courants et un retour à la galerie ou à l’album d’origine. Les droits d’édition sont nécessaires. Elle examine les groupes de doublons et de rafales existants sans masquer leurs membres.
 
-- L'image ciblée s'affiche en grand et devient la couverture. `←`/`→` déplacent la cible.
-- **`S`** (ou **Empiler avec cette couverture**) empile le groupe ; **`X`** (ou **Ignorer**) passe. Les deux proposent Annuler. **Modifier les membres** ouvre d'abord l'éditeur de pile.
-- Un groupe ignoré est enregistré par compte et le reste jusqu'à ce que les membres du groupe changent.
-- Les groupes contenant des photos déjà empilées ou des vues de bracketing/panorama sont ignorés. Les groupes qui se chevauchent sont ignorés en entier, en privilégiant les groupes de doublons.
-- Chaque lot contient au plus 20 propositions et 2000 photos (1000 par groupe). **Recharger** récupère le lot suivant.
-- Non proposé dans les listes épinglées, Photos similaires ou la recherche sémantique. Les utilisateurs en lecture seule peuvent regarder mais pas empiler ni ignorer.
-- Les suggestions ne rejettent jamais une photo et ne modifient aucun fichier.
+- Dans la grille, `↑`/`↓` sélectionnent un groupe, **Entrée** ouvre sa chambre noire et **S** l’empile avec la couverture proposée. Dans la chambre noire, `←`/`→` ciblent une image et **S** ou **Entrée** l’empile avec cette couverture. **X** ignore le groupe ; empiler et ignorer proposent Annuler.
+- La chambre noire conserve le grand aperçu avec zoom, la loupe, la comparaison et la bande de vignettes. **Z** bascule le zoom, **P** l’accentuation de mise au point, **G** fait défiler les grilles de composition, **F** le plein écran et **Échap** revient à la grille des groupes. **Modifier les membres** ouvre une boîte de dialogue secondaire ; réduire une suggestion à une photo propose **Passer cette pile**.
+- Les groupes ignorés sont mémorisés par compte jusqu’au changement de leurs membres. Les groupes contenant des photos déjà empilées ou des vues de bracketing/panorama sont exclus ; les groupes qui se chevauchent sont exclus en entier, en privilégiant les doublons.
+- L’en-tête compte les suggestions chargées, pas le total de la bibliothèque. Un lot contient au plus 20 propositions et 2000 photos (1000 par groupe). Le suivant se charge automatiquement seulement après avoir empilé ou ignoré toutes les suggestions chargées. **Recharger les suggestions** recharge le même périmètre ; **Retour à la galerie** revient à l’origine.
+- Non proposé dans les listes épinglées, Photos similaires ou la recherche sémantique. Cette revue n’a ni commandes de tri, ni apprentissage, ni décisions Garder/Rejeter et ne modifie jamais les originaux, métadonnées ou notes.
 
 ### Cartes de photo
 
@@ -1124,11 +1124,12 @@ Les raccourcis à touche unique sont inactifs quand le focus est dans un champ d
 | `F` | Met en favori / retire des favoris la photo ciblée (mode édition) |
 | `X` ou `0` | Rejette / annule le rejet de la photo ciblée (mode édition ; passe automatiquement à la suivante) |
 | `/` | Met le focus sur la recherche de la barre d'outils (affichée à partir de 1360 px de large) ; plus étroit, ouvre la recherche de la barre latérale de filtres |
+| `S` | Ouvre l'éditeur de piles pour la sélection explicite (mode édition ; réassignable, peut rester non assignée) |
 | `B` | Affiche / masque la barre latérale de filtres |
 | `V` | Bascule entre la disposition grille et mosaïque |
 | `?` | Affiche la référence des raccourcis clavier (sur chaque page ; aussi dans menu utilisateur → Aide) |
 
-**Réassigner les touches.** `K`, `F`, `X`, `/`, `B` et `V` sont les valeurs par défaut. Menu utilisateur → **Personnaliser les raccourcis** vous permet de cliquer sur une action et d'appuyer sur une nouvelle touche (`Esc` ou `Tab` annule). Les chiffres, `Space` et `?` sont réservés, et une touche déjà utilisée est refusée. **Tout réinitialiser** restaure les valeurs par défaut. L'association est enregistrée par navigateur (`localStorage`). La page de photo utilise les mêmes touches, et la référence `?` montre toujours les touches en vigueur.
+**Réassigner les touches.** `K`, `F`, `X`, `/`, `B`, `V` et `S` sont les valeurs par défaut. Menu utilisateur → **Personnaliser les raccourcis** vous permet de cliquer sur une action et d'appuyer sur une nouvelle touche (`Esc` ou `Tab` annule). Les chiffres, `Space` et `?` sont réservés, et une touche déjà utilisée est refusée. **Tout réinitialiser** restaure les valeurs par défaut. L'association est enregistrée par navigateur (`localStorage`). La page de photo utilise les mêmes touches, et la référence `?` montre toujours les touches en vigueur.
 
 **Photo courante.** La photo sur laquelle agissent les touches de note, de favori et de rejet a un contour de 4 px ; les autres cartes sont atténuées à 50 %. Rien n'est marqué tant que vous ne vous placez pas sur une photo. Cliquer sur une photo y déplace le repère. Revenir d'une photo laisse le repère sur la dernière consultée. L'indication de carte ciblée n'apparaît qu'en mode édition avec `viewer.features.show_rating_controls` activé.
 

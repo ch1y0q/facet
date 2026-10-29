@@ -266,13 +266,15 @@ Usa **Stato revisione → Da esaminare** nella galleria per smaltire le foto non
 
 ### Pile di foto manuali
 
-Raggruppa foto correlate sotto un'unica tessera di copertina. Seleziona **2–1000 foto esplicite**, scegli **Impila foto** nella barra di selezione e conferma la copertina. Una selezione dell'intera vista non può creare una pila.
+Seleziona **2–1000 foto esplicite**, poi **Impila foto** nella barra di selezione o premi **S** per aprire l’editor a pagina intera in `/stacks/edit`. La selezione dell’intera vista non crea pile. S apre un’anteprima, senza salvare direttamente. Menu utente → **Personalizza le scorciatoie** cambia il tasto della galleria; il suggerimento, Aiuto e il riferimento `?` mostrano quello attuale. Se una configurazione precedente usa già S, viene mantenuta e Impila rimane **Non assegnato** finché non scegli un tasto libero. Servono permessi di modifica. Una foto appartiene a una sola pila per proprietario. La pagina centra un’anteprima con zoom sopra una striscia di miniature permanente. Fai clic su una miniatura o usa `←`/`→` per selezionare una foto, poi i suoi comandi di copertina, ordine o rimozione dalla pila. Pulsante zoom, rotellina o doppio clic mostrano i dettagli.
 
-- Una foto appartiene a una sola pila manuale per proprietario. Le pile non vengono mai unite automaticamente.
-- Apri il badge del conteggio o una foto impilata per sfogliarne i membri nel visualizzatore. Frecce e striscia seguono l'ordine della pila e restano al suo interno.
-- **Gestisci pila** permette di scegliere la copertina, riordinare e aggiungere o rimuovere foto. Rimuovere la copertina sceglie il membro rimasto più antico. Meno di due membri scioglie la pila, come **Separa la pila**.
+Se le foto selezionate appartengono già a pile, **Unisci pile** è l’opzione iniziale: l’anteprima include gli altri membri. **Solo foto selezionate** sposta soltanto la selezione esplicita. L’editor mostra i conteggi selezionato e finale, i membri aggiuntivi e un riepilogo degli effetti; espandi i dettagli per ogni pila di origine. Almeno due membri rimasti conservano la pila; uno solo torna indipendente e un’origine vuota scompare. Escludere una foto dalla nuova pila la lascia nell’origine secondo le stesse regole. La pila finale e tutte le foto interessate hanno un limite di 1000 ciascuno; origini non disponibili o parzialmente visibili vengono rifiutate. Cambiare modalità conserva ordine, copertina ed esclusioni ancora applicabili.
+
+Controlla l’anteprima aggiornata dal server e scegli **Impila foto** per salvare. La pagina rimane aperta per esaminare il risultato; la notifica offre **Annulla** finché è disponibile e le revisioni corrispondono. **Continua a modificare** carica una nuova anteprima prima di salvare di nuovo. **Torna alla galleria** ritorna alla galleria o all’album di origine con l’URL esatto e fa scadere l’Annulla precedente. Uscire senza salvare non cambia nulla. Ricaricare il browser ripristina la selezione solo per lo stesso account, dopo una nuova autorizzazione; aprire l’URL senza una selezione valida offre un modo per tornare indietro.
+
+Il badge o una foto impilata apre il visualizzatore con miniature, pulsanti precedente/successiva e contatore nell’ordine memorizzato. Le frecce restano nella pila. **Gestisci pila** apre una finestra di dialogo secondaria: fai clic su una miniatura o usa Sinistra/Destra per l’anteprima grande, scegli **Copertina**, riordina con i pulsanti freccia o rimuovi membri. Aprirlo da solo mantiene la normale modifica: i membri rimossi diventano indipendenti, togliere la copertina sceglie il primo membro rimasto e meno di due membri o **Separa la pila** scioglie la pila. **Aggiungi foto selezionate** da un’altra pila attiva esplicitamente l’anteprima di raggruppamento e le due modalità. File, metadati, stelle e decisioni Conserva/Scarta restano intatti.
+
 - Le azioni di valutazione, Conserva/Rifiuta, metadati, download, album ed eliminazione non espandono mai una pila implicitamente.
-- Le modifiche alle pile non toccano mai file, metadati, valutazioni o decisioni Conserva/Rifiuta. Annullale da [Cronologia delle modifiche](#cronologia-delle-modifiche) finché nulla è cambiato nel frattempo; modifiche successive causano un conflitto.
 
 **Nella galleria.** Una pila si ripiega in una tessera; **Espandi tutte le pile** è una preferenza ricordata. Filtri e appartenenza agli album si applicano alle singole foto: la copertina compare se corrisponde, altrimenti compare il primo membro che corrisponde. Sfogliare una pila aggira il nascondimento automatico di raffiche/duplicati. Cronologia e mappa mostrano le singole foto.
 
@@ -286,15 +288,13 @@ Raggruppa foto correlate sotto un'unica tessera di copertina. Seleziona **2–10
 - Le esportazioni complete del database della galleria omettono le pile e gli album intelligenti i cui filtri nominano una pila privata, oltre agli album intelligenti con filtri illeggibili (JSON non valido, annidamento eccessivo o oltre 1 MiB). Gli aggiornamenti incrementali mantengono gli album e le pile propri della destinazione.
 - L'[importazione/invio di pile Immich](IMMICH.md#importare-e-inviare-pile-manuali) è un'operazione CLI separata.
 
-**Pile suggerite** esamina i gruppi di duplicati e raffiche esistenti entro i filtri correnti, uno alla volta. Ignora il nascondimento di raffiche/duplicati così vedi ogni membro.
+**Pile suggerite** apre la revisione a pagina intera in `/culling?mode=stacks`, con i filtri correnti e il ritorno alla galleria o all’album di origine. Servono permessi di modifica. Esamina gruppi di duplicati e raffiche esistenti senza nasconderne i membri.
 
-- Il fotogramma a fuoco appare grande e diventa la copertina. `←`/`→` spostano il fuoco.
-- **`S`** (o **Impila con questa copertina**) impila il gruppo; **`X`** (o **Salta**) passa oltre. Entrambi offrono Annulla. **Modifica membri** apre prima l'editor della pila.
-- Un salto è memorizzato per account e dura finché i membri del gruppo non cambiano.
-- I gruppi con foto già impilate o fotogrammi di bracket/panorama vengono saltati. I gruppi sovrapposti vengono saltati per intero, preferendo i gruppi di duplicati.
-- Ogni lotto contiene al massimo 20 proposte e 2000 foto (1000 per gruppo). **Ricarica** recupera il lotto successivo.
-- Non disponibile negli elenchi fissati, nelle foto simili o nella ricerca semantica. Gli utenti in sola lettura possono guardare ma non impilare né saltare.
-- I suggerimenti non scartano mai una foto né modificano un file.
+- Nella griglia, `↑`/`↓` selezionano un gruppo, **Invio** apre la camera oscura e **S** lo impila con la copertina proposta. Nella camera oscura, `←`/`→` selezionano una foto e **S** o **Invio** impilano con quella copertina. **X** salta il gruppo; impilare e saltare offrono Annulla.
+- La camera oscura conserva l’anteprima grande con zoom, la lente, il confronto e la striscia di miniature. **Z** attiva lo zoom, **P** l’evidenziazione della messa a fuoco, **F** lo schermo intero; **G** scorre le griglie di composizione; **Esc** torna alla griglia dei gruppi. **Modifica membri** apre una finestra secondaria; ridurre la proposta a una foto offre **Salta questa pila**.
+- I gruppi saltati sono memorizzati per account finché non cambiano i membri. Sono esclusi gruppi con foto già impilate o fotogrammi di bracketing/panorama; i gruppi sovrapposti sono esclusi interamente, privilegiando i duplicati.
+- L’intestazione conta le proposte caricate, non il totale della libreria. Ogni lotto contiene al massimo 20 proposte e 2000 foto (1000 per gruppo). Il successivo si carica automaticamente solo dopo aver impilato o saltato tutte le proposte caricate. **Ricarica i suggerimenti** ricarica lo stesso ambito; **Torna alla galleria** ritorna all’origine.
+- Non disponibile negli elenchi fissati, Foto simili o ricerca semantica. La revisione delle pile non ha comandi di cernita, addestramento o decisioni Conserva/Scarta e non cambia mai originali, metadati o valutazioni.
 
 ### Schede foto
 
@@ -1124,11 +1124,12 @@ Le scorciatoie a tasto singolo sono inattive mentre il fuoco è in un campo di t
 | `F` | Aggiunge / toglie dai preferiti la foto a fuoco (modalità di modifica) |
 | `X` o `0` | Rifiuta / annulla il rifiuto della foto a fuoco (modalità di modifica; avanza automaticamente) |
 | `/` | Mette a fuoco la ricerca della barra degli strumenti (mostrata da 1360 px di larghezza); più stretta, apre la ricerca della barra laterale dei filtri |
+| `S` | Apre l'editor delle pile per la selezione esplicita (modalità di modifica; rimappabile, può restare non assegnato) |
 | `B` | Mostra / nasconde la barra laterale dei filtri |
 | `V` | Passa tra layout a griglia e a mosaico |
 | `?` | Mostra il riferimento delle scorciatoie da tastiera (ogni pagina; anche nel menu utente → Aiuto) |
 
-**Rimappare i tasti.** `K`, `F`, `X`, `/`, `B` e `V` sono valori predefiniti. Menu utente → **Personalizza le scorciatoie** permette di cliccare un'azione e premere un nuovo tasto (`Esc` o `Tab` annulla). Cifre, `Space` e `?` sono riservati, e un tasto già in uso viene rifiutato. **Ripristina tutto** ripristina i valori predefiniti. La mappatura è memorizzata per browser (`localStorage`). La pagina della foto usa gli stessi tasti, e il riferimento `?` mostra sempre i tasti in vigore.
+**Rimappare i tasti.** `K`, `F`, `X`, `/`, `B`, `V` e `S` sono valori predefiniti. Menu utente → **Personalizza le scorciatoie** permette di cliccare un'azione e premere un nuovo tasto (`Esc` o `Tab` annulla). Cifre, `Space` e `?` sono riservati, e un tasto già in uso viene rifiutato. **Ripristina tutto** ripristina i valori predefiniti. La mappatura è memorizzata per browser (`localStorage`). La pagina della foto usa gli stessi tasti, e il riferimento `?` mostra sempre i tasti in vigore.
 
 **Foto corrente.** La foto su cui agiscono i tasti di valutazione, preferito e rifiuto ha un contorno di 4px; le altre schede si attenuano al 50%. Nulla è segnato finché non ti sposti su una foto. Cliccare una foto sposta il segnaposto su di essa. Tornando da una foto, il segnaposto resta sull'ultima visualizzata. Il suggerimento della scheda a fuoco compare solo in modalità di modifica con `viewer.features.show_rating_controls` attivo.
 

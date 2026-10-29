@@ -266,13 +266,15 @@ Use **Review status → Needs review** in the gallery to work through undecided 
 
 ### Manual photo stacks
 
-Group related photos under one cover tile. Select **2–1000 photos** explicitly, choose **Stack photos** on the selection bar and confirm the cover. A whole-view selection cannot create a stack.
+Select **2–1000 explicit photos**, then choose **Stack photos** on the selection bar or press **S** to open the full-page editor at `/stacks/edit`. A whole-view selection cannot create a stack. S opens a preview; it never saves directly. User menu → **Customize shortcuts** changes the gallery binding, and the toolbar tooltip, Help and `?` reference show the current key. If an older saved mapping already uses S, that binding is preserved and Stack starts **Unassigned** until you choose a free key. Editing access is required. A photo belongs to one manual stack per owner. The page centers a zoomable preview above a persistent thumbnail strip. Click a thumbnail or use `←`/`→` to focus a photo, then choose its cover, order or remove controls. Use the zoom button, wheel or double-click to inspect details.
 
-- A photo belongs to one manual stack per owner. Stacks are never merged automatically.
-- Open the count badge or a stacked photo to browse its members in the photo viewer. Arrows and the strip follow the stack order and stay within the stack.
-- **Manage stack** lets you choose the cover, reorder, and add or remove photos. Removing the cover picks the earliest remaining member. Fewer than two members dissolves the stack, as does **Unstack**.
+When selected photos already belong to stacks, **Combine stacks** is the default: the preview includes their other members. **Selected photos only** moves just the explicitly selected photos. The editor shows selected and resulting counts, extra members and a source-effects summary; expand its details to inspect each source stack. Members left behind stay together when at least two remain; a lone remainder becomes unstacked, and an empty source disappears. Excluding a photo from the new stack leaves it in its source under those same rules. The final stack and all affected photos are each limited to 1000; unavailable or partially visible sources are refused. Switching policies preserves surviving order, cover and exclusions.
+
+Review the server-refreshed preview, then choose **Stack photos** to save. The page stays open to inspect the result; the notification offers **Undo** while it remains available and revisions still match. **Continue editing** fetches a fresh preview before another save. **Back to gallery** returns to the originating gallery or album with its exact URL and expires the previous Undo. Leaving without saving changes nothing. A browser reload restores the selection only for the same account, after fresh authorization; opening the URL without valid selection state offers a way back.
+
+Open the count badge or a stacked photo to browse permitted members in the photo viewer. The thumbnail strip, previous/next buttons and position counter follow stored stack order; arrow keys stay within the stack. **Manage stack** opens a secondary dialog: click a thumbnail or use Left/Right to inspect its large preview, choose **Cover**, reorder with the arrow buttons, or remove members. Opening that editor alone retains ordinary membership editing: removing a member un-stacks it, removing the cover selects the first surviving member, and fewer than two members or **Unstack** dissolves the stack. Explicitly **Add selected photos** from another stack switches to the regroup preview and its two policies. Files, metadata, ratings and independent Keep/Reject decisions stay unchanged.
+
 - Rating, Keep/Reject, metadata, download, album and delete actions never expand a stack implicitly.
-- Stack edits never touch files, metadata, ratings or Keep/Reject decisions. Undo them from [Organization history](#organization-history) while nothing has changed since; later edits cause a conflict.
 
 **In the gallery.** A stack folds into one tile; **Expand all stacks** is a remembered preference. Filters and album membership apply to individual photos: the cover shows if it matches, otherwise the first matching member does. Stack browsing bypasses automatic burst/duplicate hiding. Timeline and map show individual photos.
 
@@ -286,15 +288,13 @@ Group related photos under one cover tile. Select **2–1000 photos** explicitly
 - Full viewer-database exports omit stacks and smart albums whose filters name a private stack, plus smart albums with unreadable filters (invalid JSON, excessive nesting, or over 1 MiB). Incremental updates keep the destination's own albums and stacks.
 - [Immich stack import/push](IMMICH.md#manual-stack-import-and-push) is a separate CLI operation.
 
-**Suggested stacks** reviews existing duplicate and burst groups within the current filters, one at a time. It ignores burst/duplicate hiding so you see every member.
+**Suggested stacks** opens the full-page review at `/culling?mode=stacks`, with the current gallery filters and a return to the originating gallery or album. Editing access is required. It reviews existing duplicate and burst groups, ignoring burst/duplicate hiding so every member appears.
 
-- The focused frame shows large and becomes the cover. `←`/`→` move the focus.
-- **`S`** (or **Stack with this cover**) stacks the group; **`X`** (or **Skip**) passes. Both offer Undo. **Edit members** opens the stack editor first.
-- A skip is stored per account and lasts until the group's members change.
-- Groups with already-stacked photos or bracket/panorama frames are skipped. Overlapping groups are skipped whole, preferring duplicate groups.
-- Each batch holds at most 20 proposals and 2000 photos (1000 per group). **Reload** fetches the next batch.
-- Not offered in pinned lists, Similar Photos or semantic search. Read-only users can look but not stack or skip.
-- Suggestions never reject a photo or change a file.
+- In the grid, `↑`/`↓` select a group, **Enter** opens its darkroom and **S** stacks it with the proposed cover. In the darkroom, `←`/`→` focus a frame and **S** or **Enter** stacks with that frame as cover. **X** skips; stacking and skipping offer Undo.
+- The darkroom retains a large zoomable preview, loupe, comparison and thumbnail strip. **Z** toggles zoom, **P** focus peaking, **G** cycles the composition grid, **F** fullscreen, and **Escape** returns to the group grid. **Edit members** opens a secondary dialog; reducing a suggestion to one photo offers **Skip this stack**.
+- Skips are stored per account until the group's members change. Groups containing already-stacked photos or bracket/panorama frames are skipped; overlapping groups are skipped whole, preferring duplicate groups.
+- The header counts loaded suggestions, not the library total. Batches contain at most 20 proposals and 2000 photos (1000 per group). The next batch loads automatically only after every loaded suggestion is stacked or skipped. **Reload suggestions** reloads the same scope; **Back to gallery** returns to the origin.
+- Not offered in pinned lists, Similar Photos or semantic search. Stack review has no culling controls, training or Keep/Reject decisions and never changes originals, metadata or ratings.
 
 ### Photo Cards
 
@@ -1124,11 +1124,12 @@ Single-key shortcuts are inactive while focus is in a text field, menu or list.
 | `F` | Favourite / unfavourite the focused photo (edition mode) |
 | `X` or `0` | Reject / un-reject the focused photo (edition mode; auto-advances) |
 | `/` | Focus the toolbar search (shown from 1360 px wide); narrower, opens the filter sidebar's search |
+| `S` | Open the stack editor for the explicit selection (edition mode; remappable, can be left Unassigned) |
 | `B` | Show / hide the filter sidebar |
 | `V` | Switch between grid and mosaic layout |
 | `?` | Show the keyboard shortcuts reference (every page; also in user menu → Help) |
 
-**Remap keys.** `K`, `F`, `X`, `/`, `B` and `V` are defaults. User menu → **Customize shortcuts** lets you click an action and press a new key (`Esc` or `Tab` cancels). Digits, `Space` and `?` are reserved, and a key already in use is refused. **Reset all** restores the defaults. The mapping is stored per browser (`localStorage`). The photo page uses the same keys, and the `?` reference always shows the keys in effect.
+**Remap keys.** `K`, `F`, `X`, `/`, `B`, `V` and `S` are defaults. User menu → **Customize shortcuts** lets you click an action and press a new key (`Esc` or `Tab` cancels). Digits, `Space` and `?` are reserved, and a key already in use is refused. **Reset all** restores the defaults. The mapping is stored per browser (`localStorage`). The photo page uses the same keys, and the `?` reference always shows the keys in effect.
 
 **Current photo.** The photo that rating, favorite and reject keys act on has a 4px outline; other cards dim to 50%. Nothing is marked until you move onto a photo. Clicking a photo moves the marker to it. Returning from a photo leaves the marker on the last one you viewed. The focused-card hint appears only in edition mode with `viewer.features.show_rating_controls` on.
 

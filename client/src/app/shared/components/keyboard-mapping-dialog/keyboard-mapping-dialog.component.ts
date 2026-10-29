@@ -39,7 +39,11 @@ import { KEYMAP_ACTIONS, KeymapConfig, KeyboardMappingService } from '../../../c
               </kbd>
             } @else {
               <kbd class="px-2 py-1 rounded-md border border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface-container-high)] font-mono text-xs min-w-[3.5rem] text-center">
-                {{ keyLabels()[action.id] }}
+                @if (keyLabels()[action.id]) {
+                  {{ keyLabels()[action.id] }}
+                } @else {
+                  {{ I18N.shortcuts.unassigned | translate }}
+                }
               </kbd>
             }
           </button>
