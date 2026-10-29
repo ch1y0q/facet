@@ -1,5 +1,6 @@
 """Suggestion enrichment preserves detector order, visibility and caller marks."""
 from contextlib import contextmanager
+import sqlite3
 
 import pytest
 
@@ -168,3 +169,46 @@ def test_enrichment_chunks_bounded_members_without_losing_order(edition_client, 
     assert [len(g['paths']) for g in groups] == [900, 900]
     for group in groups:
         assert [p['path'] for p in group['photos']] == group['paths']
+
+
+@pytest.mark.skipif(not hasattr(sqlite3.Connection, 'setlimit'),
+                    reason='Python 3.10 cannot lower the SQLite connection variable limit')
+@pytest.mark.parametrize('case_insensitive', [True, False])
+def test_enrichment_reserves_visibility_bindings_under_legacy_sqlite_limit(
+        regular_client, seed_photos_prefix, monkeypatch, case_insensitive):
+    from api import config, db_helpers
+    from api.routers import stacks as router
+
+    visible = [f'/suggestion-bind-budget/visible/{n:04}.jpg' for n in range(900)]
+    hidden = '/suggestion-bind-budget/hidden/lead.jpg'
+    seed_photos_prefix('/suggestion-bind-budget/', [dict(path=p,
+        filename=p.rsplit('/', 1)[-1], duplicate_group_id=930020,
+        is_duplicate_lead=int(p == hidden)) for p in [*visible, hidden]])
+    monkeypatch.setattr(db_helpers, 'is_multi_user_enabled', lambda: True)
+    monkeypatch.setattr(db_helpers, '_CASE_INSENSITIVE_HOST', case_insensitive)
+    monkeypatch.setattr(router, 'is_multi_user_enabled', lambda: True)
+    monkeypatch.setitem(config._FULL_CONFIG, 'users', {'u1': {'directories': [
+        '/suggestion-bind-budget/visible/',
+        *[f'/suggestion-bind-budget/unrelated-{n}/' for n in range(99)]]}})
+    assert len(db_helpers.get_visibility_clause('u1')[1]) == (100 if case_insensitive else 200)
+
+    @contextmanager
+    def bounded_db():
+        with get_db() as conn:
+            conn.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999)
+            yield conn
+
+    monkeypatch.setattr(router, 'get_db', bounded_db)
+    body = {'filters': {'path_prefix': '/suggestion-bind-budget/'}}
+    baseline = regular_client.post('/api/stacks/suggestions', json=body)
+    assert baseline.status_code == 200, baseline.text
+    [original] = baseline.json()['suggestions']
+    assert original['paths'] == visible
+    assert original['photos'] is None
+    enriched = regular_client.post('/api/stacks/suggestions', json={**body, 'include_photos': True})
+    assert enriched.status_code == 200, enriched.text
+    [group] = enriched.json()['suggestions']
+    assert group['paths'] == visible
+    assert [p['path'] for p in group['photos']] == visible
+    assert group['cover_path'] == visible[0]
+    assert hidden not in enriched.text
