@@ -3152,6 +3152,7 @@
     "regroup_extra": "Enthält {count} zusätzliches Foto aus einem vorhandenen Stapel.",
     "regroup_extra_plural": "Enthält {count} zusätzliche Fotos aus vorhandenen Stapeln.",
     "regroup_focus": "Vorschau von {path}",
+    "regroup_focus_cover": "Vorschau von {path} (Titelbild)",
     "regroup_sources": "Änderungen an vorhandenen Stapeln",
     "regroup_moved": "Verschieben: {moved} von {total}",
     "regroup_retained": "{count} bleiben zusammen",

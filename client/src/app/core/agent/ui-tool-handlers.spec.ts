@@ -122,14 +122,17 @@ describe('UI tool registry and handlers', () => {
       expect(navigate).not.toHaveBeenCalled();
     });
 
-    it('reports stack mode without the held culling decisions', async () => {
+    it('reports stack mode on the page and no culling block, even while a plan is held', async () => {
       edition = true;
+      const plan = TestBed.inject(AssistantCullPlanService);
+      plan.setPin({ digest: 'held', request: { group_by: 'burst' } });
+      plan.register([{ key: '5_burst', type: 'burst', group_id: 5, number: 1, paths: ['/a.jpg', '/b.jpg'], keep_paths: ['/a.jpg'] }],
+        { total: 1, truncated: false });
+      expect(plan.snapshot()).not.toBeNull();
       TestBed.inject(PageContextService).register('culling', () => ({ mode: 'stacks' }));
       const result = await run('ui_get_context');
-      expect(result).toMatchObject({ ok: true, data: {
-        culling: { mode: 'stacks' }, page: { id: 'culling', mode: 'stacks' },
-      } });
-      expect((result as { data: { culling: unknown } }).data.culling).toEqual({ mode: 'stacks' });
+      expect(result).toMatchObject({ ok: true, data: { page: { id: 'culling', mode: 'stacks' } } });
+      expect((result as { data: { culling: unknown } }).data.culling).toBeNull();
     });
   });
 

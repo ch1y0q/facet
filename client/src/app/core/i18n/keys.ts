@@ -3166,6 +3166,7 @@ export const I18N = {
     regroup_extra: "stacks.regroup_extra",
     regroup_extra_plural: "stacks.regroup_extra_plural",
     regroup_focus: "stacks.regroup_focus",
+    regroup_focus_cover: "stacks.regroup_focus_cover",
     regroup_sources: "stacks.regroup_sources",
     regroup_moved: "stacks.regroup_moved",
     regroup_retained: "stacks.regroup_retained",

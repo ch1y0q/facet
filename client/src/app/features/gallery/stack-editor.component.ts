@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, computed, effect, inject, signal, viewChild, viewChildren } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationStart, Router } from '@angular/router';
+import { NgTemplateOutlet } from '@angular/common';
 import { MatDialogModule } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -36,7 +37,7 @@ function captureDateKey(date: string | null | undefined): string {
 @Component({
   selector: 'app-stack-editor',
   standalone: true,
-  imports: [MatDialogModule, SyncedZoomComponent, ImageUrlPipe, MatButtonModule, MatIconModule, MatTooltipModule, ThumbnailUrlPipe, FilenamePipe, PluralKeyPipe, TranslatePipe],
+  imports: [NgTemplateOutlet, MatDialogModule, SyncedZoomComponent, ImageUrlPipe, MatButtonModule, MatIconModule, MatTooltipModule, ThumbnailUrlPipe, FilenamePipe, PluralKeyPipe, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'flex flex-col h-full min-h-0 min-w-0' },
   template: `
@@ -108,10 +109,8 @@ function captureDateKey(date: string | null | undefined): string {
             <span class="text-sm truncate" [title]="path">{{ path | filename }}</span>
             @if (page && editable() && !saved()) {
               <div class="flex shrink-0">
-                <button mat-icon-button [attr.data-stack-cover]="path" (click)="setCover(path)" [disabled]="saving() || loading()" [attr.aria-label]="I18N.stacks.cover_for | translate:{ path }" [matTooltip]="I18N.stacks.cover_for | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">{{ path === cover() ? 'star' : 'star_outline' }}</mat-icon></button>
-                <button mat-icon-button (click)="move(focusedIndex(), -1)" [disabled]="saving() || loading() || focusedIndex() === 0" [attr.aria-label]="I18N.stacks.move_up | translate:{ path }" [matTooltip]="I18N.stacks.move_up | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">arrow_back</mat-icon></button>
-                <button mat-icon-button (click)="move(focusedIndex(), 1)" [disabled]="saving() || loading() || focusedIndex() === paths().length - 1" [attr.aria-label]="I18N.stacks.move_down | translate:{ path }" [matTooltip]="I18N.stacks.move_down | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">arrow_forward</mat-icon></button>
-                <button mat-icon-button [attr.data-stack-remove]="path" (click)="remove(path)" [disabled]="saving() || loading()" [attr.aria-label]="I18N.stacks.remove | translate:{ path }" [matTooltip]="I18N.stacks.remove | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">remove_circle_outline</mat-icon></button>
+                <ng-container [ngTemplateOutlet]="coverButton" [ngTemplateOutletContext]="{ $implicit: path }" />
+                <ng-container [ngTemplateOutlet]="memberActions" [ngTemplateOutletContext]="{ $implicit: path, index: focusedIndex(), first: focusedIndex() === 0, last: focusedIndex() === paths().length - 1, compact: false }" />
               </div>
             }
             @if (!page) { <button mat-icon-button (click)="openMember(path)" [disabled]="saving()" [attr.aria-label]="I18N.stacks.open_member | translate:{ path }" [matTooltip]="I18N.stacks.open_member | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">open_in_new</mat-icon></button> }
@@ -122,19 +121,15 @@ function captureDateKey(date: string | null | undefined): string {
           @for (path of paths(); track path; let index = $index; let first = $first; let last = $last) {
             <li data-stack-tile class="min-w-0 rounded-lg border border-current/20 overflow-hidden" [class.w-28]="page" [class.shrink-0]="page" [class.border-[var(--mat-sys-primary)]]="path === focused()">
               <button #thumbnail [attr.data-stack-focus]="path" class="relative block w-full cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-[-3px]" (click)="focusMember(path)" [disabled]="saving()"
-                [attr.aria-pressed]="path === focused()" [attr.aria-label]="I18N.stacks.regroup_focus | translate:{ path }">
+                [attr.aria-pressed]="path === focused()" [attr.aria-label]="(path === cover() ? I18N.stacks.regroup_focus_cover : I18N.stacks.regroup_focus) | translate:{ path: (path | filename) }">
                 <img [src]="path | thumbnailUrl:640" [alt]="path | filename" loading="lazy" decoding="async" class="w-full h-[84px] sm:h-[108px] object-contain bg-black/70" />
                 @if (path === cover()) { <span class="absolute top-1 left-1 rounded bg-black/80 text-white px-1 text-xs">{{ I18N.stacks.cover | translate }}</span> }
               </button>
               <span data-stack-filename class="block text-xs truncate px-2 pt-2" tabindex="0" [matTooltip]="path" [title]="path" [attr.aria-label]="path">{{ path | filename }}</span>
               @if (editable() && !page) {
-                <button mat-button class="!w-full" [attr.data-stack-cover]="path" (click)="setCover(path)" [disabled]="saving()" [attr.aria-pressed]="path === cover()" [attr.aria-label]="I18N.stacks.cover_for | translate:{ path }" [matTooltip]="I18N.stacks.cover_for | translate:{ path: (path | filename) }">
-                  <mat-icon aria-hidden="true">{{ path === cover() ? 'star' : 'star_outline' }}</mat-icon>{{ I18N.stacks.cover | translate }}
-                </button>
+                <ng-container [ngTemplateOutlet]="coverButton" [ngTemplateOutletContext]="{ $implicit: path }" />
                 <div class="flex justify-center">
-                  <button mat-icon-button class="!w-9 !h-10 !p-2" (click)="move(index, -1)" [disabled]="saving() || first" [attr.aria-label]="I18N.stacks.move_up | translate:{ path }" [matTooltip]="I18N.stacks.move_up | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">arrow_back</mat-icon></button>
-                  <button mat-icon-button class="!w-9 !h-10 !p-2" (click)="move(index, 1)" [disabled]="saving() || last" [attr.aria-label]="I18N.stacks.move_down | translate:{ path }" [matTooltip]="I18N.stacks.move_down | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">arrow_forward</mat-icon></button>
-                  <button mat-icon-button class="!w-9 !h-10 !p-2" [attr.data-stack-remove]="path" (click)="remove(path)" [disabled]="saving()" [attr.aria-label]="I18N.stacks.remove | translate:{ path }" [matTooltip]="I18N.stacks.remove | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">remove_circle_outline</mat-icon></button>
+                  <ng-container [ngTemplateOutlet]="memberActions" [ngTemplateOutletContext]="{ $implicit: path, index, first, last, compact: true }" />
                 </div>
               }
             </li>
@@ -160,6 +155,20 @@ function captureDateKey(date: string | null | undefined): string {
         }
       }
     </footer>
+    <ng-template #coverButton let-path>
+      @if (page) {
+        <button mat-icon-button [attr.data-stack-cover]="path" (click)="setCover(path)" [disabled]="!canEditDraft()" [attr.aria-pressed]="path === cover()" [attr.aria-label]="I18N.stacks.cover_for | translate:{ path }" [matTooltip]="I18N.stacks.cover_for | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">{{ path === cover() ? 'star' : 'star_outline' }}</mat-icon></button>
+      } @else {
+        <button mat-button class="!w-full" [attr.data-stack-cover]="path" (click)="setCover(path)" [disabled]="!canEditDraft()" [attr.aria-pressed]="path === cover()" [attr.aria-label]="I18N.stacks.cover_for | translate:{ path }" [matTooltip]="I18N.stacks.cover_for | translate:{ path: (path | filename) }">
+          <mat-icon aria-hidden="true">{{ path === cover() ? 'star' : 'star_outline' }}</mat-icon>{{ I18N.stacks.cover | translate }}
+        </button>
+      }
+    </ng-template>
+    <ng-template #memberActions let-path let-index="index" let-first="first" let-last="last" let-compact="compact">
+      <button mat-icon-button [class]="compact ? '!w-9 !h-10 !p-2' : ''" (click)="move(index, -1)" [disabled]="!canEditDraft() || first" [attr.aria-label]="I18N.stacks.move_up | translate:{ path }" [matTooltip]="I18N.stacks.move_up | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">arrow_back</mat-icon></button>
+      <button mat-icon-button [class]="compact ? '!w-9 !h-10 !p-2' : ''" (click)="move(index, 1)" [disabled]="!canEditDraft() || last" [attr.aria-label]="I18N.stacks.move_down | translate:{ path }" [matTooltip]="I18N.stacks.move_down | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">arrow_forward</mat-icon></button>
+      <button mat-icon-button [class]="compact ? '!w-9 !h-10 !p-2' : ''" [attr.data-stack-remove]="path" (click)="remove(path)" [disabled]="!canEditDraft()" [attr.aria-label]="I18N.stacks.remove | translate:{ path }" [matTooltip]="I18N.stacks.remove | translate:{ path: (path | filename) }"><mat-icon aria-hidden="true">remove_circle_outline</mat-icon></button>
+    </ng-template>
   `,
 })
 export class StackEditorComponent implements OnInit {
@@ -211,6 +220,8 @@ export class StackEditorComponent implements OnInit {
   readonly saving = signal(false);
   readonly error = signal<'error' | 'conflict' | 'unavailable' | 'regroup_limit' | null>(null);
   readonly editable = computed(() => this.auth.isEdition() && (!this.data.stackId || this.stack()?.editable === true));
+  /** The signal-backed part of the draft-edit guard, shared with the template's [disabled] bindings. */
+  readonly canEditDraft = computed(() => this.editable() && !this.saved() && !this.saving() && !this.loading());
   readonly memberCount = computed(() => this.stack()?.members.length ?? this.paths().length);
   readonly additions = computed(() => (this.data.selectedPaths ?? []).filter(path => !this.paths().includes(path)));
   readonly skippable = computed(() => this.data.skippable === true && this.editable() && !this.stack()
@@ -243,6 +254,7 @@ export class StackEditorComponent implements OnInit {
     await this.load();
   }
   ngOnInit(): void { void this.load(); }
+  private canMutateDraft(): boolean { return this.current() && this.canEditDraft(); }
   private current(): boolean { return !this.destroyRef.destroyed && !this.closing && this.session() && this.auth.isEdition() === this.initialEdition; }
   private clearPrivateState(): void {
     this.closing = true; this.loadSequence++; this.cancelLoad.next();
@@ -309,6 +321,7 @@ export class StackEditorComponent implements OnInit {
       if (this.current() && sequence === this.loadSequence) this.showFailure(failure);
     } finally { if (this.current() && sequence === this.loadSequence) this.loading.set(false); }
   }
+  // Deliberately not canMutateDraft(): a mode switch must stay possible while a preview is loading.
   changeMode(mode: StackRegroupMode): void {
     if (!this.current() || !this.editable() || this.saved() || this.saving() || mode === this.mode()) return;
     this.mode.set(mode); void this.loadPreview();
@@ -344,15 +357,15 @@ export class StackEditorComponent implements OnInit {
     if (this.regrouping() && status !== undefined && [403, 404, 409, 422].includes(status)) this.previewCurrent.set(false);
   }
 
-  setCover(path: string): void { if (this.current() && this.editable() && !this.saved() && !this.saving() && !this.loading() && this.paths().includes(path)) this.cover.set(path); }
+  setCover(path: string): void { if (this.canMutateDraft() && this.paths().includes(path)) this.cover.set(path); }
   move(index: number, delta: number): void {
-    if (!this.current() || !this.editable() || this.saved() || this.saving() || this.loading()) return;
+    if (!this.canMutateDraft()) return;
     const paths = [...this.paths()]; const target = index + delta;
     if (index < 0 || index >= paths.length || target < 0 || target >= paths.length) return;
     [paths[index], paths[target]] = [paths[target], paths[index]]; this.paths.set(paths);
   }
   remove(path: string): void {
-    if (!this.current() || !this.editable() || this.saved() || this.saving() || this.loading()) return;
+    if (!this.canMutateDraft()) return;
     const index = this.paths().indexOf(path);
     if (index < 0) return;
     const next = this.paths()[index + 1] ?? this.paths()[index - 1] ?? '';
@@ -366,7 +379,7 @@ export class StackEditorComponent implements OnInit {
     if (this.cover() === path) this.cover.set(this.paths()[0] ?? '');
   }
   async addSelected(): Promise<void> {
-    if (!this.current() || !this.editable() || this.saved() || this.saving() || this.loading()
+    if (!this.canMutateDraft()
       || this.paths().length + this.additions().length > STACK_MAX_MEMBERS) return;
     const additions = this.additions();
     const paths = [...this.paths(), ...additions];
@@ -437,7 +450,7 @@ export class StackEditorComponent implements OnInit {
     try {
       const applied = await this.actions.commit(request, {
         paths, action, labelKey: this.I18N.stacks.saved, session: this.session, live: () => this.current(),
-        onUndone: this.host.onUndone ?? this.data.onUndone,
+        onUndone: this.host.onUndone,
       });
       if (applied && this.current()) { this.saved.set(true); this.previewCurrent.set(false); this.host.finish('saved'); }
     } catch (failure) {

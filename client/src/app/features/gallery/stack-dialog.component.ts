@@ -1,7 +1,14 @@
 import { ChangeDetectionStrategy, Component, inject, viewChild } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { StackEditorComponent } from './stack-editor.component';
-import { STACK_EDITOR_HOST, StackEditorData, StackEditorHost, SKIP_SUGGESTION } from './stack-editor-host';
+import { STACK_EDITOR_HOST, StackEditorHost, SKIP_SUGGESTION } from './stack-editor-host';
+import type { StackDialogData } from './stack-dialog.config';
+
+/** A dialog result: saved -> true, skip -> the skip sentinel, plain close -> undefined. */
+function closeResult(result: 'saved' | 'skip' | 'close'): true | typeof SKIP_SUGGESTION | undefined {
+  if (result === 'saved') return true;
+  return result === 'skip' ? SKIP_SUGGESTION : undefined;
+}
 
 /** A real Material host; mutation state belongs to the shared editor. */
 @Component({
@@ -11,11 +18,11 @@ import { STACK_EDITOR_HOST, StackEditorData, StackEditorHost, SKIP_SUGGESTION } 
   host: { class: 'flex flex-col h-full min-h-0 min-w-0' },
   providers: [{ provide: STACK_EDITOR_HOST, useFactory: (): StackEditorHost => {
     const ref = inject(MatDialogRef<StackDialogComponent>);
-    const data = inject<StackEditorData>(MAT_DIALOG_DATA);
+    const data = inject<StackDialogData>(MAT_DIALOG_DATA);
     return { data, presentation: 'dialog', keydown$: ref.keydownEvents(), closing$: ref.beforeClosed(),
       onUndone: data.onUndone,
       setBusy: busy => { ref.disableClose = busy; },
-      finish: result => ref.close(result === 'saved' ? true : result === 'skip' ? SKIP_SUGGESTION : undefined),
+      finish: result => ref.close(closeResult(result)),
       invalidate: () => ref.close(),
     };
   } }],

@@ -140,7 +140,7 @@ def stack_suggestions(body: StackSuggestionsRequest, response: Response,
             for row in select_in_chunks(conn,
                     f"SELECT {_culling_photo_columns('photos.path', burst=True)} FROM photos "
                     f"WHERE photos.path IN ({{placeholders}}) AND ({visibility})",
-                    paths, after=visibility_params, chunk=max(1, 900 - len(visibility_params))):
+                    paths, after=visibility_params, chunk=stacks.visibility_chunk_size(len(visibility_params))):
                 photo = dict(row)
                 photo['burst_score'] = round(_compute_burst_score(photo), 2)
                 photo['preview_revision'] = None

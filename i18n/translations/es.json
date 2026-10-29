@@ -3152,6 +3152,7 @@
     "regroup_extra": "Incluye {count} foto adicional de una pila existente.",
     "regroup_extra_plural": "Incluye {count} fotos adicionales de pilas existentes.",
     "regroup_focus": "Vista previa de {path}",
+    "regroup_focus_cover": "Vista previa de {path} (portada)",
     "regroup_sources": "Cambios en las pilas existentes",
     "regroup_moved": "Mover: {moved} de {total}",
     "regroup_retained": "{count} permanecen juntas",

@@ -16,6 +16,20 @@ describe('manual editor history boundary', () => {
     const paths = Array.from({ length: count }, (_, i) => `/p${i}`);
     expect(readStackEditorHistory({ version: 1, identity: 'alice', paths, returnUrl: '/' }, 'alice', TestBed.inject(Router))).toBeNull();
   });
+  const read = (state: unknown) => readStackEditorHistory(state, 'alice', TestBed.inject(Router));
+  const valid = { version: 1, identity: 'alice', paths: ['/a', '/b'], returnUrl: '/' };
+  it.each([
+    ['a blank path', { ...valid, paths: ['/a', ' '] }],
+    ['a non-string path', { ...valid, paths: ['/a', 3] }],
+    ['an array state', [valid]],
+    ['a non-string returnUrl', { ...valid, returnUrl: 5 }],
+    ['a non-string activePath', { ...valid, activePath: 5 }],
+  ])('refuses %s', (_name, state) => {
+    expect(read(state)).toBeNull();
+  });
+  it('admits a valid state with no activePath', () => {
+    expect(read(valid)).toEqual({ ...valid, activePath: undefined });
+  });
   it.each([2, 1000])('admits exactly %i unique nonempty paths without copying private snapshots', count => {
     const paths = Array.from({ length: count }, (_, i) => `/p${i}`);
     const state = { version: 1, identity: 'alice', paths, returnUrl: '/' };

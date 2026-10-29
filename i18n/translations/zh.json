@@ -3152,6 +3152,7 @@
     "regroup_extra": "包含现有堆叠中的 {count} 张额外照片。",
     "regroup_extra_plural": "包含现有堆叠中的 {count} 张额外照片。",
     "regroup_focus": "预览 {path}",
+    "regroup_focus_cover": "预览 {path}（封面）",
     "regroup_sources": "现有堆叠的变化",
     "regroup_moved": "移动 {moved} / {total}",
     "regroup_retained": "{count} 张保留在原堆叠",

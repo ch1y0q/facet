@@ -53,6 +53,18 @@ describe('Suggested stacks routed darkroom', () => {
     expect(request.request.body).toEqual({ filters, include_photos: true });
     request.flush(value);
   }
+  const EMPTY_FEED = { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 };
+  /** GET reads the normal cull feed issues on load; anything else draining here is a write the test did not expect. */
+  const CULL_FEED_READS = ['/api/culling-groups', '/api/culling/profiles', '/api/comparison/stats', '/api/ranker/status', '/api/albums'];
+  /** Flush the pending cull-feed reads (`responses` by URL, else the empty feed / `{}`), refusing any write. */
+  function flushCullFeed(responses: Record<string, unknown> = {}): void {
+    for (const request of http.match(() => true)) {
+      expect(request.request.method, request.request.urlWithParams).toBe('GET');
+      expect(CULL_FEED_READS, request.request.url).toContain(request.request.url);
+      request.flush(responses[request.request.url] ?? (request.request.url === '/api/culling-groups' ? EMPTY_FEED : {}));
+    }
+    expect(http.match(r => r.method !== 'GET')).toHaveLength(0);
+  }
   beforeEach(async () => {
     Element.prototype.scrollIntoView = vi.fn();
     localStorage.clear(); identity.set('owner'); edition.set(true); commands = []; changes = new Subject();
@@ -210,6 +222,17 @@ describe('Suggested stacks routed darkroom', () => {
     expect(http.match(() => true)).toHaveLength(0);
   });
 
+  it.each(['Enter', ' '])('opens the darkroom on the grid tile with %j, as a role=button activates', async value => {
+    await enter(); batch(); await settle();
+    const tile = dom().querySelectorAll<HTMLElement>('[role="button"][data-pidx]')[1];
+    const event = new KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true });
+    tile.dispatchEvent(event); await settle();
+    expect(event.defaultPrevented).toBe(value === ' ');
+    expect(page['lightboxGroup']()?.group_id).toBe(1);
+    expect(page['lightboxIndex']()).toBe(1);
+    expect(http.match(() => true)).toHaveLength(0);
+  });
+
   it('stacks the focused photo with plain Enter from the real darkroom pane', async () => {
     await enter(); batch(); await settle(); key('Enter'); await settle();
     (dom().querySelectorAll('[data-stack-filmstrip] button')[1] as HTMLButtonElement).click(); await settle();
@@ -308,9 +331,8 @@ describe('Suggested stacks routed darkroom', () => {
       expect(TestBed.inject(PageContextService).snapshot()).toEqual({ id: 'culling', mode: 'cull' });
       expect(dom().querySelector('[data-testid="stack-review-header"]')).toBeNull();
       expect(http.match('/api/stacks/suggestions')).toHaveLength(0);
-      const reads = http.match(() => true); expect(reads.some(request => request.request.url === '/api/culling-groups')).toBe(true);
-      for (const request of reads) request.flush(request.request.url.includes('/culling-groups')
-        ? { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 } : {});
+      const feed = http.match(request => request.url === '/api/culling-groups'); expect(feed).toHaveLength(1); feed[0].flush(EMPTY_FEED);
+      flushCullFeed();
       await settle();
     });
 
@@ -365,13 +387,14 @@ describe('Suggested stacks routed darkroom', () => {
   it('retains the normal culling toolbar, keep/reject tiles, confirm, pass and plan controls', async () => {
     page = await harness.navigateByUrl('/culling', BurstCullingComponent);
     cull = harness.routeDebugElement!.injector.get(CullingStore);
-    for (const request of http.match(() => true)) {
-      request.flush(request.request.url.includes('/culling-groups') ? {
+    flushCullFeed({
+      '/api/culling-groups': {
         groups: response.suggestions.map(item => ({ ...item, type: 'burst', best_path: item.cover_path, count: item.paths.length })),
         total_groups: 2, page: 1, per_page: 20, total_pages: 1,
-      } : request.request.url.includes('/culling/profiles') ? { profiles: [{ id: 'test', label_key: 'culling.profiles.test',
-        strictness: 100, eyes_closed_max: null, poor_expression_min: null, keep_min_per_group: 1, similarity_threshold: 80 }], default: 'test' } : {});
-    }
+      },
+      '/api/culling/profiles': { profiles: [{ id: 'test', label_key: 'culling.profiles.test',
+        strictness: 100, eyes_closed_max: null, poor_expression_min: null, keep_min_per_group: 1, similarity_threshold: 80 }], default: 'test' },
+    });
     await settle();
     cull.selectedProfile.set('test'); await settle();
     for (const label of ['culling.group_by.label', 'culling.threshold', 'culling.sort.easiest',
@@ -388,9 +411,9 @@ describe('Suggested stacks routed darkroom', () => {
     expect(dom().querySelector('[data-testid="cull-plan-banner"]')).not.toBeNull();
     cull.passingGroups.set(new Map()); cull.planActive.set(false);
     page['openLightbox'](group, 0);
-    for (const request of http.match(() => true)) request.flush({});
+    http.expectOne('/api/culling-group/faces').flush({});
     await settle();
-    for (const request of http.match(() => true)) request.flush({});
+    http.expectOne('/api/photos/key_subjects').flush({});
     await settle();
     http.expectOne('/api/culling-group/subjects').flush({ subjects_by_path: {} }); await settle();
     page['compareMode'].set('2up'); await settle();
@@ -516,8 +539,7 @@ describe('Suggested stacks routed darkroom', () => {
     identity.set('other'); data.onUndone();
     expect(cull.groups().filter(item => item.group_id === 2)).toHaveLength(0);
     await settle();
-    for (const request of http.match(() => true)) request.flush(request.request.url.includes('/culling-groups')
-      ? { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 } : {});
+    flushCullFeed();
     await settle();
   });
 
@@ -552,8 +574,7 @@ describe('Suggested stacks routed darkroom', () => {
     // Direct liveness checks must reject before the auth effect runs.
     photos.flush({ photos: captured.photos, missing: [] }); callback();
     await settle(); await opening;
-    for (const request of http.match(() => true)) request.flush(request.request.url.includes('/culling-groups')
-      ? { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 } : {});
+    flushCullFeed();
     await settle();
     expect(cull.mode()).toBe('cull'); expect(cull.groups()).toHaveLength(0);
     expect(page['lightboxGroupId']()).toBeNull(); expect(TestBed.inject(MatDialog).openDialogs).toHaveLength(0);
@@ -575,8 +596,7 @@ describe('Suggested stacks routed darkroom', () => {
   it.each(['null', '[]', '{bad', '{"album_id":42}'])('falls back safely on malformed filter payload %s', async scope => {
     await enter(url(origin, scope));
     expect(http.match('/api/stacks/suggestions')).toHaveLength(0);
-    for (const request of http.match(() => true)) request.flush(request.request.url.includes('/culling-groups')
-      ? { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 } : {});
+    flushCullFeed();
     await settle(); expect(cull.mode()).toBe('cull');
     expect(dom().querySelector('[data-testid="stack-scope-notice"]')).not.toBeNull();
   });
@@ -591,8 +611,7 @@ describe('Suggested stacks routed darkroom', () => {
     } else {
       expect(cull.mode()).toBe('cull');
       expect(dom().querySelector('[data-testid="stack-scope-notice"]')).not.toBeNull();
-      for (const request of http.match(() => true)) request.flush(request.request.url.includes('/culling-groups')
-        ? { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 } : {});
+      flushCullFeed();
       await settle();
     }
   });
@@ -600,8 +619,7 @@ describe('Suggested stacks routed darkroom', () => {
     await enter(); batch(); await settle();
     const router = TestBed.inject(Router);
     await router.navigateByUrl('/culling');
-    for (const request of http.match(() => true)) request.flush(request.request.url.includes('/culling-groups')
-      ? { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 } : {});
+    flushCullFeed();
     await settle(); expect(cull.mode()).toBe('cull');
     await router.navigateByUrl(url()); await settle();
     expect(harness.routeDebugElement!.componentInstance).toBe(page);
@@ -614,8 +632,7 @@ describe('Suggested stacks routed darkroom', () => {
   it.each([200, 409, 500])('settles an HTTP %s redetection start after cancelled normal-cull navigation', async status => {
     page = await harness.navigateByUrl('/culling', BurstCullingComponent);
     cull = harness.routeDebugElement!.injector.get(CullingStore);
-    for (const request of http.match(() => true)) request.flush(request.request.url.includes('/culling-groups')
-      ? { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 } : {});
+    flushCullFeed();
     await settle(); cull.droppedApplied.set(new Set(['7_panorama'])); await settle();
     const redetect = [...dom().querySelectorAll<HTMLButtonElement>('button')]
       .find(button => button.textContent?.includes('panorama.settings.redetect'))!;
@@ -641,8 +658,7 @@ describe('Suggested stacks routed darkroom', () => {
   it('discards a redetection start reply after entering a new stack visit on the same component', async () => {
     page = await harness.navigateByUrl('/culling', BurstCullingComponent);
     cull = harness.routeDebugElement!.injector.get(CullingStore);
-    for (const request of http.match(() => true)) request.flush(request.request.url.includes('/culling-groups')
-      ? { groups: [], total_groups: 0, page: 1, per_page: 20, total_pages: 1 } : {});
+    flushCullFeed();
     await settle(); cull.droppedApplied.set(new Set(['7_panorama'])); await settle();
     const starting = page['rerunDetection'](); const request = http.expectOne('/api/scan/detect_panoramas');
     await TestBed.inject(Router).navigateByUrl(url()); batch(); await settle();

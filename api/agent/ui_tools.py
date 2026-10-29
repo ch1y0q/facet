@@ -420,8 +420,7 @@ UI_TOOLS: tuple[UiTool, ...] = (
            "(`search`, `sort`, `type`), /stats (`tab` index, `category`, `date_from`, `date_to`), /map (`date_from`, "
            "`date_to`), /timeline (`date_from`, `date_to`, `sort`), /scenes (`album_id`, `total`) and /compare "
            "(`tab`: snapshots, ab, suggestions, weights, context or panorama; `category`, `strategy`, `pair_a`, `pair_b`, `pair_loading`; the pair is null when the A/B tab is not "
-           "shown), and /culling (`mode`: cull or stacks), else null. "
-           "In Suggested stacks mode `culling` is `{mode: stacks}` and carries no culling decisions. An older tab omits both keys.",
+           "shown), and /culling (`mode`: cull or stacks), else null. An older tab omits both keys.",
            UiGetContext, True),
     UiTool("ui_next_page", "Load the next page of the gallery in the user's tab (infinite scroll).",
            UiNextPage, False),

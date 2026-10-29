@@ -3152,6 +3152,7 @@
     "regroup_extra": "Includes {count} additional photo from an existing stack.",
     "regroup_extra_plural": "Includes {count} additional photos from existing stacks.",
     "regroup_focus": "Preview {path}",
+    "regroup_focus_cover": "Preview {path} (cover)",
     "regroup_sources": "Changes to existing stacks",
     "regroup_moved": "Moving {moved} of {total}",
     "regroup_retained": "{count} remain together",
