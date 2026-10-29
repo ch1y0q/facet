@@ -41,7 +41,10 @@ cmake==3.31.10
 contourpy==1.3.3
 cryptography==50.0.2
 cycler==0.12.1
-datasets==5.1.0
+# datasets 5.1.0 requires pyarrow>=24.0.0, which Windows cannot take (see the pyarrow pin below);
+# 5.0.1 accepts pyarrow>=21.0.0. Windows only, like that pin.
+datasets==5.0.1 ; sys_platform == "win32"
+datasets==5.1.0 ; sys_platform != "win32"
 dill==0.4.1
 distlib==0.4.4
 dnspython==2.9.0
