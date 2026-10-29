@@ -5607,12 +5607,17 @@ export interface components {
             /** Photo Paths */
             photo_paths?: string[] | null;
         };
-        /** BatchUpdateResponse */
-        BatchUpdateResponse: {
+        /** BatchReviewResponse */
+        BatchReviewResponse: {
             /** Count */
             count: number;
             /** Success */
             success: boolean;
+            /**
+             * Undo Entry Id
+             * @description Revision-protected review Undo receipt for a changed single-photo Reject.
+             */
+            undo_entry_id?: number | null;
         };
         /** BurstGroup */
         BurstGroup: {
@@ -14799,7 +14804,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BatchUpdateResponse"];
+                    "application/json": components["schemas"]["BatchReviewResponse"];
                 };
             };
             /** @description Validation Error */

@@ -69,6 +69,93 @@ describe('StackDialog HTTP workflow', () => {
     fixture.destroy();
   });
 
+  it('rejects the focused nonfirst photo immediately, excludes only it, and Undo preserves later order and cover', async () => {
+    create(); await load(); await addSelected(); component.focusMember('/a.jpg');
+    const rejecting = component.rejectFocused();
+    http.expectOne(request => request.url === '/api/photo').flush({ path: '/a.jpg', is_kept: true, is_favorite: true, star_rating: 4 });
+    await Promise.resolve();
+    const write = http.expectOne('/api/photos/batch_review');
+    expect(write.request.body).toEqual({ photo_paths: ['/a.jpg'], decision: 'rejected' });
+    expect(component.paths()).toEqual(['/b.jpg', '/a.jpg', '/c.jpg']);
+    write.flush({ success: true, count: 1, undo_entry_id: 23 }); await rejecting;
+    expect(component.paths()).toEqual(['/b.jpg', '/c.jpg']);
+    expect(component.focused()).toBe('/c.jpg');
+    expect(journal).toHaveBeenCalledWith('reject', ['/a.jpg'], true);
+    component.move(1, -1); component.setCover('/c.jpg');
+    const undoing = register.mock.calls[0][0].undo();
+    http.expectOne('/api/organization_history/23/revert').flush({ changed: 1 }); await undoing;
+    expect(component.paths()).toEqual(['/c.jpg', '/b.jpg', '/a.jpg']);
+    expect(component.cover()).toBe('/c.jpg');
+  });
+  it('keeps a failed Reject draft unchanged and retries the captured path, with Save blocked while pending', async () => {
+    create(); await load(); component.focusMember('/a.jpg');
+    const rejecting = component.rejectFocused();
+    http.expectOne(request => request.url === '/api/photo').flush({ path: '/a.jpg', is_rejected: false });
+    await Promise.resolve();
+    await component.save(); await component.rejectFocused();
+    http.expectNone(request => request.url === '/api/stacks/s1');
+    http.expectOne('/api/photos/batch_review').flush({}, { status: 500, statusText: 'Failed' }); await rejecting;
+    expect(component.paths()).toEqual(['/b.jpg', '/a.jpg']); expect(component.cover()).toBe('/a.jpg');
+    expect(register).not.toHaveBeenCalled();
+    component.focusMember('/b.jpg'); component.retry();
+    http.expectOne(request => request.url === '/api/photo' && request.params.get('path') === '/a.jpg').flush({ path: '/a.jpg', is_rejected: true });
+    await Promise.resolve(); await Promise.resolve();
+    expect(component.paths()).toEqual(['/b.jpg']);
+    http.expectNone('/api/photos/batch_review'); expect(journal).not.toHaveBeenCalled();
+  });
+  it('does not restore a removed draft member when review Undo is refused', async () => {
+    create(); await load(); component.focusMember('/a.jpg');
+    const rejecting = component.rejectFocused();
+    http.expectOne(request => request.url === '/api/photo').flush({ path: '/a.jpg' }); await Promise.resolve();
+    http.expectOne('/api/photos/batch_review').flush({ count: 1, undo_entry_id: 24 }); await rejecting;
+    const undoing = register.mock.calls[0][0].undo();
+    http.expectOne('/api/organization_history/24/revert').flush({}, { status: 409, statusText: 'Conflict' });
+    await expect(undoing).rejects.toThrow();
+    expect(component.paths()).toEqual(['/b.jpg']); expect(component.cover()).toBe('/b.jpg'); expect(component.saving()).toBe(false);
+  });
+  it.each(['identity', 'navigation', 'edition'])('ignores Reject completion after %s changes, before auth effects', async change => {
+    create(); await load(); component.focusMember('/a.jpg');
+    const rejecting = component.rejectFocused();
+    http.expectOne(request => request.url === '/api/photo').flush({ path: '/a.jpg' }); await Promise.resolve();
+    if (change === 'identity') identity.set('bob');
+    else if (change === 'navigation') events.next(new NavigationStart(1, '/albums'));
+    else (TestBed.inject(AuthService).isEdition as ReturnType<typeof signal<boolean>>).set(false);
+    http.expectOne('/api/photos/batch_review').flush({ count: 1, undo_entry_id: 25 }); await rejecting;
+    expect(register).not.toHaveBeenCalled(); expect(journal).not.toHaveBeenCalled(); expect(refresh).not.toHaveBeenCalled();
+  });
+  it('does not dispatch a review write after identity changes during the authorized read', async () => {
+    create(); await load(); const rejecting = component.rejectFocused(); identity.set('bob');
+    http.expectOne(request => request.url === '/api/photo').flush({ path: '/a.jpg' }); await rejecting;
+    http.expectNone('/api/photos/batch_review'); expect(register).not.toHaveBeenCalled();
+  });
+  it('restores only currently eligible members after a policy change', async () => {
+    create({ paths: ['/a.jpg', '/c.jpg'] });
+    const combined = { selected_paths: ['/a.jpg', '/c.jpg'], mode: 'combine', paths: ['/b.jpg', '/a.jpg', '/c.jpg'], cover_path: '/a.jpg', source_stacks: [stack], unstacked_paths: ['/c.jpg'], affected_paths: ['/b.jpg', '/a.jpg', '/c.jpg'], expected_state: 'a'.repeat(64) };
+    const loading = component.load(); http.expectOne('/api/stacks/regroup/preview').flush(combined); await loading;
+    component.focusMember('/b.jpg'); const rejecting = component.rejectFocused();
+    http.expectOne(request => request.url === '/api/photo').flush({ path: '/b.jpg' }); await Promise.resolve();
+    http.expectOne('/api/photos/batch_review').flush({ count: 1, undo_entry_id: 26 }); await rejecting;
+    component.changeMode('selected');
+    http.expectOne('/api/stacks/regroup/preview').flush({ ...combined, mode: 'selected', paths: ['/a.jpg', '/c.jpg'] }); await Promise.resolve();
+    const undoing = register.mock.calls[0][0].undo();
+    http.expectOne('/api/organization_history/26/revert').flush({ changed: 1 }); await undoing;
+    expect(component.paths()).toEqual(['/a.jpg', '/c.jpg']);
+    component.changeMode('combine'); http.expectOne('/api/stacks/regroup/preview').flush(combined); await Promise.resolve();
+    expect(component.paths()).toEqual(['/a.jpg', '/c.jpg', '/b.jpg']);
+  });
+  it('preserves a later explicit cover choice even after returning to the automatic fallback', async () => {
+    create({ paths: ['/a.jpg', '/b.jpg', '/c.jpg'], skippable: true });
+    const loading = component.load();
+    http.expectOne('/api/photos/by_paths').flush({ photos: ['/a.jpg', '/b.jpg', '/c.jpg'].map(path => ({ path })), missing: [] }); await loading;
+    component.setCover('/c.jpg'); component.focusMember('/c.jpg'); const rejecting = component.rejectFocused();
+    http.expectOne(request => request.url === '/api/photo').flush({ path: '/c.jpg' }); await Promise.resolve();
+    http.expectOne('/api/photos/batch_review').flush({ count: 1, undo_entry_id: 29 }); await rejecting;
+    expect(component.cover()).toBe('/a.jpg');
+    component.setCover('/b.jpg'); component.setCover('/a.jpg');
+    const undoing = register.mock.calls[0][0].undo();
+    http.expectOne('/api/organization_history/29/revert').flush({ changed: 1 }); await undoing;
+    expect(component.paths()).toEqual(['/a.jpg', '/b.jpg', '/c.jpg']); expect(component.cover()).toBe('/a.jpg');
+  });
   it('reviews chronological initial order separately from the selected cover and writes explicit paths', async () => {
     create({ paths: ['/a.jpg', '/b.jpg'], activePath: '/a.jpg', skippable: true });
     const loading = component.load();

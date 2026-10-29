@@ -73,6 +73,97 @@ describe('Suggested stacks routed darkroom', () => {
   });
   afterEach(() => { try { http.verify(); } finally { TestBed.resetTestingModule(); } });
 
+  it('rejects a nonfirst focused frame explicitly, stacks only survivors and keeps source proposal immutable', async () => {
+    await enter(); batch({ suggestions: [group(1, ['/b.jpg', '/a.jpg', '/e.jpg'])] }); await settle();
+    const source = cull.groups()[0]; key('Enter'); await settle(); key('ArrowRight'); await settle();
+    expect(page['lightboxIndex']()).toBe(1);
+    const reject = dom().querySelector<HTMLButtonElement>('[data-stack-reject]'); expect(reject).not.toBeNull();
+    reject!.click(); await settle();
+    const read = http.expectOne(request => request.url === '/api/photo'); expect(read.request.params.get('path')).toBe('/a.jpg');
+    read.flush({ path: '/a.jpg', is_kept: true, is_favorite: true, star_rating: 4 }); await settle();
+    key('s'); key('r'); await settle(); http.expectNone('/api/stacks');
+    const review = http.expectOne('/api/photos/batch_review');
+    expect(review.request.body).toEqual({ photo_paths: ['/a.jpg'], decision: 'rejected' });
+    review.flush({ count: 1, success: true, undo_entry_id: 27 }); await settle();
+    expect(source.photos.map(p => p.path)).toEqual(['/b.jpg', '/a.jpg', '/e.jpg']);
+    expect(page['lightboxIndex']()).toBe(2);
+    expect(dom().querySelector('[data-stack-excluded]')?.textContent).toContain('stacks.reject_count');
+    key('s'); await settle();
+    const stackWrite = http.expectOne('/api/stacks');
+    expect(stackWrite.request.body).toEqual({ paths: ['/b.jpg', '/e.jpg'], cover_path: '/e.jpg' });
+    stackWrite.flush({}, { status: 500, statusText: 'Failed' }); await settle();
+    key('x'); await settle();
+    const skip = http.expectOne('/api/stacks/suggestions/dismissals');
+    expect(skip.request.body.paths).toEqual(['/b.jpg', '/a.jpg', '/e.jpg']);
+    skip.flush({}); await settle(); batch({ suggestions: [] }); await settle();
+  });
+
+  it('excludes an already rejected frame without a write and can Undo below the stack minimum', async () => {
+    await enter(); batch(); await settle(); key('Enter'); await settle(); key('r'); await settle();
+    http.expectOne(request => request.url === '/api/photo').flush({ path: '/b.jpg', is_rejected: true }); await settle();
+    http.expectNone('/api/photos/batch_review');
+    key('s'); await settle(); http.expectNone('/api/stacks');
+    expect((dom().querySelector('button[aria-keyshortcuts="S"]') as HTMLButtonElement).disabled).toBe(true);
+    await commands[0].undo(); await settle();
+    key('s'); await settle();
+    const write = http.expectOne('/api/stacks'); expect(write.request.body.paths).toEqual(['/b.jpg', '/a.jpg']);
+    write.flush({}, { status: 500, statusText: 'Failed' }); await settle();
+  });
+
+  it('shares explicit exclusions and Undo with the secondary Material editor, including after dismissal', async () => {
+    await enter(); batch({ suggestions: [group(1, ['/b.jpg', '/a.jpg', '/e.jpg'])] }); await settle();
+    key('Enter'); await settle(); key('r'); await settle();
+    http.expectOne(request => request.url === '/api/photo').flush({ path: '/b.jpg', is_rejected: true }); await settle();
+    const editing = page['editSuggestion'](cull.groups()[0]); await settle();
+    await vi.waitFor(() => expect(TestBed.inject(MatDialog).openDialogs).toHaveLength(1));
+    const ref = TestBed.inject(MatDialog).openDialogs[0];
+    http.expectOne('/api/photos/by_paths').flush({ photos: group(1, ['/b.jpg', '/a.jpg', '/e.jpg']).photos, missing: [] }); await settle();
+    const editor = ref.componentInstance.editor();
+    expect(editor.paths()).toEqual(['/a.jpg', '/e.jpg']);
+    await commands[0].undo(); await settle();
+    expect(editor.paths()).toEqual(['/a.jpg', '/b.jpg', '/e.jpg']);
+    editor.focusMember('/a.jpg');
+    document.querySelector<HTMLButtonElement>('mat-dialog-container [data-stack-reject]')!.click(); await settle();
+    http.expectOne(request => request.url === '/api/photo').flush({ path: '/a.jpg', is_kept: true }); await settle();
+    http.expectOne('/api/photos/batch_review').flush({ count: 1, undo_entry_id: 28 }); await settle();
+    expect(editor.paths()).toEqual(['/b.jpg', '/e.jpg']);
+    ref.close(); await editing; await settle();
+    expect(cull.stackExcluded()['/a.jpg']).toBe(true);
+    const undoing = commands[1].undo(); http.expectOne('/api/organization_history/28/revert').flush({ changed: 1 }); await undoing; await settle();
+    expect(cull.stackExcluded()['/a.jpg']).toBeUndefined();
+    expect(editor.paths()).toEqual([]);
+  });
+  it('refuses Reject during an in-flight Stack and keeps failed Stack retryable', async () => {
+    await enter(); batch(); await settle(); key('Enter'); await settle(); key('s'); await settle();
+    const writing = http.expectOne('/api/stacks'); key('r'); await settle();
+    http.expectNone(request => request.url === '/api/photo');
+    writing.flush({}, { status: 500, statusText: 'Failed' }); await settle();
+    key('r'); await settle(); http.expectOne(request => request.url === '/api/photo').flush({ path: '/b.jpg', is_rejected: true }); await settle();
+    expect(cull.stackExcluded()['/b.jpg']).toBe(true);
+  });
+  it('keeps exclusions through immutable assistant mark refreshes without changing proposal provenance', async () => {
+    await enter(); batch({ suggestions: [group(1, ['/b.jpg', '/a.jpg', '/e.jpg'])] }); await settle();
+    key('Enter'); await settle(); key('r'); await settle();
+    http.expectOne(request => request.url === '/api/photo').flush({ path: '/b.jpg', is_rejected: true }); await settle();
+    const original = cull.groups()[0];
+    const refreshing = cull.applyExternalChanges(['/a.jpg'], { lightboxOpen: true }); await settle();
+    http.expectOne('/api/photos/by_paths').flush({ photos: [{ path: '/a.jpg', star_rating: 5 }], missing: [] }); await refreshing; await settle();
+    expect(cull.groups()[0]).not.toBe(original);
+    key('s'); await settle(); const write = http.expectOne('/api/stacks');
+    expect(write.request.body.paths).toEqual(['/a.jpg', '/e.jpg']);
+    write.flush({}, { status: 500, statusText: 'Failed' }); await settle();
+  });
+  it('keeps a zero-member draft inspectable and skippable with the original proposal paths', async () => {
+    await enter(); batch(); await settle(); key('Enter'); await settle(); key('r'); await settle();
+    http.expectOne(request => request.url === '/api/photo').flush({ path: '/b.jpg', is_rejected: true }); await settle();
+    key('r'); await settle(); http.expectOne(request => request.url === '/api/photo').flush({ path: '/a.jpg', is_rejected: true }); await settle();
+    key('s'); await settle(); http.expectNone('/api/stacks');
+    expect(cull.stackDrafts()[cull.groupKey(cull.groups()[0])].paths).toEqual([]);
+    expect(dom().querySelectorAll('[data-stack-filmstrip] button')).toHaveLength(2);
+    key('x'); await settle(); const skip = http.expectOne('/api/stacks/suggestions/dismissals');
+    expect(skip.request.body.paths).toEqual(['/b.jpg', '/a.jpg']); skip.flush({}); await settle();
+    await vi.waitFor(() => expect(page['lightboxGroup']()?.group_id).toBe(2));
+  });
   it('retains the stack-mode safety boundary after actual cancelled navigation', async () => {
     await enter(); batch(); await settle();
     const before = TestBed.inject(Router).url;

@@ -3,6 +3,8 @@ import { DestroyRef, Injectable, Injector, inject, signal, computed, WritableSig
 import { Subject, firstValueFrom } from 'rxjs';
 import { PhotoStackService } from '../../core/services/photo-stack.service';
 import { UndoService } from '../../core/services/undo.service';
+import { StackReviewDraft } from './stack-editor-host';
+import { StackReviewActionsService } from './stack-review-actions.service';
 import { StackActionsService } from './stack-actions.service';
 import { ApiService } from '../../core/services/api.service';
 import type { ComparisonStats } from '../../core/api/types';
@@ -219,9 +221,18 @@ export class CullingStore {
   // These dependencies belong to the optional stack workflow, so cull-only consumers need not construct them.
   private get stacks(): PhotoStackService { return this.injector.get(PhotoStackService); }
   private get stackActions(): StackActionsService { return this.injector.get(StackActionsService); }
+  private get reviewActions(): StackReviewActionsService { return this.injector.get(StackReviewActionsService); }
   private get undo(): UndoService { return this.injector.get(UndoService); }
 
   readonly mode = signal<'cull' | 'stacks'>('cull');
+  readonly stackBusy = signal(false);
+  readonly stackExcluded = signal<Record<string, boolean>>(Object.create(null));
+  private readonly stackRejectTokens = new Map<string, object>();
+  readonly stackDrafts = computed(() => Object.fromEntries(this.groups().map(group => {
+    const paths = group.photos.filter(photo => !this.stackExcluded()[photo.path]).map(photo => photo.path);
+    return [this.groupKey(group), { paths, excludedCount: group.photos.length - paths.length }];
+  })));
+
   readonly stackFilters = signal<Record<string, string>>({});
   readonly cullWritesAllowed = computed(() => this.mode() === 'cull');
   readonly batchFull = signal(false);
@@ -252,7 +263,7 @@ export class CullingStore {
     this.stackSession = this.stacks.context();
     this.stackBatchPending = null;
     this.stackRefillVersion = 0;
-    this.stackDecisions.clear();
+    this.stackDecisions.clear(); this.stackBusy.set(false); this.stackExcluded.set(Object.create(null)); this.stackRejectTokens.clear();
     this.completedSuggestions.clear();
     this.batchFull.set(false);
     this.stackScopeInvalid.set(false);
@@ -264,7 +275,7 @@ export class CullingStore {
     this.visitEpoch++;
     this.stackSession = null;
     this.stackBatchPending = null;
-    this.stackDecisions.clear();
+    this.stackDecisions.clear(); this.stackBusy.set(false); this.stackExcluded.set(Object.create(null)); this.stackRejectTokens.clear();
     this.completedSuggestions.clear();
     this.mode.set('cull');
     this.stackFilters.set({});
@@ -359,12 +370,56 @@ export class CullingStore {
     const epoch = this.visitEpoch;
     const rootSession = this.stackSession;
     const session = () => this.stackVisitCurrent(epoch) && !!rootSession && rootSession();
-    const paths = loaded.photos.map(photo => photo.path);
+    const paths = loaded.photos.filter(photo => !this.stackExcluded()[photo.path]).map(photo => photo.path);
+    if (paths.length < 2) return false;
+    coverPath = paths.includes(coverPath) ? coverPath : paths.includes(loaded.best_path) ? loaded.best_path : paths[0];
     return this.decideStackSuggestion(loaded, () => this.stackActions.commit(this.stacks.create(paths, coverPath), {
       paths, action: 'create', session, live: session,
       labelKey: I18N.stacks.stacked, labelParams: { count: paths.length },
       onUndone: () => this.restoreStackSuggestion(loaded),
     }));
+  }
+
+  reviewDraft(group: CullingGroup): StackReviewDraft {
+    const epoch = this.visitEpoch;
+    const live = () => this.stackVisitCurrent(epoch) && !!this.loadedSuggestion(group);
+    return {
+      current: live,
+      excluded: computed(() => new Set(group.photos.filter(photo => this.stackExcluded()[photo.path]).map(photo => photo.path))),
+      lock: () => {
+        if (!live() || this.stackBusy() || this.stackDecisions.size > 0) return false;
+        this.stackBusy.set(true); return true;
+      },
+      unlock: () => { if (this.stackVisitCurrent(epoch)) this.stackBusy.set(false); },
+      exclude: path => {
+        if (!live() || !group.photos.some(photo => photo.path === path)) throw new Error('Stack draft expired');
+        const token = {}; this.stackRejectTokens.set(path, token);
+        this.stackExcluded.update(excluded => Object.assign(Object.create(null), excluded, { [path]: true }));
+        return () => {
+          if (!live() || this.stackRejectTokens.get(path) !== token) return;
+          this.stackRejectTokens.delete(path);
+          this.stackExcluded.update(excluded => { const next = Object.assign(Object.create(null), excluded); delete next[path]; return next; });
+        };
+      },
+    };
+  }
+
+  async rejectStackPhoto(group: CullingGroup, path: string): Promise<boolean> {
+    const loaded = this.loadedSuggestion(group);
+    if (!loaded || this.stackBusy() || this.stackDecisions.has(this.suggestionIdentity(loaded)) || this.stackExcluded()[path] || !loaded.photos.some(photo => photo.path === path)) return false;
+    const draft = this.reviewDraft(loaded);
+    if (!draft.lock()) return false;
+    try {
+      return await this.reviewActions.reject(path, {
+        session: draft.current, live: draft.current,
+        beginUndo: () => !draft.current() || draft.lock(),
+        endUndo: draft.unlock,
+        exclude: () => draft.exclude(path),
+      });
+    } catch {
+      if (draft.current()) this.notice$.next({ key: I18N.stacks.suggestion_failed, duration: 2000 });
+      return false;
+    } finally { draft.unlock(); }
   }
 
   async skipSuggestion(group: CullingGroup): Promise<boolean> {
@@ -390,7 +445,7 @@ export class CullingStore {
   private async decideStackSuggestion(group: CullingGroup, write: () => Promise<unknown>): Promise<boolean> {
     const epoch = this.visitEpoch;
     const key = this.suggestionIdentity(group);
-    if (!this.stackVisitCurrent(epoch) || this.stackDecisions.has(key)) return false;
+    if (!this.stackVisitCurrent(epoch) || this.stackBusy() || this.stackDecisions.has(key)) return false;
     this.stackDecisions.add(key);
     try {
       const committed = await write();

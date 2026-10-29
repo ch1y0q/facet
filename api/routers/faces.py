@@ -98,6 +98,10 @@ class BatchUpdateResponse(BaseModel):
     count: int
 
 
+class BatchReviewResponse(BatchUpdateResponse):
+    undo_entry_id: int | None = Field(default=None, description="Revision-protected review Undo receipt for a changed single-photo Reject.")
+
+
 class BatchReviewRequest(BatchPhotoRequest):
     decision: Literal['kept', 'undecided', 'rejected']
 
@@ -800,11 +804,15 @@ def _batch_update(body: BatchPhotoRequest, user: CurrentUser, sql: BatchWriteSql
                     origin_paths = [path for path in paths if labels[path].rejected != review_rejected]
                 count = _write_paths(conn, paths, user, sql)
                 record_label_origin(conn, user.is_agent_request, user.user_id, origin_paths, before)
-            organization_capture.finish(conn, user.user_id, 'review', history_before)
+            entries = organization_capture.finish(conn, user.user_id, 'review', history_before)
             conn.commit()
             _stats_cache.clear()
             _invalidate_culling_groups_cache()
-            return {'success': True, 'count': count}
+            result = {'success': True, 'count': count}
+            if (isinstance(body, BatchReviewRequest) and body.decision == 'rejected'
+                    and body.filters is None and len(body.photo_paths or ()) == 1 and len(entries) == 1):
+                result['undo_entry_id'] = entries[0]
+            return result
         except HTTPException:
             raise
         except sqlite3.Error as ex:
@@ -842,7 +850,7 @@ def api_batch_favorite(
     ))
 
 
-@router.post("/api/photos/batch_review", response_model=BatchUpdateResponse)
+@router.post("/api/photos/batch_review", response_model=BatchReviewResponse, response_model_exclude_none=True)
 def api_batch_review(
     body: BatchReviewRequest,
     user: CurrentUser = Depends(require_edition),

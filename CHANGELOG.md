@@ -6,6 +6,7 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
+- **Reject a photo while stacking.** Use Reject or R for the focused frame in the stack editor or Suggested stacks darkroom. Rejection persists immediately and excludes that frame from the grouping draft; Undo restores its prior review and draft membership without replacing later order or cover choices. Stack saves only remaining members, while Skip keeps its original proposal scope.
 - **Review selected photos in a full-page stack editor.** The selection toolbar opens `/stacks/edit` with a zoomable preview and persistent filmstrip. Combine existing stacks or move only selected photos, inspect source effects, choose a cover and order, and save while staying on the page with Undo and Continue editing. Back returns to the original gallery or album.
 - **Open the stack editor with S.** The gallery shortcut is remappable and requires an explicit selection of 2–1000 photos and editing access. Existing saved S bindings are preserved; Stack stays unassigned until a free key is chosen.
 

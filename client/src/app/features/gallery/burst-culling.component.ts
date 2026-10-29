@@ -762,11 +762,12 @@ interface SceneSummary {
                           [attr.aria-label]="group.type | cullGroupLabel | translate">{{ group.type | cullGroupIcon }}</mat-icon>
                 <span class="text-xs opacity-50">{{ group.count }} {{ I18N.culling.photos | translate }}</span>
                 @if (stacksMode()) {
+                  @if (cull.stackDrafts()[groupKey].excludedCount; as count) { <span data-stack-excluded role="status" class="text-xs">{{ I18N.stacks.reject_count | translate:{ count } }}</span> }
                   <div class="flex flex-wrap gap-2 ml-auto">
                     <button mat-button (click)="openLightbox(group, 0)">{{ I18N.culling.darkroom | translate }}</button>
-                    <button mat-button (click)="editSuggestion(group)">{{ I18N.stacks.suggestion_edit_members | translate }}</button>
-                    <button mat-button (click)="skipStackSuggestion(group)">{{ I18N.stacks.suggestion_skip | translate }}</button>
-                    <button mat-flat-button (click)="stackGroup(group)">{{ I18N.stacks.stack_cover | translate }}</button>
+                    <button mat-button [disabled]="cull.stackBusy()" (click)="editSuggestion(group)">{{ I18N.stacks.suggestion_edit_members | translate }}</button>
+                    <button mat-button [disabled]="cull.stackBusy()" (click)="skipStackSuggestion(group)">{{ I18N.stacks.suggestion_skip | translate }}</button>
+                    <button mat-flat-button [disabled]="cull.stackBusy() || cull.stackDrafts()[groupKey].paths.length < 2" (click)="stackGroup(group)">{{ I18N.stacks.stack_cover | translate }}</button>
                   </div>
                 } @else {
                 @if (group.category; as category) {
@@ -999,14 +1000,16 @@ interface SceneSummary {
               <mat-icon>{{ darkroomLoupeActive() ? 'zoom_in' : 'search' }}</mat-icon>
             </button>
             @if (auth.isEdition() && (stacksMode() || (lbGroup | canStackGroup))) {
-              <button mat-icon-button class="!text-white" aria-keyshortcuts="S"
+              <button mat-icon-button class="!text-white" aria-keyshortcuts="S" [disabled]="stacksMode() && (cull.stackBusy() || cull.stackDrafts()[lbKey].paths.length < 2)"
                       [matTooltip]="I18N.culling.stack_group | translate"
                       [attr.aria-label]="I18N.culling.stack_group | translate"
                       (click)="stackGroup(lbGroup)"><mat-icon>layers</mat-icon></button>
             }
             @if (stacksMode()) {
-              <button mat-button class="!text-white" (click)="editSuggestion(lbGroup)">{{ I18N.stacks.suggestion_edit_members | translate }}</button>
-              <button mat-button class="!text-white" (click)="skipStackSuggestion(lbGroup)">{{ I18N.stacks.suggestion_skip | translate }}</button>
+              <button mat-icon-button data-stack-reject class="!text-white" aria-keyshortcuts="R" [disabled]="cull.stackBusy() || !!cull.stackExcluded()[lbGroup.photos[lightboxIndex()]?.path ?? '']"
+                      [matTooltip]="I18N.stacks.reject_focused | translate" [attr.aria-label]="I18N.stacks.reject_focused | translate" (click)="rejectStackPhoto(lbGroup)"><mat-icon aria-hidden="true">block</mat-icon></button>
+              <button mat-button class="!text-white" [disabled]="cull.stackBusy()" (click)="editSuggestion(lbGroup)">{{ I18N.stacks.suggestion_edit_members | translate }}</button>
+              <button mat-button class="!text-white" [disabled]="cull.stackBusy()" (click)="skipStackSuggestion(lbGroup)">{{ I18N.stacks.suggestion_skip | translate }}</button>
             }
             @if (!stacksMode() && cullStyleCapable() && compareMode() === 'single') {
               <button mat-icon-button [matMenuTriggerFor]="cullStyleMenu"
@@ -1224,15 +1227,19 @@ interface SceneSummary {
             </div>
           }
           @if (stacksMode()) {
+            @if (cull.stackDrafts()[lbKey].excludedCount; as count) {
+              <p data-stack-excluded role="status" class="shrink-0 text-white text-sm px-3 py-1">{{ I18N.stacks.reject_count | translate:{ count } }} @if (cull.stackDrafts()[lbKey].paths.length < 2) { {{ I18N.stacks.regroup_minimum | translate }} }</p>
+            }
             <div class="shrink-0 flex gap-2 overflow-x-auto border-t border-white/10 px-3 py-2" data-stack-filmstrip
                  role="presentation" (click)="$event.stopPropagation()" (keydown)="onDarkroomKeydown($event)">
               @for (photo of lbGroup.photos; track photo.path; let index = $index) {
                 <button type="button" class="shrink-0 rounded border-2 border-transparent overflow-hidden cursor-pointer"
-                        [class.!border-amber-400]="index === lightboxIndex()"
+                        [class.!border-amber-400]="index === lightboxIndex()" [class.opacity-40]="cull.stackExcluded()[photo.path]"
                         [attr.aria-current]="index === lightboxIndex() ? 'true' : null"
                         [attr.aria-label]="photo.filename" (click)="focusPhotoInLightbox(index)">
                   <img class="h-16 w-auto max-w-32 object-contain" loading="lazy"
                        [src]="photo.path | thumbnailUrl:storedEdge:photo.preview_revision" [alt]="photo.filename" />
+                  @if (cull.stackExcluded()[photo.path]) { <span class="text-xs text-white block">{{ I18N.rating.rejected_badge | translate }}</span> }
                 </button>
               }
             </div>
@@ -2816,6 +2823,7 @@ export class BurstCullingComponent implements OnDestroy {
       if (event.key === ' ' && !isControlActivation(event) && !isTypingContext(event)) event.preventDefault();
       if (event.key === 's' || event.key === 'S' || event.key === 'Enter') this.onStackKey(event);
       else if (event.key === 'x' || event.key === 'X') this.onSkipSuggestionKey(event);
+      else if (event.key.toLowerCase() === 'r') this.onRejectStackKey(event);
       else if (event.key === 'ArrowLeft') this.onArrowLeft(event);
       else if (event.key === 'ArrowRight') this.onArrowRight(event);
       else if (event.key.toLowerCase() === 'z') this.onZoomToggle(event);
@@ -3006,8 +3014,9 @@ export class BurstCullingComponent implements OnDestroy {
     if (event.defaultPrevented || this.dialog.openDialogs.length > 0) return true;
     if (!this.stacksMode()) return false;
     const key = event as KeyboardEvent;
-    return this.pageNavigating || isTypingContext(event) || key.ctrlKey || key.metaKey || key.altKey
-      || key.isComposing || key.keyCode === 229 || key.repeat || this.pageContext.overlays().length > 0;
+    return this.pageNavigating || this.cull.stackBusy() || isTypingContext(event) || key.shiftKey || key.ctrlKey || key.metaKey || key.altKey
+      || key.isComposing || key.keyCode === 229 || key.repeat || this.pageContext.overlays().length > 0
+      || !!(event.target instanceof HTMLElement ? event.target : null)?.closest('[role="slider"], [role="radiogroup"]');
   }
 
   @HostListener('document:keydown.arrowleft', ['$event'])
@@ -3171,6 +3180,27 @@ export class BurstCullingComponent implements OnDestroy {
     if (next) this.openLightbox(next, 0); else this.closeLightbox();
   }
 
+  @HostListener('document:keydown.r', ['$event'])
+  protected onRejectStackKey(event: Event): void {
+    if (!this.stacksMode() || this.shortcutsBlocked(event)) return;
+    const group = this.lightboxGroup();
+    if (!group) return;
+    event.preventDefault(); void this.rejectStackPhoto(group);
+  }
+
+  protected async rejectStackPhoto(group: CullingGroup): Promise<void> {
+    const current = this.pageSession();
+    if (!this.stacksMode() || !current() || this.cull.stackBusy() || this.lightboxGroupId() !== this.cull.groupKey(group)) return;
+    const index = this.lightboxIndex(); const path = group.photos[index]?.path;
+    if (!path) return;
+    if (await this.cull.rejectStackPhoto(group, path) && current() && this.lightboxGroupId() === this.cull.groupKey(group)
+      && this.lightboxGroup()?.photos[this.lightboxIndex()]?.path === path) {
+      const next = group.photos.slice(index + 1).find(photo => !this.cull.stackExcluded()[photo.path])
+        ?? group.photos.slice(0, index).reverse().find(photo => !this.cull.stackExcluded()[photo.path]);
+      if (next) this.focusPhotoInLightbox(group.photos.indexOf(next));
+    }
+  }
+
   protected async skipStackSuggestion(group: CullingGroup): Promise<void> {
     if (!this.stacksMode()) return;
     if (await this.cull.skipSuggestion(group)) this.afterSuggestion(group);
@@ -3186,7 +3216,7 @@ export class BurstCullingComponent implements OnDestroy {
   }
 
   protected async editSuggestion(group: CullingGroup): Promise<void> {
-    if (!this.stacksMode() || !this.auth.isEdition() || this.secondaryEditor || !this.cull.groups().includes(group)) return;
+    if (!this.stacksMode() || this.cull.stackBusy() || !this.auth.isEdition() || this.secondaryEditor || !this.cull.groups().includes(group)) return;
     const current = this.pageSession();
     const { StackDialogComponent } = await import('./stack-dialog.component');
     const { SKIP_SUGGESTION } = await import('./stack-editor-host');
@@ -3195,7 +3225,7 @@ export class BurstCullingComponent implements OnDestroy {
       ? group.photos[this.lightboxIndex()]?.path : group.photos[this.selectedPhotoIndex()]?.path;
     const onUndone = () => { if (current()) this.cull.restoreStackSuggestion(group); };
     const ref = this.dialog.open(StackDialogComponent, { width: '96vw', maxWidth: '1100px', data: {
-      paths: group.photos.map(photo => photo.path), activePath: focused, skippable: true, onUndone,
+      paths: group.photos.map(photo => photo.path), reviewDraft: this.cull.reviewDraft(group), activePath: focused, skippable: true, onUndone,
     } });
     this.secondaryEditor = ref;
     const result = await firstValueFrom(ref.afterClosed());

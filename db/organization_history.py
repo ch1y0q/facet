@@ -129,11 +129,11 @@ def _encode(value: Any) -> str:
 
 
 def record(conn: sqlite3.Connection, owner: str, kind: str, scope: str,
-           before: dict[str, dict[str, Any]]) -> None:
+           before: dict[str, dict[str, Any]]) -> list[int]:
     after = snapshot(conn, kind, scope, list(before))
     present = {path: old for path, old in before.items() if path in after}
     if all(old['values'] == after[path]['values'] for path, old in present.items()):
-        return
+        return []
     # Whole-stack Undo must include unchanged retained members too. A stack
     # action cannot be split: each part would restore incomplete membership.
     changes = [dict(path=path, before=old['values'], after=after[path]['values'], revision=after[path]['revision'])
@@ -158,7 +158,10 @@ def record(conn: sqlite3.Connection, owner: str, kind: str, scope: str,
             size += encoded_size + bool(part)
             part.append(change)
         parts.append(part)
+    entries: list[int] = []
     for index, part in enumerate(parts, 1):
-        conn.execute('INSERT INTO organization_history(owner,kind,scope,payload,part,parts) VALUES (?,?,?,?,?,?)',
+        cursor = conn.execute('INSERT INTO organization_history(owner,kind,scope,payload,part,parts) VALUES (?,?,?,?,?,?)',
                      (owner, kind, scope, _encode(part), index, len(parts)))
+        entries.append(cursor.lastrowid)
     conn.execute('DELETE FROM organization_history WHERE owner=? AND id NOT IN (SELECT id FROM organization_history WHERE owner=? ORDER BY id DESC LIMIT ?)', (owner, owner, MAX_ENTRIES))
+    return entries
