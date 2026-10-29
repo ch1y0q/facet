@@ -17,8 +17,16 @@ import { KEYMAP_ACTIONS, KeymapConfig, KeyboardMappingService } from '../../../c
   standalone: true,
   imports: [MatButtonModule, MatDialogModule, MatIconModule, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.Eager,
+  // Material's dialog-title carries a content:"" ::before box; as the first
+  // flex item of the title row it silently ate the row gap and shifted the
+  // icon+title 12px right of the content below.
+  styles: `
+    h2[mat-dialog-title]::before {
+      content: none;
+    }
+  `,
   template: `
-    <h2 mat-dialog-title class="!flex !items-center !gap-3 !text-base !font-semibold !m-0 !px-6 !pt-5 !pb-0">
+    <h2 mat-dialog-title class="!flex !items-center !gap-3 !text-base !font-semibold !m-0 !px-6 !pt-5 !pb-0 before:content-none">
       <span class="w-9 h-9 rounded-lg bg-[var(--mat-sys-primary-container)] flex items-center justify-center shrink-0">
         <mat-icon aria-hidden="true" class="!text-base !w-5 !h-5 !leading-5 text-[var(--mat-sys-on-primary-container)]">keyboard</mat-icon>
       </span>

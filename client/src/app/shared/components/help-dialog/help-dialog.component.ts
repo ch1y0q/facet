@@ -21,8 +21,15 @@ interface HelpDialogData { key?: string | null; note?: PageHelpNote | null; shor
   standalone: true,
   imports: [MatButtonModule, MatDialogModule, MatIconModule, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.Eager,
+  // Same title-row phantom flex item as the shortcuts dialog: kill the
+  // Material title's content:"" ::before so the gap lands where it should.
+  styles: `
+    h2[mat-dialog-title]::before {
+      content: none;
+    }
+  `,
   template: `
-    <h2 mat-dialog-title class="!flex !items-center !gap-3 !text-base !font-semibold !m-0 !px-6 !pt-5 !mb-3">
+    <h2 mat-dialog-title class="!flex !items-center !gap-3 !text-base !font-semibold !m-0 !px-6 !pt-5 !mb-3 before:content-none">
       <span class="w-9 h-9 rounded-lg bg-[var(--mat-sys-primary-container)] flex items-center justify-center shrink-0">
         <mat-icon aria-hidden="true" class="!text-base !w-5 !h-5 !leading-5 text-[var(--mat-sys-on-primary-container)]">help_outline</mat-icon>
       </span>
