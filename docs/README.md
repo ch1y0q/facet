@@ -15,6 +15,7 @@ photo library, then serves a gallery to browse it. Start with
 | [Scoring](SCORING.md) | Categories, weights, tuning guide |
 | [Face Recognition](FACE_RECOGNITION.md) | Face workflow, clustering, person management |
 | [Viewer](VIEWER.md) | Web gallery features and usage |
+| [API](API.md) | Viewer HTTP API reference |
 | [Interop](INTEROP.md) | Round-tripping ratings/tags with Lightroom, Capture One, digiKam, darktable |
 | [Immich](IMMICH.md) | Syncing ratings and favorites with Immich, plus the inbound webhook |
 | [Deployment](DEPLOYMENT.md) | NAS, remote servers, HTTPS, backups, multi-user |
@@ -24,10 +25,10 @@ photo library, then serves a gallery to browse it. Start with
 
 - **JPEG** (.jpg, .jpeg)
 - **HEIF/HEIC/HIF** (.heic, .heif, .hif) — requires `pillow-heif`; Canon HDR PQ `.HIF` stills are tone-mapped to SDR sRGB
-- **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — skipped when a matching JPEG/HEIC exists
-- **PNG, GIF, WebP, BMP, TIFF** (.png, .gif, .webp, .bmp, .tif, .tiff) — 16-bit greyscale is scaled to 8-bit, an alpha channel is composited over white, and animated GIF/WebP score the first frame; TIFF is converted to JPEG for the browser. PNG, WebP and TIFF carry EXIF when the writer stored it; GIF and BMP cannot, so `date_taken` and camera/lens stay empty for those two
-- **AVIF** (.avif) — requires a Pillow built with AVIF support (native from `pillow>=11.3`); HDR PQ AVIF stills are tone-mapped to SDR sRGB, the same treatment Canon `.HIF` gets; EXIF is read when present
-- **JPEG XL** (.jxl) — decoded through the existing `imagecodecs` dependency in standard installs and Docker; no extra package is needed. Previews use 8-bit RGB without HDR tone mapping; animated files use only their first frame, and valid EXIF is read when present. Reconstructed JPEGs retain ICC color management; native JXL preview profiles are unavailable through `imagecodecs`
+- **RAW** (.cr2, .cr3, .nef, .arw, .raf, .rw2, .dng, .orf, .srw, .pef) — skipped when a matching JPEG/HEIC exists. A RAW that LibRaw can't decode (a Lightroom `-HDR.dng` / `-Pano.dng` merge, or a camera newer than LibRaw) is scored from its largest embedded preview via `exiftool`; the preview must be at least 1024 px on the long edge. Lightroom Classic 13+ stores that preview as JPEG XL, which Facet decodes directly
+- **PNG, GIF, WebP, BMP, TIFF** (.png, .gif, .webp, .bmp, .tif, .tiff) — 16-bit greyscale is scaled to 8-bit, an alpha channel is composited over white, and animated GIF/WebP score the first frame. TIFF is converted to JPEG for the browser. PNG, WebP and TIFF carry EXIF when the writer stored it; GIF and BMP cannot, so `date_taken` and camera/lens stay empty for them
+- **AVIF** (.avif) — requires a Pillow built with AVIF support (native from `pillow>=11.3`); HDR PQ stills are tone-mapped to SDR sRGB; EXIF is read when present
+- **JPEG XL** (.jxl) — works out of the box through the core `imagecodecs` dependency, Docker included. HDR is not tone-mapped, animated files score the first frame, and valid EXIF is read when present. Reconstructed JPEGs keep ICC color management; native JXL color profiles are not available
 
 ## Common questions
 
