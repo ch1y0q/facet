@@ -861,7 +861,7 @@ function saveSectionStates(states: Record<string, boolean>): void {
     <!-- Save as smart album (pinned footer, shown only when relevant) -->
     @if (store.config()?.features?.show_albums && auth.isEdition() && store.activeFilterCount() > 0 && !store.filters().album_id) {
       <div class="shrink-0 px-2 py-2 border-t border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface)]">
-        <button mat-stroked-button class="w-full" (click)="saveAsSmartAlbum()">
+        <button mat-stroked-button class="w-full" [matTooltip]="I18N.albums.save_smart_tooltip | translate" (click)="saveAsSmartAlbum()">
           <mat-icon>bookmark_add</mat-icon>
           {{ I18N.albums.save_smart | translate }}
         </button>
