@@ -27,7 +27,8 @@ from api.db_helpers import (
 )
 from api.types import JUNK_NOT_JUNK
 from api.models.culling import (
-    PersonFacesResponse, PhotoFacesResponse, ToggleFavoriteResponse, ToggleRejectedResponse,
+    PersonFaceBoxesResponse, PersonFacesResponse, PhotoFacesResponse, ToggleFavoriteResponse,
+    ToggleRejectedResponse, UnassignFaceResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,15 @@ class AvatarRequest(BaseModel):
 
 class AssignFaceRequest(BaseModel):
     person_id: int
+
+
+# One gallery screen asks for its tiles in one call; 200 also stays far below
+# SQLite's bound-variable limit, so the photo and face lookups are single INs.
+MAX_FACE_BOX_PATHS = 200
+
+
+class PersonFaceBoxesRequest(BaseModel):
+    paths: list[str] = Field(min_length=1, max_length=MAX_FACE_BOX_PATHS)
 
 
 class AssignAllFacesRequest(BaseModel):
@@ -163,6 +173,21 @@ def _writable_photo_paths(conn, user, photo_paths):
     return [path for path in dict.fromkeys(photo_paths) if path in writable]
 
 
+def _drop_or_repair_person(conn, person_id):
+    """After faces left ``person_id``: recount, then delete it if it is empty.
+
+    Otherwise the detached faces may have included its stored representative,
+    which is repointed at a remaining face. Returns whether it was deleted.
+    """
+    update_person_face_count(conn, person_id)
+    count = conn.execute("SELECT face_count FROM persons WHERE id = ?", (person_id,)).fetchone()
+    if count and count[0] == 0:
+        conn.execute("DELETE FROM persons WHERE id = ?", (person_id,))
+        return True
+    repair_stale_representative(conn, person_id)
+    return False
+
+
 @router.get("/api/person/{person_id}/faces", response_model=PersonFacesResponse, response_model_exclude_unset=True)
 async def api_person_faces(
     person_id: int,
@@ -253,6 +278,52 @@ async def api_photo_faces(
         ]}
 
 
+@router.post("/api/person/{person_id}/face_boxes", response_model=PersonFaceBoxesResponse)
+async def api_person_face_boxes(
+    person_id: int,
+    body: PersonFaceBoxesRequest,
+    user: CurrentUser = Depends(require_authenticated),
+):
+    """The person's normalised face boxes for a batch of photos.
+
+    The gallery outlines the focused person on every tile once it is filtered to
+    one person; asking ``GET /api/photo/faces`` per tile made one request per
+    thumbnail. Only faces assigned to ``person_id`` are returned. A path the
+    caller cannot see, an unknown one, and a photo with no trustworthy box for
+    the person are all omitted alike.
+    """
+    paths = list(dict.fromkeys(body.paths))
+    vis_sql, vis_params = get_visibility_clause(user.user_id if user else None)
+    placeholders = ','.join('?' * len(paths))
+    async with get_async_db() as conn:
+        cur = await conn.execute(
+            f"SELECT path, image_width, image_height FROM photos "
+            f"WHERE path IN ({placeholders}) AND {vis_sql}",
+            [*paths, *vis_params],
+        )
+        dimensions = {row[0]: (row[1], row[2]) for row in await cur.fetchall()}
+        await cur.close()
+        if not dimensions:
+            return {'boxes': {}}
+        visible = list(dimensions)
+        cur = await conn.execute(f"""
+            SELECT photo_path, bbox_x1, bbox_y1, bbox_x2, bbox_y2
+            FROM faces
+            WHERE person_id = ? AND photo_path IN ({','.join('?' * len(visible))})
+            ORDER BY photo_path, face_index
+        """, [person_id, *visible])
+        faces = await cur.fetchall()
+        await cur.close()
+    boxes: dict[str, list[list[float]]] = {}
+    for face in faces:
+        width, height = dimensions[face['photo_path']]
+        box = normalized_face_box(
+            face['bbox_x1'], face['bbox_y1'], face['bbox_x2'], face['bbox_y2'], width, height)
+        if box is not None:
+            boxes.setdefault(face['photo_path'], []).append(box)
+    return {'boxes': boxes}
+
+
 @router.post("/api/face/{face_id}/assign")
 def api_assign_face(
     face_id: int,
@@ -291,6 +362,43 @@ def api_assign_face(
             raise
         except sqlite3.Error:
             logger.exception("Database error assigning face %d", face_id)
+            conn.rollback()
+            raise HTTPException(status_code=500, detail='Internal server error')
+
+
+@router.post("/api/face/{face_id}/unassign", response_model=UnassignFaceResponse)
+def api_unassign_face(
+    face_id: int,
+    user: CurrentUser = Depends(require_edition),
+):
+    """Detach one face from its person.
+
+    ``/api/photo/unassign_person`` drops the person from every face in a photo;
+    this acts on the face the user clicked alone, so "Not X" on one of two
+    faces wrongly grouped as X leaves the other one where it is. A person left
+    with no face is deleted, as ``/api/photo/unassign_person`` does; the
+    response still names it in ``person_id``.
+    """
+    with get_db() as conn:
+        try:
+            face = conn.execute("SELECT person_id FROM faces WHERE id = ?", (face_id,)).fetchone()
+            if not face:
+                raise HTTPException(status_code=404, detail="Face not found")
+            assert_faces_visible(conn, user.user_id if user else None, [face_id])
+            old_person_id = face['person_id']
+            if old_person_id is not None:
+                conn.execute("UPDATE faces SET person_id = NULL WHERE id = ?", (face_id,))
+                _drop_or_repair_person(conn, old_person_id)
+                conn.commit()
+                invalidate_stats_cache()
+            return {'success': True, 'face_id': face_id, 'person_id': old_person_id}
+        except LookupError:
+            conn.rollback()
+            raise HTTPException(status_code=404, detail="Face not found")
+        except HTTPException:
+            raise
+        except sqlite3.Error:
+            logger.exception("Database error unassigning face %d", face_id)
             conn.rollback()
             raise HTTPException(status_code=500, detail='Internal server error')
 
@@ -368,21 +476,7 @@ def api_unassign_person(
                 WHERE photo_path = ? AND person_id = ?
             """, (body.photo_path, body.person_id))
 
-            update_person_face_count(conn, body.person_id)
-
-            new_count = conn.execute(
-                "SELECT face_count FROM persons WHERE id = ?",
-                (body.person_id,)
-            ).fetchone()
-
-            person_deleted = False
-            if new_count and new_count[0] == 0:
-                conn.execute("DELETE FROM persons WHERE id = ?", (body.person_id,))
-                person_deleted = True
-            else:
-                # The detached faces may have included this person's stored
-                # representative; repoint it at a remaining face.
-                repair_stale_representative(conn, body.person_id)
+            person_deleted = _drop_or_repair_person(conn, body.person_id)
 
             conn.commit()
             invalidate_stats_cache()

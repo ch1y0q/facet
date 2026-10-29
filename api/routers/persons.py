@@ -20,7 +20,7 @@ from api.db_helpers import (
 from db import person_not_hidden_clause
 from db.embedding_space import ARCFACE_MODEL, active_embedding_model, tag_matches
 from db.person_centroids import recompute_person_centroid
-from api.models.culling import PersonsListResponse, PersonsNeedsNamingResponse
+from api.models.culling import PersonsListResponse, PersonsNeedsNamingResponse, RenamePersonResponse
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +165,8 @@ async def list_persons(
     ``named_only=true`` leaves out persons without a name, which the needs-naming
     list already shows.
     ``hidden_only=true`` returns the hidden ones alone (the persons page's Ignored
-    section).
+    section). It is ignored under ``sort=assignment``: the assignment rule wins,
+    so hidden persons never become assignment candidates.
     """
     recent = []
     if recent_ids:
@@ -200,7 +201,7 @@ async def list_persons(
                         + f' ELSE {len(recent)} END, ') if recent else ''
         order_params = recent
         order_clause = f"ORDER BY {recent_order}COALESCE(visible_counts.face_count, 0) DESC, p.name COLLATE NOCASE ASC, p.name ASC, p.id ASC"
-    if hidden_only:
+    if hidden_only and sort != 'assignment':
         where_parts.append(f"NOT {person_not_hidden_clause('p')}")
     elif not include_hidden or sort == 'assignment':
         where_parts.append(person_not_hidden_clause('p'))
@@ -250,7 +251,7 @@ async def list_persons(
     return {"persons": persons, "total": total, "sort": sort}
 
 
-@router.post("/api/persons/{person_id}/rename")
+@router.post("/api/persons/{person_id}/rename", response_model=RenamePersonResponse)
 def rename_person(
     person_id: int,
     body: RenamePersonRequest,
@@ -258,7 +259,9 @@ def rename_person(
 ):
     """Rename a person (set or update their name).
 
-    ``same_name_persons`` lists the other visible, non-hidden persons whose name is
+    ``face_count`` is this person's own stored count, the same measure as each
+    entry of ``same_name_persons``, so the viewer picks the largest merge target
+    like with like. ``same_name_persons`` lists the other visible, non-hidden persons whose name is
     the same ignoring case and surrounding spaces, largest first, so the viewer can
     offer to merge clusters of one person that clustering split apart. Nothing is
     merged here: two different people may share a name.
@@ -270,8 +273,10 @@ def rename_person(
         conn.execute("UPDATE persons SET name = ? WHERE id = ?", (name or None, person_id))
         conn.commit()
         same_name = _same_name_persons(conn, user_id, person_id, name) if name else []
+        row = conn.execute("SELECT face_count FROM persons WHERE id = ?", (person_id,)).fetchone()
     invalidate_stats_cache()
-    return {"success": True, "name": name or f"Person {person_id}", "same_name_persons": same_name}
+    return {"success": True, "name": name or f"Person {person_id}",
+            "face_count": (row[0] if row else 0) or 0, "same_name_persons": same_name}
 
 
 def _same_name_persons(conn, user_id, person_id, name):

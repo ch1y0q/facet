@@ -5,6 +5,7 @@ that file for why dependency_overrides is the only pattern that works for
 FastAPI Depends() chains.
 """
 
+import os
 import sqlite3
 from contextlib import asynccontextmanager, contextmanager
 from unittest import mock
@@ -206,51 +207,46 @@ class TestMergeBatch:
 class TestRenamePerson:
     """Tests for POST /api/persons/{id}/rename."""
 
-    def test_rename_person(self, client):
-        """Renaming sets the name on the person row."""
-        mock_conn = mock.MagicMock()
+    def test_rename_person(self, edition_client, seed_people):
+        """Renaming stores the trimmed name on the person row and touches nothing else."""
+        path = seed_people.photo("/test_persons_rename/", "a.jpg")
+        person_id = seed_people.person()
+        other_id = seed_people.person("Untouched")
+        seed_people.face(path, person_id)
+        seed_people.face(path, person_id)
+        seed_people.face(path, other_id)
 
-        with mock.patch(
-            "api.routers.persons.get_db", lambda: _cm(mock_conn)
-        ):
-            resp = client.post(
-                "/api/persons/1/rename", json={"name": "Alice"}
-            )
-
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["success"] is True
-        assert body["name"] == "Alice"
-        assert body["same_name_persons"] == []
-
-        # The UPDATE, then the read-only same-name lookup.
-        assert mock_conn.execute.call_args_list[0] == mock.call(
-            "UPDATE persons SET name = ? WHERE id = ?", ("Alice", 1)
-        )
-        assert mock_conn.execute.call_count == 2
-        mock_conn.commit.assert_called_once()
-
-
-    def test_rename_person_clear(self, client):
-        """Renaming with empty string sets name to NULL."""
-        mock_conn = mock.MagicMock()
-
-        with mock.patch(
-            "api.routers.persons.get_db", lambda: _cm(mock_conn)
-        ):
-            resp = client.post(
-                "/api/persons/1/rename", json={"name": ""}
-            )
+        resp = edition_client.post(f"/api/persons/{person_id}/rename", json={"name": "  Alice "})
 
         assert resp.status_code == 200
-        body = resp.json()
-        assert body["success"] is True
-        assert body["name"] == "Person 1"
+        # face_count is the renamed person's own, not the other person's.
+        assert resp.json() == {"success": True, "name": "Alice", "face_count": 2,
+                               "same_name_persons": []}
+        conn = sqlite3.connect(os.environ["DB_PATH"])
+        try:
+            names = dict(conn.execute(
+                "SELECT id, name FROM persons WHERE id IN (?, ?)", (person_id, other_id)).fetchall())
+        finally:
+            conn.close()
+        assert names == {person_id: "Alice", other_id: "Untouched"}
 
-        # Empty string stripped becomes falsy, so NULL is passed
-        mock_conn.execute.assert_called_once_with(
-            "UPDATE persons SET name = ? WHERE id = ?", (None, 1)
-        )
+    def test_rename_person_clear(self, edition_client, seed_people):
+        """Renaming with an empty string stores NULL and answers the placeholder name."""
+        path = seed_people.photo("/test_persons_rename/", "b.jpg")
+        person_id = seed_people.person("Alice")
+        seed_people.face(path, person_id)
+
+        resp = edition_client.post(f"/api/persons/{person_id}/rename", json={"name": "  "})
+
+        assert resp.status_code == 200
+        assert resp.json() == {"success": True, "name": f"Person {person_id}",
+                               "face_count": 1, "same_name_persons": []}
+        conn = sqlite3.connect(os.environ["DB_PATH"])
+        try:
+            name = conn.execute("SELECT name FROM persons WHERE id = ?", (person_id,)).fetchone()[0]
+        finally:
+            conn.close()
+        assert name is None
 
 
 class TestDeletePerson:
