@@ -128,7 +128,7 @@ class FaceAnalyzer:
         if not mismatch:
             return ""
         return (f"{mismatch} (a wheel built for a different CUDA major cannot load its provider "
-                "libraries, e.g. cublasLt64_13.dll). ")
+                "libraries, such as cuBLAS). ")
 
     def _crop_face_thumbnail(self, img_cv, bbox, padding=0.3):
         """Crop face region from full-res image with padding and resize to thumbnail.

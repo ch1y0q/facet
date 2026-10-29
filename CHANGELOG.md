@@ -11,7 +11,7 @@ All notable changes to Facet are documented in this file.
 ### Fixed
 
 - **Relink no longer refuses files whose timestamps were preserved on Windows.** The receipt compared a creation time read through an open handle with one read by path, which differ on NTFS for any file copied with its times preserved, so a legitimate relink answered "Destination changed while hashing".
-- **Cull, move, RAW download and export keep a companion's on-disk filename on Windows.** A companion RAW or `.xmp` sidecar found through a case-insensitive alias (`r1.cr2` for `r1.CR2`) was renamed to the alias spelling; the leaf now keeps the directory entry's spelling, as on macOS.
+- **Cull, move, RAW download and export keep a companion's on-disk filename on Windows.** A companion RAW or `.xmp` sidecar found through a case-insensitive alias (`r1.cr2` for `r1.CR2`) was renamed to the alias spelling; the leaf now keeps the directory entry's spelling, as RAW companions already did on macOS.
 - **Sidecar-export status no longer answers "not found" during a progress write on Windows.** Reading a receipt that is being republished is retried for about 50 ms.
 - **Configuration files are read as UTF-8 on Windows.** The shipped defaults, the operator's `scoring_config.json`, the secret file and the bundled schemas were decoded with the locale code page, which garbled a non-ASCII path such as a library folder name.
 - **The InsightFace CPU-fallback warning names a CUDA-major mismatch.** When the installed ONNX Runtime wheel is built for a different CUDA major than PyTorch, the warning says so (the doctor already did) next to the repair command.

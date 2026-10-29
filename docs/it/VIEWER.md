@@ -341,7 +341,7 @@ Quando un assistente collegato tramite [Assistenti IA (MCP)](AGENTS.md) ti mostr
 - **Ogni esecuzione parte come esecuzione a vuoto.** Vedi un'anteprima prima che venga scritto qualcosa; sposta/cestina partono solo con un `dry_run=false` esplicito.
 - **Il server sceglie i file dallo stato di ogni foto.** La copia agisce solo sulle conservate, sposta/cestina solo sulle scartate. Tutto il resto è riportato come `excluded_by_state`. Il client non può passare un elenco di file da eliminare.
 - **I file collegati sono opzionali.** Rifiutare un JPEG non porta con sé il suo RAW, a meno che tu spunti **Includi RAW compagno / XMP** (`include_companions`).
-- Su macOS e Windows, i file RAW collegati e i sidecar `.xmp` mantengono i nomi su disco, comprese le estensioni maiuscole.
+- Su macOS e Windows, i file RAW collegati mantengono i nomi su disco, comprese le estensioni maiuscole; su Windows, anche i sidecar `.xmp`.
 
 **Disponibilità di «Cestina gli scartati».** L'opzione "Cestina gli scartati" compare solo quando `viewer.cull.allow_trash` è attivo *e* il pacchetto `send2trash` è installato (`/api/config` riporta `cull.trash_available: true`). Altrimenti la finestra ne spiega il motivo: "the `send2trash` package is not installed" o "an administrator disabled trashing".
 

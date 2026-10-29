@@ -341,7 +341,7 @@ Cuando un asistente conectado mediante [Agentes de IA (MCP)](AGENTS.md) te muest
 - **Toda ejecución empieza como simulación.** Ves una vista previa antes de que se escriba nada; mover/enviar a la papelera solo se ejecuta con un `dry_run=false` explícito.
 - **El servidor elige los archivos según el estado de cada foto.** Copiar actúa solo sobre las conservadas, mover/papelera solo sobre las rechazadas. Todo lo demás se informa como `excluded_by_state`. El cliente no puede entregar una lista de archivos que eliminar.
 - **Los acompañantes son opcionales.** Rechazar un JPEG no se lleva su RAW salvo que marques **Incluir RAW / XMP acompañante** (`include_companions`).
-- En macOS y Windows, los RAW acompañantes y los sidecars `.xmp` conservan sus nombres en disco, incluidas las extensiones en mayúsculas.
+- En macOS y Windows, los RAW acompañantes conservan sus nombres en disco, incluidas las extensiones en mayúsculas; en Windows, los sidecars `.xmp` también.
 
 **Disponibilidad de enviar rechazadas a la papelera.** La opción "Enviar rechazadas a la papelera" solo aparece cuando `viewer.cull.allow_trash` está activado *y* el paquete `send2trash` está instalado (`/api/config` informa `cull.trash_available: true`). Si no, el diálogo explica por qué: "el paquete `send2trash` no está instalado" o "un administrador deshabilitó el envío a la papelera".
 

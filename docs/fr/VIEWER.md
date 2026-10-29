@@ -341,7 +341,7 @@ Quand un assistant connecté via [Agents IA (MCP)](AGENTS.md) vous montre une li
 - **Chaque exécution commence en simulation.** Vous voyez un aperçu avant que quoi que ce soit soit écrit ; déplacer/mettre à la corbeille ne s'exécutent qu'avec un `dry_run=false` explicite.
 - **Le serveur choisit les fichiers d'après l'état propre de chaque photo.** Copier n'agit que sur les gardées, déplacer/corbeille que sur les rejetées. Tout le reste est signalé comme `excluded_by_state`. Le client ne peut pas fournir une liste de fichiers à supprimer.
 - **Les compagnons sont optionnels.** Rejeter un JPEG n'emporte pas son RAW, sauf si vous cochez **Inclure le RAW / XMP associé** (`include_companions`).
-- Sous macOS et Windows, les fichiers RAW compagnons et les sidecars `.xmp` gardent leurs noms sur disque, y compris les extensions en majuscules.
+- Sous macOS et Windows, les fichiers RAW compagnons gardent leurs noms sur disque, y compris les extensions en majuscules ; sous Windows, les sidecars `.xmp` aussi.
 
 **Disponibilité de la corbeille pour les rejetées.** L'option « Mettre les rejetées à la corbeille » n'apparaît que lorsque `viewer.cull.allow_trash` est activé *et* que le paquet `send2trash` est installé (`/api/config` indique `cull.trash_available: true`). Sinon la boîte de dialogue en donne la raison : « le paquet `send2trash` n'est pas installé » ou « un administrateur a désactivé la mise à la corbeille ».
 
