@@ -14,8 +14,8 @@ import { StackSuggestionsDialogComponent } from './stack-suggestions-dialog.comp
 import { components } from '../../core/api/schema';
 
 type Suggestion = components['schemas']['StackSuggestion'];
-const candidate: Suggestion = { key: 'a'.repeat(64), kind: 'duplicate', paths: ['/a.jpg', '/b.jpg'], cover_path: '/b.jpg' };
-const second: Suggestion = { key: 'b'.repeat(64), kind: 'burst', paths: ['/c.jpg', '/d.jpg', '/e.jpg'], cover_path: '/c.jpg' };
+const candidate: Suggestion = { key: 'a'.repeat(64), kind: 'duplicate', group_id: 1, paths: ['/a.jpg', '/b.jpg'], cover_path: '/b.jpg', photos: null };
+const second: Suggestion = { key: 'b'.repeat(64), kind: 'burst', group_id: 2, paths: ['/c.jpg', '/d.jpg', '/e.jpg'], cover_path: '/c.jpg', photos: null };
 
 describe('suggested stack review through HTTP and router', () => {
   let fixture: ComponentFixture<StackSuggestionsDialogComponent>;

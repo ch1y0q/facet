@@ -8782,6 +8782,8 @@ export interface components {
         StackSuggestion: {
             /** Cover Path */
             cover_path: string;
+            /** Group Id */
+            group_id: number;
             /** Key */
             key: string;
             /**
@@ -8791,6 +8793,8 @@ export interface components {
             kind: "duplicate" | "burst";
             /** Paths */
             paths: string[];
+            /** Photos */
+            photos: components["schemas"]["StackSuggestionPhoto"][] | null;
         };
         /** StackSuggestionDismissal */
         StackSuggestionDismissal: {
@@ -8802,12 +8806,55 @@ export interface components {
             /** Paths */
             paths: string[];
         };
+        /**
+         * StackSuggestionPhoto
+         * @description Darkroom rows in detector order, with the caller's current marks.
+         */
+        StackSuggestionPhoto: {
+            /** Aesthetic */
+            aesthetic: number | null;
+            /** Aggregate */
+            aggregate: number | null;
+            /** Burst Score */
+            burst_score: number;
+            /** Date Taken */
+            date_taken: string | null;
+            /** Expression Score */
+            expression_score: number | null;
+            /** Eyes Open Score */
+            eyes_open_score: number | null;
+            /** Filename */
+            filename: string;
+            /** Is Blink */
+            is_blink: number | null;
+            /** Is Burst Lead */
+            is_burst_lead: number | null;
+            /** Is Favorite */
+            is_favorite: number | null;
+            /** Is Kept */
+            is_kept: number | null;
+            /** Is Rejected */
+            is_rejected: number | null;
+            /** Path */
+            path: string;
+            /** Preview Revision */
+            preview_revision: string | null;
+            /** Star Rating */
+            star_rating: number | null;
+            /** Tech Sharpness */
+            tech_sharpness: number | null;
+        };
         /** StackSuggestionsRequest */
         StackSuggestionsRequest: {
             /** Filters */
             filters?: {
                 [key: string]: string | number | boolean;
             };
+            /**
+             * Include Photos
+             * @default false
+             */
+            include_photos?: boolean;
         };
         /** StackSuggestionsResponse */
         StackSuggestionsResponse: {

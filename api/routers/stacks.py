@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 
 from api.auth import CurrentUser, is_multi_user_enabled, require_authenticated, require_edition
 from api.database import get_db
-from api.db_helpers import after_commit, get_visibility_clause, is_locked_error, retry_on_locked
+from api.db_helpers import after_commit, get_visibility_clause, is_locked_error, retry_on_locked, select_in_chunks
 from api.models.stacks import (CreateStack, PhotoStack, StackMutation, UpdateStack,
                                StackRegroupApply, StackRegroupMutation, StackRegroupPreview,
                                StackRegroupPreviewRequest,
@@ -117,6 +117,7 @@ def stack_suggestions(body: StackSuggestionsRequest, response: Response,
     """Scoped, bounded suggestions only; no writes, filesystem reads or cached private rows."""
     from pydantic import ValidationError
     from api.models.gallery import query_value
+    from api.routers.burst_culling import _compute_burst_score, _culling_photo_columns, attach_user_marks
     from api.routers.gallery import gallery_scope_sql, _raise_422_for_invalid_gallery_params
 
     response.headers['Cache-Control'] = 'no-store'
@@ -130,7 +131,25 @@ def stack_suggestions(body: StackSuggestionsRequest, response: Response,
             source, where, params = gallery_scope_sql(conn, filters, user.user_id)
         except ValidationError as exc:
             _raise_422_for_invalid_gallery_params(exc, logger, 'Invalid stack suggestion filters: %s')
-        return dict(suggestions=suggestion_store.suggestions(conn, stack_owner(user.user_id), source, where, params))
+        groups = suggestion_store.suggestions(conn, stack_owner(user.user_id), source, where, params)
+        if body.include_photos:
+            paths = [path for group in groups for path in group['paths']]
+            visibility, visibility_params = get_visibility_clause(user.user_id)
+            photos = {}
+            for row in select_in_chunks(conn,
+                    f"SELECT {_culling_photo_columns('photos.path', burst=True)} FROM photos "
+                    f"WHERE photos.path IN ({{placeholders}}) AND ({visibility})",
+                    paths, after=visibility_params):
+                photo = dict(row)
+                photo['burst_score'] = round(_compute_burst_score(photo), 2)
+                photo['preview_revision'] = None
+                photos[photo['path']] = photo
+            for group in groups:
+                # The detector's cover/aggregate ordering is part of the contract;
+                # culling's group formatter would reorder these by burst score.
+                group['photos'] = [photos[path] for path in group['paths']]
+            attach_user_marks(conn, groups, user.user_id)
+        return dict(suggestions=groups)
 
 
 @router.post('/api/stacks/suggestions/dismissals', status_code=204)
