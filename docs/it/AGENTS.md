@@ -28,7 +28,7 @@ Il modo più semplice è il browser:
 
 La finestra offre solo i livelli che il server concederà:
 
-- un'installazione aperta offre solo **Solo lettura e controllo**;
+- un'installazione aperta offre **Solo lettura e controllo**, più **Modifica completa** nei casi indicati sotto;
 - **Agisci come me** compare solo sulle installazioni multiutente;
 - **Modifica completa** compare solo in una sessione di modifica; su un'installazione aperta significa un browser sullo stesso computer con `viewer.trusted_local_editing` attivo, oppure una sessione con accesso tramite `viewer.edition_password` (il token modifica allora solo dallo stesso computer).
 

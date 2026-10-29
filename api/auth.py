@@ -314,7 +314,7 @@ def _trusted_local_editing(request: Request) -> bool:
 
 
 class _HttpView:
-    """The three request attributes ``_trusted_local_editing`` reads, with a WebSocket's scheme mapped."""
+    """The three request attributes ``request_is_local`` reads, with a WebSocket's scheme mapped."""
 
     __slots__ = ('headers', 'client', 'url')
 

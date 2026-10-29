@@ -2534,7 +2534,7 @@ Expone las herramientas descritas en [Agentes de IA (MCP)](AGENTS.md) en `POST /
 
 En una instalación abierta (sin `viewer.password`):
 - `/mcp` solo sirve una clave anónima de solo lectura, que no muestra nada que la `/api` abierta no muestre ya.
-- Un token nuevo es `readonly`, salvo que `viewer.trusted_local_editing` permita un token de edición completa para las peticiones del mismo equipo.
+- Un token nuevo es `readonly`, salvo que `viewer.trusted_local_editing` esté activado o la sesión haya iniciado con `viewer.edition_password`: ambos pueden crear un token de edición completa, que solo edita en las peticiones del mismo equipo.
 - Los tokens solo se pueden crear, listar y revocar desde el ordenador donde se ejecuta Facet (o en una sesión de edición cuando `viewer.edition_password` está definido).
 
 ```json

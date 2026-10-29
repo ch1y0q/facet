@@ -28,7 +28,7 @@ The easiest way is the browser:
 
 The dialog only offers levels the server will grant:
 
-- an open install offers only **Read and pilot only**;
+- an open install offers **Read and pilot only**, plus **Full editing** in the cases listed below;
 - **Act as me** appears only on multi-user installs;
 - **Full editing** appears only in an edition session; on an open install that means a browser on the same computer under `viewer.trusted_local_editing`, or a session logged in with `viewer.edition_password` (the token then edits only from the same computer).
 
@@ -76,7 +76,7 @@ A token is minted with a grant: `readonly`, `user` or `edition`. On every call t
   - Delete tools still need `viewer.mcp.allow_destructive`.
   - Scanning (`start_scan`, `scan_status`) works without `viewer.features.show_scan_button`, as it does for the local browser.
 - **Edition password on an open install.** With `viewer.edition_password` set and no `viewer.password`, a session logged in with the edition password can mint **Full editing**, from any machine; any other session gets `readonly`.
-  - The token is `edition` only for `/mcp` requests that pass the same same-machine check as above. A LAN client or a proxied request gets `readonly`: the token is a bearer secret on an install anyone can read.
+  - The token is `edition` only for `/mcp` requests that pass the same-machine check above. A LAN client or a proxied request gets `readonly`: the token is a bearer secret on an install anyone can read.
   - Changing or clearing the edition password lowers it to `readonly`; mint a new one after the change.
   - Scanning still needs `viewer.features.show_scan_button`, as for an edition browser session. Delete tools still need `viewer.mcp.allow_destructive`.
 

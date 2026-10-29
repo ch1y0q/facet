@@ -11,12 +11,14 @@ Tests marked REGRESSION GUARD pass before and after the change; they pin a refus
 import importlib
 import subprocess
 from collections import deque
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
 
 from api import config as api_config
 from api.agent import tokens
+from api.auth import EDITION_PASSWORD_KEY, password_generation
 from tests.conftest import AGENT_DIR, AgentEnv, agent_db
 from tests.test_agent_local_editing import FORWARDED, LOCAL, FakeProc, HostClient
 
@@ -64,6 +66,11 @@ def spawned(monkeypatch):
                        ("output_lines", deque(maxlen=500))):
         monkeypatch.setitem(scan._scan_state, key, value)
     return calls
+
+
+def peer(env, base_url, address):
+    """The same app as ``env``, reached at ``base_url`` from the TCP peer ``address``."""
+    return AgentEnv(HostClient(env.app, base_url=base_url, client=(address, 5000)), "open")
 
 
 def edition_session(env):
@@ -185,7 +192,6 @@ def test_the_token_row_pins_the_edition_generation(build):
     local, _ = build()
     edition_token(local)
     row = agent_db("SELECT edition_gen, minted_level FROM mcp_tokens WHERE user_id = ?", tokens.OPEN_PRINCIPAL)
-    from api.auth import EDITION_PASSWORD_KEY, password_generation
     assert row == [(password_generation(EDITION_PASSWORD_KEY), "edition")]
 
 
@@ -231,3 +237,90 @@ def test_a_lan_use_of_the_token_never_reaches_the_edition_tab(build, fake_tab):
     fake_tab(local, session["Authorization"].removeprefix("Bearer "), origin="http://localhost")
     result = remote.call(local.token(session, "edition"), "ui_get_context")
     assert result["ok"] is False and result["error"] == "no_tab", result
+
+
+# ---------------------------------------------------------------- the same-machine boundary itself
+# The "remote" client above is refused by its Host alone; these pin each other half of the check.
+
+def test_a_lan_peer_forging_a_local_host_is_readonly(build, photo, fake_tab):
+    local, _ = build()
+    forged = peer(local, "http://localhost", "192.0.2.7")
+    session = edition_session(local)
+    token = local.token(session, "edition")
+    assert rate(forged, token, photo)["error"] == "forbidden_level"
+    assert agent_db("SELECT star_rating FROM photos WHERE path = ?", photo) == [(0,)]
+    fake_tab(local, session["Authorization"].removeprefix("Bearer "), origin="http://localhost")
+    assert forged.call(token, "ui_get_context")["error"] == "no_tab"
+
+
+def test_a_loopback_peer_with_a_foreign_origin_is_refused(build, photo):
+    # A browser page on the same machine: the /mcp gate refuses any cross-origin request outright.
+    local, _ = build()
+    resp = local.rpc(edition_token(local), "tools/call",
+                     {"name": "set_rating", "arguments": {"paths": [photo], "rating": 4}},
+                     headers={"Origin": "http://evil.example"})
+    assert resp.status_code == 403
+    assert agent_db("SELECT star_rating FROM photos WHERE path = ?", photo) == [(0,)]
+
+
+def test_a_loopback_peer_forwarding_for_loopback_is_readonly(build, photo):
+    local, _ = build()
+    refused = local.rpc(edition_token(local), "tools/call",
+                        {"name": "set_rating", "arguments": {"paths": [photo], "rating": 4}},
+                        headers={"X-Forwarded-For": "127.0.0.1"}).json()["result"]["content"][0]["text"]
+    assert "forbidden_level" in refused
+    assert agent_db("SELECT star_rating FROM photos WHERE path = ?", photo) == [(0,)]
+
+
+def test_an_ipv4_mapped_loopback_peer_writes(build, photo):
+    local, _ = build()
+    mapped = peer(local, "http://localhost", "::ffff:127.0.0.1")
+    assert rate(mapped, edition_token(local), photo)["ok"]
+
+
+# ---------------------------------------------------------------- who may mint edition
+
+def test_a_lan_viewer_session_never_mints_edition(build):
+    _, remote = build()
+    resp = remote.client.post("/api/mcp/tokens", json={"name": "test", "level": "edition"},
+                              headers=remote.login())
+    assert resp.status_code != 200 or resp.json()["level"] == "readonly", resp.text
+
+
+def test_a_session_whose_edition_claim_went_stale_mints_readonly(build):
+    local, _ = build()
+    session = edition_session(local)
+    api_config.VIEWER_CONFIG["edition_password"] = "rotated-pw"
+    assert local.mint(session, "edition").json()["level"] == "readonly"
+
+
+def test_a_token_minted_under_trusted_local_editing_stays_readonly_once_an_edition_password_is_set(build, photo):
+    local, _ = build()
+    api_config.VIEWER_CONFIG["edition_password"] = ""
+    api_config.VIEWER_CONFIG["trusted_local_editing"] = True
+    token = local.token(local.login(), "edition")
+    assert rate(local, token, photo)["ok"]
+    api_config.VIEWER_CONFIG["trusted_local_editing"] = False
+    api_config.VIEWER_CONFIG["edition_password"] = EDITION_PW
+    assert rate(local, token, photo)["error"] == "forbidden_level"
+
+
+def test_a_row_minted_before_edition_generations_were_pinned_stays_readonly(build, photo):
+    local, _ = build()
+    token = edition_token(local)
+    agent_db("UPDATE mcp_tokens SET edition_gen = '' WHERE user_id = ?", tokens.OPEN_PRINCIPAL)
+    assert rate(local, token, photo)["error"] == "forbidden_level"
+
+
+# ---------------------------------------------------------------- identity
+
+def test_the_local_edition_grant_acts_as_the_edition_session(build):
+    local, _ = build()
+    token = edition_token(local)
+    grant = tokens.verify(token)
+    claims = replace(grant, local=True).resolve().jwt_claims()
+    # The edition browser session signs ``_legacy``: sharing it keeps the undo history and
+    # sidecar jobs, which are keyed by owner, in one list for the user and the assistant.
+    assert claims["sub"] == tokens.LEGACY_PRINCIPAL and claims["edition"] is True
+    assert "mcp_local" not in claims
+    assert grant.edition_gen == password_generation(EDITION_PASSWORD_KEY)

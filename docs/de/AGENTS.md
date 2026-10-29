@@ -28,7 +28,7 @@ Am einfachsten geht es im Browser:
 
 Der Dialog bietet nur Stufen an, die der Server gewährt:
 
-- eine offene Installation bietet nur **Nur lesen und steuern**;
+- eine offene Installation bietet **Nur lesen und steuern**, dazu **Volle Bearbeitung** in den unten genannten Fällen;
 - **In meinem Namen handeln** erscheint nur bei Mehrbenutzer-Installationen;
 - **Volle Bearbeitung** erscheint nur in einer Bearbeitungssitzung; bei einer offenen Installation heißt das ein Browser auf demselben Rechner mit aktivem `viewer.trusted_local_editing`, oder eine mit `viewer.edition_password` angemeldete Sitzung (das Token bearbeitet dann nur vom selben Rechner aus).
 
@@ -77,7 +77,7 @@ Ein Token wird mit einer Stufe erstellt: `readonly`, `user` oder `edition`. Bei 
   - Das Scannen (`start_scan`, `scan_status`) funktioniert ohne `viewer.features.show_scan_button`, wie beim lokalen Browser.
 - **Bearbeitungspasswort auf einer offenen Installation.** Mit gesetztem `viewer.edition_password` und ohne `viewer.password` kann eine mit dem Bearbeitungspasswort angemeldete Sitzung **Volle Bearbeitung** erzeugen, von jedem Rechner aus; jede andere Sitzung erhält `readonly`.
   - Das Token ist nur für `/mcp`-Anfragen `edition`, die dieselbe Prüfung auf denselben Rechner wie oben bestehen. Ein LAN-Client oder eine Anfrage über einen Proxy erhält `readonly`: Das Token ist ein Bearer-Geheimnis auf einer Installation, die jeder lesen kann.
-  - Wird das Bearbeitungspasswort geändert oder entfernt, fällt das Token auf `readonly`; erzeuge danach ein neues.
+  - Wird das Bearbeitungspasswort geändert oder entfernt, fällt das Token auf `readonly`; erzeugen Sie danach ein neues.
   - Das Scannen braucht weiterhin `viewer.features.show_scan_button`, wie eine Bearbeitungssitzung im Browser. Löschwerkzeuge brauchen weiterhin `viewer.mcp.allow_destructive`.
 
 > **Warnung:** `ng serve --host 0.0.0.0` oder jeder Proxy auf demselben Rechner, der keine Proxy-Header hinzufügt, lässt einen LAN-Client, der `Host: localhost` sendet, als lokal durchgehen. Dann schützt nur das Token `/mcp`.

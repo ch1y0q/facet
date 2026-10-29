@@ -28,7 +28,7 @@ O mais simples é o navegador:
 
 A caixa só oferece os níveis que o servidor concederá:
 
-- uma instalação aberta oferece apenas **Apenas ler e controlar**;
+- uma instalação aberta oferece **Apenas ler e controlar**, e **Edição completa** nos casos indicados abaixo;
 - **Agir como eu** só aparece em instalações multiusuário;
 - **Edição completa** só aparece em uma sessão de edição; em uma instalação aberta isso significa um navegador no mesmo computador com `viewer.trusted_local_editing`, ou uma sessão conectada com `viewer.edition_password` (o token então só edita a partir do mesmo computador).
 

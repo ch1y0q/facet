@@ -28,7 +28,7 @@ Facet 可以充当 [Model Context Protocol](https://modelcontextprotocol.io/)（
 
 对话框只提供服务器会授予的级别：
 
-- 开放安装只提供**仅读取和操作界面**；
+- 开放安装提供**仅读取和操作界面**，并在下列情形中提供**完全编辑**；
 - **代表我操作**仅出现在多用户安装中；
 - **完全编辑**仅在编辑会话中提供；在开放安装上，这意味着在同一台计算机上的浏览器中，且启用了 `viewer.trusted_local_editing`，或者是以 `viewer.edition_password` 登录的会话（此时令牌只能从同一台计算机进行编辑）。
 

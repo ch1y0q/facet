@@ -270,9 +270,10 @@ class ResolvedGrant:
         """Claims for the 60-second internal JWT, or None on an open install.
 
         The open-install exception is a local Full-editing grant. With ``local_edition`` the JWT
-        carries the edition claim with no ``sub``, which ``CurrentUser.is_edition`` honours only while
-        an edition password backs it (and ``create_access_token`` pins its generation), exactly as for
-        the edition browser session. Under the opt-in (``trusted_local``) it signs NO ``sub`` (the
+        carries the edition claim under the edition browser session's own ``sub`` (``_legacy``), so
+        owner-keyed state (the undo history, sidecar jobs) is shared with the user's edition session;
+        ``CurrentUser.is_edition`` honours the claim only while an edition password backs it (and
+        ``create_access_token`` pins its generation), exactly as for that session. Under the opt-in (``trusted_local``) it signs NO ``sub`` (the
         open-install browser's own identity is ``user_id=None``; PyJWT refuses a null ``sub``, and an
         undecodable bearer would fall through to the anonymous human path) plus ``mcp_local``, the only way a request-derived trust
         reaches an agent JWT (see ``CurrentUser.from_payload``).
@@ -286,8 +287,8 @@ class ResolvedGrant:
                 return {"role": self.role, "display_name": "", "edition": True, "mcp": True,
                         "mcp_local": True, "mcp_token_id": self.token_id}
             if self.level == "edition" and self.local_edition:
-                return {"role": self.role, "display_name": "", "edition": True, "mcp": True,
-                        "mcp_token_id": self.token_id}
+                return {"sub": LEGACY_PRINCIPAL, "role": self.role, "display_name": "", "edition": True,
+                        "mcp": True, "mcp_token_id": self.token_id}
             return None
         return {
             "sub": self.principal,

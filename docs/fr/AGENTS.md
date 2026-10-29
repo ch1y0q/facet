@@ -28,7 +28,7 @@ Le plus simple passe par le navigateur :
 
 La boîte ne propose que les niveaux que le serveur accordera :
 
-- une installation ouverte ne propose que **Lecture et pilotage uniquement** ;
+- une installation ouverte propose **Lecture et pilotage uniquement**, et **Édition complète** dans les cas indiqués ci-dessous ;
 - **Agir à ma place** n'apparaît que sur les installations multi-utilisateurs ;
 - **Édition complète** n'apparaît que dans une session d'édition ; sur une installation ouverte, cela signifie un navigateur du même ordinateur avec `viewer.trusted_local_editing` actif, ou une session connectée avec `viewer.edition_password` (le jeton ne modifie alors que depuis le même ordinateur).
 

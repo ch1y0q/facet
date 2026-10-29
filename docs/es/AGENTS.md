@@ -28,7 +28,7 @@ Lo más sencillo es el navegador:
 
 El cuadro solo ofrece los niveles que el servidor concederá:
 
-- una instalación abierta solo ofrece **Solo leer y pilotar**;
+- una instalación abierta ofrece **Solo leer y pilotar**, y **Edición completa** en los casos indicados abajo;
 - **Actuar como yo** aparece solo en instalaciones multiusuario;
 - **Edición completa** aparece solo en una sesión de edición; en una instalación abierta significa un navegador del mismo equipo con `viewer.trusted_local_editing` activo, o una sesión iniciada con `viewer.edition_password` (el token solo edita entonces desde el mismo equipo).
 
