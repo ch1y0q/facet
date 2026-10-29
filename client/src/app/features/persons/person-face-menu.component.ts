@@ -77,12 +77,12 @@ export interface PersonFaceMenuTarget {
             }
             <button mat-menu-item (click)="findMore()">
               <mat-icon>person_search</mat-icon>
-              {{ I18N.photo_faces.find_more | translate:{ name: v.name || '' } }}
+              {{ (v.name ? I18N.photo_faces.find_more : I18N.photo_faces.find_more_group) | translate:{ name: v.name || '' } }}
             </button>
             @if (v.hasFace) {
               <button mat-menu-item (click)="notThisPerson()">
                 <mat-icon>person_remove</mat-icon>
-                {{ I18N.photo_faces.not_person | translate:{ name: v.name || '' } }}
+                {{ (v.name ? I18N.photo_faces.not_person : I18N.photo_faces.not_group) | translate:{ name: v.name || '' } }}
               </button>
             } @else {
               <button mat-menu-item (click)="setHidden(!v.hidden)">
@@ -172,7 +172,9 @@ export class PersonFaceMenuComponent {
     // Already in the gallery, a navigation to the same route leaves the store's
     // filters (other people among them) in place, so replace them here.
     if (this.router.url.split(/[?#]/)[0] === '/') {
-      void this.store.resetFilters().then(() => this.store.updateFilters({ person_id: String(person.id) }));
+      void this.store.resetFilters()
+        .then(() => this.store.updateFilters({ person_id: String(person.id) }))
+        .catch(() => this.snackBar.open(this.i18n.t(I18N.errors.action_failed), '', { duration: 3000 }));
       return;
     }
     void this.router.navigate(['/'], { queryParams: { person_id: String(person.id) } });

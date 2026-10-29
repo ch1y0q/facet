@@ -11,8 +11,6 @@ export type FaceBoxMode = 'off' | 'hover' | 'always';
 export const FACE_BOX_MODES: readonly FaceBoxMode[] = ['hover', 'always', 'off'];
 
 export const FACE_BOX_MODE_KEY = 'facet_face_box_mode';
-/** The boolean the previous two-state toggle stored ('1' = always), read once to migrate it. */
-export const LEGACY_SHOW_FACE_BOXES_KEY = 'facet_show_face_boxes';
 
 /** The mode after ``mode`` in the cycle. */
 export function nextFaceBoxMode(mode: FaceBoxMode): FaceBoxMode {
@@ -33,21 +31,13 @@ export const FACE_BOX_MODE_LABELS: Record<FaceBoxMode, string> = {
   always: I18N.photo_faces.box_mode_always,
 };
 
-/**
- * The mode remembered by this browser. The two-state toggle's stored boolean is
- * migrated once (``'1'`` becomes ``always``, anything else ``hover``) and removed.
- */
+/** The mode remembered by this browser, ``hover`` when none is stored. */
 export function readFaceBoxMode(storage: Storage | null = safeStorage()): FaceBoxMode {
   if (!storage) return 'hover';
   try {
     const stored = storage.getItem(FACE_BOX_MODE_KEY);
     if (stored === 'off' || stored === 'hover' || stored === 'always') return stored;
-    const legacy = storage.getItem(LEGACY_SHOW_FACE_BOXES_KEY);
-    if (legacy === null) return 'hover';
-    const migrated: FaceBoxMode = legacy === '1' ? 'always' : 'hover';
-    storage.setItem(FACE_BOX_MODE_KEY, migrated);
-    storage.removeItem(LEGACY_SHOW_FACE_BOXES_KEY);
-    return migrated;
+    return 'hover';
   } catch {
     return 'hover';
   }

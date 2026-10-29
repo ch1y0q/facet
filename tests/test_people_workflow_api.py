@@ -397,3 +397,103 @@ class TestPossibleFacesSimilarGroups:
             {"person_id": closer_named, "name": "Anna B", "face_count": 2, "similarity": 0.995},
             {"person_id": close_unnamed, "name": None, "face_count": 1, "similarity": 0.9578},
         ]
+
+
+# ---------------------------------------------------------------------------
+# Unassign keeps the surviving person's centroid in step
+# ---------------------------------------------------------------------------
+
+def _stored_centroid(person_id):
+    conn = _db()
+    try:
+        raw = conn.execute("SELECT centroid FROM persons WHERE id = ?", (person_id,)).fetchone()[0]
+    finally:
+        conn.close()
+    return None if raw is None else np.frombuffer(raw, dtype=np.float32)
+
+
+def test_unassign_recomputes_the_surviving_persons_centroid(edition_client, seed_people):
+    anna = seed_people.person("Anna")
+    photo = seed_people.photo(PREFIX, "centroid.jpg")
+    clicked = seed_people.face(photo, anna, embedding=_vector(0.0, 1.0))
+    seed_people.face(photo, anna, embedding=_vector(1.0, 0.0))
+    _set_centroid(anna, _vector(1.0, 1.0))
+
+    resp = edition_client.post(f"/api/face/{clicked}/unassign")
+
+    assert resp.status_code == 200, resp.text
+    # Only the (1, 0) face remains: the stale mean of both faces would not be this.
+    centroid = _stored_centroid(anna)
+    assert centroid is not None
+    assert np.allclose(centroid[:2], [1.0, 0.0], atol=1e-5)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/face/{id}/assign — the target's representative
+# ---------------------------------------------------------------------------
+
+class TestAssignRepresentative:
+    def test_a_target_without_a_representative_gets_one(self, edition_client, seed_people):
+        anna = seed_people.person("Anna")
+        face = seed_people.face(seed_people.photo(PREFIX, "loose_assign.jpg"))
+        assert _person_row(anna) == (0, None)
+
+        resp = edition_client.post(f"/api/face/{face}/assign", json={"person_id": anna})
+
+        assert resp.status_code == 200, resp.text
+        assert _person_row(anna) == (1, face)
+
+    def test_a_target_that_has_one_keeps_it(self, edition_client, seed_people):
+        anna = seed_people.person("Anna")
+        photo = seed_people.photo(PREFIX, "keeps.jpg")
+        first = seed_people.face(photo, anna, confidence=0.5)
+        newcomer = seed_people.face(photo, None, confidence=0.99)
+        conn = _db()
+        conn.execute("UPDATE persons SET representative_face_id = ? WHERE id = ?", (first, anna))
+        conn.commit()
+        conn.close()
+
+        resp = edition_client.post(f"/api/face/{newcomer}/assign", json={"person_id": anna})
+
+        assert resp.status_code == 200, resp.text
+        assert _person_row(anna) == (2, first)
+
+
+# ---------------------------------------------------------------------------
+# Multi-user: another user's persons never leak into the suggestions
+# ---------------------------------------------------------------------------
+
+def test_possible_faces_similar_groups_omit_a_persons_only_in_other_directories(
+        regular_client, seed_people):
+    target = seed_people.person("Anna")
+    mine = seed_people.person(None)
+    theirs = seed_people.person(None)
+    for person in (target, mine, theirs):
+        _set_centroid(person, _vector(1.0))
+    seed_people.face(seed_people.photo(MINE, "t.jpg"), target)
+    seed_people.face(seed_people.photo(MINE, "m.jpg"), mine)
+    seed_people.face(seed_people.photo(THEIRS, "x.jpg"), theirs)
+
+    with _multi_user({"u1": [MINE.rstrip("/")]}):
+        body = regular_client.get(f"/api/person/{target}/possible_faces",
+                                  params={"path_prefix": PREFIX}).json()
+
+    ids = {g["person_id"] for g in body["similar_groups"]}
+    assert mine in ids
+    assert theirs not in ids
+
+
+def test_rename_same_name_persons_omit_a_person_only_in_other_directories(
+        edition_client, seed_people):
+    target = seed_people.person(None)
+    mine = seed_people.person("Peter Salem")
+    theirs = seed_people.person("peter salem")
+    seed_people.face(seed_people.photo(MINE, "t.jpg"), target)
+    seed_people.face(seed_people.photo(MINE, "m.jpg"), mine)
+    seed_people.face(seed_people.photo(THEIRS, "x.jpg"), theirs)
+
+    with _multi_user({"test": [MINE.rstrip("/")]}):
+        resp = edition_client.post(f"/api/persons/{target}/rename", json={"name": "Peter Salem"})
+
+    assert resp.status_code == 200, resp.text
+    assert [p["id"] for p in resp.json()["same_name_persons"]] == [mine]

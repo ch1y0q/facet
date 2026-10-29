@@ -78,8 +78,8 @@ export interface Person {
         </span>
         <!-- While the name line is open the action row is not shown, so the card's
              actions sit on the avatar: view photos, find more, ignore. -->
-        @if (canEdit() && isEditing()) {
-          <div class="absolute bottom-1.5 right-1.5 z-10 flex gap-1" role="presentation" (dblclick)="$event.stopPropagation()">
+        @if (canEdit() && isEditing() && !restoreOnly()) {
+          <div class="absolute bottom-1.5 right-1.5 z-10 flex gap-1" role="presentation" (keydown)="$event.stopPropagation()" (dblclick)="$event.stopPropagation()">
             <button
               class="w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 transition-colors text-white inline-flex items-center justify-center cursor-pointer"
               [matTooltip]="'persons.view_photos' | translate"
@@ -158,18 +158,22 @@ export interface Person {
                  (click)="$event.stopPropagation()"
                  (keydown)="$event.stopPropagation()"
                  (dblclick)="$event.stopPropagation()">
-              <button mat-icon-button [matTooltip]="'persons.rename' | translate" [attr.aria-label]="'persons.rename' | translate" (click)="editStart.emit(person().id)">
-                <mat-icon class="opacity-60">edit</mat-icon>
-              </button>
+              @if (!restoreOnly()) {
+                <button mat-icon-button [matTooltip]="'persons.rename' | translate" [attr.aria-label]="'persons.rename' | translate" (click)="editStart.emit(person().id)">
+                  <mat-icon class="opacity-60">edit</mat-icon>
+                </button>
+              }
               <button mat-icon-button [matTooltip]="'persons.view_photos' | translate" [attr.aria-label]="'persons.view_photos' | translate" (click)="viewPhotos.emit(person().id)">
                 <mat-icon class="opacity-60">photo_library</mat-icon>
               </button>
-              <button mat-icon-button [matTooltip]="'persons.split' | translate" [attr.aria-label]="'persons.split' | translate" (click)="split.emit(person().id)">
-                <mat-icon class="opacity-60">call_split</mat-icon>
-              </button>
-              <button mat-icon-button [matTooltip]="'persons.find_more' | translate" [attr.aria-label]="'persons.find_more' | translate" (click)="findMore.emit(person().id)">
-                <mat-icon class="opacity-60">person_search</mat-icon>
-              </button>
+              @if (!restoreOnly()) {
+                <button mat-icon-button [matTooltip]="'persons.split' | translate" [attr.aria-label]="'persons.split' | translate" (click)="split.emit(person().id)">
+                  <mat-icon class="opacity-60">call_split</mat-icon>
+                </button>
+                <button mat-icon-button [matTooltip]="'persons.find_more' | translate" [attr.aria-label]="'persons.find_more' | translate" (click)="findMore.emit(person().id)">
+                  <mat-icon class="opacity-60">person_search</mat-icon>
+                </button>
+              }
               @if (person().is_hidden) {
                 <button mat-icon-button [matTooltip]="'persons.unhide' | translate" [attr.aria-label]="'persons.unhide' | translate" (click)="unhidden.emit(person().id)">
                   <mat-icon class="opacity-60">visibility</mat-icon>
@@ -194,6 +198,8 @@ export class PersonCardComponent {
   readonly isSelected = input(false);
   readonly isEditing = input(false);
   readonly canEdit = input(false);
+  /** Only view photos, restore and delete: the Ignored section, where renaming or splitting makes no sense. */
+  readonly restoreOnly = input(false);
   /** Existing names offered while typing one (with each person's face and photo count). */
   readonly nameOptions = input<readonly PersonNameOption[]>([]);
 

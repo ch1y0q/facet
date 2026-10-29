@@ -2,7 +2,7 @@ import type { Mock } from 'vitest';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
-import { Observable, of, throwError } from 'rxjs';
+import { Observable, Subject, of, throwError } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 import {
@@ -49,7 +49,9 @@ describe('FindMoreFacesDialogComponent', () => {
   let component: FindMoreFacesDialogComponent;
   let mockApi: { get: Mock; post: Mock };
   let mockDialog: { open: Mock };
-  let dialogRef: { close: Mock };
+  let dialogRef: { close: Mock; disableClose: boolean; backdropClick: Mock; keydownEvents: Mock };
+  let backdrop: Subject<MouseEvent>;
+  let keys: Subject<KeyboardEvent>;
   /** The answer each possible_faces call gets; the years endpoint answers on its own. */
   let search: Mock<(params: Record<string, unknown>) => Observable<PossibleFacesResponse>>;
 
@@ -81,7 +83,9 @@ describe('FindMoreFacesDialogComponent', () => {
       post: vi.fn(() => of({ success: true })),
     };
     mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(true) })) };
-    dialogRef = { close: vi.fn() };
+    backdrop = new Subject<MouseEvent>();
+    keys = new Subject<KeyboardEvent>();
+    dialogRef = { close: vi.fn(), disableClose: false, backdropClick: vi.fn(() => backdrop), keydownEvents: vi.fn(() => keys) };
     TestBed.configureTestingModule({
       imports: [FindMoreFacesDialogComponent],
       providers: [
@@ -359,6 +363,83 @@ describe('FindMoreFacesDialogComponent', () => {
       expect(component.error()).toBe('persons.find_more_add_error');
       expect(component.busy()).toBe(false);
       expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    it('clears a failed add\'s error when the next add succeeds', async () => {
+      search.mockReturnValue(of(answer(Array.from({ length: FIND_MORE_PAGE + 5 }, (_, i) => face(i + 1, 0.4)))));
+      await render();
+      component.toggle(1);
+      mockApi.post.mockReturnValueOnce(throwError(() => new Error('boom')));
+      await component.addSelected();
+      expect(component.error()).toBe('persons.find_more_add_error');
+      await component.addSelected();
+      expect(component.error()).toBeNull();
+      fixture.detectChanges();
+      expect(q('[data-face]')).not.toBeNull();
+    });
+
+    it('clears a failed merge\'s error when the next merge succeeds', async () => {
+      await render();
+      const group = { person_id: 55, name: null, face_count: 3, similarity: 0.6 } as SimilarGroup;
+      mockApi.post.mockReturnValueOnce(throwError(() => new Error('boom')));
+      await component.mergeGroup(group);
+      expect(component.error()).toBe('persons.find_more_merge_error');
+      await component.mergeGroup(group);
+      expect(component.error()).toBeNull();
+    });
+  });
+
+  describe('closing', () => {
+    it('blocks the default close so every path goes through close()', async () => {
+      await render();
+      expect(dialogRef.disableClose).toBe(true);
+    });
+
+    it('Escape after an add closes with the count added', async () => {
+      await render();
+      await component.addSelected();
+      keys.next(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(dialogRef.close).toHaveBeenCalledWith({ added: 1 });
+    });
+
+    it('a backdrop click after an add closes with the count added', async () => {
+      await render();
+      await component.addSelected();
+      backdrop.next(new MouseEvent('click'));
+      expect(dialogRef.close).toHaveBeenCalledWith({ added: 1 });
+    });
+
+    it('other keys do not close', async () => {
+      await render();
+      keys.next(new KeyboardEvent('keydown', { key: 'a' }));
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Try Loose', () => {
+    it.each(['loose', 'very_loose'] as const)('is not offered at %s', async (level) => {
+      search.mockReturnValue(of(answer([])));
+      await render();
+      component.setStrictness(level);
+      await settle();
+      expect(q('[data-try-loose]')).toBeNull();
+    });
+
+    it.each(['very_strict', 'strict', 'normal'] as const)('is offered at %s', async (level) => {
+      search.mockReturnValue(of(answer([])));
+      await render();
+      component.setStrictness(level);
+      await settle();
+      expect(q('[data-try-loose]')).not.toBeNull();
+    });
+  });
+
+  describe('face tile name', () => {
+    it('carries the match detail and the owner it comes from', async () => {
+      await render();
+      expect(q('[data-face="1"]')!.getAttribute('aria-label')).toContain('persons.find_more_select_face_detail');
+      expect(q('[data-face="1"]')!.getAttribute('aria-label')).not.toContain('persons.find_more_from');
+      expect(q('[data-face="3"]')!.getAttribute('aria-label')).toContain('persons.find_more_from');
     });
   });
 });

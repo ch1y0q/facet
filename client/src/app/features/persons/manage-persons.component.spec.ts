@@ -669,14 +669,18 @@ describe('ManagePersonsComponent', () => {
       expect(mockSnackBar.open).toHaveBeenCalledWith('persons.hidden_done', 'undo.action', { duration: 10_000 });
     });
 
-    it('Undo calls unhide and puts the card back in its place and count', async () => {
+    it('Undo calls unhide and reloads the lists rather than restoring a stale snapshot', async () => {
       await component.setHidden(2, true);
       expect(component.persons().map((p) => p.id)).toEqual([1, 3]);
+      // Another change lands between the ignore and the undo: the server's lists now differ.
+      const fresh = { ...mockPersonsResponse, persons: [mockPersonsResponse.persons[0], mockPersonsResponse.persons[1]], total: 2 };
+      mockApi.get.mockImplementation(() => of(fresh));
+      mockApi.get.mockClear();
       snackAction.next();
       await new Promise((r) => setTimeout(r));
       expect(mockApi.post).toHaveBeenCalledWith('/persons/2/unhide');
-      expect(component.persons().map((p) => p.id)).toEqual([1, 2, 3]);
-      expect(component.total()).toBe(3);
+      expect(mockApi.get).toHaveBeenCalled();
+      expect(component.persons().map((p) => p.id)).toEqual([1, 2]);
       expect(mockSnackBar.open).toHaveBeenLastCalledWith('undo.restored', '', { duration: 2000 });
     });
 

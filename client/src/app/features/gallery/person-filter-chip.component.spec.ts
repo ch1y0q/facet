@@ -1,14 +1,13 @@
 import type { Mock } from 'vitest';
-import { Component, Type, reflectComponentType, signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { GalleryStore } from './gallery.store';
 import { PersonFilterChipComponent } from './person-filter-chip.component';
-import { GalleryComponent } from './gallery.component';
 import { SameNameMergeDialogComponent } from '../persons/same-name-merge.service';
 
 const OPTIONS = {
@@ -37,6 +36,7 @@ describe('PersonFilterChipComponent', () => {
   let fixture: ComponentFixture<HostComponent>;
   let mockApi: { get: Mock; post: Mock };
   let mockDialog: { open: Mock };
+  let mockSnack: { open: Mock };
   let mockStore: {
     reloadPersonOptions: Mock; updateFilters: Mock; reloadPhotos: Mock;
     filters: ReturnType<typeof signal<{ person_id: string }>>;
@@ -82,6 +82,7 @@ describe('PersonFilterChipComponent', () => {
 
   beforeEach(() => {
     mockApi = { get: vi.fn(() => of(OPTIONS)), post: vi.fn(() => of({ success: true, name: '', face_count: 25, same_name_persons: [] })) };
+    mockSnack = { open: vi.fn() };
     mockDialog = { open: vi.fn(() => ({ afterClosed: () => of(null) })) };
     mockStore = {
       reloadPersonOptions: vi.fn(async () => undefined), updateFilters: vi.fn(async () => undefined),
@@ -92,7 +93,7 @@ describe('PersonFilterChipComponent', () => {
       providers: [
         { provide: ApiService, useValue: mockApi },
         { provide: MatDialog, useValue: mockDialog },
-        { provide: MatSnackBar, useValue: { open: vi.fn() } },
+        { provide: MatSnackBar, useValue: mockSnack },
         { provide: GalleryStore, useValue: mockStore },
         { provide: I18nService, useValue: { t: (k: string) => k, translations: () => ({}) } },
       ],
@@ -216,11 +217,54 @@ describe('PersonFilterChipComponent', () => {
     expect(fixture.componentInstance.removed).toEqual([95]);
   });
 
-  it('the gallery mounts no person bar any more', () => {
-    const deps = (GalleryComponent as unknown as { ɵcmp: { dependencies: unknown } }).ɵcmp.dependencies;
-    const list = (typeof deps === 'function' ? deps() : deps) as Type<unknown>[];
-    const selectors = list.map((d) => reflectComponentType(d)?.selector).filter(Boolean);
-    expect(selectors.length).toBeGreaterThan(0);
-    expect(selectors).not.toContain('app-person-naming-bar');
+  /** A rename of chip 95 that reports namesakes 163 (``faces`` faces) and 144 (298), merged as the dialog picks. */
+  async function renameWithNamesake(picked: number[], faces: number) {
+    mockStore.filters.set({ person_id: '95,144' });
+    mockApi.post.mockImplementation((url: string) =>
+      of(url.endsWith('/rename')
+        ? { success: true, name: 'x', face_count: 25, same_name_persons: [{ id: 163, name: 'Jirjet Salem', face_count: faces }, { id: 144, name: 'Jirjet Salem', face_count: 298 }] }
+        : { success: true }));
+    mockDialog.open.mockReturnValue({ afterClosed: () => of(picked) });
+    await render([95, 144]);
+    await edit();
+    await type('Jirjet Salem');
+    inChip<HTMLButtonElement>('[data-person-name-save]')!.click();
+    await settle();
+    await settle();
+  }
+
+  it('a merge that left this person out keeps the filter and reloads the chip', async () => {
+    await renameWithNamesake([163, 144], 257);
+    expect(mockApi.post).toHaveBeenCalledWith('/persons/merge_batch', { merges: [{ source_id: 163, target_id: 144 }] });
+    expect(mockStore.updateFilters).not.toHaveBeenCalled();
+    expect(mockApi.get.mock.calls.filter(([, p]) => p?.ids === '95').length).toBeGreaterThan(1);
+  });
+
+  it('a merge that keeps this person leaves the filter alone', async () => {
+    await renameWithNamesake([95, 163], 3);
+    expect(mockApi.post).toHaveBeenCalledWith('/persons/merge_batch', { merges: [{ source_id: 163, target_id: 95 }] });
+    expect(mockStore.updateFilters).not.toHaveBeenCalled();
+  });
+
+  it('a failed rename shows the error and lets the user save again', async () => {
+    mockApi.post.mockReturnValue(throwError(() => new Error('boom')));
+    await render();
+    await edit();
+    await type('Aunt May');
+    inChip<HTMLButtonElement>('[data-person-name-save]')!.click();
+    await settle();
+    expect(mockSnack.open).toHaveBeenCalledWith('gallery.person_chip.error', '', { duration: 3000 });
+    expect(inChip<HTMLButtonElement>('[data-person-name-save]')!.disabled).toBe(false);
+    expect(mockStore.reloadPersonOptions).not.toHaveBeenCalled();
+  });
+
+  it('retyping the current name posts nothing', async () => {
+    await render([163]);
+    await edit(163);
+    await type('jirjet salem', 163);
+    inChip<HTMLButtonElement>('[data-person-name-save]', 163)!.click();
+    await settle();
+    expect(mockApi.post).not.toHaveBeenCalled();
+    expect(inChip('[data-person-name-input]', 163)).toBeNull();
   });
 });

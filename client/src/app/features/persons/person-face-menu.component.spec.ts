@@ -70,6 +70,28 @@ describe('PersonFaceMenuComponent', () => {
     ]);
   });
 
+  it('unnamed person with a face: the group wording', async () => {
+    const items = await openOn({ person: { id: 5, name: null }, face: { id: 1 } });
+    expect(items).toContain('person_search photo_faces.find_more_group');
+    expect(items).toContain('person_remove photo_faces.not_group');
+    expect(items).not.toContain('person_search photo_faces.find_more');
+    expect(items).not.toContain('person_remove photo_faces.not_person');
+  });
+
+  it('unnamed person only: the group wording for Find more', async () => {
+    const items = await openOn({ person: { id: 5, name: null }, face: null });
+    expect(items).toContain('person_search photo_faces.find_more_group');
+  });
+
+  it('See all photos, already in the gallery, tells the user when resetting the filters fails', async () => {
+    mockRouter.url = '/?person_id=5,7';
+    mockStore.resetFilters.mockRejectedValueOnce(new Error('boom'));
+    await openOn({ person: { id: 5, name: 'Valerie' }, face: null });
+    menu.viewPhotos();
+    await vi.waitFor(() => expect(mockSnackBar.open).toHaveBeenCalledWith('errors.action_failed', '', { duration: 3000 }));
+    expect(mockStore.updateFilters).not.toHaveBeenCalled();
+  });
+
   it('person only: no face items, and Ignore', async () => {
     const items = await openOn({ person: { id: 5, name: 'Valerie' }, face: null });
     expect(items).toEqual([

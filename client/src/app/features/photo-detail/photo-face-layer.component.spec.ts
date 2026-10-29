@@ -1,4 +1,4 @@
-import type { Mock } from 'vitest';
+import type { Mock, MockInstance } from 'vitest';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -8,7 +8,7 @@ import { ApiService } from '../../core/services/api.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { GalleryStore } from '../gallery/gallery.store';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
-import { PhotoFaceLayerComponent, PhotoFaceRow, DrawnFace, FACE_MENU_DELAY_MS } from './photo-face-layer.component';
+import { PhotoFaceLayerComponent, PhotoFaceRow, FACE_MENU_DELAY_MS } from './photo-face-layer.component';
 import { PersonFaceBoxesService } from '../../shared/components/photo-card/person-face-boxes.service';
 import { By } from '@angular/platform-browser';
 import { PersonFaceMenuComponent } from '../persons/person-face-menu.component';
@@ -27,7 +27,8 @@ describe('PhotoFaceLayerComponent', () => {
   let mockDialog: { open: Mock };
   let mockStore: { assignFace: Mock; createPerson: Mock; unassignPerson: Mock; reloadPersonOptions: Mock };
   let mockSnackBar: { open: Mock };
-  let mockRouter: { navigate: Mock };
+  let openSpy: MockInstance;
+  let mockRouter: { navigate: Mock; url: string };
 
   async function render(rows: PhotoFaceRow[] = ROWS, width: number | null = 1000, height: number | null = 500) {
     mockApi.get.mockReturnValue(of({ faces: rows }));
@@ -40,6 +41,13 @@ describe('PhotoFaceLayerComponent', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+    openSpy = vi.spyOn(fixture.debugElement.query(By.directive(PersonFaceMenuComponent)).componentInstance as PersonFaceMenuComponent, 'open');
+  }
+
+  /** The face the shared menu was last opened on, null when it never was. */
+  function menuFace(): { id: number } | null {
+    const call = openSpy.mock.calls.at(-1);
+    return call ? (call[0] as { face: { id: number } }).face : null;
   }
 
   /** Open the shared menu on face ``i`` the keyboard way, and hand it back. */
@@ -70,7 +78,7 @@ describe('PhotoFaceLayerComponent', () => {
       reloadPersonOptions: vi.fn(async () => undefined),
     };
     mockSnackBar = { open: vi.fn() };
-    mockRouter = { navigate: vi.fn(() => Promise.resolve(true)) };
+    mockRouter = { navigate: vi.fn(() => Promise.resolve(true)), url: '/photo?path=x' };
     TestBed.configureTestingModule({
       imports: [PhotoFaceLayerComponent],
       providers: [
@@ -159,7 +167,6 @@ describe('PhotoFaceLayerComponent', () => {
   it('read-only: an unnamed face opens a menu that says naming needs edition mode', async () => {
     await render();
     fixture.componentRef.setInput('canEdit', false);
-    const menuFace = () => (component as unknown as { menuFace: () => DrawnFace | null }).menuFace();
 
     withMenuDelay(() => component.onFaceClick(component.faces()[1], new MouseEvent('click', { clientX: 5, clientY: 6, detail: 1 })));
     fixture.detectChanges();
@@ -265,7 +272,6 @@ describe('PhotoFaceLayerComponent', () => {
 
   describe('gestures and keyboard', () => {
     const group = (i = 0) => fixture.nativeElement.querySelectorAll('g[role="button"]')[i] as SVGGElement;
-    const menuFace = () => (component as unknown as { menuFace: () => DrawnFace | null }).menuFace();
     const pointer = (type: string, x: number, y: number, pointerType = 'mouse') =>
       new PointerEvent(type, { clientX: x, clientY: y, pointerType, bubbles: true });
 
@@ -362,7 +368,7 @@ describe('PhotoFaceLayerComponent', () => {
       await render();
       group(1).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
       expect(menuFace()?.id).toBe(2);
-      (component as unknown as { menuFace: { set: (v: null) => void } }).menuFace.set(null);
+      openSpy.mockClear();
       group(0).dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
       expect(menuFace()?.id).toBe(1);
     });
@@ -390,7 +396,6 @@ describe('PhotoFaceLayerComponent', () => {
 
     it('drops a menu open still pending when the mode turns off', async () => {
       await render();
-      const menuFace = () => (component as unknown as { menuFace: () => DrawnFace | null }).menuFace();
       vi.useFakeTimers();
       try {
         component.onFaceClick(component.faces()[0], new MouseEvent('click', { clientX: 1, clientY: 1, detail: 1 }));

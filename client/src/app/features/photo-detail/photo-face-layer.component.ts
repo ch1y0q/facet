@@ -141,7 +141,7 @@ interface FacePress {
         }
       </svg>
     }
-    <app-person-face-menu [path]="path()" [canEdit]="canEdit()" (changed)="afterChange()" (closed)="menuFace.set(null)" />
+    <app-person-face-menu [path]="path()" [canEdit]="canEdit()" (changed)="afterChange()" />
   `,
 })
 export class PhotoFaceLayerComponent {
@@ -168,7 +168,6 @@ export class PhotoFaceLayerComponent {
 
   private readonly menu = viewChild.required(PersonFaceMenuComponent);
   private readonly rows = signal<PhotoFaceRow[]>([]);
-  protected readonly menuFace = signal<DrawnFace | null>(null);
   private press: FacePress | null = null;
   private pendingOpen: ReturnType<typeof setTimeout> | null = null;
 
@@ -270,7 +269,6 @@ export class PhotoFaceLayerComponent {
   }
 
   private openMenuAt(face: DrawnFace, x: number, y: number, origin: HTMLElement | SVGElement | null = null): void {
-    this.menuFace.set(face);
     this.menu().open({
       person: face.personId === null ? null : { id: face.personId, name: face.name },
       face: { id: face.id },

@@ -219,7 +219,8 @@ export class PersonFilterChipComponent {
         ? await this.sameNameMerge.offer({ id, face_count: res.face_count }, name, namesakes)
         : null;
       await this.store.reloadPersonOptions();
-      if (merge?.status === 'merged' && merge.targetId !== id) {
+      // Only a merge that folded this person away moves the filter; one that kept it, or left it out, does not.
+      if (merge?.status === 'merged' && merge.merges.some((m) => m.source_id === id)) {
         // Point the filter at the person that survived, keeping the other chips.
         const ids = this.store.filters().person_id.split(',').filter(Boolean)
           .map((pid) => (pid === String(id) ? String(merge.targetId) : pid));

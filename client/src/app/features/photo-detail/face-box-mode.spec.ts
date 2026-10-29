@@ -1,5 +1,5 @@
 import {
-  FACE_BOX_MODE_KEY, LEGACY_SHOW_FACE_BOXES_KEY, nextFaceBoxMode, readFaceBoxMode, writeFaceBoxMode,
+  FACE_BOX_MODE_KEY, nextFaceBoxMode, readFaceBoxMode, writeFaceBoxMode,
   FACE_BOX_MODE_ICONS, FACE_BOX_MODE_LABELS,
 } from './face-box-mode';
 
@@ -32,21 +32,6 @@ describe('face box mode', () => {
     writeFaceBoxMode('off', storage);
     expect(storage.getItem(FACE_BOX_MODE_KEY)).toBe('off');
     expect(readFaceBoxMode(storage)).toBe('off');
-  });
-
-  it('migrates the old toggle once: on becomes always, off becomes hover', () => {
-    const on = memoryStorage({ [LEGACY_SHOW_FACE_BOXES_KEY]: '1' });
-    expect(readFaceBoxMode(on)).toBe('always');
-    expect(on.getItem(FACE_BOX_MODE_KEY)).toBe('always');
-    expect(on.getItem(LEGACY_SHOW_FACE_BOXES_KEY)).toBeNull();
-
-    const off = memoryStorage({ [LEGACY_SHOW_FACE_BOXES_KEY]: '0' });
-    expect(readFaceBoxMode(off)).toBe('hover');
-    expect(off.getItem(LEGACY_SHOW_FACE_BOXES_KEY)).toBeNull();
-  });
-
-  it('prefers the new key over a leftover old one', () => {
-    expect(readFaceBoxMode(memoryStorage({ [FACE_BOX_MODE_KEY]: 'off', [LEGACY_SHOW_FACE_BOXES_KEY]: '1' }))).toBe('off');
   });
 
   it('gives each mode its own icon and label', () => {

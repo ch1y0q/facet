@@ -26,6 +26,7 @@ from api.db_helpers import (
     is_locked_error, normalized_face_box, retry_on_locked, select_in_chunks,
 )
 from api.types import JUNK_NOT_JUNK
+from db.person_centroids import recompute_person_centroid
 from api.models.culling import (
     PersonFaceBoxesResponse, PersonFacesResponse, PhotoFacesResponse, ToggleFavoriteResponse,
     ToggleRejectedResponse, UnassignFaceResponse,
@@ -177,7 +178,8 @@ def _drop_or_repair_person(conn, person_id):
     """After faces left ``person_id``: recount, then delete it if it is empty.
 
     Otherwise the detached faces may have included its stored representative,
-    which is repointed at a remaining face. Returns whether it was deleted.
+    which is repointed at a remaining face, and its centroid is rebuilt from
+    the faces it keeps. Returns whether it was deleted.
     """
     update_person_face_count(conn, person_id)
     count = conn.execute("SELECT face_count FROM persons WHERE id = ?", (person_id,)).fetchone()
@@ -185,6 +187,7 @@ def _drop_or_repair_person(conn, person_id):
         conn.execute("DELETE FROM persons WHERE id = ?", (person_id,))
         return True
     repair_stale_representative(conn, person_id)
+    recompute_person_centroid(conn, person_id)
     return False
 
 

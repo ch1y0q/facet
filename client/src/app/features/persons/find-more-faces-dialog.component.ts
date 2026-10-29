@@ -1,4 +1,5 @@
 import { Component, inject, signal, computed, OnInit, ChangeDetectionStrategy } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogModule, MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
@@ -262,7 +263,7 @@ const OWNER_LABELS: Record<FaceOwner, string> = {
               }
             </p>
             <div class="flex gap-2 flex-wrap justify-center">
-              @if (strictness() !== 'loose') {
+              @if (strictness() !== 'loose' && strictness() !== 'very_loose') {
                 <button mat-stroked-button data-try-loose (click)="setStrictness('loose')">{{ I18N.persons.find_more_try_loose | translate }}</button>
               }
               @if (offerNamed()) {
@@ -280,7 +281,7 @@ const OWNER_LABELS: Record<FaceOwner, string> = {
               [class.border-transparent]="!row.selected"
               [attr.data-face]="row.face_id"
               [attr.aria-pressed]="row.selected"
-              [attr.aria-label]="I18N.persons.find_more_select_face | translate:{ index: i + 1 }"
+              [attr.aria-label]="(I18N.persons.find_more_select_face_detail | translate:{ index: i + 1, percent: row.percent, strength: ((row.strong ? I18N.persons.find_more_strong : I18N.persons.find_more_possible) | translate) }) + (row.fromName ? ', ' + (I18N.persons.find_more_from | translate:{ name: row.fromName }) : '')"
               (click)="onFaceClick(i, $event)"
               (keydown.space)="onFaceSpace(row.face_id, $event)">
               <img [src]="row.face_id | faceThumbnailUrl" alt="" class="w-full aspect-square object-cover block" />
@@ -415,6 +416,15 @@ export class FindMoreFacesDialogComponent implements OnInit {
     return this.faces().filter((f) => f.owner === 'named' && selected.has(f.face_id)
       && !sameName(f.person_name, this.data.personName)).length;
   });
+
+  constructor() {
+    // Every way out must report the faces already added, so the host refreshes.
+    this.dialogRef.disableClose = true;
+    this.dialogRef.backdropClick().pipe(takeUntilDestroyed()).subscribe(() => this.close());
+    this.dialogRef.keydownEvents().pipe(takeUntilDestroyed()).subscribe((event: KeyboardEvent) => {
+      if (event.key === 'Escape') this.close();
+    });
+  }
 
   ngOnInit(): Promise<void> {
     return this.load();
@@ -580,6 +590,7 @@ export class FindMoreFacesDialogComponent implements OnInit {
     const faceIds = [...this.selectedIds()];
     if (faceIds.length === 0 || this.busy()) return;
     this.busy.set(true);
+    this.error.set(null);
     try {
       await firstValueFrom(
         this.api.post(`/persons/${this.data.personId}/assign_faces`, { face_ids: faceIds }),
@@ -626,6 +637,7 @@ export class FindMoreFacesDialogComponent implements OnInit {
       if (!(await firstValueFrom(ref.afterClosed()))) return;
     }
     this.busy.set(true);
+    this.error.set(null);
     try {
       await firstValueFrom(this.api.post('/persons/merge', { source_id: group.person_id, target_id: this.data.personId }));
     } catch {

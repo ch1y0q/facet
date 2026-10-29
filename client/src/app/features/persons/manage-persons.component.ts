@@ -397,6 +397,7 @@ export type NamingSort = 'faces' | 'recent';
         <div class="mt-6 rounded-xl border border-[var(--mat-sys-outline-variant)] bg-[var(--mat-sys-surface-container)] overflow-hidden">
           <button
             class="flex items-center w-full px-4 py-2 gap-2 text-left hover:bg-[var(--mat-sys-surface-container-high)] transition-colors cursor-pointer"
+            [attr.aria-expanded]="ignoredExpanded()"
             (click)="ignoredExpanded.set(!ignoredExpanded())"
           >
             <mat-icon class="opacity-60">{{ ignoredExpanded() ? 'expand_more' : 'chevron_right' }}</mat-icon>
@@ -408,6 +409,7 @@ export type NamingSort = 'faces' | 'recent';
                 <app-person-card
                   [person]="p"
                   [canEdit]="true"
+                  [restoreOnly]="true"
                   (viewPhotos)="onViewPhotos($event)"
                   (unhidden)="onUnhide($event)"
                   (deleted)="onDelete($event)"
@@ -961,11 +963,6 @@ export class ManagePersonsComponent implements OnInit {
 
   async setHidden(personId: number, hidden: boolean): Promise<void> {
     const known = this.persons().find((p) => p.id === personId) ?? this.needsNaming().find((p) => p.id === personId);
-    // Where the person was, so an undone Ignore puts the card back in its tab and place.
-    const before = {
-      persons: this.persons(), total: this.total(), needsNaming: this.needsNaming(),
-      ignored: this.ignored(), ignoredTotal: this.ignoredTotal(),
-    };
     try {
       await firstValueFrom(
         this.api.post(`/persons/${personId}/${hidden ? 'hide' : 'unhide'}`),
@@ -1004,11 +1001,8 @@ export class ManagePersonsComponent implements OnInit {
           undo: async () => {
             await firstValueFrom(this.api.post(`/persons/${personId}/unhide`));
             this.journal.record('person', [], { action: 'unhide', person_id: personId });
-            this.persons.set(before.persons);
-            this.total.set(before.total);
-            this.needsNaming.set(before.needsNaming);
-            this.ignored.set(before.ignored);
-            this.ignoredTotal.set(before.ignoredTotal);
+            // Reload instead of restoring a snapshot: anything done since the ignore stays.
+            await Promise.all([this.loadPersons(true), this.loadNeedsNaming(), this.loadIgnored()]);
           },
         });
       } else {
