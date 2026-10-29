@@ -8,6 +8,7 @@ import { Location } from '@angular/common';
 import { PageHelpService } from '../../core/services/page-help.service';
 import { UndoService } from '../../core/services/undo.service';
 import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { AuthService } from '../../core/services/auth.service';
 import { I18nService } from '../../core/services/i18n.service';
 import { UserActivityJournal } from '../../core/agent/user-activity-journal.service';
@@ -15,6 +16,7 @@ import { PageContextService } from '../../core/agent/page-context.service';
 import { GalleryStore } from './gallery.store';
 import { StackEditorPageComponent } from './stack-editor-page.component';
 import { STACK_EDITOR_HISTORY } from './stack-editor-history';
+import { PersonHideService } from '../persons/person-hide.service';
 
 @Component({ template: 'Gallery' })
 class GalleryOrigin {}
@@ -80,6 +82,43 @@ describe('manual stack workspace with Router, HTTP and Material', () => {
     http.expectOne('/api/stacks/regroup/preview').flush({ ...preview, expected_state: 'b'.repeat(64) }); await render();
     expect(button('[data-stack-save]').disabled).toBe(false);
     expect(TestBed.inject(UserActivityJournal).since().items.at(-1)?.value).toBe('undo');
+  });
+  it('shares the Undo slot with People Ignore without replaying a superseded stack or person action', async () => {
+    const snack = vi.spyOn(TestBed.inject(MatSnackBar), 'open');
+    const personRestored = vi.fn(async () => undefined);
+    const undoShown = async (label: string) => {
+      await vi.waitFor(() => {
+        const containers = document.querySelectorAll('mat-snack-bar-container');
+        expect(containers).toHaveLength(1);
+        expect(containers[0].textContent).toContain(label);
+      });
+      document.querySelector<HTMLButtonElement>('mat-snack-bar-container button')!.click();
+    };
+    await ready(); button('[data-stack-save]').click();
+    http.expectOne('/api/stacks/regroup/apply').flush({ changed: true, affected_paths: paths, undo: { entry_id: 81 } }); await render();
+    expect(snack).toHaveBeenLastCalledWith('stacks.saved', 'undo.action', { duration: 7000 });
+
+    const hiding = TestBed.inject(PersonHideService).setHidden(7, true, personRestored);
+    http.expectOne('/api/persons/7/hide').flush({}); await hiding; await render();
+    expect(snack).toHaveBeenLastCalledWith('persons.hidden_done', 'undo.action', { duration: 10_000 });
+    await undoShown('persons.hidden_done');
+    http.expectOne('/api/persons/7/unhide').flush({}); await render();
+    expect(personRestored).toHaveBeenCalledTimes(1);
+    http.expectNone('/api/organization_history/81/revert');
+
+    const hidingAgain = TestBed.inject(PersonHideService).setHidden(7, true, personRestored);
+    http.expectOne('/api/persons/7/hide').flush({}); await hidingAgain; await render();
+    button('[data-stack-continue]').click();
+    http.expectOne('/api/stacks/regroup/preview').flush(preview); await render();
+    button('[data-stack-save]').click();
+    http.expectOne('/api/stacks/regroup/apply').flush({ changed: true, affected_paths: paths, undo: { entry_id: 82 } }); await render();
+    expect(snack).toHaveBeenLastCalledWith('stacks.saved', 'undo.action', { duration: 7000 });
+    await undoShown('stacks.saved');
+    http.expectOne('/api/organization_history/82/revert').flush({ changed: 2 }); await render();
+    http.expectOne('/api/stacks/regroup/preview').flush(preview); await render();
+    http.expectNone('/api/persons/7/unhide');
+    expect(personRestored).toHaveBeenCalledTimes(1);
+    expect(button('[data-stack-save]').disabled).toBe(false);
   });
   it('requires a fresh preview after no-op Continue and invents no journal or Undo', async () => {
     await ready(); button('[data-stack-save]').click(); http.expectOne('/api/stacks/regroup/apply').flush({ changed: false, affected_paths: [] }); await render();
