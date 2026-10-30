@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DefaultUrlSerializer, Router, provideRouter } from '@angular/router';
-import { Provider, signal } from '@angular/core';
+import { Provider, signal, WritableSignal } from '@angular/core';
 import { NEVER, Subject, of } from 'rxjs';
 import { App } from './app';
 import { GalleryStore, GalleryFilters, DEFAULT_FILTERS, ViewerConfig } from './features/gallery/gallery.store';
