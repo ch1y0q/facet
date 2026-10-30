@@ -4,6 +4,11 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Photo cards fill their tile on phones.** With details hidden (the default), cards below 768 px kept the photo at its natural height over a dead background strip; the tile now fills as a square at every width.
+- **Dialog headers share one style.** The shortcuts reference, the cull dialog and the customize-shortcuts dialog now carry the same icon-tile header — title with its description as a subtitle, aligned with the content below.
+
 ### Added
 
 - Stack explicit unstacked selections in selection order with Cmd+Shift+S or Ctrl+Shift+S, using the first selected photo as cover. Existing stack members open the editor for review, and Undo restores the selection the stack cleared.
