@@ -268,7 +268,7 @@ Use **Estado de revisão → Precisa de revisão** na galeria para percorrer fot
 
 Selecione **2–1000 fotos explícitas** e escolha **Empilhar fotos** na barra ou prima **S** para abrir o editor de página inteira em `/stacks/edit`. Selecionar toda a visualização não cria pilhas. S abre uma pré-visualização, sem guardar diretamente. Menu do utilizador → **Personalizar atalhos** muda a tecla da galeria; a dica, a Ajuda e a referência `?` mostram a tecla atual. Se uma configuração anterior já usa S, é preservada e Empilhar fica **Não atribuído** até escolher uma tecla livre. São necessárias permissões de edição. Cada foto pertence a uma pilha por proprietário. A página centra uma pré-visualização com zoom sobre uma faixa de miniaturas permanente. Clique numa miniatura ou use `←`/`→` para focar uma foto e os seus controlos de capa, ordem ou remoção da pilha. O botão de zoom, a roda ou um duplo clique permitem examinar detalhes.
 
-Use **Cmd+Shift+S** no macOS ou **Ctrl+Shift+S** noutros sistemas para empilhar fotos explícitas sem pilha pela ordem de seleção, com a primeira como capa. Membros de pilhas existentes abrem o editor. O sucesso limpa a seleção guardada; cancelar ou falhar mantém-na. Escape no editor regressa à galeria de origem sem guardar.
+Use **Cmd+Shift+S** ou **Ctrl+Shift+S** para empilhar fotos explícitas sem pilha pela ordem de seleção, com a primeira como capa. Membros de pilhas existentes abrem o editor. O sucesso limpa a seleção guardada e Desfazer repõe-na; cancelar ou falhar mantém-na. Escape no editor regressa à galeria de origem sem guardar.
 
 **Rejeitar ao empilhar.** Foque uma foto no editor de página inteira ou no diálogo e use **Rejeitar** ou **R**. A foto ativa na câmara escura das pilhas sugeridas tem a mesma ação; abra-a primeiro para escolher a foto. Rejeitar guarda imediatamente a decisão habitual, limpa Manter, favorito e estrelas, e exclui só essa foto da pilha proposta. Não apaga nem modifica ficheiros originais. O contador e as miniaturas esbatidas mostram as exclusões. Desfazer restaura os valores anteriores e a pertença ao rascunho relevante sem substituir escolhas posteriores de ordem ou capa; alterações de revisão posteriores podem impedir Desfazer. Fotos já rejeitadas ficam até serem excluídas explicitamente, sem outra decisão. O agrupamento espera por Guardar; sair sem guardar não desfaz Rejeitar.
 
@@ -1130,6 +1130,7 @@ Os atalhos de uma tecla ficam inativos enquanto o foco está em um campo de text
 | `X` ou `0` | Rejeita / desfaz a rejeição da foto em foco (modo de edição; avança sozinho) |
 | `/` | Foca a busca da barra de ferramentas (mostrada a partir de 1360 px de largura); em larguras menores, abre a busca da barra lateral de filtros |
 | `S` | Abre o editor de pilhas para a seleção explícita (modo de edição; remapeável, pode ficar sem atribuição) |
+| `Ctrl+Shift+S` / `Cmd+Shift+S` | Empilha de imediato a seleção explícita sem pilha pela ordem de seleção, com a primeira foto como capa (modo de edição; membros de pilhas existentes abrem o editor) |
 | `B` | Mostra / oculta a barra lateral de filtros |
 | `V` | Alterna entre o layout em grade e em mosaico |
 | `?` | Mostra a referência de atalhos de teclado (em todas as páginas; também no menu do usuário → Ajuda) |

@@ -268,7 +268,7 @@ Usa **Estado de revisión → Por revisar** en la galería para recorrer las fot
 
 Selecciona **2–1000 fotos explícitas** y elige **Apilar fotos** en la barra o pulsa **S** para abrir el editor de página completa en `/stacks/edit`. Una selección de toda la vista no crea pilas. S abre una vista previa; nunca guarda directamente. Menú de usuario → **Personalizar atajos** cambia la tecla de la galería; la ayuda emergente, Ayuda y la referencia `?` muestran la tecla actual. Si una configuración anterior ya usa S, se conserva y Apilar queda **Sin asignar** hasta elegir una tecla libre. Se requieren permisos de edición. Cada foto pertenece a una pila por propietario. La página centra una vista previa con zoom sobre una tira de miniaturas permanente. Pulsa una miniatura o usa `←`/`→` para enfocar una foto y sus controles de portada, orden o eliminación de la pila. El botón de zoom, la rueda o un doble clic permiten examinar los detalles.
 
-Use **Cmd+Mayús+S** en macOS o **Ctrl+Mayús+S** en otros sistemas para apilar fotos explícitas sin pila en orden de selección; la primera será la portada. Los miembros de pilas existentes abren el editor. El éxito borra la selección guardada; cancelar o fallar la conserva. Escape en el editor vuelve a la galería de origen sin guardar.
+Usa **Cmd+Mayús+S** o **Ctrl+Mayús+S** para apilar fotos explícitas sin pila en orden de selección; la primera será la portada. Los miembros de pilas existentes abren el editor. El éxito borra la selección guardada y Deshacer la restaura; cancelar o fallar la conserva. Escape en el editor vuelve a la galería de origen sin guardar.
 
 **Rechazar al apilar.** Enfoca una foto en el editor de página completa o su diálogo y usa **Rechazar** o **R**. La foto activa en el cuarto oscuro de pilas sugeridas tiene la misma acción; ábrelo primero para elegirla. Rechazar guarda de inmediato la decisión habitual, borra Conservar, favorito y estrellas, y excluye solo esa foto de la pila propuesta. No elimina ni modifica archivos originales. El contador y las miniaturas atenuadas muestran las exclusiones. Deshacer restaura los valores anteriores y la pertenencia al borrador vigente sin reemplazar cambios posteriores de orden o portada; una revisión posterior puede impedir Deshacer. Las fotos ya rechazadas permanecen hasta excluirlas explícitamente, sin otra decisión. La agrupación espera a Guardar; salir sin guardar no deshace Rechazar.
 
@@ -1134,6 +1134,7 @@ Los atajos de una sola tecla están inactivos mientras el foco está en un campo
 | `X` o `0` | Rechaza / deshace el rechazo de la foto enfocada (modo de edición; avanza automáticamente) |
 | `/` | Enfoca la búsqueda de la barra de herramientas (se muestra desde 1360 px de ancho); más estrecho, abre la búsqueda de la barra lateral de filtros |
 | `S` | Abre el editor de pilas para la selección explícita (modo de edición; reasignable, puede quedar sin asignar) |
+| `Ctrl+Mayús+S` / `Cmd+Mayús+S` | Apila al instante la selección explícita sin pila en orden de selección, con la primera foto como portada (modo de edición; los miembros de pilas existentes abren el editor) |
 | `B` | Muestra / oculta la barra lateral de filtros |
 | `V` | Cambia entre el diseño de cuadrícula y de mosaico |
 | `?` | Muestra la referencia de atajos de teclado (todas las páginas; también en menú de usuario → Ayuda) |

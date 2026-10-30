@@ -6,7 +6,7 @@ All notable changes to Facet are documented in this file.
 
 ### Added
 
-- Stack explicit unstacked selections in selection order with Cmd+Shift+S (Ctrl+Shift+S outside macOS), using the first selected photo as cover. Existing stack members open the editor for review.
+- Stack explicit unstacked selections in selection order with Cmd+Shift+S or Ctrl+Shift+S, using the first selected photo as cover. Existing stack members open the editor for review, and Undo restores the selection the stack cleared.
 
 ### Fixed
 
