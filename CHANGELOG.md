@@ -4,6 +4,10 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Refresh photo face boxes after saving, editing or removing a manual face, without reopening the photo.
+
 ## [1.27.0] "Trombinoscope" — 2026-10-29
 
 ### Added

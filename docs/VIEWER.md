@@ -508,6 +508,8 @@ In the photo view, a box shows around each detected face while the pointer is ov
 
 In edition mode, open a photo and choose **Mark a missing face**, even when no faces were detected. Draw a rectangle (or type its coordinates), pick an existing person or enter a new name, then **Save**. Cancel saves nothing.
 
+Saving, editing or removing a manual face updates the photo’s face boxes and people without reopening the photo.
+
 - Use the same editor to adjust, reassign or remove a manual mark.
 - Manual marks stay linked to their person through rescans and viewer synchronization. They do not train recognition or change face-quality scores.
 - The editor works from the original image, so RAW and rotated photos line up. Without the original you can list and remove marks, but not draw.

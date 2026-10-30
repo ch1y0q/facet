@@ -508,6 +508,8 @@ No modo de edição, abra uma foto e escolha **Marcar um rosto ausente**, mesmo 
 
 - Use o mesmo editor para ajustar, reatribuir ou remover uma marca manual.
 - As marcas manuais continuam ligadas à sua pessoa através de novas varreduras e da sincronização do visualizador. Não treinam o reconhecimento nem alteram as pontuações de qualidade do rosto.
+Salvar, editar ou remover um rosto manual atualiza as caixas e as pessoas da foto sem reabri-la.
+
 - O editor trabalha a partir da imagem original, de modo que fotos RAW e giradas se alinham. Sem o original você pode listar e remover marcas, mas não desenhar.
 - Uma marca que não pode ser verificada aparece como **Precisa de revisão**. As marcas de versões de pré-visualização anteriores precisam de uma revisão: abra o original, edite e salve a marca.
 - Uma imagem substituída sinaliza as suas marcas. Um retoque sutil ou um pequeno reenquadramento do mesmo tamanho pode passar despercebido. Gravações de metadados, remontagens e outros hosts mantêm as marcas atualizadas.
