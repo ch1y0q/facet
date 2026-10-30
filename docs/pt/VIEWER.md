@@ -485,6 +485,8 @@ Clique no nome de uma pessoa para ver todas as suas fotos em `/person/<id>`. Na 
 
 **Nomear pela galeria.** Quando a galeria está filtrada por uma pessoa (`?person_id=95`), a etiqueta dela na linha de filtros ativos mostra o rosto e o nome, ou **Sem nome**, contornado como lembrete; o × dela (**Remover do filtro**) tira a pessoa do filtro. Para usuários de edição há dois botões antes do ×. **Renomear** (o lápis) renomeia a pessoa ali mesmo: o campo de nome mostra "Quem é? Digite ou escolha um nome" para uma pessoa sem nome e "Renomear ou mesclar em…" para uma com nome, as sugestões mostram o rosto, o nome e o número de fotos de cada pessoa, e **Salvar** ou **Cancelar** o fecha (Esc também cancela). O nome é sempre salvo primeiro (`POST /api/persons/{id}/rename`); se outros grupos já o usam (sem diferenciar maiúsculas e espaços, estejam ou não entre as sugestões), a etiqueta oferece em seguida a mesma mesclagem da página Gerenciar pessoas (veja **Renomear** abaixo), e após uma mesclagem a galeria passa para a pessoa mantida. **Mais** (⋮) abre o menu da pessoa: **Ver todas as fotos de {name}**, **Encontrar mais rostos de {name}** e **Ignorar** (**Restaurar** para uma pessoa ignorada). Quando as opções de ocultação da galeria deixam algumas fotos da pessoa fora de vista, os avisos da galeria informam quantas, divididas em fotos de rajada, de piscada, duplicadas, de bracketing e de panorama, para que você as mostre antes de nomear.
 
+Salvar, editar ou remover um rosto manual atualiza as caixas e as pessoas da foto sem reabri-la.
+
 ### Página Gerenciar Pessoas
 
 No modo de edição a página tem duas abas, **Com nome (N)** e **Precisa de nome (N)**, e sempre abre em **Com nome**. **Precisa de nome** lista os clusters sem nome, cada um com um campo de nome; **Com nome** reúne as pessoas nomeadas, com as ignoradas numa seção recolhível **Ignoradas** no fim. Usuários somente leitura veem apenas a grade de pessoas com nome. As sugestões de nome, aqui como na etiqueta de pessoa da galeria e no menu de rostos da foto, mostram o rosto, o nome e o número de fotos de cada pessoa. Em **Precisa de nome** o menu de ordenação oferece **Número de rostos** e **Mais recentes**. Quando não resta ninguém para nomear, a aba mostra "Todos têm nome. Os novos rostos que precisarem de nome aparecerão aqui."
@@ -508,7 +510,6 @@ No modo de edição, abra uma foto e escolha **Marcar um rosto ausente**, mesmo 
 
 - Use o mesmo editor para ajustar, reatribuir ou remover uma marca manual.
 - As marcas manuais continuam ligadas à sua pessoa através de novas varreduras e da sincronização do visualizador. Não treinam o reconhecimento nem alteram as pontuações de qualidade do rosto.
-Salvar, editar ou remover um rosto manual atualiza as caixas e as pessoas da foto sem reabri-la.
 
 - O editor trabalha a partir da imagem original, de modo que fotos RAW e giradas se alinham. Sem o original você pode listar e remover marcas, mas não desenhar.
 - Uma marca que não pode ser verificada aparece como **Precisa de revisão**. As marcas de versões de pré-visualização anteriores precisam de uma revisão: abra o original, edite e salve a marca.
