@@ -508,6 +508,8 @@ In der Fotoansicht erscheint ein Rahmen um jedes erkannte Gesicht, solange der Z
 
 Öffnen Sie im Bearbeitungsmodus ein Foto und wählen Sie **Fehlendes Gesicht markieren**, auch wenn keine Gesichter erkannt wurden. Zeichnen Sie ein Rechteck (oder geben Sie die Koordinaten ein), wählen Sie eine bestehende Person oder geben Sie einen neuen Namen ein und wählen Sie dann **Speichern**. Abbrechen speichert nichts.
 
+Beim Speichern, Bearbeiten oder Entfernen eines manuellen Gesichts werden die Gesichtsrahmen und Personen aktualisiert, ohne das Foto erneut zu öffnen.
+
 - Mit demselben Editor passen Sie eine manuelle Markierung an, weisen sie neu zu oder entfernen sie.
 - Manuelle Markierungen bleiben über erneute Scans und die Viewer-Synchronisierung mit ihrer Person verknüpft. Sie trainieren die Erkennung nicht und ändern keine Gesichtsqualitätswerte.
 - Der Editor arbeitet mit dem Originalbild, sodass RAW- und gedrehte Fotos passen. Ohne das Original können Sie Markierungen auflisten und entfernen, aber nicht zeichnen.

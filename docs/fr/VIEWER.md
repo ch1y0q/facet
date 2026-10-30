@@ -508,6 +508,8 @@ Dans la vue photo, un cadre apparaît autour de chaque visage détecté quand le
 
 En mode édition, ouvrez une photo et choisissez **Marquer un visage manquant**, même si aucun visage n'a été détecté. Tracez un rectangle (ou saisissez ses coordonnées), choisissez une personne existante ou saisissez un nouveau nom, puis **Enregistrer**. Annuler n'enregistre rien.
 
+Enregistrer, modifier ou supprimer un visage manuel actualise les cadres et les personnes de la photo sans la rouvrir.
+
 - Utilisez le même éditeur pour ajuster, réassigner ou supprimer une marque manuelle.
 - Les marques manuelles restent liées à leur personne à travers les rescans et la synchronisation de la visionneuse. Elles n'entraînent pas la reconnaissance et ne changent pas les scores de qualité des visages.
 - L'éditeur travaille à partir de l'image originale, de sorte que les photos RAW et pivotées s'alignent. Sans l'original, vous pouvez lister et supprimer des marques, mais pas en tracer.

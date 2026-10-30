@@ -508,6 +508,8 @@ Nella vista foto compare un riquadro attorno a ogni volto rilevato mentre il pun
 
 In modalità di modifica, apri una foto e scegli **Segna un volto mancante**, anche se non sono stati rilevati volti. Disegna un rettangolo (o digita le coordinate), scegli una persona esistente o inserisci un nuovo nome, poi **Salva**. Annulla non salva nulla.
 
+Salvare, modificare o rimuovere un volto manuale aggiorna i riquadri e le persone della foto senza riaprirla.
+
 - Usa lo stesso editor per regolare, riassegnare o rimuovere una marcatura manuale.
 - Le marcature manuali restano collegate alla loro persona attraverso nuove scansioni e sincronizzazione della galleria. Non addestrano il riconoscimento né cambiano i punteggi di qualità del volto.
 - L'editor lavora sull'immagine originale, quindi le foto RAW e ruotate sono allineate. Senza l'originale puoi elencare e rimuovere le marcature, ma non disegnare.

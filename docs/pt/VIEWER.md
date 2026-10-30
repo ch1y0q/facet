@@ -506,6 +506,8 @@ Na visualização da foto, aparece um quadro em volta de cada rosto detectado en
 
 No modo de edição, abra uma foto e escolha **Marcar um rosto ausente**, mesmo quando nenhum rosto foi detectado. Desenhe um retângulo (ou digite as coordenadas), escolha uma pessoa existente ou digite um novo nome, e então **Salvar**. Cancelar não salva nada.
 
+Salvar, editar ou remover um rosto manual atualiza as caixas e as pessoas da foto sem reabri-la.
+
 - Use o mesmo editor para ajustar, reatribuir ou remover uma marca manual.
 - As marcas manuais continuam ligadas à sua pessoa através de novas varreduras e da sincronização do visualizador. Não treinam o reconhecimento nem alteram as pontuações de qualidade do rosto.
 - O editor trabalha a partir da imagem original, de modo que fotos RAW e giradas se alinham. Sem o original você pode listar e remover marcas, mas não desenhar.
