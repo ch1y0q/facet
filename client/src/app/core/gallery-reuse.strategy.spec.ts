@@ -80,6 +80,23 @@ describe('GalleryReuseStrategy', () => {
     expect(destroyed).toBe(before);
   });
 
+  it('reattaches the parked gallery on a history back from the stack editor', async () => {
+    const album = await harness.navigateByUrl('/album/42?sort=date', GalleryStub);
+    await harness.navigateByUrl('/stacks/edit');
+    const before = destroyed;
+    await back();
+    expect(harness.routeDebugElement?.componentInstance).toBe(album);
+    expect(destroyed).toBe(before);
+  });
+
+  it('destroys the parked gallery when the stack editor leaves for another page', async () => {
+    await harness.navigateByUrl('/album/42?sort=date', GalleryStub);
+    await harness.navigateByUrl('/stacks/edit');
+    const before = destroyed;
+    await harness.navigateByUrl('/persons');
+    expect(destroyed).toBe(before + 1);
+  });
+
   it('drops the parked gallery when stack Back targets another album', async () => {
     const album = await harness.navigateByUrl('/album/42?sort=date', GalleryStub);
     await harness.navigateByUrl('/stacks/edit');

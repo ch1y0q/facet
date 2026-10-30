@@ -354,11 +354,8 @@ export class StackEditorComponent implements OnInit {
     if (!this.current() || this.saving() || event.defaultPrevented || isTypingContext(event) || this.page && isPageShortcutBlocked(event)
       || event.repeat || this.page && this.pageContext.overlays().length > 0
       || event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey
-      || !['ArrowLeft', 'ArrowRight', 'r', 'R', ...(this.page ? ['Escape'] : [])].includes(event.key)
+      || !['ArrowLeft', 'ArrowRight', 'r', 'R'].includes(event.key)
       || (event.target instanceof HTMLElement ? event.target : null)?.closest('[role="slider"], [role="radiogroup"], input, select')) return;
-    if (event.key === 'Escape') {
-      event.preventDefault(); event.stopPropagation(); this.close(); return;
-    }
     if (event.key.toLowerCase() === 'r') {
       event.preventDefault(); event.stopPropagation(); void this.rejectFocused(); return;
     }

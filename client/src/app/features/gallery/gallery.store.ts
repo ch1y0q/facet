@@ -731,13 +731,24 @@ export class GalleryStore {
     this.lastSelectedIndex = -1;
   }
 
-  /** Capture the exact selection generation, including a newer same-content selection. */
-  captureSelectionClear(paths: readonly string[]): () => void {
+  /**
+   * Capture the exact selection generation, including a newer same-content selection.
+   * `restore` re-selects `paths` (Undo) only while the empty selection `clear` left is untouched.
+   */
+  captureSelectionClear(paths: readonly string[]): { clear: () => void; restore: () => void } {
     const owner = this.auth.identity();
     const selected = this.selectedPaths();
     const eligible = !this.viewScopeSelected() && selected.size === paths.length && paths.every(path => selected.has(path));
-    return () => {
-      if (eligible && owner === this.auth.identity() && !this.viewScopeSelected() && this.selectedPaths() === selected) this.clearSelection();
+    let cleared: ReadonlySet<string> | null = null;
+    return {
+      clear: () => {
+        if (!eligible || owner !== this.auth.identity() || this.viewScopeSelected() || this.selectedPaths() !== selected) return;
+        this.clearSelection();
+        cleared = this.selectedPaths();
+      },
+      restore: () => {
+        if (cleared && owner === this.auth.identity() && !this.viewScopeSelected() && this.selectedPaths() === cleared) this.restoreSelection(paths);
+      },
     };
   }
 
