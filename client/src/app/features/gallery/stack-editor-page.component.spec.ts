@@ -41,7 +41,7 @@ describe('manual stack workspace with Router, HTTP and Material', () => {
         { path: 'broken', loadComponent: () => Promise.reject(new Error('load failed')) }]),
       { provide: AuthService, useValue: { identity, isEdition: edition } },
       { provide: I18nService, useValue: { translations: signal({}), t: (key: string) => key } },
-      { provide: GalleryStore, useValue: { pinnedPaths: signal(null), refreshPaths: vi.fn(async () => undefined), restoreSelection: vi.fn() } },
+      { provide: GalleryStore, useValue: { captureSelectionClear: vi.fn(() => vi.fn()), pinnedPaths: signal(null), refreshPaths: vi.fn(async () => undefined), restoreSelection: vi.fn() } },
     ] });
     http = TestBed.inject(HttpTestingController); harness = await RouterTestingHarness.create();
   });
@@ -95,6 +95,43 @@ describe('manual stack workspace with Router, HTTP and Material', () => {
     expect(TestBed.inject(GalleryStore).refreshPaths).not.toHaveBeenCalled();
     expect(document.querySelector('mat-snack-bar-container')).toBeNull();
     http.expectNone('/api/photos/batch_review');
+  });
+  it('returns from the empty workspace on Escape', async () => {
+    await open(null); await render();
+    button('[data-stack-back]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await TestBed.inject(ApplicationRef).whenStable();
+    expect(TestBed.inject(Router).url).toBe('/');
+  });
+  it('keeps Escape out of typing, overlays and in-flight saves', async () => {
+    await ready();
+    const target = button('[data-stack-back]');
+    const menu = document.createElement('div'); menu.setAttribute('role', 'menu'); root().append(menu);
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); menu.remove();
+    const input = document.createElement('input'); root().append(input);
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); input.remove();
+    for (const kind of ['dialog', 'bottom_sheet', 'slideshow'] as const) {
+      const clear = TestBed.inject(PageContextService).registerOverlay(kind);
+      target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); clear();
+    }
+    for (const init of [{ isComposing: true }, { keyCode: 229 }, { repeat: true }, { shiftKey: true }]) {
+      target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, ...init }));
+    }
+    expect(TestBed.inject(Router).url).toBe('/stacks/edit');
+    button('[data-stack-save]').click();
+    const write = http.expectOne('/api/stacks/regroup/apply');
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(TestBed.inject(Router).url).toBe('/stacks/edit');
+    write.flush({}, { status: 409, statusText: 'Conflict' }); await render();
+    target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await TestBed.inject(ApplicationRef).whenStable();
+    expect(TestBed.inject(Router).url).toBe('/album/17?sort=date#position');
+  });
+  it('returns to the originating album on Escape without saving', async () => {
+    await ready();
+    button('[data-stack-back]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    await TestBed.inject(ApplicationRef).whenStable(); await render();
+    expect(TestBed.inject(Router).url).toBe('/album/17?sort=date#position');
+    http.expectNone('/api/stacks/regroup/apply');
   });
   it('authorizes history before exposing private names and uses a real page zoom workspace', async () => {
     await open(); expect(root().textContent).not.toContain('a.jpg'); expect(root().querySelector('img')).toBeNull();

@@ -120,6 +120,24 @@ describe('GalleryStore', () => {
     store = TestBed.inject(GalleryStore);
   });
 
+  describe('committed stack selection', () => {
+    it('clears the captured explicit selection', () => {
+      store.restoreSelection(['/a', '/b']);
+      const clear = store.captureSelectionClear(['/a', '/b']);
+      clear();
+      expect(store.selectedPaths().size).toBe(0);
+    });
+    it.each(['selection', 'account', 'scope'])('preserves a newer %s', change => {
+      store.restoreSelection(['/a', '/b']);
+      const clear = store.captureSelectionClear(['/a', '/b']);
+      if (change === 'selection') store.restoreSelection(['/a', '/b']);
+      if (change === 'account') authIdentity.set('bob');
+      if (change === 'scope') store.selectionScope.set('view');
+      clear();
+      expect([...store.selectedPaths()]).toEqual(['/a', '/b']);
+    });
+  });
+
   describe('manual stack display and action scope', () => {
     it('keeps representative paging separate from matching-photo selection', async () => {
       apiGet.mockReturnValue(of(makePhotosResponse({ total: 2, photo_total: 5, has_more: true })));

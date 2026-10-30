@@ -1,3 +1,4 @@
+import { StackActionsService } from './stack-actions.service';
 import { STACK_EDITOR_HISTORY } from './stack-editor-history';
 import {
   Component,
@@ -36,7 +37,7 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatTooltip, MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, NavigationStart, Router, RouterOutlet } from '@angular/router';
-import { filter, firstValueFrom } from 'rxjs';
+import { filter, firstValueFrom, takeUntil } from 'rxjs';
 import { GalleryStore, BatchResult, REVIEW_RESUME_NAVIGATION } from './gallery.store';
 import { NoticeDismissals, NoticeKind, readNoticeDismissals, saveNoticeDismissals, withDismissal } from './notice-dismiss.util';
 import { Photo } from '../../shared/models/photo.model';
@@ -910,6 +911,7 @@ export class GalleryComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly stacks = inject(PhotoStackService);
+  private readonly stackActions = inject(StackActionsService);
   private readonly outlet = inject(RouterOutlet, { optional: true });
   private readonly changeDetector = inject(ChangeDetectorRef);
   private readonly ngZone = inject(NgZone);
@@ -2323,6 +2325,32 @@ export class GalleryComponent implements OnInit, OnDestroy {
   protected readonly stackShortcut = computed(() => this.keymap.keymap().stack.toUpperCase());
   private stackOpening = false;
 
+  protected async quickStack(): Promise<void> {
+    if (!this.canCreateStack() || this.stackOpening || this.parked || this.store.slideshowActive() || this.dialog.openDialogs.length) return;
+    const selection = this.selectedPaths();
+    const paths = [...selection];
+    const session = this.stacks.context();
+    const live = () => !this.destroyRef.destroyed && !this.parked && this.stacks.isLive(session);
+    const clear = this.store.captureSelectionClear(paths);
+    this.stackOpening = true;
+    try {
+      const preview = await firstValueFrom(this.stacks.previewRegroup(paths, 'selected').pipe(takeUntil(this.router.events.pipe(filter(event => event instanceof NavigationStart))), takeUntilDestroyed(this.destroyRef)));
+      if (!live() || this.selectedPaths() !== selection || this.viewScoped()) return;
+      if (preview.source_stacks.length) {
+        this.stackOpening = false;
+        await this.createStack();
+        return;
+      }
+      // Create refuses newly stacked members too, closing the race after preview.
+      const applied = await this.stackActions.commit(this.stacks.create(paths, paths[0]), {
+        paths, action: 'create', session, live, labelKey: I18N.stacks.stacked, labelParams: { count: paths.length },
+      });
+      if (applied && live()) clear();
+    } catch {
+      if (live()) this.snackBar.open(this.i18n.t(I18N.stacks.stack_failed), '', { duration: 5000 });
+    } finally { this.stackOpening = false; }
+  }
+
   protected async createStack(): Promise<void> {
     if (!this.canCreateStack() || this.stackOpening || this.parked || this.store.slideshowActive() || this.dialog.openDialogs.length) return;
     this.stackOpening = true;
@@ -2862,6 +2890,13 @@ export class GalleryComponent implements OnInit, OnDestroy {
    *  query below cannot see it. */
   protected onGalleryShortcut(event: KeyboardEvent): void {
     if (this.parked || this.store.slideshowActive() || event.defaultPrevented) return;
+    const quickChord = event.key.toLowerCase() === 's' && event.shiftKey && !event.altKey
+      && (navigator.platform.toLowerCase().includes('mac') ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
+    if (quickChord && !event.repeat && !event.isComposing && event.keyCode !== 229
+      && !isTypingContext(event) && !document.querySelector('mat-dialog-container, mat-bottom-sheet-container')
+      && this.canCreateStack() && !this.stackOpening) {
+      event.preventDefault(); void this.quickStack(); return;
+    }
     if (isPageShortcutBlocked(event)) return;
 
     if (this.keymap.matches(event, 'stack')) {

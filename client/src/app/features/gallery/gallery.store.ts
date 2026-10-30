@@ -731,6 +731,16 @@ export class GalleryStore {
     this.lastSelectedIndex = -1;
   }
 
+  /** Capture the exact selection generation, including a newer same-content selection. */
+  captureSelectionClear(paths: readonly string[]): () => void {
+    const owner = this.auth.identity();
+    const selected = this.selectedPaths();
+    const eligible = !this.viewScopeSelected() && selected.size === paths.length && paths.every(path => selected.has(path));
+    return () => {
+      if (eligible && owner === this.auth.identity() && !this.viewScopeSelected() && this.selectedPaths() === selected) this.clearSelection();
+    };
+  }
+
   clearSelection(): void {
     this.selectedPaths.set(new Set());
     this.excludedPaths.set(new Set());
