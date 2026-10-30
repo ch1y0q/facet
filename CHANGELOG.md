@@ -4,8 +4,13 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Stack explicit unstacked selections in selection order with Cmd+Shift+S or Ctrl+Shift+S, using the first selected photo as cover. Existing stack members open the editor for review, and Undo restores the selection the stack cleared.
+
 ### Fixed
 
+- Preserve the gallery view when returning from the stack editor, support Escape as Back, and clear the committed selection after a successful stack save.
 - Refresh photo face boxes after saving, editing or removing a manual face, without reopening the photo.
 
 ## [1.27.0] "Trombinoscope" — 2026-10-29
