@@ -277,6 +277,29 @@ describe('PhotoDetailComponent', () => {
     expect(view.nativeElement.querySelectorAll('[data-face]')).toHaveLength(0);
   });
 
+  it.each(['navigate', 'destroy'] as const)('does not reload obsolete face boxes after %s', async (leave) => {
+    mockApi.get.mockImplementation((url: string) => url === '/photo/faces' ? of({ faces: [] }) : of(samplePhoto));
+    const view = renderDetail();
+    vi.spyOn(TestBed.inject(GalleryStore), 'reloadPersonOptions').mockResolvedValue();
+    view.componentInstance.photo.set(makePhoto({ path: samplePhoto.path }));
+    view.detectChanges();
+    await view.whenStable();
+    (view.componentInstance as any).dialog = mockDialog;
+    await (view.componentInstance as any).openManualFaces(view.componentInstance.photo());
+    const committed = mockDialog.open.mock.calls.at(-1)![1].data.onCommitted;
+    if (leave === 'destroy') {
+      view.destroy();
+    } else {
+      view.componentInstance.photo.set(makePhoto({ path: '/other.jpg' }));
+      view.detectChanges();
+      await view.whenStable();
+    }
+    mockApi.get.mockClear();
+    await committed();
+    expect(mockApi.get.mock.calls.filter(([url]) => url === '/photo/faces')).toEqual([]);
+    expect(mockApi.get).toHaveBeenCalledWith('/photo', { path: samplePhoto.path });
+  });
+
   it('ranks each score that has a library distribution, and only those', () => {
     localStorage.setItem('facet_photo_detail_tab', 'quality');
     const view = renderDetail();
