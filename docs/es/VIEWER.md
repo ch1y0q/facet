@@ -485,8 +485,6 @@ Haz clic en el nombre de una persona para ver todas sus fotos en `/person/<id>`.
 
 **Nombrar desde la galería.** Cuando la galería está filtrada por una persona (`?person_id=95`), su etiqueta en la fila de filtros activos muestra su cara y su nombre, o **Sin nombre**, resaltado con un contorno como recordatorio; su × (**Quitar del filtro**) quita a la persona del filtro. Para los usuarios de edición hay dos botones antes de la ×. **Renombrar** (el lápiz) renombra a la persona allí mismo: el campo de nombre muestra «¿Quién es? Escribe o elige un nombre» para una persona sin nombre y «Renombrar o fusionar con…» para una con nombre, sus sugerencias muestran la cara, el nombre y el número de fotos de cada persona, y **Guardar** o **Cancelar** lo cierra (Escape también cancela). El nombre siempre se guarda primero (`POST /api/persons/{id}/rename`); si otros grupos ya lo llevan (sin distinguir mayúsculas ni espacios, estén o no entre las sugerencias), la etiqueta ofrece después la misma fusión que la página Gestionar personas (ver **Renombrar** más abajo), y tras una fusión la galería pasa a la persona que se conserva. **Más** (⋮) abre el menú de la persona: **Ver todas las fotos de {name}**, **Buscar más caras de {name}** e **Ignorar** (**Restaurar** para una persona ignorada). Cuando las opciones de ocultación de la galería dejan fuera de la vista algunas fotos de la persona, los avisos de la galería indican cuántas, desglosadas en fotos de ráfaga, de parpadeo, duplicadas, de horquillado y de panorámica, para que las muestres antes de nombrar.
 
-Al guardar, editar o eliminar un rostro manual, los recuadros y las personas de la foto se actualizan sin volver a abrirla.
-
 ### Página Gestionar personas
 
 En modo edición la página tiene dos pestañas, **Con nombre (N)** y **Por nombrar (N)**, y siempre se abre en **Con nombre**. **Por nombrar** lista los grupos sin nombre, cada uno con un campo de nombre; **Con nombre** reúne a las personas con nombre, con las ignoradas en una sección plegable **Ignoradas** al final. Los usuarios de solo lectura ven únicamente la cuadrícula de personas con nombre. Las sugerencias de nombre, aquí como en la etiqueta de persona de la galería y en el menú de caras de la foto, muestran la cara, el nombre y el número de fotos de cada persona. En **Por nombrar** el menú de orden ofrece **Cantidad de caras** y **Más recientes**. Cuando no queda nadie por nombrar, la pestaña muestra «Todos tienen nombre. Las caras nuevas que necesiten un nombre aparecerán aquí.»
@@ -511,6 +509,8 @@ En la vista de foto aparece un recuadro alrededor de cada cara detectada mientra
 ### Marcar una cara no detectada
 
 En modo de edición, abre una foto y elige **Marcar un rostro ausente**, incluso cuando no se detectó ningún rostro. Dibuja un rectángulo (o escribe sus coordenadas), elige una persona existente o escribe un nombre nuevo, y pulsa **Guardar**. Cancelar no guarda nada.
+
+Al guardar, editar o eliminar un rostro manual, los recuadros y las personas de la foto se actualizan sin volver a abrirla.
 
 - Usa el mismo editor para ajustar, reasignar o quitar una marca manual.
 - Las marcas manuales siguen ligadas a su persona a través de los reescaneos y la sincronización del visor. No entrenan el reconocimiento ni cambian las puntuaciones de calidad facial.
