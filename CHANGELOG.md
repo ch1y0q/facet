@@ -4,6 +4,12 @@ All notable changes to Facet are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- **侧边面板 (the docked details rail) is a switch now.** Clicking the checked item collapses the rail and hands the detail surface back to hover bubbles, releasing the held photo (deselect included); clicking it again docks the rail. The panel-activation item stays in the menu greyed out while the rail is collapsed instead of appearing and disappearing with the mode.
+- **Language and theme submenus mark their current entry** with the same check the tooltip-mode radio uses, and no longer wrap their labels when the check squeezes them.
+- **The off mode reads "No details"** instead of the ambiguous Off/关闭 (its icon already said visibility-off); the mode labels keep to one line when the check squeezes them.
+
 ### Fixed
 
 - **Photo cards fill their tile on phones.** With details hidden (the default), cards below 768 px kept the photo at its natural height over a dead background strip; the tile now fills as a square at every width.
